@@ -1,0 +1,34 @@
+# Nolan Repository .gitignore
+
+# User workspace (not part of app distribution)
+projects/*
+!projects/.gitkeep
+
+# Build artifacts
+app/target/
+app/node_modules/
+app/dist/
+app/dist-ssr/
+app/src-tauri/target/
+
+# Generated configuration files (created by setup.sh)
+app/terminator_config
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local

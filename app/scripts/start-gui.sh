@@ -6,7 +6,7 @@ set -euo pipefail
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 PROJECT_ROOT="$SCRIPT_DIR/.."
 GUI_DIR="$PROJECT_ROOT"
-GUI_BINARY="$GUI_DIR/src-tauri/target/release/gui-control-panel-app"
+GUI_BINARY="$GUI_DIR/src-tauri/target/release/nolan"
 
 # Colors
 RED='\033[0;31m'
@@ -20,17 +20,17 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 
 check_running() {
-    if pgrep -f "gui-control-panel-app" > /dev/null; then
+    if pgrep -f "nolan" > /dev/null; then
         echo -e "${YELLOW}⚠ GUI Control Panel is already running.${NC}"
         echo ""
         read -p "Kill existing instance and restart? (y/N): " -n 1 -r
         echo ""
         if [[ $REPLY =~ ^[Yy]$ ]]; then
             echo "Killing existing instance..."
-            pkill -f "gui-control-panel-app"
+            pkill -f "nolan"
             sleep 1
         else
-            echo "Exiting. Use 'pkill -f gui-control-panel-app' to kill manually."
+            echo "Exiting. Use 'pkill -f nolan' to kill manually."
             exit 0
         fi
     fi
@@ -116,7 +116,7 @@ launch_gui() {
         echo -e "${GREEN}✓ GUI Control Panel launched successfully (PID: $pid)${NC}"
         echo ""
         echo "Logs: /tmp/gui-control-panel.log"
-        echo "To stop: pkill -f gui-control-panel-app"
+        echo "To stop: pkill -f nolan"
     else
         echo -e "${RED}✗ GUI failed to start. Check logs:${NC}"
         echo "  tail /tmp/gui-control-panel.log"

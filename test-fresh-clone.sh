@@ -57,8 +57,8 @@ for pattern in "${PATTERNS[@]}"; do
 done
 echo "✓ No hardcoded patterns found"
 
-# Verify paths are absolute
-if ! grep -q "^directory = /" terminator_config; then
+# Verify paths are absolute (allowing for INI indentation)
+if ! grep -q "^[[:space:]]*directory = /" terminator_config; then
     echo "✗ FAIL: Paths not absolute in terminator_config"
     exit 1
 fi

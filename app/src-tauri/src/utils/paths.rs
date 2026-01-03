@@ -1,0 +1,126 @@
+use std::env;
+use std::path::PathBuf;
+
+/// Get user home directory from $HOME environment variable
+/// NEVER use "~" as Rust's std::fs and Command do not expand it
+pub fn get_home_dir() -> Result<PathBuf, String> {
+    env::var("HOME")
+        .map(PathBuf::from)
+        .map_err(|_| "HOME environment variable not set".to_string())
+}
+
+/// Detect git repository root by walking up from current executable
+/// Looks for .git directory
+fn detect_git_root() -> Option<PathBuf> {
+    // Start from current executable location
+    let exe_path = env::current_exe().ok()?;
+    let mut current = exe_path.as_path();
+
+    // Walk up the directory tree (max 20 levels to prevent infinite loops)
+    for _ in 0..20 {
+        // Try to get parent directory
+        current = current.parent()?;
+
+        // Check if .git exists in this directory
+        let git_dir = current.join(".git");
+        if git_dir.exists() && git_dir.is_dir() {
+            return Some(current.to_path_buf());
+        }
+    }
+
+    None
+}
+
+/// Get Nolan app root directory (the app/ directory)
+/// Priority:
+/// 1. NOLAN_APP_ROOT environment variable
+/// 2. Git repository root detection + /app
+/// 3. Fallback: $HOME/nolan/app (portable, no language-specific dirs)
+pub fn get_nolan_app_root() -> Result<PathBuf, String> {
+    // Priority 1: Check environment variable (user override)
+    if let Ok(root) = env::var("NOLAN_APP_ROOT") {
+        let path = PathBuf::from(root);
+        if path.exists() {
+            return Ok(path);
+        }
+        return Err(format!(
+            "NOLAN_APP_ROOT is set but path does not exist: {:?}",
+            path
+        ));
+    }
+
+    // Priority 2: Try git root detection (works anywhere)
+    if let Some(git_root) = detect_git_root() {
+        return Ok(git_root.join("app"));
+    }
+
+    // Priority 3: Generic fallback (no language-specific dirs like "Proyectos")
+    Ok(get_home_dir()?.join("nolan/app"))
+}
+
+/// Get scripts directory
+/// Returns: <nolan_app_root>/scripts
+pub fn get_scripts_dir() -> Result<PathBuf, String> {
+    let scripts = get_nolan_app_root()?.join("scripts");
+
+    // Verify directory exists
+    if !scripts.exists() {
+        return Err(format!("Scripts directory not found: {:?}", scripts));
+    }
+
+    // Return canonical path (resolves symlinks, prevents traversal)
+    scripts.canonicalize()
+        .map_err(|e| format!("Failed to resolve scripts path: {}", e))
+}
+
+/// Get Claude history.jsonl path
+/// Returns: $HOME/.claude/history.jsonl
+pub fn get_history_path() -> Result<PathBuf, String> {
+    Ok(get_home_dir()?.join(".claude/history.jsonl"))
+}
+
+/// Get agents directory
+/// Returns: <nolan_app_root>/agents
+pub fn get_agents_dir() -> Result<PathBuf, String> {
+    Ok(get_nolan_app_root()?.join("agents"))
+}
+
+/// Get projects directory
+/// Projects directory is at repository root (nolan/projects/),
+/// NOT inside app/ directory (nolan/app/projects/ does not exist).
+/// We need to go up one level from app root to get to repo root.
+/// Returns: <repo_root>/projects
+pub fn get_projects_dir() -> Result<PathBuf, String> {
+    let app_root = get_nolan_app_root()?;
+    let repo_root = app_root
+        .parent()
+        .ok_or("Cannot determine repository root from app directory")?;
+    Ok(repo_root.join("projects"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_paths_do_not_use_tilde() {
+        // Verify no paths contain ~ character
+        let home = get_home_dir().unwrap();
+        assert!(!home.to_string_lossy().contains("~"));
+
+        let app_root = get_nolan_app_root().unwrap();
+        assert!(!app_root.to_string_lossy().contains("~"));
+
+        let history = get_history_path().unwrap();
+        assert!(!history.to_string_lossy().contains("~"));
+    }
+
+    #[test]
+    fn test_paths_are_absolute() {
+        let home = get_home_dir().unwrap();
+        assert!(home.is_absolute());
+
+        let app_root = get_nolan_app_root().unwrap();
+        assert!(app_root.is_absolute());
+    }
+}

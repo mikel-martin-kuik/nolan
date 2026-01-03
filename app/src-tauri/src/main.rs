@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    gui_control_panel_app_lib::run()
+    nolan_lib::run()
 }

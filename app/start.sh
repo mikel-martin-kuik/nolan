@@ -5,55 +5,82 @@ DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPTS_DIR="$DIR/scripts"
 LAUNCH_DIR="$(pwd)"
 
+# Parse arguments
+LEGACY_MODE=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --legacy)
+            LEGACY_MODE=true
+            shift
+            ;;
+        *)
+            echo "Unknown option: $1"
+            echo "Usage: $0 [--legacy]"
+            echo "  --legacy    Run in legacy mode (immortal sessions only, no GUI)"
+            exit 1
+            ;;
+    esac
+done
+
 # Kill any existing watchdogs to avoid duplicates
 pkill -f "immortal-session.sh" 2>/dev/null || true
 
-#######################################
-# Communicator session
-#######################################
-if ! tmux has-session -t communicator 2>/dev/null; then
-    cmd="bash $SCRIPTS_DIR/communicator-ui.sh --ui; exec bash"
-    tmux new-session -d -s communicator -c "$LAUNCH_DIR" "$cmd"
-    gnome-terminal --title="📡 Communicator" -- tmux attach -t communicator &
-fi
+if [ "$LEGACY_MODE" = true ]; then
+    #######################################
+    # Communicator session
+    #######################################
+    if ! tmux has-session -t communicator 2>/dev/null; then
+        cmd="bash $SCRIPTS_DIR/communicator-ui.sh --ui; exec bash"
+        tmux new-session -d -s communicator -c "$LAUNCH_DIR" "$cmd"
+        gnome-terminal --title="📡 Communicator" -- tmux attach -t communicator &
+    fi
 
-#######################################
-# History Log session (separate terminal)
-#######################################
-if ! tmux has-session -t history-log 2>/dev/null; then
-    cmd="bash $SCRIPTS_DIR/tail-history.sh; exec bash"
-    tmux new-session -d -s history-log -c "$LAUNCH_DIR" "$cmd"
-    gnome-terminal --title="📜 History Log" --geometry=80x30 -- tmux attach -t history-log &
-fi
+    #######################################
+    # History Log session (separate terminal)
+    #######################################
+    if ! tmux has-session -t history-log 2>/dev/null; then
+        cmd="bash $SCRIPTS_DIR/tail-history.sh; exec bash"
+        tmux new-session -d -s history-log -c "$LAUNCH_DIR" "$cmd"
+        gnome-terminal --title="📜 History Log" --geometry=80x30 -- tmux attach -t history-log &
+    fi
 
-#######################################
-# Lifecycle Manager session
-#######################################
-if ! tmux has-session -t lifecycle 2>/dev/null; then
-    cmd="bash $SCRIPTS_DIR/lifecycle-manager.sh --ui; exec bash"
-    tmux new-session -d -s lifecycle -c "$DIR" "$cmd"
+    #######################################
+    # Lifecycle Manager session
+    #######################################
+    if ! tmux has-session -t lifecycle 2>/dev/null; then
+        cmd="bash $SCRIPTS_DIR/lifecycle-manager.sh --ui; exec bash"
+        tmux new-session -d -s lifecycle -c "$DIR" "$cmd"
+    fi
 fi
 
 #######################################
 # Launch immortal watchdogs
 # Wait for terminals to attach before starting watchdogs
 #######################################
-sleep 2
-"$SCRIPTS_DIR/immortal-session.sh" communicator "📡 Communicator" &
-"$SCRIPTS_DIR/immortal-session.sh" history-log "📜 History Log" &
-"$SCRIPTS_DIR/immortal-session.sh" lifecycle "🧬 Lifecycle" &
+if [ "$LEGACY_MODE" = true ]; then
+    sleep 2
+    "$SCRIPTS_DIR/immortal-session.sh" communicator "📡 Communicator" &
+    "$SCRIPTS_DIR/immortal-session.sh" history-log "📜 History Log" &
+    "$SCRIPTS_DIR/immortal-session.sh" lifecycle "🧬 Lifecycle" &
+fi
 
 #######################################
-# Launch GUI Control Panel
+# Launch GUI Control Panel (or finish in legacy mode)
 #######################################
 
-echo "=== Support Systems Initialized ==="
-echo "📡 Communicator: Online (Immortal Window)"
-echo "📜 History Log:  Online (Immortal Window)"
-echo "🧬 Lifecycle:    Online (Immortal Window)"
-echo ""
-echo "Use 'launch-core' in Lifecycle Manager to start agents."
-echo ""
-echo "Launching GUI Control Panel..."
+if [ "$LEGACY_MODE" = true ]; then
+    echo "=== Running in LEGACY mode ==="
+    echo "No GUI windows launched."
+    echo "Use tmux directly to manage sessions."
+else
+    echo "=== Support Systems Initialized ==="
+    echo "📡 Communicator: Online (Immortal Window)"
+    echo "📜 History Log:  Online (Immortal Window)"
+    echo "🧬 Lifecycle:    Online (Immortal Window)"
+    echo ""
+    echo "Use 'launch-core' in Lifecycle Manager to start agents."
+    echo ""
+    echo "Launching GUI Control Panel..."
 
-"$SCRIPTS_DIR/start-gui.sh" --force
+    "$SCRIPTS_DIR/start-gui.sh" --force
+fi

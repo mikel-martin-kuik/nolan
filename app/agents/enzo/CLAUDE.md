@@ -82,7 +82,7 @@ Write findings to `$DOCS_PATH/qa-review.md`:
 
 ## Skills
 
-**Primary:** `ai-rnd:researcher` - read-only investigation
+**Primary:** `nolan:researcher` - read-only investigation
 
 Use for:
 - Checking file contents

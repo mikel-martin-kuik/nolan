@@ -7,7 +7,7 @@
 #
 # Output (stdout): Critical state to preserve
 
-PROJECTS_BASE="$HOME/nolan/app/projects"
+PROJECTS_BASE="$HOME/nolan/projects"
 
 echo "## Preserved State (Pre-Compact)"
 echo ""

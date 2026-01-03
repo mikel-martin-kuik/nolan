@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 PROJECT_ROOT="$SCRIPT_DIR/.."
-GUI_DIR="$PROJECT_ROOT/projects/gui-control-panel-app"
+GUI_DIR="$PROJECT_ROOT"
 GUI_BINARY="$GUI_DIR/src-tauri/target/release/gui-control-panel-app"
 
 # Colors

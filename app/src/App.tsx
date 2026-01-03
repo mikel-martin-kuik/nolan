@@ -32,7 +32,7 @@ function App() {
                 <Activity className="w-6 h-6 text-blue-400" />
               </div>
               <div>
-                <h1 className="text-lg font-bold text-white">AI R&D Lab</h1>
+                <h1 className="text-lg font-bold text-white">Nolan</h1>
                 <p className="text-xs text-gray-400">Control Panel</p>
               </div>
             </div>

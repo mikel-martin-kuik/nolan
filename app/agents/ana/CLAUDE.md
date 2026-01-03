@@ -24,7 +24,7 @@ You are Ana, the research agent.
 
 ## Skills
 
-**Primary:** `ai-rnd:researcher` - bundled research capabilities
+**Primary:** `nolan:researcher` - bundled research capabilities
 
 Use for:
 - Codebase exploration and analysis

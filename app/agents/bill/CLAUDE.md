@@ -26,7 +26,7 @@ You are Bill, the planning agent.
 
 ## Skills
 
-**Primary:** `ai-rnd:planner` - bundled planning capabilities
+**Primary:** `nolan:planner` - bundled planning capabilities
 
 Use for:
 - Architecture understanding and review

@@ -7,10 +7,10 @@
 #
 # Output (stdout): Team status summary
 
-PROJECTS_BASE="$HOME/nolan/app/projects"
+PROJECTS_BASE="$HOME/nolan/projects"
 
 # Header
-echo "## AI RnD Team Status"
+echo "## Nolan Team Status"
 echo ""
 
 # Validate identity

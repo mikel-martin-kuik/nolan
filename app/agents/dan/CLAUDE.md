@@ -129,7 +129,7 @@ tmux capture-pane -t agent-name -p -S -100  # Last 100 lines
 
 ## Skills
 
-**Primary:** `ai-rnd:observer` - status monitoring
+**Primary:** `nolan:observer` - status monitoring
 
 Use for:
 - Agent progress observation

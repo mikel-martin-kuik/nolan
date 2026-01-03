@@ -26,7 +26,7 @@ You are Carl, the implementation agent.
 
 ## Skills
 
-**Primary:** `ai-rnd:implementer` - full implementation capabilities
+**Primary:** `nolan:implementer` - full implementation capabilities
 
 Includes capabilities for:
 - Code writing and modification

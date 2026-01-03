@@ -63,7 +63,7 @@ echo -e "\n---\n**Handoff:** Sent to dan at $(date '+%Y-%m-%d %H:%M')" >> "$DOCS
 
 2. **Send handoff message to dan:**
 ```bash
-source $HOME/nolan/app/scripts/team-aliases.sh && dan 'HANDOFF: $1 → dan | Project: [name] | Status: COMPLETE | Output: $DOCS_PATH/[file]'
+source "$NOLAN_ROOT/app/scripts/team-aliases.sh" && dan 'HANDOFF: $1 → dan | Project: [name] | Status: COMPLETE | Output: $DOCS_PATH/[file]'
 ```
 
 **Note:** The stop hook will block until the handoff marker is added to your output file.

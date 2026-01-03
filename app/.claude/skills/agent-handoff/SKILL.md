@@ -32,7 +32,7 @@ Blockers: [if any]
 ### Send Handoff
 
 ```bash
-source $HOME/nolan/app/scripts/team-aliases.sh
+source "$NOLAN_ROOT/app/scripts/team-aliases.sh"
 dan "HANDOFF: Ana -> Bill ..."  # For review
 bill "Starting planning phase"   # Direct to next agent
 ```

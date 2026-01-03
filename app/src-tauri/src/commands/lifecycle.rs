@@ -9,13 +9,13 @@ const VALID_AGENTS: &[&str] = &["ana", "bill", "carl", "dan", "enzo", "ralph"];
 
 /// Validates that a session name is a valid agent session
 fn validate_agent_session(session: &str) -> Result<(), String> {
-    // Must match: agent-{name} or agent-{name}{2-5}
-    // Examples: agent-ana, agent-bill2, agent-carl3
-    let re = Regex::new(r"^agent-([a-z]+)([2-5])?$").unwrap();
+    // Must match: agent-{name} or agent-{name}-{number}
+    // Examples: agent-ana, agent-bill-2, agent-carl-3
+    let re = Regex::new(r"^agent-([a-z]+)(-[0-9]+)?$").unwrap();
 
     let Some(caps) = re.captures(session) else {
         return Err(format!(
-            "Invalid session name format: '{}'. Expected: agent-{{name}}[{{2-5}}]",
+            "Invalid session name format: '{}'. Expected: agent-{{name}}[-{{number}}]",
             session
         ));
     };
@@ -69,11 +69,13 @@ pub async fn spawn_agent(agent: String, force: bool) -> Result<String, String> {
     // Validate agent name
     validate_agent_name(&agent)?;
 
-    // Build args: spawn-agent.sh expects "spawn <agent> [--force]"
+    // Build args: spawn-agent.sh expects "spawn <agent> [--force] [--no-attach]"
     let mut args = vec!["spawn".to_string(), agent];
     if force {
         args.push("--force".to_string());
     }
+    // GUI will handle terminal opening, so skip auto-attach
+    args.push("--no-attach".to_string());
 
     // Execute spawn-agent.sh
     crate::commands::execute_script("spawn-agent.sh".to_string(), args).await
@@ -102,9 +104,9 @@ pub async fn kill_all_instances(agent: String) -> Result<String, String> {
     // Validate agent name
     validate_agent_name(&agent)?;
 
-    // Find all spawned instances: agent-{name}2, agent-{name}3, etc.
+    // Find all spawned instances: agent-{name}-2, agent-{name}-3, etc.
     let sessions = crate::tmux::session::list_sessions()?;
-    let pattern = format!("^agent-{}[2-5]$", agent);
+    let pattern = format!("^agent-{}-[0-9]+$", agent);
     let re = Regex::new(&pattern).unwrap();
 
     let mut killed = Vec::new();
@@ -140,7 +142,7 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
         if session.starts_with("agent-") {
             // Check if it's a core agent (agent-{name} without number)
             let re_core = Regex::new(r"^agent-([a-z]+)$").unwrap();
-            let re_spawned = Regex::new(r"^agent-([a-z]+)[2-5]$").unwrap();
+            let re_spawned = Regex::new(r"^agent-([a-z]+)-[0-9]+$").unwrap();
 
             if let Some(caps) = re_core.captures(&session) {
                 let agent_name = caps[1].to_string();

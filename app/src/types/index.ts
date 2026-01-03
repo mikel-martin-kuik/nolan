@@ -22,26 +22,27 @@ export const AGENT_DESCRIPTIONS: Record<AgentName, string> = {
   carl: 'Implementation',
   dan: 'Scrum Master',
   enzo: 'QA',
-  ralph: 'Ralph (reserved)',
+  ralph: 'Dummy',
 };
 
 export const AGENT_COLORS: Record<AgentName, string> = {
-  ana: 'bg-purple-500',
-  bill: 'bg-blue-500',
-  carl: 'bg-green-500',
-  dan: 'bg-yellow-500',
-  enzo: 'bg-red-500',
-  ralph: 'bg-gray-500',
+  ana: 'bg-agents-ana',    // Using semantic color system
+  bill: 'bg-agents-bill',  // Using semantic color system
+  carl: 'bg-agents-carl',  // Using semantic color system
+  dan: 'bg-agents-dan',    // Using semantic color system (violet)
+  enzo: 'bg-agents-enzo',  // Using semantic color system
+  ralph: 'bg-agents-ralph', // Using semantic color system (zinc)
 };
 
 export const AGENT_TEXT_COLORS: Record<AgentName, string> = {
-  ana: 'text-purple-400',
-  bill: 'text-blue-400',
-  carl: 'text-green-400',
-  dan: 'text-yellow-400',
-  enzo: 'text-red-400',
-  ralph: 'text-gray-400',
+  ana: 'text-agents-ana',
+  bill: 'text-agents-bill',
+  carl: 'text-agents-carl',
+  dan: 'text-agents-dan',
+  enzo: 'text-agents-enzo',
+  ralph: 'text-agents-ralph',
 };
+
 
 // History log types
 export interface HistoryEntry {

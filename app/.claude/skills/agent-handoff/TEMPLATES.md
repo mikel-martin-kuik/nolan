@@ -7,7 +7,7 @@ HANDOFF: Ana -> Bill
 Project: [project-name]
 Phase: Research complete
 Status: COMPLETE
-Output: $HOME/nolan/app/projects/[project-name]/research.md
+Output: $DOCS_PATH/research.md
 Summary: [Problem investigated]. [Key findings]. [Recommended approach].
 Blockers: None
 ```
@@ -19,7 +19,7 @@ HANDOFF: Bill -> Carl
 Project: [project-name]
 Phase: Planning complete
 Status: COMPLETE
-Output: $HOME/nolan/app/projects/[project-name]/plan.md
+Output: $DOCS_PATH/plan.md
 Summary: [N] tasks defined in [N] phases. [Key implementation approach]. [Notable risks/dependencies].
 Blockers: None
 ```
@@ -31,7 +31,7 @@ HANDOFF: Carl -> Done
 Project: [project-name]
 Phase: Implementation complete
 Status: COMPLETE
-Output: $HOME/nolan/app/projects/[project-name]/progress.md
+Output: $DOCS_PATH/progress.md
 Summary: [N] tasks completed. [Key changes made]. [Test results].
 Blockers: None
 ```

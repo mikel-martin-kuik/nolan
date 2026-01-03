@@ -8,14 +8,14 @@ allowed-tools: Read, Glob, Grep, Bash(cat:*), Bash(ls:*)
 ## Environment Setup
 
 ```bash
-export DOCS_PATH=$HOME/nolan/app/projects/$1
+export DOCS_PATH="$PROJECTS_DIR/$1"
 ```
 
 ## Project Context
-!`docs_path=$HOME/nolan/app/projects/$1; if [ -f "$docs_path/context.md" ]; then cat "$docs_path/context.md"; else echo "ERROR: context.md not found at $docs_path"; fi`
+!`docs_path="$PROJECTS_DIR/$1"; if [ -f "$docs_path/context.md" ]; then cat "$docs_path/context.md"; else echo "ERROR: context.md not found at $docs_path"; fi`
 
 ## Research Findings
-!`docs_path=$HOME/nolan/app/projects/$1; if [ -f "$docs_path/research.md" ]; then cat "$docs_path/research.md"; else echo "ERROR: research.md not found. Research phase must complete first."; fi`
+!`docs_path="$PROJECTS_DIR/$1"; if [ -f "$docs_path/research.md" ]; then cat "$docs_path/research.md"; else echo "ERROR: research.md not found. Research phase must complete first."; fi`
 
 ## Planning Phase Instructions
 

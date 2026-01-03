@@ -95,15 +95,16 @@ export const HistoryPanel: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full gap-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">History Log</h2>
-          <p className="text-gray-400 text-sm">
-            Real-time streaming of Claude interaction history
-          </p>
-        </div>
+    <div className="min-h-screen bg-gray-900 p-6">
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold">History Log</h2>
+            <p className="text-gray-400 text-sm">
+              Real-time streaming of Claude interaction history
+            </p>
+          </div>
         <div className="flex items-center gap-2">
           {/* Streaming indicator with restart button */}
           <button
@@ -175,14 +176,15 @@ export const HistoryPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Footer stats */}
-      <div className="flex items-center justify-between text-sm text-gray-400">
-        <span>
-          Memory usage: {entries.length} / 1000 entries
-        </span>
-        <span>
-          Auto-scroll: {autoScroll ? '✓ Enabled' : '✗ Disabled'}
-        </span>
+        {/* Footer stats */}
+        <div className="flex items-center justify-between text-sm text-gray-400">
+          <span>
+            Memory usage: {entries.length} / 1000 entries
+          </span>
+          <span>
+            Auto-scroll: {autoScroll ? '✓ Enabled' : '✗ Disabled'}
+          </span>
+        </div>
       </div>
     </div>
   );

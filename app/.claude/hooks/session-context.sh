@@ -7,7 +7,8 @@
 #
 # Output (stdout): Team status summary
 
-PROJECTS_BASE="$HOME/nolan/projects"
+# Use PROJECTS_DIR from environment (set by launch scripts)
+PROJECTS_BASE="${PROJECTS_DIR:-$HOME/Proyectos/nolan/projects}"
 
 # Header
 echo "## Nolan Team Status"

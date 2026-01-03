@@ -89,22 +89,22 @@ export const MessageForm: React.FC<MessageFormProps> = ({ onMessageSent }) => {
         <select
           value={target}
           onChange={(e) => setTarget(e.target.value)}
-          className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 [&>option]:bg-gray-700 [&>option]:text-white [&>optgroup]:bg-gray-700 [&>optgroup]:text-white"
           disabled={loading}
         >
-          <option value="">-- Select Target --</option>
+          <option value="" className="bg-gray-700 text-white">-- Select Target --</option>
 
           {/* Broadcast options */}
-          <optgroup label="Broadcast">
-            <option value="team">📢 Core Team (Ana, Bill, Carl, Dan, Enzo)</option>
-            <option value="all">📢 All Active Agents</option>
+          <optgroup label="Broadcast" className="bg-gray-700 text-white">
+            <option value="team" className="bg-gray-700 text-white">📢 Core Team (Ana, Bill, Carl, Dan, Enzo)</option>
+            <option value="all" className="bg-gray-700 text-white">📢 All Active Agents</option>
           </optgroup>
 
           {/* Core agents */}
           {availableTargets.core_agents.length > 0 && (
-            <optgroup label="Core Agents">
+            <optgroup label="Core Agents" className="bg-gray-700 text-white">
               {availableTargets.core_agents.map((agent) => (
-                <option key={agent} value={agent}>
+                <option key={agent} value={agent} className="bg-gray-700 text-white">
                   👤 {agent.charAt(0).toUpperCase() + agent.slice(1)}
                 </option>
               ))}
@@ -113,9 +113,9 @@ export const MessageForm: React.FC<MessageFormProps> = ({ onMessageSent }) => {
 
           {/* Spawned sessions */}
           {availableTargets.spawned_sessions.length > 0 && (
-            <optgroup label="Spawned Instances">
+            <optgroup label="Spawned Instances" className="bg-gray-700 text-white">
               {availableTargets.spawned_sessions.map((session) => (
-                <option key={session} value={session.replace('agent-', '')}>
+                <option key={session} value={session.replace('agent-', '')} className="bg-gray-700 text-white">
                   🔸 {session}
                 </option>
               ))}

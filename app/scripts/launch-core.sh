@@ -1,15 +1,17 @@
 #!/bin/bash
 # launch-core.sh - Launches the core agent team (Ana, Bill, Carl, Dan, Enzo)
 
+# Calculate repo root and standard paths ONCE
 DIR="$(dirname "$(readlink -f "$0")")"
-AGENTS_DIR="$DIR/../agents"
+NOLAN_ROOT="$(readlink -f "$DIR/../..")"
+PROJECTS_DIR="$NOLAN_ROOT/projects"
 
 # Function to start a core agent session if it doesn't exist
 start_agent_session() {
     local name=$1
     local model=$2
     local session="agent-$name"
-    local dir="$AGENTS_DIR/$name"
+    local agent_dir="$NOLAN_ROOT/app/agents/$name"
 
     if tmux has-session -t "$session" 2>/dev/null; then
         echo "  - ${name^} session already active."
@@ -17,9 +19,9 @@ start_agent_session() {
         echo "  - Starting ${name^} session..."
         # Launching with the command string directly prevents command echoing in tmux history
         # 'exec bash' at the end ensures the session stays open if Claude exits
-        local cmd="export AGENT_NAME=$name; claude --dangerously-skip-permissions --model $model; exec bash"
-        tmux new-session -d -s "$session" -c "$dir" "$cmd"
-        
+        local cmd="export AGENT_NAME=$name NOLAN_ROOT=\"$NOLAN_ROOT\" PROJECTS_DIR=\"$PROJECTS_DIR\" AGENT_DIR=\"$agent_dir\"; claude --dangerously-skip-permissions --model $model; exec bash"
+        tmux new-session -d -s "$session" -c "$agent_dir" "$cmd"
+
         # Initialize instance counter for spawning additional instances
         tmux set-option -g "@${name}_next" 2
     fi

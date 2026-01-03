@@ -1,38 +1,29 @@
 import React from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { Button } from '../shared/Button';
-import { useAgentStore } from '../../store/agentStore';
-import { AGENT_COLORS } from '../../types';
+import { AgentCard } from '../shared/AgentCard';
+import type { AgentStatus as AgentStatusType } from '@/types';
 
 interface SessionListProps {
   sessions: string[];
 }
 
 export const SessionList: React.FC<SessionListProps> = ({ sessions }) => {
-  const { killInstance, loading } = useAgentStore();
+  // Parse session string to create AgentStatus object
+  const parseSession = (session: string): { agent: AgentStatusType; instanceNumber: number } | null => {
+    // Match: agent-{name}-{number} (e.g., "agent-ana-2")
+    const match = session.match(/^agent-([a-z]+)-(\d+)$/);
+    if (!match) return null;
 
-  const handleKill = async (session: string) => {
-    if (window.confirm(`Kill session: ${session}?`)) {
-      await killInstance(session);
-    }
-  };
+    const [, agentName, instanceNum] = match;
 
-  const handleOpenTerminal = async (session: string) => {
-    try {
-      await invoke('open_agent_terminal', { session });
-    } catch (error) {
-      alert(`Error: ${error}`);
-    }
-  };
-
-  const getAgentColor = (session: string): string => {
-    // Extract agent name from session (e.g., "agent-ana2" -> "ana")
-    const match = session.match(/^agent-([a-z]+)/);
-    if (match && match[1]) {
-      const agentName = match[1];
-      return AGENT_COLORS[agentName as keyof typeof AGENT_COLORS] || 'bg-gray-500';
-    }
-    return 'bg-gray-500';
+    return {
+      agent: {
+        name: agentName,
+        active: true,  // Spawned sessions are always active (they exist)
+        session: session,
+        attached: false, // Assume detached for spawned instances
+      },
+      instanceNumber: parseInt(instanceNum, 10),
+    };
   };
 
   if (sessions.length === 0) {
@@ -55,41 +46,31 @@ export const SessionList: React.FC<SessionListProps> = ({ sessions }) => {
         Active Spawned Sessions ({sessions.length})
       </h2>
 
-      <div className="space-y-2">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {sessions.map((session) => {
-          const colorClass = getAgentColor(session);
+          const parsed = parseSession(session);
+
+          if (!parsed) {
+            // Fallback for malformed session names
+            return (
+              <div
+                key={session}
+                className="bg-gray-800 border border-gray-700 rounded-lg p-3"
+              >
+                <span className="font-mono text-gray-400">{session}</span>
+              </div>
+            );
+          }
 
           return (
-            <div
+            <AgentCard
               key={session}
-              className="bg-gray-800 border border-gray-700 rounded-lg p-3 flex items-center justify-between hover:border-gray-600 transition-colors"
-            >
-              {/* Session info */}
-              <div className="flex items-center gap-3">
-                <div className={`w-3 h-3 rounded-full ${colorClass}`} />
-                <span className="font-mono text-white">{session}</span>
-              </div>
-
-              {/* Action buttons */}
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => handleOpenTerminal(session)}
-                  disabled={loading}
-                  variant="secondary"
-                  size="sm"
-                >
-                  Open
-                </Button>
-                <Button
-                  onClick={() => handleKill(session)}
-                  disabled={loading}
-                  variant="danger"
-                  size="sm"
-                >
-                  Kill
-                </Button>
-              </div>
-            </div>
+              agent={parsed.agent}
+              variant="spawned"
+              showActions={true}
+              instanceNumber={parsed.instanceNumber}
+              isSpawned={true}
+            />
           );
         })}
       </div>

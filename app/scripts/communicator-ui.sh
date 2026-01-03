@@ -113,13 +113,8 @@ communicator-loop() {
                     continue
                 fi
 
-                if tmux has-session -t "agent-${cmd}" 2>/dev/null; then
-                    tmux send-keys -t "agent-${cmd}" -l "$args"
-                    tmux send-keys -t "agent-${cmd}" C-m
-                    echo "→ Sent to ${cmd^}: $args"
-                else
-                    echo "Error: ${cmd^} is offline"
-                fi
+                # Use verified send from team-aliases.sh
+                send_verified "$cmd" "$args"
                 sleep 1
                 ;;
             team)
@@ -129,15 +124,8 @@ communicator-loop() {
                     continue
                 fi
 
-                local sent=0
-                for agent in ana bill carl dan enzo; do
-                    if tmux has-session -t "agent-${agent}" 2>/dev/null; then
-                        tmux send-keys -t "agent-${agent}" -l "$args"
-                        tmux send-keys -t "agent-${agent}" C-m
-                        sent=$((sent + 1))
-                    fi
-                done
-                echo "→ Broadcast to core team ($sent agents): $args"
+                # Use team() function from team-aliases.sh (verified broadcast to core agents)
+                team "$args"
                 sleep 1
                 ;;
 
@@ -148,14 +136,8 @@ communicator-loop() {
                     continue
                 fi
 
-                local sent=0
-                while IFS= read -r session; do
-                    tmux send-keys -t "$session" -l "$args"
-                    tmux send-keys -t "$session" C-m
-                    sent=$((sent + 1))
-                done < <(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -E "^agent-(ana|bill|carl|dan|enzo|ralph)" || true)
-
-                echo "→ Broadcast to ALL agents ($sent total): $args"
+                # Use all() function from team-aliases.sh (verified broadcast to all agents)
+                all "$args"
                 sleep 1
                 ;;
             # --- INSERT AFTER all) case (line 158) ---
@@ -208,9 +190,9 @@ communicator-loop() {
         if [[ "$exclude" == "$agent" ]]; then
             continue
         fi
-        if tmux has-session -t "agent-${agent}" 2>/dev/null; then
-            tmux send-keys -t "agent-${agent}" -l "$msg"
-            tmux send-keys -t "agent-${agent}" C-m
+        # Use send_verified for custom broadcasts
+        if agent_exists "$agent"; then
+            send_verified "$agent" "$msg"
             sent=$((sent + 1))
         fi
     done
@@ -225,18 +207,13 @@ communicator-loop() {
                     continue
                 fi
 
-                # Extract agent and instance number
+                # Extract agent and instance number: ana2 -> ana-2
                 local agent_base="${cmd%%[0-9]*}"
                 local instance="${cmd#$agent_base}"
-                local session="agent-${agent_base}-${instance}"
+                local agent_name="${agent_base}-${instance}"
 
-                if tmux has-session -t "$session" 2>/dev/null; then
-                    tmux send-keys -t "$session" -l "$args"
-                    tmux send-keys -t "$session" C-m
-                    echo "→ Sent to ${cmd}: $args"
-                else
-                    echo "Error: Session $session not found"
-                fi
+                # Use send_verified for spawned instances
+                send_verified "$agent_name" "$args"
                 sleep 1
                 ;;
 
@@ -248,6 +225,7 @@ communicator-loop() {
                 fi
                 if tmux has-session -t lifecycle 2>/dev/null; then
                     tmux send-keys -t lifecycle -l "$args"
+                    sleep 0.05  # FIX: Prevent race condition in Claude Code input handler
                     tmux send-keys -t lifecycle C-m
                     echo "→ Sent to Lifecycle: $args"
                 else

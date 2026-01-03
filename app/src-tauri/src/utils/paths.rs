@@ -86,8 +86,6 @@ pub fn get_agents_dir() -> Result<PathBuf, String> {
 }
 
 /// Get projects directory
-/// Projects directory is at repository root (nolan/projects/),
-/// NOT inside app/ directory (nolan/app/projects/ does not exist).
 /// We need to go up one level from app root to get to repo root.
 /// Returns: <repo_root>/projects
 pub fn get_projects_dir() -> Result<PathBuf, String> {
@@ -96,6 +94,31 @@ pub fn get_projects_dir() -> Result<PathBuf, String> {
         .parent()
         .ok_or("Cannot determine repository root from app directory")?;
     Ok(repo_root.join("projects"))
+}
+
+/// Get Nolan root directory (parent of app/)
+/// Uses existing get_nolan_app_root() and navigates up one level
+/// Returns: <nolan_root>
+pub fn get_nolan_root() -> Result<PathBuf, String> {
+    let app_root = get_nolan_app_root()?;
+    app_root
+        .parent()
+        .ok_or("Cannot determine Nolan root")?
+        .to_path_buf()
+        .canonicalize()
+        .map_err(|e| format!("Invalid root path: {}", e))
+}
+
+/// Get services directory
+/// Returns: <nolan_root>/services
+pub fn get_services_dir() -> Result<PathBuf, String> {
+    Ok(get_nolan_root()?.join("services"))
+}
+
+/// Get transcript service directory
+/// Returns: <nolan_root>/services/transcript-service
+pub fn get_transcript_service_dir() -> Result<PathBuf, String> {
+    Ok(get_services_dir()?.join("transcript-service"))
 }
 
 #[cfg(test)]

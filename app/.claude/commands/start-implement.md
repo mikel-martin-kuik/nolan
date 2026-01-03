@@ -8,17 +8,17 @@ allowed-tools: Read, Write, Edit, Bash, Glob, Grep
 ## Environment Setup
 
 ```bash
-export DOCS_PATH=$HOME/nolan/app/projects/$1
+export DOCS_PATH="$PROJECTS_DIR/$1"
 ```
 
 ## Project Context
-!`docs_path=$HOME/nolan/app/projects/$1; if [ -f "$docs_path/context.md" ]; then head -40 "$docs_path/context.md"; else echo "ERROR: context.md not found at $docs_path"; fi`
+!`docs_path="$PROJECTS_DIR/$1"; if [ -f "$docs_path/context.md" ]; then head -40 "$docs_path/context.md"; else echo "ERROR: context.md not found at $docs_path"; fi`
 
 ## Implementation Plan
-!`docs_path=$HOME/nolan/app/projects/$1; if [ -f "$docs_path/plan.md" ]; then cat "$docs_path/plan.md"; else echo "ERROR: plan.md not found. Planning phase must complete first."; fi`
+!`docs_path="$PROJECTS_DIR/$1"; if [ -f "$docs_path/plan.md" ]; then cat "$docs_path/plan.md"; else echo "ERROR: plan.md not found. Planning phase must complete first."; fi`
 
 ## Current Progress
-!`docs_path=$HOME/nolan/app/projects/$1; if [ -f "$docs_path/progress.md" ]; then cat "$docs_path/progress.md"; else echo "No progress.md yet - starting fresh."; fi`
+!`docs_path="$PROJECTS_DIR/$1"; if [ -f "$docs_path/progress.md" ]; then cat "$docs_path/progress.md"; else echo "No progress.md yet - starting fresh."; fi`
 
 ## Implementation Phase Instructions
 

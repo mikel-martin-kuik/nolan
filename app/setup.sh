@@ -83,6 +83,44 @@ fi
 echo "✓ Projects directory: $REPO_ROOT/projects"
 echo ""
 
+# Create symlinks for .claude settings in agent directories
+echo "Setting up Claude settings inheritance..."
+if [ -d "$NOLAN_APP_ROOT/.claude" ]; then
+    AGENTS_DIR="$NOLAN_APP_ROOT/agents"
+    if [ -d "$AGENTS_DIR" ]; then
+        for agent_dir in "$AGENTS_DIR"/*; do
+            if [ -d "$agent_dir" ]; then
+                agent_name=$(basename "$agent_dir")
+                agent_claude_link="$agent_dir/.claude"
+
+                # Remove existing symlink or directory if it exists
+                if [ -L "$agent_claude_link" ]; then
+                    rm "$agent_claude_link"
+                    echo "  ✓ Updated symlink: $agent_name/.claude"
+                elif [ -d "$agent_claude_link" ]; then
+                    echo "  ⚠ Skipping $agent_name: .claude directory exists (not a symlink)"
+                else
+                    # Create the symlink
+                    ln -s "$NOLAN_APP_ROOT/.claude" "$agent_claude_link"
+                    echo "  ✓ Created symlink: $agent_name/.claude"
+                fi
+            fi
+        done
+    fi
+    # Ensure all hook scripts have execute permissions
+    if [ -d "$NOLAN_APP_ROOT/.claude/hooks" ]; then
+        echo "  Setting execute permissions on hook scripts..."
+        chmod +x "$NOLAN_APP_ROOT/.claude/hooks"/*.sh 2>/dev/null || true
+        chmod +x "$NOLAN_APP_ROOT/.claude/hooks"/*.py 2>/dev/null || true
+        echo "  ✓ Hook permissions updated"
+    fi
+
+    echo "✓ Claude settings inheritance configured"
+else
+    echo "⚠ .claude directory not found at $NOLAN_APP_ROOT/.claude"
+fi
+echo ""
+
 # Success summary
 echo "========================================="
 echo "✅ Setup Complete!"

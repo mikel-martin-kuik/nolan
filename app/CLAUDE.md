@@ -63,11 +63,13 @@ Before ANY agent assignment, Dan ensures:
 
 ## Project Directory
 
-All project files live in Nolan:
+All project files live in the projects directory:
 
 ```
-DOCS_PATH=$HOME/nolan/app/projects/<project-name>
+DOCS_PATH=$PROJECTS_DIR/<project-name>
 ```
+
+Where `$PROJECTS_DIR` is set by launch scripts to `$NOLAN_ROOT/projects`.
 
 **CRITICAL:** NEVER create files in agent directories. ALL output goes to `$DOCS_PATH`.
 
@@ -87,7 +89,7 @@ DOCS_PATH=$HOME/nolan/app/projects/<project-name>
 Send messages to other agents:
 
 ```bash
-bash -c "source $HOME/nolan/app/scripts/team-aliases.sh && <agent> '<message>'"
+bash -c "source \"\$NOLAN_ROOT/app/scripts/team-aliases.sh\" && <agent> '<message>'"
 ```
 
 | Command | Target |

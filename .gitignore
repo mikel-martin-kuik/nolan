@@ -32,3 +32,10 @@ npm-debug.log*
 # Environment
 .env
 .env.local
+
+# Python
+*.pyc
+__pycache__/
+.venv/
+venv/
+*.egg-info/

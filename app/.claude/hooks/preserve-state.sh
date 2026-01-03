@@ -7,7 +7,8 @@
 #
 # Output (stdout): Critical state to preserve
 
-PROJECTS_BASE="$HOME/nolan/projects"
+# Use PROJECTS_DIR from environment (set by launch scripts)
+PROJECTS_BASE="${PROJECTS_DIR:-$HOME/Proyectos/nolan/projects}"
 
 echo "## Preserved State (Pre-Compact)"
 echo ""

@@ -6,16 +6,16 @@ allowed-tools: Read, Bash(cat:*), Bash(ls:*), Bash(find:*)
 # Project Status: $1
 
 ## Environment
-!`echo "DOCS_PATH=$HOME/nolan/app/projects/$1"`
+!`echo "DOCS_PATH=$PROJECTS_DIR/$1"`
 
 ## NOTES.md
-!`docs_path=$HOME/nolan/app/projects/$1; if [ -f "$docs_path/NOTES.md" ]; then cat "$docs_path/NOTES.md"; else echo "No NOTES.md found at $docs_path"; fi`
+!`docs_path="$PROJECTS_DIR/$1"; if [ -f "$docs_path/NOTES.md" ]; then cat "$docs_path/NOTES.md"; else echo "No NOTES.md found at $docs_path"; fi`
 
 ## Project Files
-!`docs_path=$HOME/nolan/app/projects/$1; if [ -d "$docs_path" ]; then ls -la "$docs_path"; else echo "Project directory not found: $docs_path"; fi`
+!`docs_path="$PROJECTS_DIR/$1"; if [ -d "$docs_path" ]; then ls -la "$docs_path"; else echo "Project directory not found: $docs_path"; fi`
 
 ## Recent Activity (last 24h)
-!`docs_path=$HOME/nolan/app/projects/$1; find "$docs_path" -name "*.md" -mtime -1 -exec ls -la {} \; 2>/dev/null || echo "No recent changes"`
+!`docs_path="$PROJECTS_DIR/$1"; find "$docs_path" -name "*.md" -mtime -1 -exec ls -la {} \; 2>/dev/null || echo "No recent changes"`
 
 ## Quick Reference
 

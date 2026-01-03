@@ -9,7 +9,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/validate-phase-complete.py",
+            "command": "\"$AGENT_DIR\"/.claude/hooks/validate-phase-complete.py",
             "timeout": 10
           }
         ]
@@ -21,12 +21,12 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/validate-agent-ownership.sh",
+            "command": "\"$AGENT_DIR\"/.claude/hooks/validate-agent-ownership.sh",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/validate-handoff.sh",
+            "command": "\"$AGENT_DIR\"/.claude/hooks/validate-handoff.sh",
             "timeout": 5
           }
         ]
@@ -37,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-context.sh",
+            "command": "\"$AGENT_DIR\"/.claude/hooks/session-context.sh",
             "timeout": 10
           }
         ]
@@ -48,20 +48,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/preserve-state.sh",
+            "command": "\"$AGENT_DIR\"/.claude/hooks/preserve-state.sh",
             "timeout": 10
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "matcher": "Explore|Plan|general-purpose",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/validate-subagent.sh",
-            "timeout": 5
           }
         ]
       }

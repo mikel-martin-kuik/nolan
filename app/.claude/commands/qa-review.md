@@ -8,14 +8,14 @@ allowed-tools: Read, Glob, Grep, Bash(cat:*), Bash(ls:*)
 ## Environment Setup
 
 ```bash
-export DOCS_PATH=$HOME/nolan/app/projects/$1
+export DOCS_PATH="$PROJECTS_DIR/$1"
 ```
 
 ## Project Context
-!`docs_path=$HOME/nolan/app/projects/$1; if [ -f "$docs_path/context.md" ]; then head -50 "$docs_path/context.md"; else echo "ERROR: context.md not found at $docs_path"; fi`
+!`docs_path="$PROJECTS_DIR/$1"; if [ -f "$docs_path/context.md" ]; then head -50 "$docs_path/context.md"; else echo "ERROR: context.md not found at $docs_path"; fi`
 
 ## Document to Review
-!`docs_path=$HOME/nolan/app/projects/$1; doc=$2; if [ -z "$doc" ]; then doc="plan.md"; fi; if [ -f "$docs_path/$doc" ]; then echo "=== $doc ==="; cat "$docs_path/$doc"; else echo "Document not found: $docs_path/$doc"; echo "Available documents:"; ls -la "$docs_path"/*.md 2>/dev/null || echo "No .md files found"; fi`
+!`docs_path="$PROJECTS_DIR/$1"; doc=$2; if [ -z "$doc" ]; then doc="plan.md"; fi; if [ -f "$docs_path/$doc" ]; then echo "=== $doc ==="; cat "$docs_path/$doc"; else echo "Document not found: $docs_path/$doc"; echo "Available documents:"; ls -la "$docs_path"/*.md 2>/dev/null || echo "No .md files found"; fi`
 
 ## QA Review Instructions
 

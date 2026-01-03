@@ -19,23 +19,6 @@ echo "  Nolan - GUI Control Panel Launcher"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-check_running() {
-    if pgrep -f "nolan" > /dev/null; then
-        echo -e "${YELLOW}⚠ GUI Control Panel is already running.${NC}"
-        echo ""
-        read -p "Kill existing instance and restart? (y/N): " -n 1 -r
-        echo ""
-        if [[ $REPLY =~ ^[Yy]$ ]]; then
-            echo "Killing existing instance..."
-            pkill -f "nolan"
-            sleep 1
-        else
-            echo "Exiting. Use 'pkill -f nolan' to kill manually."
-            exit 0
-        fi
-    fi
-}
-
 check_dependencies() {
     local missing=()
 
@@ -140,7 +123,6 @@ launch_dev() {
 
 main() {
     DEV_MODE=false
-    SKIP_CHECK=false
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -149,7 +131,8 @@ main() {
                 shift
                 ;;
             --force|-f)
-                SKIP_CHECK=true
+                # Legacy flag for backwards compatibility - now a no-op
+                # Single-instance enforcement handled by Tauri plugin
                 shift
                 ;;
             --help|-h)
@@ -157,13 +140,15 @@ main() {
                 echo ""
                 echo "Options:"
                 echo "  --dev, -d      Launch in development mode (hot reload)"
-                echo "  --force, -f    Skip running instance check"
+                echo "  --force, -f    (Deprecated - no longer needed)"
                 echo "  --help, -h     Show this help message"
                 echo ""
                 echo "Examples:"
                 echo "  start-gui.sh              # Launch production build"
                 echo "  start-gui.sh --dev        # Launch dev mode with hot reload"
-                echo "  start-gui.sh --force      # Force restart if already running"
+                echo ""
+                echo "Note: Single-instance enforcement is automatic."
+                echo "      If Nolan is already running, it will be focused."
                 exit 0
                 ;;
             *)
@@ -175,10 +160,6 @@ main() {
     done
 
     check_dependencies
-
-    if [ "$SKIP_CHECK" = false ]; then
-        check_running
-    fi
 
     if [ "$DEV_MODE" = true ]; then
         launch_dev

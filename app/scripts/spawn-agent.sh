@@ -4,9 +4,14 @@
 
 set -euo pipefail
 
+# Calculate repo root and standard paths ONCE
 DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
-AGENTS_DIR="$DIR/../agents"
+NOLAN_ROOT="$(readlink -f "$DIR/../..")"
+PROJECTS_DIR="$NOLAN_ROOT/projects"
 MAX_INSTANCES=5
+
+# Source team-aliases.sh for verified send and dynamic alias functions
+source "$DIR/team-aliases.sh"
 
 # Agent model mapping
 declare -A MODELS=(
@@ -21,12 +26,14 @@ declare -A MODELS=(
 spawn() {
     local agent="${1,,}"
     local force=false
+    local no_attach=false
     shift || true
 
     # Parse options
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --force|-f) force=true ;;
+            --no-attach) no_attach=true ;;
             *) echo "Unknown option: $1" >&2; return 1 ;;
         esac
         shift
@@ -61,7 +68,7 @@ spawn() {
     fi
 
     local session="agent-${agent}-${next}"
-    local agent_dir="$AGENTS_DIR/${agent}"
+    local agent_dir="$NOLAN_ROOT/app/agents/${agent}"
     local model="${MODELS[$agent]}"
 
     # Validate agent directory exists
@@ -71,7 +78,7 @@ spawn() {
     fi
 
     # Create new tmux session and start Claude with model and set AGENT_NAME
-    local cmd="export AGENT_NAME=$agent; claude --dangerously-skip-permissions --model $model; exec bash"
+    local cmd="export AGENT_NAME=$agent NOLAN_ROOT=\"$NOLAN_ROOT\" PROJECTS_DIR=\"$PROJECTS_DIR\" AGENT_DIR=\"$agent_dir\"; claude --dangerously-skip-permissions --model $model; exec bash"
     tmux new-session -d -s "$session" -c "$agent_dir" "$cmd"
 
     # Increment counter for next spawn
@@ -79,16 +86,18 @@ spawn() {
 
     echo "Spawning: $session..."
 
-    # Generate alias in current shell
-    # Note: Use C-m instead of Enter - Enter creates newlines in Claude Code input
-    local func_name="${agent}${next}"
-    eval "${func_name}() { tmux send-keys -t ${session} -l \"\$*\"; tmux send-keys -t ${session} C-m; }"
+    # Rebuild aliases to include new session with verified send
+    # This delegates to team-aliases.sh for consistent verified messaging
+    rebuild_aliases
 
     echo "Spawned: $session"
+    local func_name="${agent}_${next}"  # Note: underscores, not hyphens
     echo "  Alias: ${func_name}()"
 
-    # Always attach terminal for visual monitoring
-    gnome-terminal --title="$session" -- tmux attach -t "$session" &
+    # Attach terminal for visual monitoring (unless --no-attach)
+    if [[ "$no_attach" != true ]]; then
+        gnome-terminal --title="$session" -- tmux attach -t "$session" &
+    fi
 
     # Auto-notify communicator to reload aliases
     if tmux has-session -t communicator 2>/dev/null; then
@@ -187,41 +196,9 @@ list-instances() {
 }
 
 reload-aliases() {
-    echo "Regenerating aliases from active sessions..."
-
-    # Original agents (always available)
-    # Note: Use C-m instead of Enter - Enter creates newlines in Claude Code input
-    ana()  { tmux send-keys -t agent-ana -l "$*"; tmux send-keys -t agent-ana C-m; }
-    bill() { tmux send-keys -t agent-bill -l "$*"; tmux send-keys -t agent-bill C-m; }
-    carl() { tmux send-keys -t agent-carl -l "$*"; tmux send-keys -t agent-carl C-m; }
-    dan()  { tmux send-keys -t agent-dan -l "$*"; tmux send-keys -t agent-dan C-m; }
-    enzo() { tmux send-keys -t agent-enzo -l "$*"; tmux send-keys -t agent-enzo C-m; }
-    ralph() { tmux send-keys -t agent-ralph -l "$*"; tmux send-keys -t agent-ralph C-m; }
-    team() { ana "$*"; bill "$*"; carl "$*"; dan "$*"; enzo "$*"; }
-
-    # Spawned instances
-    local count=0
-    while IFS= read -r session; do
-        # Extract: agent-bill-2 -> bill, 2
-        local suffix="${session#agent-}"
-        local agent="${suffix%-*}"
-        local instance="${suffix##*-}"
-        local func_name="${agent}${instance}"
-
-        eval "${func_name}() { tmux send-keys -t ${session} -l \"\$*\"; tmux send-keys -t ${session} C-m; }"
-        echo "  Registered: ${func_name}()"
-        count=$((count + 1))
-    done < <(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -E "^agent-(ana|bill|carl|dan|enzo|ralph)-[0-9]+" || true)
-
-    echo "Reloaded $count spawned alias(es)"
-}
-
-team-all() {
-    # Broadcast to ALL agent sessions (original + spawned)
-    while IFS= read -r session; do
-        tmux send-keys -t "$session" -l "$*"
-        tmux send-keys -t "$session" C-m
-    done < <(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^agent-")
+    # Delegate to team-aliases.sh rebuild_aliases function
+    # This provides verified send for all agents (core + spawned)
+    rebuild_aliases
 }
 
 shutdown-team() {
@@ -361,8 +338,10 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             echo "Usage: spawn-agent.sh <command> [args]"
             echo ""
             echo "Commands:"
-            echo "  spawn <agent> [--force]   Spawn new instance (ana|bill|carl|dan|enzo)"
-            echo "                            Always opens attached terminal"
+            echo "  spawn <agent> [--force] [--no-attach]"
+            echo "                            Spawn new instance (ana|bill|carl|dan|enzo)"
+            echo "                            --force: Override max instances"
+            echo "                            --no-attach: Don't auto-open terminal"
             echo "  kill-instance <session>   Kill specific spawned instance"
             echo "  kill-instances <agent>    Kill all spawned instances of agent"
             echo "  list-instances            List all agent sessions"

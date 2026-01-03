@@ -1,6 +1,7 @@
 pub mod lifecycle;
 pub mod communicator;
 pub mod history;
+pub mod sessions;
 
 // Whitelist of allowed scripts (add more as needed)
 const ALLOWED_SCRIPTS: &[&str] = &[

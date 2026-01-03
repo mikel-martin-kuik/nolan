@@ -1,14 +1,17 @@
 import { useState } from 'react';
-import { Activity, Settings, MessageSquare, ScrollText } from 'lucide-react';
+import { Activity, Settings, MessageSquare, ScrollText, Database } from 'lucide-react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from './lib/queryClient';
 import { StatusPanel } from './components/Status/StatusPanel';
 import { LifecyclePanel } from './components/Lifecycle/LifecyclePanel';
 import { CommunicatorPanel } from './components/Communicator/CommunicatorPanel';
 import { HistoryPanel } from './components/History/HistoryPanel';
+import { SessionBrowser } from './components/Sessions/SessionBrowser';
 import { ToastContainer } from './components/shared/Toast';
 import { useToastStore } from './store/toastStore';
 import './App.css';
 
-type Tab = 'status' | 'lifecycle' | 'communicator' | 'history';
+type Tab = 'status' | 'lifecycle' | 'communicator' | 'history' | 'sessions';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('status');
@@ -19,9 +22,11 @@ function App() {
     { id: 'lifecycle' as Tab, label: 'Lifecycle', icon: Settings },
     { id: 'communicator' as Tab, label: 'Communicator', icon: MessageSquare },
     { id: 'history' as Tab, label: 'History', icon: ScrollText },
+    { id: 'sessions' as Tab, label: 'Sessions', icon: Database },
   ];
 
   return (
+    <QueryClientProvider client={queryClient}>
     <div className="min-h-screen bg-gray-900">
       {/* Header with branding */}
       <div className="bg-gray-800 border-b border-gray-700 shadow-lg">
@@ -75,11 +80,13 @@ function App() {
         {activeTab === 'lifecycle' && <LifecyclePanel />}
         {activeTab === 'communicator' && <CommunicatorPanel />}
         {activeTab === 'history' && <HistoryPanel />}
+        {activeTab === 'sessions' && <SessionBrowser />}
       </div>
 
       {/* Toast notifications */}
       <ToastContainer toasts={toasts.map(toast => ({ ...toast, onClose: removeToast }))} />
     </div>
+    </QueryClientProvider>
   );
 }
 

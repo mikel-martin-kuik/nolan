@@ -13,7 +13,7 @@ echo "  📜 LIVE INTERACTION LOG"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Tail the file and process each line
-tail -n 0 -f "$HISTORY_FILE" | while read -r line; do
+tail -n 50 -f "$HISTORY_FILE" | while read -r line; do
     # Extract fields using jq
     # Use -R and fromjson to handle potential malformed lines gracefully
     display=$(echo "$line" | jq -r '.display // ""' 2>/dev/null || echo "")

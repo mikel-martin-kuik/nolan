@@ -17,11 +17,24 @@ from pathlib import Path
 
 def get_docs_path():
     """Get active project docs path from NOTES.md files."""
-    projects_base = Path.home() / "Proyectos/AI_RnD_Lab/projects"
-
     # Check for DOCS_PATH environment variable first
     if os.environ.get('DOCS_PATH'):
         return Path(os.environ['DOCS_PATH'])
+
+    # Use PROJECTS_DIR from environment (set by launch scripts)
+    projects_base = None
+    if os.environ.get('PROJECTS_DIR'):
+        projects_base = Path(os.environ['PROJECTS_DIR'])
+    elif os.environ.get('AGENT_DIR'):
+        # Fallback: Calculate from AGENT_DIR if PROJECTS_DIR not set
+        # AGENT_DIR points to agent dir: /path/to/nolan/app/agents/dan
+        # We need: /path/to/nolan/projects
+        agent_dir = Path(os.environ['AGENT_DIR'])
+        repo_root = agent_dir.parent.parent.parent
+        projects_base = repo_root / "projects"
+
+    if not projects_base or not projects_base.exists():
+        return None
 
     # Find most recently modified NOTES.md
     notes_files = list(projects_base.glob("*/NOTES.md"))

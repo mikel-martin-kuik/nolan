@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useAgentStore } from '../../store/agentStore';
-import { useHistoryStore } from '../../store/historyStore';
 import { AgentCard } from '../shared/AgentCard';
 import { Button } from '@/components/ui/button';
 import { Activity, Users, Terminal, Clock, Play, XCircle } from 'lucide-react';
@@ -16,7 +15,6 @@ export const StatusPanel: React.FC = () => {
     spawnAgent,
     loading
   } = useAgentStore();
-  const { entries } = useHistoryStore();
 
   // Spawned sessions expansion state
   const [showAllSpawned, setShowAllSpawned] = useState(false);
@@ -41,7 +39,6 @@ export const StatusPanel: React.FC = () => {
   // Calculate stats
   const activeAgents = coreAgents.filter(a => a.active).length;
   const totalAgents = coreAgents.length;
-  const recentEntries = entries.slice(-5).reverse();
 
   // Compute button states
   const allCoreActive = coreAgents.every(agent => agent.active);
@@ -177,7 +174,7 @@ export const StatusPanel: React.FC = () => {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {/* Active Core Agents */}
           <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 hover:border-gray-600 transition-colors">
             <div className="flex items-center justify-between">
@@ -206,22 +203,6 @@ export const StatusPanel: React.FC = () => {
               </div>
               <div className="bg-purple-500/10 p-3 rounded-lg">
                 <Terminal className="w-6 h-6 text-purple-400" />
-              </div>
-            </div>
-          </div>
-
-          {/* Recent Activity */}
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 hover:border-gray-600 transition-colors">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-400">Recent</p>
-                <p className="text-3xl font-bold text-white mt-1">
-                  {entries.length}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">Log Entries</p>
-              </div>
-              <div className="bg-green-500/10 p-3 rounded-lg">
-                <Activity className="w-6 h-6 text-green-400" />
               </div>
             </div>
           </div>
@@ -413,45 +394,6 @@ export const StatusPanel: React.FC = () => {
             </div>
           </div>
         )}
-
-        {/* Recent Activity */}
-        <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-          <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-            <Activity className="w-5 h-5" />
-            Recent Activity
-          </h2>
-          {recentEntries.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <p>No recent activity</p>
-              <p className="text-sm mt-1">Activity will appear here as agents interact</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {recentEntries.map((entry, index) => (
-                <div
-                  key={`${entry.timestamp}-${index}`}
-                  className="bg-gray-900/50 border border-gray-700 rounded-lg p-3 hover:border-gray-600 transition-colors"
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="text-xs text-gray-500 font-mono whitespace-nowrap">
-                      {entry.timestamp}
-                    </div>
-                    <div className="flex-1">
-                      <div className="text-sm text-gray-300 break-words">
-                        {entry.message}
-                      </div>
-                      {entry.agent && (
-                        <div className="text-xs text-gray-500 mt-1">
-                          Agent: <span className="text-blue-400">{entry.agent}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );

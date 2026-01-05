@@ -1,9 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useAgentStore } from '../../store/agentStore';
+import { useToastStore } from '../../store/toastStore';
 import { AgentCard } from '../shared/AgentCard';
-import { Button } from '@/components/ui/button';
-import { Activity, Users, Terminal, Clock, Play, XCircle } from 'lucide-react';
+import { ConfirmDialog } from '../shared/ConfirmDialog';
+import { Tooltip } from '../ui/tooltip';
+import { Users, Terminal, Play, XCircle, Plus, LayoutGrid } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
+import { AGENT_COLORS, AGENT_DESCRIPTIONS } from '@/types';
+import type { AgentName } from '@/types';
 
 export const StatusPanel: React.FC = () => {
   const {
@@ -13,89 +17,57 @@ export const StatusPanel: React.FC = () => {
     launchCore,
     killCore,
     spawnAgent,
-    loading
+    loading,
+    setupEventListeners
   } = useAgentStore();
+  const { error: showError } = useToastStore();
 
-  // Spawned sessions expansion state
-  const [showAllSpawned, setShowAllSpawned] = useState(false);
+  // Spawn agent selector state
+  const [showSpawnSelector, setShowSpawnSelector] = useState(false);
 
-  // Auto-refresh status
+  // Confirmation dialog states
+  const [showLaunchDialog, setShowLaunchDialog] = useState(false);
+  const [showKillDialog, setShowKillDialog] = useState(false);
+
+  // Setup event listeners and auto-refresh status
   useEffect(() => {
     updateStatus();
+    setupEventListeners();
+
+    // Still poll every 2s as fallback, but events will provide real-time updates
     const interval = setInterval(() => {
       updateStatus();
     }, 2000);
-    return () => clearInterval(interval);
-  }, [updateStatus]);
-
-  // Reset expansion when sessions change
-  useEffect(() => {
-    // Only collapse if currently expanded and now <= 6
-    if (showAllSpawned && spawnedSessions.length <= 6) {
-      setShowAllSpawned(false);
-    }
-  }, [spawnedSessions.length, showAllSpawned]);
-
-  // Calculate stats
-  const activeAgents = coreAgents.filter(a => a.active).length;
-  const totalAgents = coreAgents.length;
+    return () => {
+      clearInterval(interval);
+      // Note: Don't cleanup listeners here - they persist for app lifetime
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - run once on mount
 
   // Compute button states
   const allCoreActive = coreAgents.every(agent => agent.active);
   const anyCoreActive = coreAgents.some(agent => agent.active);
 
-  // Parse spawned sessions for AgentCard display
-  const parsedSpawnedSessions = spawnedSessions
-    .map(session => {
-      const match = session.match(/^agent-([a-z]+)-([0-9]+)$/);
-      if (!match) return null;
+  // Extract instance numbers from spawned sessions for display
+  const spawnedWithInstances = spawnedSessions.map(agent => {
+    const match = agent.session.match(/^agent-[a-z]+-([0-9]+)$/);
+    const instanceNumber = match ? parseInt(match[1], 10) : undefined;
+    return { ...agent, instanceNumber };
+  });
 
-      const [, name, instanceNum] = match;
-
-      return {
-        name,
-        active: true,
-        session,
-        attached: false,
-        instanceNumber: parseInt(instanceNum, 10)
-      };
-    })
-    .filter((agent): agent is { name: string; active: boolean; session: string; attached: boolean; instanceNumber: number } => agent !== null)
-    .sort((a, b) => {
-      // Sort by name first, then instance number
-      if (a.name !== b.name) return a.name.localeCompare(b.name);
-      return a.instanceNumber - b.instanceNumber;
-    });
-
-  // Ralph-specific state
-  const ralphInstances = spawnedSessions
-    .filter(session => session.startsWith('agent-ralph-'))
-    .sort((a, b) => {
-      // Sort by instance number descending (highest = most recent)
-      const numA = parseInt(a.match(/agent-ralph-(\d+)/)?.[1] || '0', 10);
-      const numB = parseInt(b.match(/agent-ralph-(\d+)/)?.[1] || '0', 10);
-      return numB - numA;
-    });
-  const hasRalphInstances = ralphInstances.length > 0;
-  const mostRecentRalph = ralphInstances[0] || null;
 
   // Handler functions
-  const handleLaunchCore = async () => {
-    // Confirmation dialog
-    const confirmed = window.confirm(
-      'Launch all 5 core team agents (Ana, Bill, Carl, Dan, Enzo)?\n\n' +
-      'This will start agents and open the team terminal grid.'
-    );
+  const handleLaunchCoreClick = () => {
+    setShowLaunchDialog(true);
+  };
 
-    if (!confirmed) return;
-
+  const handleConfirmLaunch = async () => {
     try {
       await launchCore();
 
       // Open team terminals after successful launch
-      // Wait 2 seconds for sessions to be ready
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
+      // Event-driven updates will refresh status
       try {
         await invoke('open_core_team_terminals');
       } catch (terminalError) {
@@ -104,154 +76,145 @@ export const StatusPanel: React.FC = () => {
       }
     } catch (error) {
       console.error('Failed to launch core team:', error);
+      showError(`Failed to launch core team: ${error}`);
     }
   };
 
-  const handleKillCore = async () => {
-    // Strong warning confirmation
-    const confirmed = window.confirm(
-      '⚠️ WARNING: Kill all core team agents?\n\n' +
-      'This will terminate all running core agents (Ana, Bill, Carl, Dan, Enzo).\n' +
-      'Spawned instances will not be affected.\n\n' +
-      'Are you sure?'
-    );
+  const handleKillCoreClick = () => {
+    setShowKillDialog(true);
+  };
 
-    if (!confirmed) return;
-
+  const handleConfirmKill = async () => {
     try {
       await killCore();
     } catch (error) {
       console.error('Failed to kill core team:', error);
+      showError(`Failed to kill core team: ${error}`);
     }
   };
 
-  const handleSpawnRalph = async () => {
+  const handleShowTerminals = async () => {
     try {
-      await spawnAgent('ralph', false);
+      await invoke('open_core_team_terminals');
+    } catch (error) {
+      console.error('Failed to open team terminals:', error);
+      showError(`Failed to open terminals: ${error}`);
+    }
+  };
 
-      // Wait for session to be created
-      await new Promise(resolve => setTimeout(resolve, 500));
-      await updateStatus();
+  // Handler for spawning any agent type
+  const handleSpawnAgent = async (agentName: AgentName) => {
+    setShowSpawnSelector(false);
+    try {
+      await spawnAgent(agentName, false);
 
-      // Open terminal for most recent Ralph instance
-      const ralphSessions = spawnedSessions.filter(session =>
-        session.startsWith('agent-ralph-')
-      );
+      // Wait for status update via event-driven refresh
+      // Poll for new session with timeout
+      const maxAttempts = 10;
+      const pollInterval = 100; // ms
+      let newSession: string | null = null;
 
-      if (ralphSessions.length > 0) {
-        // Get most recent (highest instance number)
-        const sorted = ralphSessions.sort((a, b) => {
-          const numA = parseInt(a.match(/agent-ralph-(\d+)/)?.[1] || '0', 10);
-          const numB = parseInt(b.match(/agent-ralph-(\d+)/)?.[1] || '0', 10);
-          return numB - numA;
-        });
-        const newSession = sorted[0];
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, pollInterval));
 
+        // Refresh status to get latest sessions
+        await updateStatus();
+
+        // Get fresh spawned sessions from store
+        const { spawnedSessions: currentSessions } = useAgentStore.getState();
+        const agentSessions = currentSessions.filter(agent =>
+          agent.session.startsWith(`agent-${agentName}-`)
+        );
+
+        if (agentSessions.length > 0) {
+          // Get most recent (highest instance number)
+          const sorted = agentSessions.sort((a, b) => {
+            const numA = parseInt(a.session.match(new RegExp(`agent-${agentName}-(\\d+)`))?.[1] || '0', 10);
+            const numB = parseInt(b.session.match(new RegExp(`agent-${agentName}-(\\d+)`))?.[1] || '0', 10);
+            return numB - numA;
+          });
+          newSession = sorted[0].session;
+          break;
+        }
+      }
+
+      if (newSession) {
         try {
           await invoke('open_agent_terminal', { session: newSession });
         } catch (terminalError) {
           console.error('Failed to open terminal:', terminalError);
-          // Non-fatal - agent is still spawned
         }
+      } else {
+        console.warn(`Spawned session for ${agentName} not found after polling`);
       }
     } catch (error) {
-      console.error('Failed to spawn Ralph:', error);
+      console.error(`Failed to spawn ${agentName}:`, error);
     }
   };
 
+  // Available agents for spawning (all 6)
+  const spawnableAgents: AgentName[] = ['ana', 'bill', 'carl', 'dan', 'enzo', 'ralph'];
+
   return (
-    <div className="min-h-screen bg-gray-900 p-6">
+    <div className="p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-            <Activity className="w-8 h-8 text-blue-400" />
-            Status Dashboard
+          <h1 className="text-2xl font-semibold text-foreground flex items-center gap-3">
+            Dashboard
           </h1>
-          <p className="text-gray-400 mt-1">
-            Overview of all systems and recent activity
+          <p className="text-muted-foreground text-sm mt-1">
+            Monitor all your available agents
           </p>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Active Core Agents */}
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 hover:border-gray-600 transition-colors">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-400">Core Team</p>
-                <p className="text-3xl font-bold text-white mt-1">
-                  {activeAgents}/{totalAgents}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">Active Agents</p>
-              </div>
-              <div className="bg-blue-500/10 p-3 rounded-lg">
-                <Users className="w-6 h-6 text-blue-400" />
-              </div>
-            </div>
-          </div>
-
-          {/* Spawned Sessions */}
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 hover:border-gray-600 transition-colors">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-400">Spawned</p>
-                <p className="text-3xl font-bold text-white mt-1">
-                  {spawnedSessions.length}
-                </p>
-                <p className="text-xs text-gray-500 mt-1">Active Sessions</p>
-              </div>
-              <div className="bg-purple-500/10 p-3 rounded-lg">
-                <Terminal className="w-6 h-6 text-purple-400" />
-              </div>
-            </div>
-          </div>
-
-          {/* System Status */}
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6 hover:border-gray-600 transition-colors">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-gray-400">System</p>
-                <p className="text-3xl font-bold text-green-400 mt-1">
-                  Healthy
-                </p>
-                <p className="text-xs text-gray-500 mt-1">All Systems Go</p>
-              </div>
-              <div className="bg-green-500/10 p-3 rounded-lg">
-                <Clock className="w-6 h-6 text-green-400" />
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* Core Team Status */}
-        <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+        <div className="bg-card/50 backdrop-blur-xl border border-border rounded-2xl p-6 shadow-xl">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-blue-400" />
-              <h2 className="text-xl font-semibold text-white">Core Team Status</h2>
+              <Users className="w-5 h-5 text-primary" />
+              <h2 className="text-xl font-semibold text-foreground">Core Team Status</h2>
             </div>
-            <div className="flex gap-2">
-              <Button
-                onClick={handleLaunchCore}
-                disabled={loading || allCoreActive}
-                variant="default"
-                size="sm"
-                className="gap-2"
-              >
-                <Play className="w-4 h-4" />
-                Launch Core
-              </Button>
-              <Button
-                onClick={handleKillCore}
-                disabled={loading || !anyCoreActive}
-                variant="destructive"
-                size="sm"
-                className="gap-2"
-              >
-                <XCircle className="w-4 h-4" />
-                Kill Core
-              </Button>
+            <div className="flex gap-1.5">
+              <Tooltip content="Launch" side="bottom">
+                <button
+                  onClick={handleLaunchCoreClick}
+                  disabled={loading || allCoreActive}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center
+                    bg-secondary/50 border border-border text-muted-foreground
+                    hover:bg-emerald-500/10 hover:border-emerald-400/20 hover:text-emerald-500
+                    active:scale-95 transition-all duration-200
+                    disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
+                >
+                  <Play className="w-4 h-4" />
+                </button>
+              </Tooltip>
+              <Tooltip content="Kill" side="bottom">
+                <button
+                  onClick={handleKillCoreClick}
+                  disabled={loading || !anyCoreActive}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center
+                    bg-secondary/50 border border-border text-muted-foreground
+                    hover:bg-red-500/10 hover:border-red-400/20 hover:text-red-500
+                    active:scale-95 transition-all duration-200
+                    disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
+                >
+                  <XCircle className="w-4 h-4" />
+                </button>
+              </Tooltip>
+              <Tooltip content="Terminals" side="bottom">
+                <button
+                  onClick={handleShowTerminals}
+                  disabled={loading || !anyCoreActive}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center
+                    bg-secondary/50 border border-border text-muted-foreground
+                    hover:bg-accent hover:border-border hover:text-foreground
+                    active:scale-95 transition-all duration-200
+                    disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+              </Tooltip>
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -263,138 +226,104 @@ export const StatusPanel: React.FC = () => {
                 showActions={true}
               />
             ))}
+
+            {/* Empty spacer for grid alignment */}
+            <div className="hidden lg:block" />
+
+            {/* Spawn Agent Button - ultra minimal, centered below Enzo */}
+            <div className="relative col-span-1 md:col-start-1 lg:col-start-2">
+              <Tooltip content="Spawn" side="bottom">
+                <button
+                  onClick={() => setShowSpawnSelector(!showSpawnSelector)}
+                  disabled={loading}
+                  className="w-full h-12 rounded-xl flex items-center justify-center
+                    bg-card/20 border border-dashed border-border opacity-60
+                    text-muted-foreground
+                    hover:opacity-80 hover:border-purple-400/40 hover:bg-purple-500/5
+                    active:scale-[0.98] transition-all duration-200
+                    disabled:opacity-30 disabled:cursor-not-allowed"
+                  aria-label="Spawn new agent instance"
+                >
+                  <Plus className="w-5 h-5" />
+                </button>
+              </Tooltip>
+
+              {/* Agent selection dropdown */}
+              {showSpawnSelector && (
+                <div className="absolute bottom-full left-0 mb-2 w-56 bg-popover/95 backdrop-blur-xl border border-border rounded-2xl shadow-xl z-50">
+                  <div className="p-2">
+                    <div className="text-xs text-muted-foreground px-3 py-2 border-b border-border mb-2">
+                      Select agent to spawn
+                    </div>
+                    {spawnableAgents.map((agentName) => (
+                      <button
+                        key={agentName}
+                        onClick={() => handleSpawnAgent(agentName)}
+                        className="w-full flex items-center gap-3 px-3 py-2 hover:bg-accent rounded-xl text-left"
+                      >
+                        <div
+                          className={`w-3 h-3 rounded-full ${AGENT_COLORS[agentName as keyof typeof AGENT_COLORS] || 'bg-gray-500'}`}
+                        />
+                        <div>
+                          <span className="text-foreground capitalize font-medium">{agentName}</span>
+                          <p className="text-xs text-muted-foreground">
+                            {AGENT_DESCRIPTIONS[agentName as keyof typeof AGENT_DESCRIPTIONS] || ''}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Spawned Sessions */}
+        {/* Spawned Agents Status - only show when there are spawned sessions */}
         {spawnedSessions.length > 0 && (
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Terminal className="w-5 h-5 text-green-400" />
-                <h2 className="text-xl font-semibold text-white">Spawned Sessions</h2>
-                <span className="text-sm text-gray-400">({spawnedSessions.length})</span>
-              </div>
-              {spawnedSessions.length > 6 && (
-                <Button
-                  onClick={() => setShowAllSpawned(!showAllSpawned)}
-                  variant="outline"
-                  size="sm"
-                >
-                  {showAllSpawned ? 'Show Less' : `Show All (${spawnedSessions.length})`}
-                </Button>
-              )}
+          <div className="bg-card/50 backdrop-blur-xl border border-border rounded-2xl p-6 shadow-xl">
+            <div className="flex items-center gap-2 mb-4">
+              <Terminal className="w-5 h-5 text-purple-500" />
+              <h2 className="text-base font-semibold text-foreground">Spawned Agents Status</h2>
+              <span className="text-sm text-muted-foreground">({spawnedSessions.length})</span>
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {parsedSpawnedSessions.slice(0, showAllSpawned ? undefined : 6).map((parsed) => (
+              {spawnedWithInstances.map((agent) => (
                 <AgentCard
-                  key={parsed.session}
-                  agent={{
-                    name: parsed.name,
-                    active: parsed.active,
-                    session: parsed.session,
-                    attached: parsed.attached
-                  }}
-                  variant="spawned"
-                  instanceNumber={parsed.instanceNumber}
+                  key={agent.session}
+                  agent={agent}
+                  variant="dashboard"
+                  instanceNumber={agent.instanceNumber}
                 />
               ))}
             </div>
-
-            {!showAllSpawned && spawnedSessions.length > 6 && (
-              <div className="mt-4 text-center">
-                <Button
-                  onClick={() => setShowAllSpawned(true)}
-                  variant="ghost"
-                  size="sm"
-                  className="text-gray-400 hover:text-white"
-                >
-                  + {spawnedSessions.length - 6} more sessions
-                </Button>
-              </div>
-            )}
           </div>
         )}
 
-        {/* Ralph Agent Card */}
-        {hasRalphInstances ? (
-          // Collapsed placeholder state
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <Terminal className="w-5 h-5 text-zinc-400" />
-                <h2 className="text-xl font-semibold text-white">Ralph Agent</h2>
-              </div>
-              <Button
-                onClick={handleSpawnRalph}
-                disabled={loading}
-                variant="outline"
-                size="sm"
-                className="gap-2"
-              >
-                <Play className="w-4 h-4" />
-                Spawn New
-              </Button>
-            </div>
-
-            {/* Placeholder with most recent instance */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              <button
-                onClick={handleSpawnRalph}
-                disabled={loading}
-                className="bg-gray-900/50 border-2 border-dashed border-gray-600 rounded-lg p-6
-                           hover:border-gray-500 hover:bg-gray-900/70 transition-all
-                           flex items-center justify-center gap-2 min-h-[120px]
-                           disabled:opacity-50 disabled:cursor-not-allowed"
-                aria-label="Spawn new Ralph instance"
-              >
-                <Play className="w-8 h-8 text-gray-400" />
-                <span className="text-gray-400 font-medium">Spawn New Ralph</span>
-              </button>
-
-              {/* Show most recent Ralph instance if exists */}
-              {mostRecentRalph && (
-                <AgentCard
-                  key={mostRecentRalph}
-                  agent={{
-                    name: 'ralph',
-                    active: true,
-                    session: mostRecentRalph,
-                    attached: false
-                  }}
-                  variant="spawned"
-                  instanceNumber={parseInt(mostRecentRalph.match(/agent-ralph-(\d+)/)?.[1] || '0', 10)}
-                />
-              )}
-            </div>
-          </div>
-        ) : (
-          // Full spawn card state
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-            <div className="flex items-center gap-2 mb-4">
-              <Terminal className="w-5 h-5 text-zinc-400" />
-              <h2 className="text-xl font-semibold text-white">Ralph Agent</h2>
-            </div>
-
-            <div className="space-y-4">
-              <p className="text-sm text-gray-400">
-                Ralph is a dummy agent for testing. Spawn instances as needed.
-              </p>
-
-              <Button
-                onClick={handleSpawnRalph}
-                disabled={loading}
-                variant="default"
-                className="w-full gap-2"
-              >
-                <Play className="w-4 h-4" />
-                {loading ? 'Spawning...' : 'Spawn Ralph Instance'}
-              </Button>
-            </div>
-          </div>
-        )}
       </div>
+
+      {/* Launch Core confirmation dialog */}
+      <ConfirmDialog
+        open={showLaunchDialog}
+        onOpenChange={setShowLaunchDialog}
+        title="Launch Core Team"
+        description="Launch all 6 core team agents (Ana, Bill, Carl, Dan, Enzo, Ralph)? This will start agents and open the team terminal grid."
+        confirmLabel="Launch"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmLaunch}
+      />
+
+      {/* Kill Core confirmation dialog */}
+      <ConfirmDialog
+        open={showKillDialog}
+        onOpenChange={setShowKillDialog}
+        title="Kill All Core Agents"
+        description="This will terminate all running core agents (Ana, Bill, Carl, Dan, Enzo, Ralph). Spawned instances will not be affected. Are you sure?"
+        confirmLabel="Kill All"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmKill}
+        variant="destructive"
+      />
     </div>
   );
 };

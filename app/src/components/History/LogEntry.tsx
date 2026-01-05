@@ -1,11 +1,13 @@
 import React from 'react';
-import { HistoryEntry, AGENT_TEXT_COLORS, AgentName } from '../../types';
+import { HistoryEntry, AGENT_TEXT_COLORS, AgentName, isValidAgentName } from '../../types';
 
 interface LogEntryProps {
   entry: HistoryEntry;
+  onSelect?: () => void;
+  isSelected?: boolean;
 }
 
-export const LogEntry: React.FC<LogEntryProps> = ({ entry }) => {
+export const LogEntry: React.FC<LogEntryProps> = ({ entry, onSelect, isSelected }) => {
   // Timestamp is already formatted as HH:MM:SS from backend, just display it
   const formatTimestamp = (timestamp: string) => {
     // If already in HH:MM:SS format, return as-is
@@ -29,52 +31,119 @@ export const LogEntry: React.FC<LogEntryProps> = ({ entry }) => {
     }
   };
 
-  // Get agent color
-  const getAgentColor = (agent: string | null) => {
-    if (!agent) return 'text-gray-400';
-    const agentName = agent.toLowerCase() as AgentName;
-    return AGENT_TEXT_COLORS[agentName] || 'text-gray-400';
+  // Parse agent name and instance number from session name
+  const parseAgentName = (agent: string | null) => {
+    if (!agent) return { displayName: null, agentName: null };
+
+    // Check if it's a session name like "agent-bill-3"
+    const sessionMatch = agent.match(/^agent-([a-z]+)-(\d+)$/);
+    if (sessionMatch) {
+      const agentName = sessionMatch[1];
+      const instanceNumber = sessionMatch[2];
+      return {
+        displayName: `${agentName.toUpperCase()}${instanceNumber}`,
+        agentName: isValidAgentName(agentName) ? agentName : null
+      };
+    }
+
+    // Otherwise just use the agent name as-is
+    const normalizedName = agent.toLowerCase();
+    return {
+      displayName: agent.toUpperCase(),
+      agentName: isValidAgentName(normalizedName) ? normalizedName : null
+    };
   };
 
-  // Get entry type color
-  const getTypeColor = (type: string) => {
+  const { displayName, agentName } = parseAgentName(entry.agent ?? null);
+
+  // Get agent color
+  const getAgentColor = (agentName: AgentName | null) => {
+    if (!agentName) return 'text-muted-foreground';
+    return AGENT_TEXT_COLORS[agentName] || 'text-muted-foreground';
+  };
+
+  // Get entry type styling
+  const getTypeStyle = (type: string) => {
     switch (type.toLowerCase()) {
       case 'user':
-        return 'text-blue-400';
+        return { color: 'text-blue-500 dark:text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/30', label: 'USER' };
       case 'assistant':
-        return 'text-green-400';
+        return { color: 'text-purple-500 dark:text-purple-400', bg: 'bg-purple-500/10', border: 'border-purple-500/30', label: 'AI' };
+      case 'tool_use':
+        return { color: 'text-cyan-600 dark:text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/30', label: 'TOOL' };
+      case 'tool_result':
+        return { color: 'text-emerald-600 dark:text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', label: 'RESULT' };
       case 'system':
-        return 'text-yellow-400';
+        return { color: 'text-yellow-600 dark:text-yellow-400', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30', label: 'SYS' };
       case 'error':
-        return 'text-red-400';
+        return { color: 'text-red-500 dark:text-red-400', bg: 'bg-red-500/10', border: 'border-red-500/30', label: 'ERR' };
       default:
-        return 'text-gray-400';
+        return { color: 'text-muted-foreground', bg: 'bg-secondary/50', border: 'border-border', label: type.toUpperCase() };
     }
   };
 
+  // Format token numbers
+  const formatTokenNumber = (n: number) => {
+    if (n === 0) return '0';
+    if (n > 999) return `${(n/1000).toFixed(1)}k`;
+    return n.toString();
+  };
+
+  const typeStyle = getTypeStyle(entry.entry_type);
+  const type = entry.entry_type.toLowerCase();
+  const hasTokens = entry.tokens && (entry.tokens.input > 0 || entry.tokens.output > 0);
+
+  // Skip empty messages
+  if (!entry.message || entry.message.trim() === '') {
+    return null;
+  }
+
   return (
-    <div className="flex gap-3 py-1 px-2 hover:bg-gray-800/50 font-mono text-sm">
-      {/* Timestamp */}
-      <span className="text-gray-500 shrink-0">
-        {formatTimestamp(entry.timestamp)}
-      </span>
+    <div className="flex items-center gap-2">
+      {/* Main log entry card */}
+      <div
+        className={`flex items-center gap-2 py-1 px-3 hover:bg-accent text-sm cursor-pointer select-none rounded-lg flex-1 ${typeStyle.bg} ${isSelected ? 'ring-1 ring-primary/30' : ''}`}
+        onClick={onSelect}
+      >
+        {/* Agent */}
+        {displayName && (
+          <span className={`${getAgentColor(agentName)} font-semibold shrink-0 text-[10px] w-12`}>
+            {displayName}
+          </span>
+        )}
 
-      {/* Agent */}
-      {entry.agent && (
-        <span className={`${getAgentColor(entry.agent)} font-semibold shrink-0 w-16`}>
-          [{entry.agent.toUpperCase()}]
+        {/* Timestamp */}
+        <span className="text-muted-foreground shrink-0 text-[11px] font-mono tabular-nums">
+          {formatTimestamp(entry.timestamp)}
         </span>
+
+        {/* Type badge - fixed width for consistency */}
+        <span className={`${typeStyle.color} ${typeStyle.border} border shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded w-14 text-center`}>
+          {type === 'tool_use' && entry.tool_name ? entry.tool_name.toUpperCase().slice(0, 6) : typeStyle.label}
+        </span>
+
+        {/* Message - always truncated, click to see full */}
+        <span className="text-foreground/80 flex-1 font-mono text-[11px] truncate">
+          {entry.message}
+        </span>
+      </div>
+
+      {/* Token numbers - outside card, fixed width */}
+      {hasTokens ? (
+        <>
+          <span className="text-[9px] text-muted-foreground shrink-0 font-mono w-7 text-right tabular-nums">
+            {formatTokenNumber(entry.tokens!.input)}
+          </span>
+          <span className="text-[9px] text-muted-foreground shrink-0 font-mono w-7 text-right tabular-nums">
+            {formatTokenNumber(entry.tokens!.output)}
+          </span>
+        </>
+      ) : (
+        <>
+          <span className="text-[9px] text-transparent shrink-0 font-mono w-7 text-right">0</span>
+          <span className="text-[9px] text-transparent shrink-0 font-mono w-7 text-right">0</span>
+        </>
       )}
-
-      {/* Entry Type */}
-      <span className={`${getTypeColor(entry.entry_type)} shrink-0`}>
-        {entry.entry_type}:
-      </span>
-
-      {/* Message */}
-      <span className="text-gray-300 break-words flex-1">
-        {entry.message}
-      </span>
     </div>
   );
 };

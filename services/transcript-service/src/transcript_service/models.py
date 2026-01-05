@@ -58,3 +58,39 @@ class SessionDetail(BaseModel):
 
     session: Session
     messages: List[MessageContent]
+
+
+class SearchMatch(BaseModel):
+    """A single search match with context."""
+
+    session_id: str
+    session_summary: str
+    message_index: int
+    message_type: str
+    excerpt: str  # Context around the match
+    match_position: int  # Position of match in full content
+    timestamp: Optional[datetime] = None
+
+
+class SearchResults(BaseModel):
+    """Search results across sessions."""
+
+    query: str
+    total_matches: int
+    matches: List[SearchMatch]
+
+
+class HistoryEntry(BaseModel):
+    """History log entry matching Rust HistoryEntry format."""
+
+    uuid: Optional[str] = None
+    timestamp: datetime
+    agent: Optional[str] = None
+    tmux_session: Optional[str] = None
+    message: str
+    preview: str
+    entry_type: str  # user, assistant, tool_use, tool_result, system
+    session_id: Optional[str] = None
+    project: Optional[str] = None
+    tool_name: Optional[str] = None
+    tokens: Optional[TokenUsage] = None

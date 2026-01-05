@@ -3,8 +3,12 @@ import sys
 from typing import Optional, List
 from datetime import datetime
 from pathlib import Path
+import html
+import re
+from cachetools import LRUCache
+from threading import Lock
 
-from .models import Session, SessionDetail, MessageContent, TokenUsage
+from .models import Session, SessionDetail, MessageContent, TokenUsage, SearchMatch, SearchResults, HistoryEntry
 from .security import validate_export_path
 
 # claude-code-log imports
@@ -28,10 +32,15 @@ class SessionManager:
     Phase 2: Fully integrated with claude-code-log library.
     """
 
-    def __init__(self):
-        """Initialize session manager with claude-code-log integration."""
+    def __init__(self, max_cache_managers=10):
+        """Initialize session manager with claude-code-log integration.
+
+        Args:
+            max_cache_managers: Maximum number of project cache managers to keep in memory (LRU eviction)
+        """
         self.projects_dir = Path.home() / ".claude" / "projects"
-        self.cache_managers = {}  # Cache managers per project
+        self.cache_managers = LRUCache(maxsize=max_cache_managers)  # LRU cache for project managers
+        self.cache_lock = Lock()  # Thread-safe access to cache
 
     def health_check(self) -> dict:
         """Verify service is running and return version info.
@@ -46,13 +55,21 @@ class SessionManager:
         }
 
     def _get_cache_manager(self, project_path: Path) -> CacheManager:
-        """Get or create cache manager for a project."""
+        """Get or create cache manager for a project (thread-safe with LRU eviction).
+
+        Args:
+            project_path: Path to the project directory
+
+        Returns:
+            CacheManager instance for the project
+        """
         cache_key = str(project_path)
-        if cache_key not in self.cache_managers:
-            self.cache_managers[cache_key] = CacheManager(
-                project_path, get_library_version()
-            )
-        return self.cache_managers[cache_key]
+        with self.cache_lock:
+            if cache_key not in self.cache_managers:
+                self.cache_managers[cache_key] = CacheManager(
+                    project_path, get_library_version()
+                )
+            return self.cache_managers[cache_key]
 
     def get_sessions(
         self,
@@ -343,10 +360,12 @@ class SessionManager:
 """
 
         for msg in session_detail.messages:
+            escaped_content = html.escape(msg.content)
+            escaped_type = html.escape(msg.type)
             html_content += f"""
-    <div class="message {msg.type}">
-        <strong>{msg.type.upper()}</strong>
-        <p>{msg.content}</p>
+    <div class="message {escaped_type}">
+        <strong>{escaped_type.upper()}</strong>
+        <p>{escaped_content}</p>
     </div>
 """
 
@@ -402,3 +421,312 @@ class SessionManager:
         size = validated_path.stat().st_size
 
         return {"path": str(validated_path), "size": size}
+
+    def search_messages(
+        self,
+        query: str,
+        project: Optional[str] = None,
+        case_sensitive: bool = False,
+        max_results: int = 100,
+    ) -> SearchResults:
+        """Search for messages containing the query text.
+
+        Args:
+            query: Search query string
+            project: Optional project filter
+            case_sensitive: Whether search is case sensitive
+            max_results: Maximum number of results to return
+
+        Returns:
+            SearchResults with matches and excerpts
+        """
+        matches = []
+        excerpt_length = 150  # Characters to show around match
+
+        # Compile regex pattern for searching
+        flags = 0 if case_sensitive else re.IGNORECASE
+        try:
+            pattern = re.compile(re.escape(query), flags)
+        except re.error:
+            # If query has regex special chars that cause issues, just use literal
+            pattern = re.compile(re.escape(query), flags)
+
+        # Optimized search - load transcripts once per project, not per session
+        # Get project directories to search
+        if project:
+            project_path = self.projects_dir / project
+            project_paths = [project_path] if project_path.exists() else []
+        else:
+            project_paths = [
+                d
+                for d in self.projects_dir.iterdir()
+                if d.is_dir() and list(d.glob("*.jsonl"))
+            ]
+
+        # Search through projects efficiently
+        for project_path in project_paths:
+            if len(matches) >= max_results:
+                break
+
+            try:
+                # Get cache manager once per project
+                cache_manager = self._get_cache_manager(project_path)
+                ensure_fresh_cache(project_path, cache_manager, silent=True)
+                project_cache = cache_manager.get_cached_project_data()
+
+                if not project_cache:
+                    continue
+
+                # Load transcript entries once per project (not per session!)
+                entries = load_directory_transcripts(project_path, cache_manager, silent=True)
+
+                # Search through sessions in this project
+                for session_id, session_cache in project_cache.sessions.items():
+                    if len(matches) >= max_results:
+                        break
+
+                    # Filter entries for this session
+                    session_messages = [
+                        entry for entry in entries
+                        if hasattr(entry, "sessionId") and entry.sessionId == session_id
+                    ]
+
+                    # Search each message
+                    for idx, entry in enumerate(session_messages):
+                        if len(matches) >= max_results:
+                            break
+
+                        # Extract content once
+                        content = self._extract_content(entry)
+                        if not content:
+                            continue
+
+                        # Search in message content
+                        match = pattern.search(content)
+                        if match:
+                            # Extract excerpt with context
+                            match_pos = match.start()
+                            start = max(0, match_pos - excerpt_length // 2)
+                            end = min(len(content), match_pos + excerpt_length // 2)
+
+                            excerpt = content[start:end]
+
+                            # Add ellipsis if truncated
+                            if start > 0:
+                                excerpt = "..." + excerpt
+                            if end < len(content):
+                                excerpt = excerpt + "..."
+
+                            # Extract message type and timestamp from entry
+                            message_type = self._get_message_type(entry)
+                            timestamp_str = getattr(entry, "timestamp", None)
+                            timestamp = None
+                            if timestamp_str:
+                                try:
+                                    timestamp = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+                                except (ValueError, AttributeError):
+                                    pass
+
+                            search_match = SearchMatch(
+                                session_id=session_id,
+                                session_summary=session_cache.summary or session_cache.first_user_message,
+                                message_index=idx,
+                                message_type=message_type,
+                                excerpt=excerpt,
+                                match_position=match_pos,
+                                timestamp=timestamp,
+                            )
+                            matches.append(search_match)
+
+            except Exception as e:
+                # Skip sessions that can't be loaded
+                continue
+
+        return SearchResults(
+            query=query,
+            total_matches=len(matches),
+            matches=matches,
+        )
+
+    def get_history_entries(
+        self,
+        project: Optional[str] = None,
+        from_date: Optional[str] = None,
+        to_date: Optional[str] = None,
+        limit: Optional[int] = None,
+    ) -> List[HistoryEntry]:
+        """Get all messages as HistoryEntry format using cached data.
+
+        This is optimized for fast loading by using claude-code-log cache,
+        unlike the Rust history streaming which parses raw JSONL files.
+
+        Args:
+            project: Filter by project name
+            from_date: ISO 8601 date string (inclusive)
+            to_date: ISO 8601 date string (inclusive)
+            limit: Maximum number of entries to return
+
+        Returns:
+            List of HistoryEntry objects sorted by timestamp
+        """
+        history_entries = []
+
+        # Get project directories to search
+        if project:
+            project_path = self.projects_dir / project
+            project_paths = [project_path] if project_path.exists() else []
+        else:
+            # Get all project directories
+            if not self.projects_dir.exists():
+                return []
+            project_paths = [
+                d
+                for d in self.projects_dir.iterdir()
+                if d.is_dir() and list(d.glob("*.jsonl"))
+            ]
+
+        # Load entries from each project using cache
+        for project_path in project_paths:
+            try:
+                cache_manager = self._get_cache_manager(project_path)
+
+                # Ensure cache is fresh
+                ensure_fresh_cache(
+                    project_path, cache_manager, from_date, to_date, silent=True
+                )
+
+                # Get cached project data
+                project_cache = cache_manager.get_cached_project_data()
+                if not project_cache or not project_cache.sessions:
+                    continue
+
+                # Load all transcript entries for this project (from cache)
+                entries = load_directory_transcripts(project_path, cache_manager, silent=True)
+
+                project_name = project_path.name
+
+                # Convert each entry to HistoryEntry format
+                print(f"Processing {len(entries)} entries from project: {project_name}", file=sys.stderr)
+                for entry in entries:
+                    # Extract session ID
+                    session_id = getattr(entry, "sessionId", None)
+
+                    # Skip if session not in cache (shouldn't happen, but safety check)
+                    if session_id and session_id not in project_cache.sessions:
+                        continue
+
+                    # Apply date filtering if specified
+                    if from_date or to_date:
+                        from datetime import datetime as dt
+                        import dateparser
+
+                        timestamp_str = getattr(entry, "timestamp", None)
+                        if timestamp_str:
+                            try:
+                                entry_dt = dt.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+
+                                if from_date:
+                                    from_dt = dateparser.parse(from_date)
+                                    if from_dt and entry_dt < from_dt.replace(tzinfo=None):
+                                        continue
+
+                                if to_date:
+                                    to_dt = dateparser.parse(to_date)
+                                    if to_dt and entry_dt > to_dt.replace(tzinfo=None):
+                                        continue
+                            except (ValueError, AttributeError):
+                                continue
+
+                    # Extract message content
+                    content = self._extract_content(entry)
+                    if not content:
+                        continue  # Skip empty messages
+
+                    # Get timestamp
+                    timestamp_str = getattr(entry, "timestamp", None)
+                    timestamp = None
+                    if timestamp_str:
+                        try:
+                            timestamp = datetime.fromisoformat(
+                                timestamp_str.replace("Z", "+00:00")
+                            )
+                        except (ValueError, AttributeError):
+                            pass
+
+                    if not timestamp:
+                        continue  # Skip entries without valid timestamp
+
+                    # Extract UUID
+                    uuid = getattr(entry, "uuid", None)
+
+                    # Extract cwd and derive agent
+                    cwd = getattr(entry, "cwd", None)
+                    agent = None
+                    if cwd:
+                        # Try to extract agent from path (look for /agents/<agent_name>)
+                        cwd_str = str(cwd)
+                        if "/agents/" in cwd_str:
+                            try:
+                                # Split on /agents/ and get the next path component
+                                after_agents = cwd_str.split("/agents/")[1]
+                                agent_name = after_agents.split("/")[0]
+                                if agent_name:  # Make sure it's not empty
+                                    agent = agent_name
+                            except (IndexError, AttributeError):
+                                pass
+
+                    # If we still don't have an agent, try extracting from project name
+                    if not agent and project_name:
+                        # Some projects might be named after the agent
+                        # e.g., "nolan-dan", "nolan-bill", etc.
+                        if "-" in project_name:
+                            potential_agent = project_name.split("-")[-1]
+                            # Only use if it looks like an agent name (short, lowercase)
+                            if len(potential_agent) <= 10 and potential_agent.islower():
+                                agent = potential_agent
+
+                    # Debug: Log first few entries to see agent extraction
+                    if len(history_entries) < 5:
+                        print(f"Entry agent extraction - cwd: {cwd}, agent: {agent}, project: {project_name}", file=sys.stderr)
+
+                    # Get entry type
+                    entry_type = self._get_message_type(entry)
+
+                    # Get tool name if applicable
+                    tool_name = self._get_tool_name(entry)
+
+                    # Get tokens
+                    tokens = self._extract_tokens(entry)
+
+                    # Create preview (truncated message)
+                    preview = content[:200] + "..." if len(content) > 200 else content
+
+                    history_entry = HistoryEntry(
+                        uuid=uuid,
+                        timestamp=timestamp,
+                        agent=agent,
+                        tmux_session=None,  # Will be populated by Rust if needed
+                        message=content,
+                        preview=preview,
+                        entry_type=entry_type,
+                        session_id=session_id,
+                        project=project_name,
+                        tool_name=tool_name,
+                        tokens=tokens,
+                    )
+
+                    history_entries.append(history_entry)
+
+            except Exception as e:
+                # Skip projects that can't be loaded
+                print(f"Warning: Failed to load project {project_path}: {e}", file=sys.stderr)
+                continue
+
+        # Sort by timestamp (chronological order)
+        history_entries.sort(key=lambda e: e.timestamp)
+
+        # Apply limit if specified
+        if limit and limit > 0:
+            history_entries = history_entries[-limit:]  # Get most recent N entries
+
+        return history_entries

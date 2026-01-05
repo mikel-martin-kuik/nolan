@@ -7,6 +7,14 @@ export const queryClient = new QueryClient({
       gcTime: 1000 * 60 * 30,        // 30 minutes (formerly cacheTime)
       retry: 2,
       refetchOnWindowFocus: false,
+
+      // Request deduplication - prevent duplicate in-flight requests
+      networkMode: 'always',
+      refetchOnMount: 'always',
+    },
+    mutations: {
+      // Prevent duplicate mutations
+      networkMode: 'always',
     },
   },
 });

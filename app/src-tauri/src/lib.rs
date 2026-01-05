@@ -1,5 +1,7 @@
 // Module declarations
 pub mod commands;
+pub mod constants;
+pub mod error;
 pub mod services;
 pub mod shell;
 pub mod tmux;
@@ -10,24 +12,51 @@ use commands::lifecycle::*;
 use commands::communicator::*;
 use commands::history::*;
 use commands::sessions::*;
+use commands::projects::*;
 use commands::*;
 use tauri::Manager;
 use services::python_service::PythonService;
-use std::sync::Mutex;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use utils::paths::get_transcript_service_dir;
+
+/// Initialize Python service with proper error handling
+fn initialize_python_service() -> Result<PythonService, String> {
+    let service_dir = get_transcript_service_dir()
+        .map_err(|e| format!("Cannot locate transcript service directory: {}", e))?;
+
+    let script_path = service_dir.join("run.py");
+    if !script_path.exists() {
+        return Err(format!(
+            "Transcript service script not found at: {}\nPlease run setup.sh to install dependencies.",
+            script_path.display()
+        ));
+    }
+
+    PythonService::new(&script_path)
+        .map_err(|e| format!("Failed to start Python RPC service: {}", e))
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Initialize Python service
-    let service_dir = get_transcript_service_dir()
-        .expect("Failed to locate transcript service");
-    let script_path = service_dir.join("run.py");
-
-    let python_service = PythonService::new(&script_path)
-        .expect("Failed to start Python service");
+    // Initialize Python service with graceful error handling
+    let python_service = match initialize_python_service() {
+        Ok(service) => service,
+        Err(e) => {
+            eprintln!("\n=== FATAL ERROR ===");
+            eprintln!("Failed to initialize Nolan Agent System:");
+            eprintln!("{}", e);
+            eprintln!("\nTroubleshooting steps:");
+            eprintln!("1. Ensure Python 3.8+ is installed and in PATH");
+            eprintln!("2. Run './setup.sh' from the project root");
+            eprintln!("3. Check that the transcript service is properly installed");
+            eprintln!("===================\n");
+            std::process::exit(1);
+        }
+    };
 
     tauri::Builder::default()
-        .manage(Mutex::new(python_service))
+        .manage(Arc::new(Mutex::new(python_service)))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // When a second instance is launched, focus the existing window
@@ -46,12 +75,14 @@ pub fn run() {
             launch_core,
             kill_core,
             spawn_agent,
+            restart_core_agent,
             kill_instance,
             kill_all_instances,
             get_agent_status,
             launch_terminal,
             open_agent_terminal,
             open_core_team_terminals,
+            send_agent_command,
             // Communicator commands
             send_message,
             broadcast_team,
@@ -60,11 +91,19 @@ pub fn run() {
             // History commands
             start_history_stream,
             stop_history_stream,
+            load_history_entries,
+            load_history_for_active_sessions,
+            get_cached_history_entries,
             // Session commands
             get_sessions,
+            get_sessions_paginated,
             get_session_detail,
             export_session_html,
             export_session_markdown,
+            // Projects commands
+            list_projects,
+            list_project_files,
+            read_project_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

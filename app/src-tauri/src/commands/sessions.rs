@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tauri::State;
-use std::sync::Mutex;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use std::path::PathBuf;
 use crate::services::python_service::PythonService;
 
@@ -43,6 +44,15 @@ pub struct SessionDetail {
     pub messages: Vec<MessageContent>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PaginatedSessions {
+    pub sessions: Vec<Session>,
+    pub total: usize,
+    pub limit: usize,
+    pub offset: usize,
+    pub has_more: bool,
+}
+
 // Path validation helper
 fn validate_output_path(path: &str) -> Result<PathBuf, String> {
     let path_buf = PathBuf::from(path);
@@ -51,8 +61,15 @@ fn validate_output_path(path: &str) -> Result<PathBuf, String> {
         return Err("Output path must be absolute".to_string());
     }
 
-    // Canonicalize parent to prevent traversal
+    // Validate parent directory exists or can be created
     if let Some(parent) = path_buf.parent() {
+        // Check if parent exists - if not, try to create it
+        if !parent.exists() {
+            std::fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+        }
+
+        // Now canonicalize to prevent traversal attacks
         parent.canonicalize()
             .map_err(|e| format!("Path validation failed: {}", e))?;
     } else {
@@ -65,8 +82,8 @@ fn validate_output_path(path: &str) -> Result<PathBuf, String> {
 // Tauri commands
 
 #[tauri::command]
-pub fn get_sessions(
-    state: State<'_, Mutex<PythonService>>,
+pub async fn get_sessions(
+    state: State<'_, Arc<Mutex<PythonService>>>,
     project: Option<String>,
     from_date: Option<String>,
     to_date: Option<String>,
@@ -77,7 +94,7 @@ pub fn get_sessions(
         "to_date": to_date,
     });
 
-    let mut service = state.lock().unwrap();
+    let mut service = state.lock().await;
     let result = service.call_rpc("get_sessions", params)?;
 
     serde_json::from_value(result)
@@ -85,15 +102,39 @@ pub fn get_sessions(
 }
 
 #[tauri::command]
-pub fn get_session_detail(
-    state: State<'_, Mutex<PythonService>>,
+pub async fn get_sessions_paginated(
+    state: State<'_, Arc<Mutex<PythonService>>>,
+    project: Option<String>,
+    from_date: Option<String>,
+    to_date: Option<String>,
+    limit: Option<usize>,
+    offset: Option<usize>,
+) -> Result<PaginatedSessions, String> {
+    let params = json!({
+        "project": project,
+        "from_date": from_date,
+        "to_date": to_date,
+        "limit": limit.unwrap_or(50),
+        "offset": offset.unwrap_or(0),
+    });
+
+    let mut service = state.lock().await;
+    let result = service.call_rpc("get_sessions_paginated", params)?;
+
+    serde_json::from_value(result)
+        .map_err(|e| format!("Failed to deserialize: {}", e))
+}
+
+#[tauri::command]
+pub async fn get_session_detail(
+    state: State<'_, Arc<Mutex<PythonService>>>,
     session_id: String,
 ) -> Result<SessionDetail, String> {
     let params = json!({
         "session_id": session_id,
     });
 
-    let mut service = state.lock().unwrap();
+    let mut service = state.lock().await;
     let result = service.call_rpc("get_session_detail", params)?;
 
     serde_json::from_value(result)
@@ -101,8 +142,8 @@ pub fn get_session_detail(
 }
 
 #[tauri::command]
-pub fn export_session_html(
-    state: State<'_, Mutex<PythonService>>,
+pub async fn export_session_html(
+    state: State<'_, Arc<Mutex<PythonService>>>,
     session_id: String,
     output_path: String,
 ) -> Result<String, String> {
@@ -113,7 +154,7 @@ pub fn export_session_html(
         "output_path": validated_path.to_string_lossy(),
     });
 
-    let mut service = state.lock().unwrap();
+    let mut service = state.lock().await;
     let result = service.call_rpc("export_html", params)?;
 
     result.get("path")
@@ -123,8 +164,8 @@ pub fn export_session_html(
 }
 
 #[tauri::command]
-pub fn export_session_markdown(
-    state: State<'_, Mutex<PythonService>>,
+pub async fn export_session_markdown(
+    state: State<'_, Arc<Mutex<PythonService>>>,
     session_id: String,
     output_path: String,
 ) -> Result<String, String> {
@@ -135,7 +176,7 @@ pub fn export_session_markdown(
         "output_path": validated_path.to_string_lossy(),
     });
 
-    let mut service = state.lock().unwrap();
+    let mut service = state.lock().await;
     let result = service.call_rpc("export_markdown", params)?;
 
     result.get("path")

@@ -5,16 +5,22 @@ export interface AgentStatus {
   active: boolean;
   session: string;
   attached: boolean;
+  context_usage?: number;  // Context window usage percentage (0-100)
 }
 
 export interface AgentStatusList {
   core: AgentStatus[];
-  spawned: string[];
+  spawned: AgentStatus[];  // Changed from string[] to AgentStatus[]
 }
 
 export type AgentName = 'ana' | 'bill' | 'carl' | 'dan' | 'enzo' | 'ralph';
 
 export const VALID_AGENTS: AgentName[] = ['ana', 'bill', 'carl', 'dan', 'enzo', 'ralph'];
+
+// Type guard for validating agent names at runtime
+export const isValidAgentName = (name: string): name is AgentName => {
+  return VALID_AGENTS.includes(name as AgentName);
+};
 
 export const AGENT_DESCRIPTIONS: Record<AgentName, string> = {
   ana: 'Research',
@@ -45,9 +51,21 @@ export const AGENT_TEXT_COLORS: Record<AgentName, string> = {
 
 
 // History log types
+export interface TokenInfo {
+  input: number;
+  output: number;
+}
+
 export interface HistoryEntry {
+  uuid?: string;
   timestamp: string;
-  agent: string | null;
+  agent?: string;
+  tmux_session?: string;
   message: string;
+  preview: string;
   entry_type: string;
+  session_id?: string;
+  project?: string;
+  tool_name?: string;
+  tokens?: TokenInfo;
 }

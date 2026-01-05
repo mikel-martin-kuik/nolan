@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { invoke } from '@tauri-apps/api/core';
-import { Session, SessionDetail } from '@/types/sessions';
+import { Session, SessionDetail, SearchResults } from '@/types/sessions';
 
 export function useSessions(
   project?: string,
@@ -51,5 +51,22 @@ export async function exportSessionMarkdown(
   return await invoke<string>('export_session_markdown', {
     sessionId,
     outputPath,
+  });
+}
+
+export function useSearch(query: string, caseSensitive: boolean = false) {
+  return useQuery({
+    queryKey: ['search', query, caseSensitive],
+    queryFn: async () => {
+      if (!query || query.trim().length === 0) {
+        return { query: '', total_matches: 0, matches: [] };
+      }
+      const results = await invoke<SearchResults>('search_messages', {
+        query,
+        caseSensitive,
+      });
+      return results;
+    },
+    enabled: !!query && query.trim().length > 0,
   });
 }

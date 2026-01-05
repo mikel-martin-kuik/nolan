@@ -2,24 +2,41 @@ use serde::Serialize;
 use regex::Regex;
 use shell_escape::escape;
 use std::process::Command;
+use once_cell::sync::Lazy;
 
 // Valid agent names
 const VALID_AGENTS: &[&str] = &["ana", "bill", "carl", "dan", "enzo", "ralph"];
+
+// Compile regex patterns once at startup to avoid repeated compilation
+static RE_AGENT_NAME: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^([a-z]+)$").expect("Invalid regex pattern for agent name")
+});
+
+static RE_AGENT_INSTANCE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^([a-z]+)-[0-9]+$").expect("Invalid regex pattern for agent instance")
+});
+
+static RE_SESSION_NAME: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^agent-([a-z]+)$").expect("Invalid regex pattern for session name")
+});
+
+static RE_SESSION_INSTANCE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^agent-([a-z]+)-[0-9]+$").expect("Invalid regex pattern for session instance")
+});
 
 /// Parse message ID from send_verified output
 /// Expected format: "✓ Delivered to {agent}: MSG_12345678"
 fn parse_message_id(output: &str) -> Option<String> {
     let re = Regex::new(r"✓ Delivered to [a-z0-9_-]+: (MSG_[a-f0-9]{8})").ok()?;
     let caps = re.captures(output)?;
-    Some(caps[1].to_string())
+    caps.get(1).map(|m| m.as_str().to_string())  // Safe access instead of indexing
 }
 
 /// Send a verified message using team-aliases.sh send_verified function
 /// This provides message IDs, delivery confirmation, and retry logic
 /// SECURITY: Uses shell-escape to prevent command injection
 fn send_verified(agent: &str, message: &str, timeout: u32) -> Result<String, String> {
-    let nolan_root = std::env::var("NOLAN_ROOT")
-        .unwrap_or_else(|_| "/home/mmartin/Proyectos/nolan".to_string());
+    let nolan_root = crate::constants::get_nolan_root()?;
 
     let escaped_agent = escape(agent.into());
     let escaped_message = escape(message.into());
@@ -59,13 +76,11 @@ pub async fn send_message(target: String, message: String) -> Result<String, Str
     // Validate target is either:
     // 1. A core agent name (e.g., "ana", "bill")
     // 2. A spawned session name (e.g., "ana-2", "bill-3")
-    let re_core = Regex::new(r"^([a-z]+)$").unwrap();
-    let re_spawned = Regex::new(r"^([a-z]+)-[0-9]+$").unwrap();
 
-    let is_valid = if let Some(caps) = re_core.captures(&target) {
+    let is_valid = if let Some(caps) = RE_AGENT_NAME.captures(&target) {
         // Core agent name
         VALID_AGENTS.contains(&&caps[1])
-    } else if let Some(caps) = re_spawned.captures(&target) {
+    } else if let Some(caps) = RE_AGENT_INSTANCE.captures(&target) {
         // Spawned session name
         VALID_AGENTS.contains(&&caps[1])
     } else {
@@ -93,8 +108,7 @@ fn extract_agent_from_line(line: &str) -> Option<String> {
 /// Broadcast a message to the core team (Ana, Bill, Carl, Dan, Enzo)
 #[tauri::command]
 pub async fn broadcast_team(message: String) -> Result<BroadcastResult, String> {
-    let nolan_root = std::env::var("NOLAN_ROOT")
-        .unwrap_or_else(|_| "/home/mmartin/Proyectos/nolan".to_string());
+    let nolan_root = crate::constants::get_nolan_root()?;
 
     let escaped_message = escape(message.as_str().into());
     let escaped_root = escape(nolan_root.as_str().into());
@@ -125,18 +139,19 @@ pub async fn broadcast_team(message: String) -> Result<BroadcastResult, String> 
         }
     }
 
+    let total = successful.len() + failed.len();
+
     Ok(BroadcastResult {
         successful,
         failed,
-        total: 5,
+        total,
     })
 }
 
 /// Broadcast a message to all active agent sessions (core + spawned)
 #[tauri::command]
 pub async fn broadcast_all(message: String) -> Result<BroadcastResult, String> {
-    let nolan_root = std::env::var("NOLAN_ROOT")
-        .unwrap_or_else(|_| "/home/mmartin/Proyectos/nolan".to_string());
+    let nolan_root = crate::constants::get_nolan_root()?;
 
     let escaped_message = escape(message.as_str().into());
     let escaped_root = escape(nolan_root.as_str().into());
@@ -187,15 +202,12 @@ pub async fn get_available_targets() -> Result<TargetList, String> {
     for session in sessions {
         if session.starts_with("agent-") {
             // Check if it's a core agent (agent-{name} without number)
-            let re_core = regex::Regex::new(r"^agent-([a-z]+)$").unwrap();
-            let re_spawned = regex::Regex::new(r"^agent-([a-z]+)-[0-9]+$").unwrap();
-
-            if let Some(caps) = re_core.captures(&session) {
+            if let Some(caps) = RE_SESSION_NAME.captures(&session) {
                 let agent_name = caps[1].to_string();
                 if VALID_AGENTS.contains(&agent_name.as_str()) {
                     core_agents.push(agent_name);
                 }
-            } else if re_spawned.is_match(&session) {
+            } else if RE_SESSION_INSTANCE.is_match(&session) {
                 spawned_sessions.push(session);
             }
         }

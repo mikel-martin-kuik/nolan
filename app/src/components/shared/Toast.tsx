@@ -26,29 +26,29 @@ export const Toast: React.FC<ToastProps> = ({ id, type, message, duration = 5000
       icon: CheckCircle,
       bgColor: 'bg-green-500/10',
       borderColor: 'border-green-500/50',
-      iconColor: 'text-green-400',
-      textColor: 'text-green-100',
+      iconColor: 'text-green-600 dark:text-green-400',
+      textColor: 'text-green-800 dark:text-green-100',
     },
     error: {
       icon: XCircle,
       bgColor: 'bg-red-500/10',
       borderColor: 'border-red-500/50',
-      iconColor: 'text-red-400',
-      textColor: 'text-red-100',
+      iconColor: 'text-red-600 dark:text-red-400',
+      textColor: 'text-red-800 dark:text-red-100',
     },
     info: {
       icon: Info,
       bgColor: 'bg-blue-500/10',
       borderColor: 'border-blue-500/50',
-      iconColor: 'text-blue-400',
-      textColor: 'text-blue-100',
+      iconColor: 'text-blue-600 dark:text-blue-400',
+      textColor: 'text-blue-800 dark:text-blue-100',
     },
     warning: {
       icon: AlertTriangle,
       bgColor: 'bg-yellow-500/10',
       borderColor: 'border-yellow-500/50',
-      iconColor: 'text-yellow-400',
-      textColor: 'text-yellow-100',
+      iconColor: 'text-yellow-600 dark:text-yellow-400',
+      textColor: 'text-yellow-800 dark:text-yellow-100',
     },
   };
 
@@ -66,7 +66,7 @@ export const Toast: React.FC<ToastProps> = ({ id, type, message, duration = 5000
       <p className={`flex-1 text-sm ${textColor}`}>{message}</p>
       <button
         onClick={() => onClose(id)}
-        className="text-gray-400 hover:text-white transition-colors flex-shrink-0"
+        className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
       >
         <X className="w-4 h-4" />
       </button>

@@ -1,12 +1,15 @@
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
+use std::sync::{mpsc, Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 use serde_json::{json, Value};
 
 pub struct PythonService {
     child: Child,
     stdin: BufWriter<std::process::ChildStdin>,
-    stdout: BufReader<std::process::ChildStdout>,
+    stdout: Arc<Mutex<BufReader<std::process::ChildStdout>>>,
 }
 
 impl PythonService {
@@ -38,9 +41,9 @@ impl PythonService {
         let stdin = BufWriter::new(
             child.stdin.take().ok_or("Failed to capture stdin")?
         );
-        let stdout = BufReader::new(
+        let stdout = Arc::new(Mutex::new(BufReader::new(
             child.stdout.take().ok_or("Failed to capture stdout")?
-        );
+        )));
 
         Ok(Self { child, stdin, stdout })
     }
@@ -62,10 +65,34 @@ impl PythonService {
         self.stdin.flush()
             .map_err(|e| format!("Failed to flush: {}", e))?;
 
-        // Read response with timeout
-        let mut line = String::new();
-        self.stdout.read_line(&mut line)
-            .map_err(|e| format!("Failed to read response: {}", e))?;
+        // Read response with 15-second timeout protection
+        // Use channel-based approach to add timeout to blocking I/O
+        let (tx, rx) = mpsc::channel();
+        let stdout_clone = Arc::clone(&self.stdout);
+
+        thread::spawn(move || {
+            let mut line = String::new();
+            let result = match stdout_clone.lock() {
+                Ok(mut reader) => reader.read_line(&mut line),
+                Err(_) => {
+                    // Handle poisoned mutex (occurs if previous thread panicked while holding lock)
+                    // Send error through channel instead of propagating panic
+                    // This prevents deadlock and allows graceful error handling at the call site
+                    let _ = tx.send((String::new(), Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "Mutex poisoned"
+                    ))));
+                    return;
+                }
+            };
+            let _ = tx.send((line, result));
+        });
+
+        // Wait for result with timeout
+        let (line, read_result) = rx.recv_timeout(Duration::from_secs(15))
+            .map_err(|_| "RPC timeout: Python service did not respond within 15 seconds".to_string())?;
+
+        read_result.map_err(|e| format!("Failed to read response: {}", e))?;
 
         // Parse and validate response
         let response: Value = serde_json::from_str(&line)

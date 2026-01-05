@@ -23,6 +23,68 @@ declare -A MODELS=(
     [ralph]=haiku
 )
 
+# Helper: Count actual running spawned instances for an agent
+count_running_instances() {
+    local agent="$1"
+    if ! tmux list-sessions &>/dev/null; then
+        echo 0
+        return
+    fi
+    tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -c "^agent-${agent}-[0-9]" || echo 0
+}
+
+# Helper: Find next available instance number (checks for gaps from killed instances)
+find_next_available_instance() {
+    local agent="$1"
+
+    # Get all running instance numbers for this agent
+    local running_nums=()
+    if tmux list-sessions &>/dev/null; then
+        while IFS= read -r session; do
+            if [[ "$session" =~ ^agent-${agent}-([0-9]+)$ ]]; then
+                running_nums+=("${BASH_REMATCH[1]}")
+            fi
+        done < <(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^agent-${agent}-[0-9]")
+    fi
+
+    # If no instances running, start at 2 (or 1 if original agent doesn't exist)
+    if [[ ${#running_nums[@]} -eq 0 ]]; then
+        if tmux has-session -t "agent-${agent}" 2>/dev/null; then
+            echo 2
+        else
+            echo 1
+        fi
+        return
+    fi
+
+    # Sort the running instance numbers
+    IFS=$'\n' running_nums=($(sort -n <<<"${running_nums[*]}"))
+    unset IFS
+
+    # Find first gap in the sequence (starting from 2, or 1 if no original)
+    local start=2
+    if ! tmux has-session -t "agent-${agent}" 2>/dev/null; then
+        start=1
+    fi
+
+    for ((i=start; i<=MAX_INSTANCES; i++)); do
+        local found=false
+        for num in "${running_nums[@]}"; do
+            if [[ "$num" -eq "$i" ]]; then
+                found=true
+                break
+            fi
+        done
+        if [[ "$found" == false ]]; then
+            echo "$i"
+            return
+        fi
+    done
+
+    # No gaps found, return next sequential number
+    echo $((running_nums[-1] + 1))
+}
+
 spawn() {
     local agent="${1,,}"
     local force=false
@@ -45,27 +107,18 @@ spawn() {
         return 1
     fi
 
-    # Get next instance number from tmux option (defaults to 1 for standalone)
-    local next
-    if tmux list-sessions &>/dev/null; then
-        # Tmux server exists - check for existing instances
-        next=$(tmux show-options -gv "@${agent}_next" 2>/dev/null || echo 1)
+    # Count actual running instances (not just counter)
+    local running_count=$(count_running_instances "$agent")
 
-        # If original agent session exists, start from 2
-        if tmux has-session -t "agent-${agent}" 2>/dev/null && [[ "$next" -eq 1 ]]; then
-            next=2
-        fi
-    else
-        # No tmux server - first instance
-        next=1
-    fi
-
-    # Check instance limit (unless --force)
-    if [[ "$next" -gt "$MAX_INSTANCES" && "$force" != true ]]; then
-        echo "Error: Max instances ($MAX_INSTANCES) reached for $agent." >&2
+    # Check instance limit based on ACTUAL running instances (unless --force)
+    if [[ "$running_count" -ge "$MAX_INSTANCES" && "$force" != true ]]; then
+        echo "Error: Max instances ($MAX_INSTANCES) reached for $agent ($running_count currently running)." >&2
         echo "Use 'spawn $agent --force' to override." >&2
         return 1
     fi
+
+    # Find next available instance number (reuses gaps from killed instances)
+    local next=$(find_next_available_instance "$agent")
 
     local session="agent-${agent}-${next}"
     local agent_dir="$NOLAN_ROOT/app/agents/${agent}"
@@ -80,9 +133,6 @@ spawn() {
     # Create new tmux session and start Claude with model and set AGENT_NAME
     local cmd="export AGENT_NAME=$agent NOLAN_ROOT=\"$NOLAN_ROOT\" PROJECTS_DIR=\"$PROJECTS_DIR\" AGENT_DIR=\"$agent_dir\"; claude --dangerously-skip-permissions --model $model; exec bash"
     tmux new-session -d -s "$session" -c "$agent_dir" "$cmd"
-
-    # Increment counter for next spawn
-    tmux set-option -g "@${agent}_next" $((next + 1))
 
     echo "Spawning: $session..."
 
@@ -166,13 +216,10 @@ kill-instances() {
         }
     done < <(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^agent-${agent}-[0-9]")
 
-    # Reset counter
-    tmux set-option -g "@${agent}_next" 2
-
     if [[ "$killed" -eq 0 ]]; then
         echo "No spawned instances found for: $agent"
     else
-        echo "Killed $killed instance(s), counter reset"
+        echo "Killed $killed instance(s)"
 
         # Auto-notify communicator to reload aliases
         if tmux has-session -t communicator 2>/dev/null; then
@@ -277,13 +324,6 @@ shutdown-team() {
         fi
     done
 
-    # Reset counters
-    echo ""
-    echo "Resetting counters..."
-    for agent in ana bill carl dan enzo ralph; do
-        tmux set-option -g -u "@${agent}_next" 2>/dev/null || true
-    done
-
     echo ""
     echo "Closing windows..."
     # Kill terminals attached to our specific sessions
@@ -291,7 +331,6 @@ shutdown-team() {
     pkill -f "tmux attach -t history-log" 2>/dev/null && echo "  ✓ History Log window closed"
     pkill -f "tmux attach -t lifecycle" 2>/dev/null && echo "  ✓ Lifecycle window closed"
     pkill -f "tmux attach -t agent-dan" 2>/dev/null && echo "  ✓ Dan window closed"
-    pkill -f "terminator --maximize --layout=team" 2>/dev/null && echo "  ✓ Core Team Grid (Terminator) closed"
 
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

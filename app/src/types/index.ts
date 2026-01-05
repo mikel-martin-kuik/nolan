@@ -23,12 +23,12 @@ export const isValidAgentName = (name: string): name is AgentName => {
 };
 
 export const AGENT_DESCRIPTIONS: Record<AgentName, string> = {
-  ana: 'Research',
-  bill: 'Planning',
-  carl: 'Implementation',
-  dan: 'Scrum Master',
+  ana: 'Researcher',
+  bill: 'TechLead',
+  carl: 'Developer',
+  dan: 'Project Manager',
   enzo: 'QA',
-  ralph: 'Dummy',
+  ralph: 'Free Agent',
 };
 
 export const AGENT_COLORS: Record<AgentName, string> = {

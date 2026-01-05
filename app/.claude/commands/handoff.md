@@ -32,25 +32,29 @@ Before handing off to $2, verify:
 | Bill | plan.md | Overview, Tasks, Risks |
 | Carl | progress.md | Status, Changes, Tests |
 
-## Handoff Message Template
+## IMPORTANT: Message Sending
 
-Send to $2 using team aliases:
+⚠️ **DO NOT send a handoff message manually if you will be running /handoff.**
 
+This command handles message sending automatically. If you already sent a message via `dan '...'`,
+do NOT run these additional commands.
+
+## Handoff Execution
+
+After verification, complete the handoff in ONE of two ways:
+
+### Option A: RECOMMENDED - Use /handoff skill
 ```
-HANDOFF: $1 → $2
-Project: [project name]
-Phase: [phase] complete
-Status: COMPLETE | BLOCKED
-Output: $DOCS_PATH/[file]
-Summary: [2-3 sentence summary]
-Blockers: [none | description]
+/handoff $1 $2
 ```
+This automatically:
+- Adds handoff marker to your output file
+- Sends handoff notification to dan via team-aliases
+- No manual message needed
 
-## Action
+### Option B: Manual (if /handoff skill unavailable)
 
-After verification:
-
-1. **Add handoff marker to output file** (REQUIRED - enables stop):
+1. **Add handoff marker to output file:**
 ```bash
 case "$1" in
   ana|Ana) file="research.md";;
@@ -61,9 +65,11 @@ esac
 echo -e "\n---\n**Handoff:** Sent to dan at $(date '+%Y-%m-%d %H:%M')" >> "$DOCS_PATH/$file"
 ```
 
-2. **Send handoff message to dan:**
+2. **Send handoff message to dan (ONLY if not using skill):**
 ```bash
 source "$NOLAN_ROOT/app/scripts/team-aliases.sh" && dan 'HANDOFF: $1 → dan | Project: [name] | Status: COMPLETE | Output: $DOCS_PATH/[file]'
 ```
 
 **Note:** The stop hook will block until the handoff marker is added to your output file.
+
+**Critical:** Do not send the message twice. Choose either the skill OR manual commands, not both.

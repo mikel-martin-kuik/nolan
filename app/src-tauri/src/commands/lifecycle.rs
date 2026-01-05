@@ -376,7 +376,7 @@ pub struct AgentStatus {
 }
 
 /// Launch a terminal window attached to an agent session
-/// Supports both gnome-terminal (single sessions) and terminator (grid layout)
+/// Uses gnome-terminal for all sessions
 #[tauri::command]
 pub async fn launch_terminal(
     session: String,
@@ -385,52 +385,35 @@ pub async fn launch_terminal(
 ) -> Result<String, String> {
     use std::process::Command;
 
-    // Validate session name (unless it's "team" for terminator grid)
-    if session != "team" {
-        validate_agent_session(&session)?;
+    // Validate session name
+    validate_agent_session(&session)?;
 
-        // Verify session exists
-        if !crate::tmux::session::session_exists(&session)? {
-            return Err(format!("Session '{}' does not exist. Spawn the agent first.", session));
-        }
+    // Verify session exists
+    if !crate::tmux::session::session_exists(&session)? {
+        return Err(format!("Session '{}' does not exist. Spawn the agent first.", session));
     }
 
     // Determine title
     let window_title = title.unwrap_or_else(|| session.clone());
 
-    // Launch appropriate terminal emulator
-    match terminal_type.as_str() {
-        "gnome-terminal" => {
-            // Used for: spawned instances, Dan standalone
-            let result = Command::new("gnome-terminal")
-                .arg("--title")
-                .arg(&window_title)
-                .arg("--")
-                .arg("tmux")
-                .arg("attach")
-                .arg("-t")
-                .arg(&session)
-                .spawn();
+    // Launch gnome-terminal
+    if terminal_type != "gnome-terminal" {
+        return Err(format!("Invalid terminal type: '{}'. Only 'gnome-terminal' is supported.", terminal_type));
+    }
 
-            match result {
-                Ok(_) => Ok(format!("Launched gnome-terminal for {}", session)),
-                Err(e) => Err(format!("Failed to launch gnome-terminal: {}. Is gnome-terminal installed?", e))
-            }
-        }
-        "terminator" => {
-            // Used for: core team grid (Ana, Bill, Carl, Enzo)
-            // Note: Requires terminator layout configuration named "team"
-            let result = Command::new("terminator")
-                .arg("--maximize")
-                .arg("--layout=team")
-                .spawn();
+    let result = Command::new("gnome-terminal")
+        .arg("--title")
+        .arg(&window_title)
+        .arg("--")
+        .arg("tmux")
+        .arg("attach")
+        .arg("-t")
+        .arg(&session)
+        .spawn();
 
-            match result {
-                Ok(_) => Ok("Launched terminator grid for core team".to_string()),
-                Err(e) => Err(format!("Failed to launch terminator: {}. Is terminator installed with 'team' layout configured?", e))
-            }
-        }
-        _ => Err(format!("Invalid terminal type: '{}'. Supported: gnome-terminal, terminator", terminal_type))
+    match result {
+        Ok(_) => Ok(format!("Launched gnome-terminal for {}", session)),
+        Err(e) => Err(format!("Failed to launch gnome-terminal: {}. Is gnome-terminal installed?", e))
     }
 }
 
@@ -464,27 +447,51 @@ pub async fn open_agent_terminal(session: String) -> Result<String, String> {
     launch_terminal(session, "gnome-terminal".to_string(), Some(title)).await
 }
 
-/// Launch core team grid in terminator
+/// Launch individual terminals for core team agents
 #[tauri::command]
 pub async fn open_core_team_terminals() -> Result<String, String> {
+    use std::process::Command;
+
     // Verify at least some core agents are running
     let sessions = crate::tmux::session::list_sessions()?;
-    let core_sessions: Vec<_> = sessions
-        .iter()
-        .filter(|s| {
-            matches!(
-                s.as_str(),
-                "agent-ana" | "agent-bill" | "agent-carl" | "agent-enzo"
-            )
-        })
-        .collect();
+    let core_agents = ["agent-ana", "agent-bill", "agent-carl", "agent-enzo"];
 
-    if core_sessions.is_empty() {
+    let mut opened = Vec::new();
+    let mut errors = Vec::new();
+
+    for session in &core_agents {
+        if sessions.contains(&session.to_string()) {
+            // Extract agent name for title
+            let agent_name = session.strip_prefix("agent-").unwrap_or(session);
+            let title = format!("Agent: {}", agent_name);
+
+            // Launch gnome-terminal for this agent
+            let result = Command::new("gnome-terminal")
+                .arg("--title")
+                .arg(&title)
+                .arg("--")
+                .arg("tmux")
+                .arg("attach")
+                .arg("-t")
+                .arg(session)
+                .spawn();
+
+            match result {
+                Ok(_) => opened.push(session.to_string()),
+                Err(e) => errors.push(format!("{}: {}", session, e)),
+            }
+        }
+    }
+
+    if opened.is_empty() {
         return Err("No core team agents are running. Launch core team first.".to_string());
     }
 
-    // Launch terminator with team layout
-    launch_terminal("team".to_string(), "terminator".to_string(), None).await
+    if !errors.is_empty() {
+        return Err(format!("Some terminals failed to open: {}", errors.join(", ")));
+    }
+
+    Ok(format!("Opened {} core team terminals", opened.len()))
 }
 
 /// Send a command to an agent session (like /clear)

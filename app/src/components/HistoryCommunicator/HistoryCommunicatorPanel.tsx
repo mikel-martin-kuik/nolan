@@ -453,11 +453,24 @@ export const HistoryCommunicatorPanel: React.FC = () => {
   };
 
   return (
-    <div className="h-full flex overflow-hidden">
-      {/* Left Side - Sessions (2/3 width) */}
-      <div className="flex-[2] p-6 overflow-hidden">
-        {/* Log Entries Card */}
-        <div className="bg-card/50 backdrop-blur-xl border border-border rounded-2xl p-6 shadow-xl h-full flex flex-col">
+    <div className="h-full">
+      <div className="w-full space-y-6 h-full flex flex-col">
+        {/* Header */}
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground flex items-center gap-3">
+            History & Communicator
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            View session logs and communicate with agents
+          </p>
+        </div>
+
+        {/* Main Content */}
+        <div className="flex-1 flex overflow-hidden gap-6 min-h-0">
+          {/* Left Side - Sessions (2/3 width) */}
+          <div className="flex-[2] overflow-hidden">
+            {/* Log Entries Card */}
+            <div className="bg-card/50 backdrop-blur-xl border border-border rounded-2xl p-6 shadow-xl h-full flex flex-col">
           {/* Header with controls */}
           <div className="flex items-center justify-between mb-4 flex-shrink-0">
             <div className="flex items-center gap-2">
@@ -604,7 +617,7 @@ export const HistoryCommunicatorPanel: React.FC = () => {
       </div>
 
       {/* Right Side - Message Form (1/3 width) */}
-      <div className="flex-1 p-6 flex flex-col overflow-hidden gap-4">
+      <div className="flex-1 flex flex-col overflow-hidden gap-4">
         {/* Message form card */}
         <div className="bg-card/50 backdrop-blur-xl border border-border rounded-2xl p-6 shadow-xl flex-shrink-0">
           <MessageForm onMessageSent={handleMessageSent} />
@@ -642,9 +655,11 @@ export const HistoryCommunicatorPanel: React.FC = () => {
           </div>
         )}
       </div>
+        </div>
+      </div>
 
       {/* Detail popup overlay */}
-        {selectedEntry && (
+      {selectedEntry && (
           <div
             className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-8"
             onClick={() => setSelectedEntry(null)}

@@ -21,9 +21,6 @@ start_agent_session() {
         # 'exec bash' at the end ensures the session stays open if Claude exits
         local cmd="export AGENT_NAME=$name NOLAN_ROOT=\"$NOLAN_ROOT\" PROJECTS_DIR=\"$PROJECTS_DIR\" AGENT_DIR=\"$agent_dir\"; claude --dangerously-skip-permissions --model $model; exec bash"
         tmux new-session -d -s "$session" -c "$agent_dir" "$cmd"
-
-        # Initialize instance counter for spawning additional instances
-        tmux set-option -g "@${name}_next" 2
     fi
 }
 
@@ -41,16 +38,6 @@ start_agent_session "enzo" "sonnet"
 # -------------------------------------------------------
 if ! pgrep -f "tmux attach -t agent-dan" >/dev/null; then
     gnome-terminal --title="Dan (Scrum Master)" -- tmux attach -t "agent-dan"
-fi
-
-# 3. Launch Core Team Grid (Ana, Bill, Carl, Enzo)
-# -------------------------------------------------------
-if ! pgrep -f "terminator --maximize --layout=team" > /dev/null; then
-    echo "Launching Core Team Grid (Terminator)..."
-    # Terminator layout attaches to the sessions started above
-    terminator --maximize --layout=team &
-else
-    echo "Core Team Grid already active."
 fi
 
 echo "Core team launch initiated."

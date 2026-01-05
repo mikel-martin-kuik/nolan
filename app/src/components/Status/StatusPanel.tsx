@@ -4,7 +4,7 @@ import { useToastStore } from '../../store/toastStore';
 import { AgentCard } from '../shared/AgentCard';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
 import { Tooltip } from '../ui/tooltip';
-import { Users, Terminal, Play, XCircle, Plus, LayoutGrid } from 'lucide-react';
+import { Users, Terminal, Play, XCircle, Plus, LayoutGrid, ArrowRight, ArrowDown } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { AGENT_COLORS, AGENT_DESCRIPTIONS } from '@/types';
 import type { AgentName } from '@/types';
@@ -17,17 +17,16 @@ export const StatusPanel: React.FC = () => {
     launchCore,
     killCore,
     spawnAgent,
+    killAllInstances,
     loading,
     setupEventListeners
   } = useAgentStore();
   const { error: showError } = useToastStore();
 
-  // Spawn agent selector state
-  const [showSpawnSelector, setShowSpawnSelector] = useState(false);
-
   // Confirmation dialog states
   const [showLaunchDialog, setShowLaunchDialog] = useState(false);
   const [showKillDialog, setShowKillDialog] = useState(false);
+  const [showKillRalphDialog, setShowKillRalphDialog] = useState(false);
 
   // Setup event listeners and auto-refresh status
   useEffect(() => {
@@ -104,7 +103,6 @@ export const StatusPanel: React.FC = () => {
 
   // Handler for spawning any agent type
   const handleSpawnAgent = async (agentName: AgentName) => {
-    setShowSpawnSelector(false);
     try {
       await spawnAgent(agentName, false);
 
@@ -152,153 +150,240 @@ export const StatusPanel: React.FC = () => {
     }
   };
 
-  // Available agents for spawning (all 6)
-  const spawnableAgents: AgentName[] = ['ana', 'bill', 'carl', 'dan', 'enzo', 'ralph'];
+  // Handler for killing all Ralph instances
+  const handleKillAllRalph = () => {
+    setShowKillRalphDialog(true);
+  };
+
+  const handleConfirmKillRalph = async () => {
+    try {
+      await killAllInstances('ralph');
+    } catch (error) {
+      console.error('Failed to kill Ralph instances:', error);
+      showError(`Failed to kill Ralph instances: ${error}`);
+    }
+  };
+
+  // Handler for opening all Ralph terminals
+  const handleOpenAllRalphTerminals = async () => {
+    try {
+      // Get all Ralph sessions (core + spawned)
+      const ralphSessions = [
+        ...coreAgents.filter(a => a.name === 'ralph' && a.active).map(a => a.session),
+        ...spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).map(s => s.session)
+      ];
+
+      if (ralphSessions.length === 0) {
+        showError('No Ralph agents are running');
+        return;
+      }
+
+      // Open terminal for each Ralph session
+      for (const session of ralphSessions) {
+        try {
+          await invoke('open_agent_terminal', { session });
+        } catch (terminalError) {
+          console.error(`Failed to open terminal for ${session}:`, terminalError);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to open Ralph terminals:', error);
+      showError(`Failed to open Ralph terminals: ${error}`);
+    }
+  };
 
   return (
-    <div className="p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
+    <div className="h-full flex justify-center">
+      <div className="w-full max-w-[1600px] flex flex-col gap-6">
         {/* Header */}
         <div>
           <h1 className="text-2xl font-semibold text-foreground flex items-center gap-3">
-            Dashboard
+            Organization
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
             Monitor all your available agents
           </p>
+
+          {/* Organization Control Buttons */}
+          <div className="flex gap-1.5 mt-4">
+            <Tooltip content="Launch" side="bottom">
+              <button
+                onClick={handleLaunchCoreClick}
+                disabled={loading || allCoreActive}
+                className="w-9 h-9 rounded-xl flex items-center justify-center
+                  bg-secondary/50 border border-border text-muted-foreground
+                  hover:bg-emerald-500/10 hover:border-emerald-400/20 hover:text-emerald-500
+                  active:scale-95 transition-all duration-200
+                  disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
+              >
+                <Play className="w-4 h-4" />
+              </button>
+            </Tooltip>
+            <Tooltip content="Kill" side="bottom">
+              <button
+                onClick={handleKillCoreClick}
+                disabled={loading || !anyCoreActive}
+                className="w-9 h-9 rounded-xl flex items-center justify-center
+                  bg-secondary/50 border border-border text-muted-foreground
+                  hover:bg-red-500/10 hover:border-red-400/20 hover:text-red-500
+                  active:scale-95 transition-all duration-200
+                  disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
+              >
+                <XCircle className="w-4 h-4" />
+              </button>
+            </Tooltip>
+            <Tooltip content="Terminals" side="bottom">
+              <button
+                onClick={handleShowTerminals}
+                disabled={loading || !anyCoreActive}
+                className="w-9 h-9 rounded-xl flex items-center justify-center
+                  bg-secondary/50 border border-border text-muted-foreground
+                  hover:bg-accent hover:border-border hover:text-foreground
+                  active:scale-95 transition-all duration-200
+                  disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+            </Tooltip>
+          </div>
         </div>
 
-        {/* Core Team Status */}
-        <div className="bg-card/50 backdrop-blur-xl border border-border rounded-2xl p-6 shadow-xl">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Users className="w-5 h-5 text-primary" />
-              <h2 className="text-xl font-semibold text-foreground">Core Team Status</h2>
-            </div>
-            <div className="flex gap-1.5">
-              <Tooltip content="Launch" side="bottom">
-                <button
-                  onClick={handleLaunchCoreClick}
-                  disabled={loading || allCoreActive}
-                  className="w-9 h-9 rounded-xl flex items-center justify-center
-                    bg-secondary/50 border border-border text-muted-foreground
-                    hover:bg-emerald-500/10 hover:border-emerald-400/20 hover:text-emerald-500
-                    active:scale-95 transition-all duration-200
-                    disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
-                >
-                  <Play className="w-4 h-4" />
-                </button>
-              </Tooltip>
-              <Tooltip content="Kill" side="bottom">
-                <button
-                  onClick={handleKillCoreClick}
-                  disabled={loading || !anyCoreActive}
-                  className="w-9 h-9 rounded-xl flex items-center justify-center
-                    bg-secondary/50 border border-border text-muted-foreground
-                    hover:bg-red-500/10 hover:border-red-400/20 hover:text-red-500
-                    active:scale-95 transition-all duration-200
-                    disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
-                >
-                  <XCircle className="w-4 h-4" />
-                </button>
-              </Tooltip>
-              <Tooltip content="Terminals" side="bottom">
-                <button
-                  onClick={handleShowTerminals}
-                  disabled={loading || !anyCoreActive}
-                  className="w-9 h-9 rounded-xl flex items-center justify-center
-                    bg-secondary/50 border border-border text-muted-foreground
-                    hover:bg-accent hover:border-border hover:text-foreground
-                    active:scale-95 transition-all duration-200
-                    disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
-                >
-                  <LayoutGrid className="w-4 h-4" />
-                </button>
-              </Tooltip>
+        {/* Scrum Master - Dan (Coordinator) */}
+        <div>
+            <div className="flex justify-center">
+              <div className="w-full max-w-[260px]">
+                {coreAgents.filter(a => a.name === 'dan').map((agent) => (
+                  <AgentCard
+                    key={agent.name}
+                    agent={agent}
+                    variant="dashboard"
+                    showActions={true}
+                  />
+                ))}
+              </div>
             </div>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {coreAgents.map((agent) => (
-              <AgentCard
-                key={agent.name}
-                agent={agent}
-                variant="dashboard"
-                showActions={true}
-              />
-            ))}
 
-            {/* Empty spacer for grid alignment */}
-            <div className="hidden lg:block" />
+          {/* Arrow separator */}
+          <div className="flex justify-center py-6">
+            <ArrowDown className="w-6 h-6 text-primary/40" />
+          </div>
 
-            {/* Spawn Agent Button - ultra minimal, centered below Enzo */}
-            <div className="relative col-span-1 md:col-start-1 lg:col-start-2">
-              <Tooltip content="Spawn" side="bottom">
-                <button
-                  onClick={() => setShowSpawnSelector(!showSpawnSelector)}
-                  disabled={loading}
-                  className="w-full h-12 rounded-xl flex items-center justify-center
-                    bg-card/20 border border-dashed border-border opacity-60
-                    text-muted-foreground
-                    hover:opacity-80 hover:border-purple-400/40 hover:bg-purple-500/5
-                    active:scale-[0.98] transition-all duration-200
-                    disabled:opacity-30 disabled:cursor-not-allowed"
-                  aria-label="Spawn new agent instance"
-                >
-                  <Plus className="w-5 h-5" />
-                </button>
-              </Tooltip>
-
-              {/* Agent selection dropdown */}
-              {showSpawnSelector && (
-                <div className="absolute bottom-full left-0 mb-2 w-56 bg-popover/95 backdrop-blur-xl border border-border rounded-2xl shadow-xl z-50">
-                  <div className="p-2">
-                    <div className="text-xs text-muted-foreground px-3 py-2 border-b border-border mb-2">
-                      Select agent to spawn
+          {/* Workflow Agents */}
+          <div>
+            <div className="flex flex-wrap justify-center gap-4 lg:gap-12">
+              {['ana', 'bill', 'enzo', 'carl'].map((agentName, index) => {
+                const agent = coreAgents.find(a => a.name === agentName);
+                return agent ? (
+                  <React.Fragment key={agent.name}>
+                    <div className="w-full sm:w-[260px] flex-shrink-0">
+                      <AgentCard
+                        agent={agent}
+                        variant="dashboard"
+                        showActions={true}
+                      />
                     </div>
-                    {spawnableAgents.map((agentName) => (
-                      <button
-                        key={agentName}
-                        onClick={() => handleSpawnAgent(agentName)}
-                        className="w-full flex items-center gap-3 px-3 py-2 hover:bg-accent rounded-xl text-left"
-                      >
-                        <div
-                          className={`w-3 h-3 rounded-full ${AGENT_COLORS[agentName as keyof typeof AGENT_COLORS] || 'bg-gray-500'}`}
-                        />
-                        <div>
-                          <span className="text-foreground capitalize font-medium">{agentName}</span>
-                          <p className="text-xs text-muted-foreground">
-                            {AGENT_DESCRIPTIONS[agentName as keyof typeof AGENT_DESCRIPTIONS] || ''}
-                          </p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+                    {index < 3 && (
+                      <div className="hidden lg:flex items-center justify-center flex-shrink-0">
+                        <ArrowRight className="w-6 h-6 text-primary/40" />
+                      </div>
+                    )}
+                  </React.Fragment>
+                ) : null;
+              })}
             </div>
           </div>
-        </div>
 
-        {/* Spawned Agents Status - only show when there are spawned sessions */}
-        {spawnedSessions.length > 0 && (
-          <div className="bg-card/50 backdrop-blur-xl border border-border rounded-2xl p-6 shadow-xl">
-            <div className="flex items-center gap-2 mb-4">
-              <Terminal className="w-5 h-5 text-purple-500" />
-              <h2 className="text-base font-semibold text-foreground">Spawned Agents Status</h2>
-              <span className="text-sm text-muted-foreground">({spawnedSessions.length})</span>
+          {/* Ralph - Free Agent */}
+          <div className="mt-auto pt-8">
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-3 flex-1">
+                <div className="h-px flex-1 bg-border/50" />
+                <span className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/30 border border-border/40">
+                  <Users className="w-3.5 h-3.5" />
+                  <span>Free Agents</span>
+                  {spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
+                      {1 + spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length}
+                    </span>
+                  )}
+                </span>
+                <div className="h-px flex-1 bg-border/50" />
+              </div>
+
+              {/* Free Agent Control Buttons */}
+              <div className="flex gap-1.5 ml-4">
+                <Tooltip content="Kill All" side="top">
+                  <button
+                    onClick={handleKillAllRalph}
+                    disabled={loading || (!coreAgents.some(a => a.name === 'ralph' && a.active) && spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length === 0)}
+                    className="w-9 h-9 rounded-xl flex items-center justify-center
+                      bg-secondary/50 border border-border text-muted-foreground
+                      hover:bg-red-500/10 hover:border-red-400/20 hover:text-red-500
+                      active:scale-95 transition-all duration-200
+                      disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
+                  >
+                    <XCircle className="w-4 h-4" />
+                  </button>
+                </Tooltip>
+                <Tooltip content="Terminals" side="top">
+                  <button
+                    onClick={handleOpenAllRalphTerminals}
+                    disabled={loading || (!coreAgents.some(a => a.name === 'ralph' && a.active) && spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length === 0)}
+                    className="w-9 h-9 rounded-xl flex items-center justify-center
+                      bg-secondary/50 border border-border text-muted-foreground
+                      hover:bg-accent hover:border-border hover:text-foreground
+                      active:scale-95 transition-all duration-200
+                      disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                  </button>
+                </Tooltip>
+              </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {spawnedWithInstances.map((agent) => (
-                <AgentCard
-                  key={agent.session}
-                  agent={agent}
-                  variant="dashboard"
-                  instanceNumber={agent.instanceNumber}
-                />
+            <div className="flex flex-wrap justify-center gap-4">
+              {/* Core Ralph */}
+              {coreAgents.filter(a => a.name === 'ralph').map((agent) => (
+                <div key={agent.name} className="w-full sm:w-[260px] flex-shrink-0">
+                  <AgentCard
+                    agent={agent}
+                    variant="dashboard"
+                    showActions={true}
+                  />
+                </div>
               ))}
+
+              {/* Spawned Ralph instances */}
+              {spawnedWithInstances
+                .filter(agent => agent.session.startsWith('agent-ralph-'))
+                .map((agent) => (
+                  <div key={agent.session} className="w-full sm:w-[260px] flex-shrink-0">
+                    <AgentCard
+                      agent={agent}
+                      variant="dashboard"
+                      instanceNumber={agent.instanceNumber}
+                    />
+                  </div>
+                ))}
+
+              {/* Spawn Ralph Button */}
+              <div className="w-full sm:w-[260px] flex-shrink-0">
+                <button
+                  onClick={() => handleSpawnAgent('ralph')}
+                  disabled={loading}
+                  className="w-full min-h-[160px] transition-all duration-200 rounded-xl backdrop-blur-sm
+                    cursor-pointer active:scale-[0.98]
+                    bg-card/60 border border-dashed border-border/60
+                    hover:bg-card/80 hover:border-purple-400/40
+                    disabled:opacity-30 disabled:cursor-not-allowed
+                    flex items-center justify-center"
+                  aria-label="Spawn new Ralph instance"
+                >
+                  <Plus className="w-8 h-8 text-foreground/50" />
+                </button>
+              </div>
             </div>
           </div>
-        )}
 
       </div>
 
@@ -322,6 +407,18 @@ export const StatusPanel: React.FC = () => {
         confirmLabel="Kill All"
         cancelLabel="Cancel"
         onConfirm={handleConfirmKill}
+        variant="destructive"
+      />
+
+      {/* Kill All Ralph confirmation dialog */}
+      <ConfirmDialog
+        open={showKillRalphDialog}
+        onOpenChange={setShowKillRalphDialog}
+        title="Kill All Free Agents"
+        description="This will terminate all Ralph instances (core and spawned). Are you sure?"
+        confirmLabel="Kill All"
+        cancelLabel="Cancel"
+        onConfirm={handleConfirmKillRalph}
         variant="destructive"
       />
     </div>

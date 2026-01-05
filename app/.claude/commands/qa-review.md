@@ -100,4 +100,7 @@ Overall quality: [assessment]
 ## When Complete
 
 1. Update qa-review.md with final findings
-2. **IMMEDIATELY execute `/handoff enzo dan`** - do NOT wait for user input
+2. Add handoff marker and send notification:
+   - **Execute `/handoff enzo dan`** - this handles everything automatically
+   - OR manually: add marker + send message (see /handoff command for details)
+3. **Do NOT send a separate message via team-aliases before running /handoff** - it causes duplication

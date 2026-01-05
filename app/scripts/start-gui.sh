@@ -35,9 +35,6 @@ check_dependencies() {
     if ! command -v gnome-terminal &> /dev/null; then
         echo -e "${YELLOW}⚠ Warning: gnome-terminal not found. Agent terminal launching will fail.${NC}"
     fi
-    if ! command -v terminator &> /dev/null; then
-        echo -e "${YELLOW}⚠ Warning: terminator not found. Core team grid launching will fail.${NC}"
-    fi
 
     if [ ${#missing[@]} -ne 0 ]; then
         echo -e "${RED}✗ Missing required dependencies:${NC}"

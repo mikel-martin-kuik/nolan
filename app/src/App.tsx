@@ -71,7 +71,7 @@ function App() {
               </aside>
 
               {/* Main content */}
-              <main className="flex-1 overflow-auto">
+              <main className="flex-1 overflow-auto p-6">
                 {activeTab === 'status' && <StatusPanel />}
                 {activeTab === 'history-communicator' && <HistoryCommunicatorPanel />}
                 {activeTab === 'projects' && <ProjectsPanel />}

@@ -13,23 +13,6 @@ NOLAN_APP_ROOT="$SCRIPT_DIR"
 echo "Detected Nolan app root: $NOLAN_APP_ROOT"
 echo ""
 
-# Generate terminator_config from template
-if [ -f "$NOLAN_APP_ROOT/terminator_config.template" ]; then
-    echo "Generating terminator_config..."
-    # Use awk instead of sed - safer with special characters (|, &, \, etc.)
-    awk -v root="$NOLAN_APP_ROOT" '{gsub(/{{NOLAN_APP_ROOT}}/, root)}1' \
-        "$NOLAN_APP_ROOT/terminator_config.template" \
-        > "$NOLAN_APP_ROOT/terminator_config"
-    echo "✓ terminator_config generated at:"
-    echo "  $NOLAN_APP_ROOT/terminator_config"
-else
-    echo "ERROR: terminator_config.template not found"
-    echo "Expected at: $NOLAN_APP_ROOT/terminator_config.template"
-    exit 1
-fi
-
-echo ""
-
 # Verify critical directories exist
 echo "Verifying directory structure..."
 MISSING_DIRS=()

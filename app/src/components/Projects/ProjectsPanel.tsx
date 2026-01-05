@@ -44,9 +44,22 @@ export function ProjectsPanel() {
   const currentProjects = groupedProjects[activeTab] || [];
 
   return (
-    <div className="h-full flex overflow-hidden">
-      {/* Left: Project List with Tabs */}
-      <div className="w-1/3 pr-4 flex flex-col overflow-hidden">
+    <div className="h-full">
+      <div className="w-full space-y-6 h-full flex flex-col">
+        {/* Header */}
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground flex items-center gap-3">
+            Projects
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            Manage and track your team projects
+          </p>
+        </div>
+
+        {/* Main Content */}
+        <div className="flex-1 flex overflow-hidden gap-6 min-h-0">
+          {/* Left: Project List with Tabs */}
+          <div className="w-1/3 flex flex-col overflow-hidden">
         {/* Tab Bar */}
         <div className="flex gap-1 mb-3 bg-card/30 p-1 rounded-xl">
           {TABS.map((tab) => {
@@ -96,6 +109,8 @@ export function ProjectsPanel() {
           project={selectedProject}
           file={selectedFile}
         />
+      </div>
+        </div>
       </div>
     </div>
   );

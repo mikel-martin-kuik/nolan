@@ -95,4 +95,7 @@ You are Bill, the planning agent. Your task:
 ## When Complete
 
 1. Update plan.md with final implementation plan
-2. **IMMEDIATELY execute `/handoff bill dan`** - do NOT wait for user input
+2. Add handoff marker and send notification:
+   - **Execute `/handoff bill dan`** - this handles everything automatically
+   - OR manually: add marker + send message (see /handoff command for details)
+3. **Do NOT send a separate message via team-aliases before running /handoff** - it causes duplication

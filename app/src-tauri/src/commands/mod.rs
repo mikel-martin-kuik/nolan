@@ -4,14 +4,12 @@ pub mod history;
 pub mod sessions;
 pub mod projects;
 
-// Whitelist of allowed scripts (add more as needed)
+// Whitelist of allowed scripts that Tauri can execute
+// Note: kill-core.sh and spawn-agent.sh have been migrated to native Rust and can be deleted
+// team-aliases.sh is NOT called by Tauri but is still sourced by agent CLI tooling (hooks, commands)
 const ALLOWED_SCRIPTS: &[&str] = &[
-    "launch-core.sh",
-    "kill-core.sh",
-    "spawn-agent.sh",
-    "lifecycle-manager.sh",
-    "communicator-ui.sh",
-    "tail-history.sh",
+    // Currently no scripts needed - all lifecycle/messaging is native
+    // Add scripts here if needed for future features
 ];
 
 /// Execute a script with security validation

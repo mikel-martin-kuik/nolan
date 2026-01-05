@@ -153,8 +153,8 @@ export const SessionCard: React.FC<SessionCardProps> = ({
   return (
     <div
       onClick={handleCardClick}
-      className={`bg-card/50 backdrop-blur-xl border border-border rounded-2xl shadow-xl flex flex-col overflow-hidden transition-all duration-200 ${
-        isExpanded ? 'h-[250px]' : 'min-h-[auto] cursor-pointer hover:bg-card/80 hover:border-border/80'
+      className={`glass-card rounded-2xl flex flex-col overflow-hidden transition-all duration-200 ${
+        isExpanded ? 'h-[250px]' : 'min-h-[auto] cursor-pointer'
       }`}
     >
       {/* Session header */}

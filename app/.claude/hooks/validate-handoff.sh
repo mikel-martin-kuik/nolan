@@ -57,6 +57,14 @@ case "$file_path" in
         ;;
     */NOTES.md)
         check_sections "$content" "## Current Status" "## Log"
+        # Warn if content indicates completion but lacks structured marker
+        if echo "$content" | grep -qiE '\*\*(Status|Phase)\*?\*?:.*\b(COMPLETE|CLOSED|DEPLOYED|PRODUCTION.READY)\b'; then
+            if ! echo "$content" | grep -q '<!-- PROJECT:STATUS:'; then
+                echo "SUGGESTION: Project appears complete but lacks structured marker." >&2
+                echo "  Add: <!-- PROJECT:STATUS:COMPLETE:$(date +%Y-%m-%d) -->" >&2
+                echo "  This improves status detection reliability." >&2
+            fi
+        fi
         ;;
     */qa-review.md)
         check_sections "$content" "## Summary" "## Findings" "## Recommendation"

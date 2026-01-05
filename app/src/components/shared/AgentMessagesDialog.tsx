@@ -61,7 +61,7 @@ export const AgentMessagesDialog: React.FC<AgentMessagesDialogProps> = ({
           onClick={() => setSelectedEntry(null)}
         >
           <div
-            className="bg-card/95 backdrop-blur-xl border border-border rounded-2xl shadow-2xl w-full max-w-5xl h-[60vh] flex flex-col"
+            className="glass-card glass-active rounded-2xl w-full max-w-5xl h-[60vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Popup header */}

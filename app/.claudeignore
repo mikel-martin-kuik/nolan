@@ -1,0 +1,3 @@
+# Block agents from reading implementation details
+# They only need to know the interface (documented in CLAUDE.md)
+scripts/team-aliases.sh

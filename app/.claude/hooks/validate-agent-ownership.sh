@@ -1,13 +1,14 @@
 #!/bin/bash
 #
-# PreToolUse hook: Blocks Ana/Bill/Enzo from writing outside their lane.
+# PreToolUse hook: Enforces agent file ownership and restrictions.
 #
 # Ownership rules:
-#   ana  → research.md only
-#   bill → plan.md only
-#   enzo → qa-review.md only
-#   carl → permissive (implementation files)
-#   dan  → permissive (coordination files)
+#   ana   → research.md only (in projects dir)
+#   bill  → plan.md only (in projects dir)
+#   enzo  → qa-review.md only (in projects dir)
+#   carl  → permissive (implementation files)
+#   dan   → permissive (coordination files)
+#   ralph → RESTRICTED: no projects dir, no protected files
 #
 # Exit codes:
 #   0 - Allow write
@@ -47,8 +48,8 @@ get_agent_name() {
         echo "$CLAUDE_AGENT"
         return
     fi
-    # Unknown agent - allow by default
-    echo "unknown"
+    # Unknown agent - return empty to trigger validation
+    echo ""
 }
 
 agent=$(get_agent_name)
@@ -74,8 +75,28 @@ case "$agent" in
             exit 2
         fi
         ;;
-    carl|dan|unknown)
-        # Permissive - allow all writes
+    carl|dan)
+        # Permissive - allow all writes for implementation/coordination agents
+        ;;
+    ralph)
+        # Ralph: utility agent with restrictions
+        # Cannot write to projects directory (where workflow outputs live)
+        projects_dir="${PROJECTS_DIR:-$HOME/nolan/projects}"
+        if [[ "$file_path" == "$projects_dir"* ]]; then
+            echo "BLOCKED: Ralph cannot write to projects directory: $file_path" >&2
+            exit 2
+        fi
+        # Allow other writes (app code, scripts, commands, etc.)
+        ;;
+    "")
+        # Unknown agent - block writes to protected files
+        case "$filename" in
+            research.md|plan.md|progress.md|qa-review.md|NOTES.md)
+                echo "BLOCKED: Unknown agent cannot write to $filename. Set AGENT_NAME environment variable." >&2
+                exit 2
+                ;;
+        esac
+        # Allow writes to other files (non-protected)
         ;;
 esac
 

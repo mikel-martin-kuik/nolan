@@ -8,6 +8,9 @@ allowed-tools: Read, Bash(cat:*), Bash(ls:*), Bash(find:*)
 ## Environment
 !`echo "DOCS_PATH=$PROJECTS_DIR/$1"`
 
+## Status Detection
+!`notes="$PROJECTS_DIR/$1/NOTES.md"; if [ ! -f "$notes" ]; then echo "**Status:** PENDING (no NOTES.md)"; elif grep -q '<!-- PROJECT:STATUS:COMPLETE' "$notes"; then marker=$(grep '<!-- PROJECT:STATUS:' "$notes" | head -1); echo "**Status:** COMPLETE (structured marker)"; echo "Marker: $marker"; elif grep -qiE '\*\*(Status|Phase)\*?\*?:.*\b(COMPLETE|CLOSED|DEPLOYED|PRODUCTION.READY)\b' "$notes"; then echo "**Status:** COMPLETE (detected from content)"; echo "Consider adding structured marker: \`<!-- PROJECT:STATUS:COMPLETE:$(date +%Y-%m-%d) -->\`"; else echo "**Status:** ACTIVE"; fi`
+
 ## NOTES.md
 !`docs_path="$PROJECTS_DIR/$1"; if [ -f "$docs_path/NOTES.md" ]; then cat "$docs_path/NOTES.md"; else echo "No NOTES.md found at $docs_path"; fi`
 

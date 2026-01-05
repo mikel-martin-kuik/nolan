@@ -4,57 +4,75 @@
 
 @layer base {
   :root {
-    --background: 214 32% 91%;
-    --foreground: 222 47% 11%;
-    --card: 210 40% 96%;
-    --card-foreground: 222 47% 11%;
-    --popover: 210 40% 96%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 221 83% 53%;
+    --background: 0 0% 94%;
+    --foreground: 0 0% 7%;
+    --card: 0 0% 98%;
+    --card-foreground: 0 0% 7%;
+    --popover: 0 0% 98%;
+    --popover-foreground: 0 0% 7%;
+    --primary: 157 100% 36%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 214 32% 86%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 214 32% 86%;
-    --muted-foreground: 215 16% 40%;
-    --accent: 214 32% 86%;
-    --accent-foreground: 222 47% 11%;
+    --secondary: 0 0% 94%;
+    --secondary-foreground: 0 0% 7%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 40%;
+    --accent: 0 0% 92%;
+    --accent-foreground: 0 0% 7%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 214 32% 82%;
-    --input: 214 32% 82%;
-    --ring: 221 83% 53%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-    --radius: 0.5rem
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 157 100% 36%;
+    --chart-1: 157 100% 36%;
+    --chart-2: 157 80% 28%;
+    --chart-3: 157 60% 20%;
+    --chart-4: 0 0% 50%;
+    --chart-5: 0 0% 30%;
+    --radius: 0.5rem;
+    /* Glassmorphism - Light mode */
+    --glass-bg: rgba(255, 255, 255, 0.6);
+    --glass-bg-hover: rgba(255, 255, 255, 0.75);
+    --glass-border: rgba(255, 255, 255, 0.8);
+    --glass-border-hover: rgba(255, 255, 255, 0.95);
+    --glass-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.08), 0 2px 8px -1px rgba(0, 0, 0, 0.04);
+    --glass-shadow-hover: 0 8px 32px -2px rgba(0, 0, 0, 0.12), 0 4px 16px -2px rgba(0, 0, 0, 0.06);
+    --glass-shadow-active: 0 12px 40px -4px rgba(0, 0, 0, 0.15), 0 6px 20px -4px rgba(0, 0, 0, 0.08);
+    --glass-inset: inset 0 1px 1px rgba(255, 255, 255, 0.9)
   }
   .dark {
-    --background: 222 47% 11%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 14%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222 47% 14%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 222 47% 11%;
-    --secondary: 217 33% 20%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 20%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 20%;
-    --accent-foreground: 210 40% 98%;
+    --background: 0 0% 10%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 12%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 12%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 157 85% 45%;
+    --primary-foreground: 0 0% 7%;
+    --secondary: 0 0% 19%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 19%;
+    --muted-foreground: 0 0% 65%;
+    --accent: 0 0% 22%;
+    --accent-foreground: 0 0% 98%;
     --destructive: 0 62% 30%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217 33% 22%;
-    --input: 217 33% 22%;
-    --ring: 217 91% 60%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 25%;
+    --input: 0 0% 25%;
+    --ring: 157 85% 45%;
+    --chart-1: 157 85% 45%;
+    --chart-2: 157 70% 35%;
+    --chart-3: 157 55% 25%;
+    --chart-4: 0 0% 60%;
+    --chart-5: 0 0% 40%;
+    /* Glassmorphism - Dark mode */
+    --glass-bg: rgba(255, 255, 255, 0.05);
+    --glass-bg-hover: rgba(255, 255, 255, 0.08);
+    --glass-border: rgba(255, 255, 255, 0.1);
+    --glass-border-hover: rgba(255, 255, 255, 0.18);
+    --glass-shadow: 0 4px 24px -1px rgba(0, 0, 0, 0.4), 0 2px 8px -1px rgba(0, 0, 0, 0.3);
+    --glass-shadow-hover: 0 8px 32px -2px rgba(0, 0, 0, 0.5), 0 4px 16px -2px rgba(0, 0, 0, 0.35);
+    --glass-shadow-active: 0 12px 40px -4px rgba(0, 0, 0, 0.6), 0 6px 20px -4px rgba(0, 0, 0, 0.4);
+    --glass-inset: inset 0 1px 1px rgba(255, 255, 255, 0.08)
   }
 }
 
@@ -64,5 +82,69 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@layer components {
+  /* Glassmorphism card component */
+  .glass-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow), var(--glass-inset);
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+  }
+
+  .glass-card:hover {
+    background: var(--glass-bg-hover);
+    border-color: var(--glass-border-hover);
+    box-shadow: var(--glass-shadow-hover), var(--glass-inset);
+  }
+
+  .glass-card.glass-active {
+    box-shadow: var(--glass-shadow-active), var(--glass-inset);
+  }
+
+  .glass-card.glass-active:hover {
+    box-shadow: var(--glass-shadow-active), var(--glass-inset);
+  }
+
+  /* Collapsible sections styling */
+  .prose details {
+    @apply my-4 rounded-lg border border-border bg-accent/30;
+  }
+
+  .prose details summary {
+    @apply px-4 py-2 cursor-pointer font-medium select-none;
+    @apply hover:bg-accent/50 rounded-lg transition-colors;
+  }
+
+  .prose details[open] summary {
+    @apply border-b border-border rounded-b-none;
+  }
+
+  .prose details > *:not(summary) {
+    @apply px-4;
+  }
+
+  .prose details > *:last-child {
+    @apply pb-4;
+  }
+
+  /* Heading anchor links */
+  .prose .heading-anchor {
+    @apply no-underline text-inherit;
+  }
+
+  .prose h1:hover .heading-anchor::after,
+  .prose h2:hover .heading-anchor::after,
+  .prose h3:hover .heading-anchor::after,
+  .prose h4:hover .heading-anchor::after {
+    content: ' #';
+    @apply text-muted-foreground opacity-50;
+  }
+
+  .prose h1, .prose h2, .prose h3, .prose h4 {
+    @apply scroll-mt-4;
   }
 }

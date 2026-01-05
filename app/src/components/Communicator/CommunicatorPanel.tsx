@@ -43,12 +43,12 @@ export const CommunicatorPanel: React.FC = () => {
   }, [quickMessage]);
 
   return (
-    <div className="min-h-screen bg-gray-900 p-6">
+    <div className="min-h-screen bg-background p-6">
       <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-white">Communicator</h1>
-          <p className="text-sm text-gray-400 mt-1">
+          <h1 className="text-3xl font-bold text-foreground">Communicator</h1>
+          <p className="text-sm text-muted-foreground mt-1">
             Send messages to agents via tmux sessions
           </p>
         </div>
@@ -56,8 +56,8 @@ export const CommunicatorPanel: React.FC = () => {
         {/* Main content grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Left column: Message form */}
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-            <h2 className="text-xl font-semibold text-white mb-4">Send Message</h2>
+          <div className="glass-card rounded-2xl p-6">
+            <h2 className="text-xl font-semibold text-foreground mb-4">Send Message</h2>
             <MessageForm
               onMessageSent={handleMessageSent}
               key={quickMessage} // Force re-render when quick message changes
@@ -65,15 +65,15 @@ export const CommunicatorPanel: React.FC = () => {
           </div>
 
           {/* Right column: Quick actions */}
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
+          <div className="glass-card rounded-2xl p-6">
             <QuickActions onQuickMessage={handleQuickMessage} />
           </div>
         </div>
 
         {/* Message history */}
         {messageHistory.length > 0 && (
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-6">
-            <h2 className="text-xl font-semibold text-white mb-4">
+          <div className="glass-card rounded-2xl p-6">
+            <h2 className="text-xl font-semibold text-foreground mb-4">
               Message History (Last 10)
             </h2>
 
@@ -81,22 +81,22 @@ export const CommunicatorPanel: React.FC = () => {
               {messageHistory.map((msg, index) => (
                 <div
                   key={index}
-                  className="bg-gray-700 border border-gray-600 rounded-lg p-3"
+                  className="glass-card rounded-xl p-3"
                 >
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm text-blue-400">
-                        {msg.target === 'team' && '📢 Team'}
-                        {msg.target === 'all' && '📢 All'}
-                        {msg.target !== 'team' && msg.target !== 'all' && `👤 ${msg.target}`}
+                      <span className="font-mono text-sm text-primary">
+                        {msg.target === 'team' && 'Team'}
+                        {msg.target === 'all' && 'All'}
+                        {msg.target !== 'team' && msg.target !== 'all' && msg.target}
                       </span>
                     </div>
-                    <span className="text-xs text-gray-400">
+                    <span className="text-xs text-muted-foreground">
                       {formatTimestamp(msg.timestamp)}
                     </span>
                   </div>
 
-                  <p className="text-sm text-gray-300 break-words">
+                  <p className="text-sm text-foreground/80 break-words">
                     {msg.message}
                   </p>
                 </div>
@@ -106,11 +106,11 @@ export const CommunicatorPanel: React.FC = () => {
         )}
 
         {/* Info section */}
-        <div className="bg-blue-900 border border-blue-700 rounded-lg p-4">
-          <h3 className="text-sm font-semibold text-blue-200 mb-2">
-            ℹ️ How it works
+        <div className="glass-card rounded-2xl p-4 border-l-4 border-l-primary">
+          <h3 className="text-sm font-semibold text-foreground mb-2">
+            How it works
           </h3>
-          <ul className="text-xs text-blue-300 space-y-1">
+          <ul className="text-xs text-muted-foreground space-y-1">
             <li>• Messages are sent directly to agent tmux sessions</li>
             <li>• All text is sent literally (no command execution risk)</li>
             <li>• Broadcast to team sends to Ana, Bill, Carl, Dan, Enzo</li>

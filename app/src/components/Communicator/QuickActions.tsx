@@ -47,9 +47,9 @@ const QUICK_ACTIONS: QuickAction[] = [
 export const QuickActions: React.FC<QuickActionsProps> = ({ onQuickMessage }) => {
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-white">Quick Actions</h3>
+      <h3 className="text-lg font-semibold text-foreground">Quick Actions</h3>
 
-      <p className="text-sm text-gray-400">
+      <p className="text-sm text-muted-foreground">
         Click a preset message to quickly send common requests:
       </p>
 
@@ -67,9 +67,9 @@ export const QuickActions: React.FC<QuickActionsProps> = ({ onQuickMessage }) =>
         ))}
       </div>
 
-      <div className="bg-gray-800 border border-gray-700 rounded-lg p-3">
-        <h4 className="text-sm font-medium text-gray-300 mb-2">💡 Tips</h4>
-        <ul className="text-xs text-gray-400 space-y-1">
+      <div className="glass-card rounded-xl p-3">
+        <h4 className="text-sm font-medium text-foreground mb-2">Tips</h4>
+        <ul className="text-xs text-muted-foreground space-y-1">
           <li>• Quick actions will populate the message field</li>
           <li>• You can edit the message before sending</li>
           <li>• Use Ctrl+Enter to send quickly</li>

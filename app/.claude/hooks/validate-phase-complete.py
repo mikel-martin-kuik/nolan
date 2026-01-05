@@ -16,28 +16,44 @@ import re
 from pathlib import Path
 from datetime import datetime
 
+def get_projects_base():
+    """Get PROJECTS_DIR base path."""
+    if os.environ.get('PROJECTS_DIR'):
+        return Path(os.environ['PROJECTS_DIR'])
+    elif os.environ.get('AGENT_DIR'):
+        agent_dir = Path(os.environ['AGENT_DIR'])
+        repo_root = agent_dir.parent.parent.parent
+        return repo_root / "projects"
+    elif os.environ.get('NOLAN_ROOT'):
+        return Path(os.environ['NOLAN_ROOT']) / "projects"
+    return None
+
+
 def get_docs_path():
-    """Get active project docs path from NOTES.md files."""
-    # Check for DOCS_PATH environment variable first
+    """Get active project docs path with explicit tracking."""
+    # 1. Check for DOCS_PATH environment variable first (most explicit)
     if os.environ.get('DOCS_PATH'):
         return Path(os.environ['DOCS_PATH'])
 
-    # Use PROJECTS_DIR from environment (set by launch scripts)
-    projects_base = None
-    if os.environ.get('PROJECTS_DIR'):
-        projects_base = Path(os.environ['PROJECTS_DIR'])
-    elif os.environ.get('AGENT_DIR'):
-        # Fallback: Calculate from AGENT_DIR if PROJECTS_DIR not set
-        # AGENT_DIR points to agent dir: /path/to/nolan/app/agents/dan
-        # We need: /path/to/nolan/projects
-        agent_dir = Path(os.environ['AGENT_DIR'])
-        repo_root = agent_dir.parent.parent.parent
-        projects_base = repo_root / "projects"
-
+    projects_base = get_projects_base()
     if not projects_base or not projects_base.exists():
         return None
 
-    # Find most recently modified NOTES.md
+    # 2. Check for active project state file (explicit tracking)
+    agent = os.environ.get('AGENT_NAME', '').lower()
+    if agent:
+        state_file = projects_base / '.state' / f'active-{agent}.txt'
+        if state_file.exists():
+            try:
+                project_name = state_file.read_text().strip()
+                if project_name:
+                    project_path = projects_base / project_name
+                    if project_path.exists():
+                        return project_path
+            except Exception:
+                pass
+
+    # 3. Fallback: Find most recently modified NOTES.md (heuristic)
     notes_files = list(projects_base.glob("*/NOTES.md"))
     if notes_files:
         latest = max(notes_files, key=lambda p: p.stat().st_mtime)
@@ -72,37 +88,78 @@ def check_agent_output(docs_path, agent):
     return None  # All checks passed
 
 
+def write_to_handoff_queue(agent, project_name, status="COMPLETE"):
+    """Write handoff to persistent queue file as fallback."""
+    projects_dir = get_projects_base()
+    if not projects_dir:
+        return False
+
+    queue_dir = projects_dir / '.handoffs'
+    queue_file = queue_dir / 'pending.log'
+
+    try:
+        queue_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+        entry = f"{timestamp}|{agent}|{project_name}|{status}\n"
+
+        with open(queue_file, 'a') as f:
+            f.write(entry)
+        return True
+    except Exception:
+        return False
+
+
 def trigger_handoff(docs_path, agent, output_file):
     """Automatically trigger handoff by adding marker and sending message."""
     filepath = docs_path / output_file
+    import subprocess
 
     try:
-        # Add handoff marker
-        handoff_marker = f"\n---\n**Handoff:** Automatically sent to dan at {Path(__file__).parent}"
+        # Add handoff marker with structured format
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
-        handoff_marker = f"\n---\n**Handoff:** Sent to dan at {timestamp}"
+        handoff_marker = f"\n---\n**Handoff:** Sent to dan at {timestamp}\n<!-- HANDOFF:{timestamp}:{agent}:COMPLETE -->"
 
         with open(filepath, 'a') as f:
             f.write(handoff_marker)
 
-        # Send handoff message via team-aliases
-        import subprocess
+        # Send handoff message via team-aliases (with return code check)
         nolan_root = os.environ.get('NOLAN_ROOT', '')
+        delivery_success = False
+
         if nolan_root:
             msg = f"HANDOFF: {agent} → dan | Project: {docs_path.name} | Status: COMPLETE"
             cmd = f'source "{nolan_root}/app/scripts/team-aliases.sh" && dan "{msg}"'
             try:
-                subprocess.run(['bash', '-c', cmd], timeout=10, capture_output=True)
-            except Exception as e:
-                # Log but don't fail - handoff marker was added
-                pass
+                result = subprocess.run(['bash', '-c', cmd], timeout=15, capture_output=True)
+                delivery_success = (result.returncode == 0)
+            except subprocess.TimeoutExpired:
+                delivery_success = False
+            except Exception:
+                delivery_success = False
+
+        # If direct delivery failed, write to persistent queue
+        if not delivery_success:
+            queue_success = write_to_handoff_queue(agent, docs_path.name)
+            if not queue_success:
+                # Both failed - this is a problem but marker was added
+                return False
+
+        # Clear active project state file on successful handoff
+        projects_base = get_projects_base()
+        if projects_base and agent:
+            state_file = projects_base / '.state' / f'active-{agent}.txt'
+            try:
+                if state_file.exists():
+                    state_file.unlink()
+            except Exception:
+                pass  # Non-critical, don't fail handoff
 
         return True
     except Exception as e:
         return False
 
 def check_handoff_done(docs_path, agent):
-    """Auto-trigger handoff if work is complete and marker missing."""
+    """Auto-trigger handoff if output file has required sections and marker missing."""
     output_files = {
         'ana': 'research.md',
         'bill': 'plan.md',
@@ -120,21 +177,26 @@ def check_handoff_done(docs_path, agent):
 
     content = filepath.read_text()
 
-    # Check for completion markers
-    completion_patterns = [
-        r'\*\*Status:\*\*.*Complete',
-        r'\*\*Status:\*\*.*✓',
-        r'Status:.*Complete',
-        r'All.*complete'
-    ]
+    # Check if required sections are present (same as check_agent_output)
+    # If sections are there, work is complete - no need for magic status words
+    requirements = {
+        'ana': ['## Problem', '## Findings', '## Recommendations'],
+        'bill': ['## Overview', '## Tasks', '## Risks'],
+        'carl': ['## Status', '## Changes'],
+        'enzo': ['## Summary', '## Findings', '## Recommendation']
+    }
 
-    is_complete = any(re.search(p, content, re.IGNORECASE) for p in completion_patterns)
+    required_sections = requirements.get(agent, [])
+    missing = [s for s in required_sections if s not in content]
 
-    if not is_complete:
-        return None  # Work not complete, allow stop (or other checks will handle)
+    if missing:
+        return None  # Required sections missing, other check handles this
 
-    # Work is complete - check for handoff marker
-    if '**Handoff:**' not in content:
+    # Required sections present - check for automated handoff marker
+    # Legacy markers are ignored (might be manually added)
+    # Only the marker added by trigger_handoff() counts
+    has_automated_marker = '<!-- HANDOFF:' in content
+    if not has_automated_marker:
         # Auto-trigger handoff
         if trigger_handoff(docs_path, agent, output_files[agent]):
             return None  # Handoff triggered successfully, allow stop
@@ -186,6 +248,13 @@ def main():
             agent = 'carl'
         elif 'enzo' in str(cwd).lower():
             agent = 'enzo'
+        elif 'ralph' in str(cwd).lower():
+            agent = 'ralph'
+
+    # Ralph is exempt from all validation - utility agent without workflow requirements
+    if agent == 'ralph':
+        print(json.dumps({"decision": "approve"}))
+        return
 
     # Check agent-specific output
     if agent:

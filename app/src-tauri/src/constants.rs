@@ -1,8 +1,11 @@
 use regex::Regex;
 use once_cell::sync::Lazy;
 
-/// Valid agent names in the Nolan team
+/// Valid agent names that can be spawned/killed
 pub const VALID_AGENTS: &[&str] = &["ana", "bill", "carl", "dan", "enzo", "ralph"];
+
+/// Core team agents (shown in status panel, launched together)
+pub const CORE_AGENTS: &[&str] = &["ana", "bill", "carl", "dan", "enzo"];
 
 /// Protected infrastructure sessions that should never be killed
 pub const PROTECTED_SESSIONS: &[&str] = &["communicator", "history-log", "lifecycle"];

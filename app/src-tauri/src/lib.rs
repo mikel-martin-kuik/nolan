@@ -104,6 +104,8 @@ pub fn run() {
             list_projects,
             list_project_files,
             read_project_file,
+            read_roadmap,
+            create_project,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

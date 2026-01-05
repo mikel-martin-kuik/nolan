@@ -1,17 +1,27 @@
 import { useQuery } from '@tanstack/react-query';
 import { invoke } from '@tauri-apps/api/core';
-import { ChevronDown, FileText, FilePlus2, Sparkles } from 'lucide-react';
+import { ChevronDown, FileText, Circle } from 'lucide-react';
 import { ProjectInfo, ProjectFile } from '@/types/projects';
 import { cn } from '@/lib/utils';
 
-// File type icon mapping
-const FILE_TYPE_COLORS: Record<string, string> = {
-  'context': 'text-blue-500',
-  'NOTES': 'text-violet-500',
-  'research': 'text-green-500',
-  'plan': 'text-yellow-500',
-  'qa-review': 'text-red-500',
-  'progress': 'text-cyan-500',
+// All expected files in order
+const WORKFLOW_STEPS = [
+  { key: 'NOTES' },
+  { key: 'context' },
+  { key: 'research' },
+  { key: 'plan' },
+  { key: 'qa-review' },
+  { key: 'progress' },
+];
+
+// File type display order
+const FILE_ORDER: Record<string, number> = {
+  'NOTES': 0,
+  'context': 1,
+  'research': 2,
+  'plan': 3,
+  'qa-review': 4,
+  'progress': 5,
 };
 
 interface ProjectListItemProps {
@@ -37,116 +47,93 @@ export function ProjectListItem({
       projectName: project.name
     }),
     enabled: isExpanded,
-    refetchInterval: isExpanded ? 10000 : false, // Refresh every 10s when expanded (reduced from 5s)
+    refetchInterval: isExpanded ? 10000 : false,
   });
 
-  // Calculate progress
-  const totalExpected = project.existing_files.length + project.missing_files.length;
-  const progressPercent = totalExpected > 0
-    ? Math.round((project.existing_files.length / totalExpected) * 100)
-    : 0;
+  // Calculate workflow step completion
+  const stepCompletion = WORKFLOW_STEPS.map(step => ({
+    ...step,
+    complete: project.existing_files.some(f => f.includes(step.key)),
+  }));
+
+  const completedCount = stepCompletion.filter(s => s.complete).length;
+
+  // Sort files by workflow order
+  const sortedFiles = files?.slice().sort((a, b) => {
+    const aOrder = FILE_ORDER[a.file_type] ?? 99;
+    const bOrder = FILE_ORDER[b.file_type] ?? 99;
+    return aOrder - bOrder;
+  });
 
   return (
-    <div className="mb-2">
+    <div className="mb-1">
       {/* Project Header */}
       <button
         onClick={onToggle}
-        className={cn(
-          "w-full flex items-center gap-2 p-3 rounded-xl transition-colors",
-          isSelected ? "bg-primary/20" : "hover:bg-accent"
-        )}
+        className="w-full flex items-center gap-2 p-2.5 rounded-lg transition-colors hover:bg-accent/50"
       >
         <ChevronDown
           className={cn(
-            "w-4 h-4 transition-transform flex-shrink-0",
+            "w-3.5 h-3.5 text-muted-foreground transition-transform flex-shrink-0",
             isExpanded ? "rotate-0" : "-rotate-90"
           )}
         />
-        <div className="flex-1 text-left min-w-0">
-          <span className="font-medium text-foreground block truncate">
-            {project.name}
-          </span>
-          {/* Progress bar */}
-          <div className="flex items-center gap-2 mt-1">
-            <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
-              <div
-                className={cn(
-                  "h-full rounded-full transition-all",
-                  progressPercent === 100 ? "bg-green-500" :
-                  progressPercent >= 50 ? "bg-yellow-500" : "bg-primary"
-                )}
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
-            <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-              {project.existing_files.length}/{totalExpected}
-            </span>
-          </div>
-        </div>
-        <span className="text-xs text-muted-foreground flex-shrink-0">
-          {project.file_count} files
+
+        <span className="flex-1 text-left font-medium text-sm text-foreground truncate">
+          {project.name}
         </span>
+
+        {/* Step Progress - 4 Dots */}
+        <div className="flex items-center gap-0.5">
+          {stepCompletion.map((step) => (
+            <div
+              key={step.key}
+              className={cn(
+                "w-2 h-2 rounded-full transition-colors",
+                step.complete ? "bg-primary" : "bg-muted-foreground/20"
+              )}
+            />
+          ))}
+          <span className="text-[10px] text-muted-foreground ml-1.5">
+            {completedCount}/6
+          </span>
+        </div>
       </button>
 
-      {/* File List (when expanded) */}
-      {isExpanded && files && (
-        <div className="ml-6 mt-1 space-y-1">
-          {files.map(file => (
+      {/* File List */}
+      {isExpanded && sortedFiles && (
+        <div className="ml-5 mt-0.5 space-y-0.5">
+          {sortedFiles.map(file => (
             <button
               key={file.relative_path}
               onClick={() => !file.is_placeholder && onFileSelect(file.relative_path)}
               disabled={file.is_placeholder}
               className={cn(
-                "w-full flex items-center gap-2 p-2 rounded-lg transition-colors text-left",
-                file.is_placeholder
-                  ? "opacity-40 cursor-not-allowed border border-dashed border-muted-foreground/30"
-                  : selectedFile === file.relative_path
-                    ? "bg-primary/30 text-foreground"
-                    : "hover:bg-accent text-muted-foreground"
+                "w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs transition-colors",
+                file.is_placeholder && "opacity-40 cursor-not-allowed",
+                !file.is_placeholder && isSelected && selectedFile === file.relative_path && "bg-foreground/10 text-foreground",
+                !file.is_placeholder && !(isSelected && selectedFile === file.relative_path) && "text-muted-foreground hover:text-foreground hover:bg-accent/50"
               )}
             >
               {file.is_placeholder ? (
-                <FilePlus2 className="w-3.5 h-3.5 text-muted-foreground" />
+                <Circle className="w-3 h-3 flex-shrink-0" />
               ) : (
-                <FileText
-                  className={cn(
-                    "w-3.5 h-3.5",
-                    FILE_TYPE_COLORS[file.file_type] || "text-muted-foreground"
-                  )}
-                />
+                <FileText className="w-3 h-3 flex-shrink-0" />
               )}
 
-              <span className={cn(
-                "text-sm flex-1 truncate",
-                file.is_placeholder && "italic"
-              )}>
+              <span className={cn("flex-1 truncate", file.is_placeholder && "italic")}>
                 {file.name}
               </span>
 
-              {/* Right side: badges and timestamps */}
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                {file.is_placeholder ? (
-                  <span className="text-[10px] text-muted-foreground italic">
-                    Not created
-                  </span>
-                ) : (
-                  <>
-                    {/* Recent badge */}
-                    {file.is_recent && (
-                      <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-primary/20 text-primary text-[10px] font-medium">
-                        <Sparkles className="w-2.5 h-2.5" />
-                        NEW
-                      </span>
-                    )}
-                    {/* Timestamp */}
-                    {file.last_modified_ago && (
-                      <span className="text-[10px] text-muted-foreground">
-                        {file.last_modified_ago}
-                      </span>
-                    )}
-                  </>
-                )}
-              </div>
+              {!file.is_placeholder && file.is_recent && (
+                <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+              )}
+
+              {!file.is_placeholder && file.last_modified_ago && !file.is_recent && (
+                <span className="text-[10px] text-muted-foreground/70">
+                  {file.last_modified_ago}
+                </span>
+              )}
             </button>
           ))}
         </div>

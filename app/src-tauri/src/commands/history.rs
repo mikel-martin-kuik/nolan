@@ -20,7 +20,7 @@ static STREAMING: AtomicBool = AtomicBool::new(false);
 
 // Backpressure and debouncing constants
 const MAX_PENDING_EVENTS: usize = 100;  // Max queued file updates
-const DEBOUNCE_MS: u64 = 50;  // Debounce delay for file processing (reduced for faster streaming)
+const DEBOUNCE_MS: u64 = 25;  // Debounce delay for file processing (reduced for faster streaming)
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryEntry {
@@ -35,6 +35,7 @@ pub struct HistoryEntry {
     pub project: Option<String>,
     pub tool_name: Option<String>,
     pub tokens: Option<TokenInfo>,
+    pub is_streaming: bool,  // true for real-time entries, false for bulk historical load
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -206,7 +207,7 @@ async fn process_file_update(app_handle: &AppHandle, path: &PathBuf) {
                 let mut lines = reader.lines();
 
                 while let Ok(Some(line)) = lines.next_line().await {
-                    if let Ok((entry, _)) = parse_transcript_line(&line, path) {
+                    if let Ok((entry, _)) = parse_transcript_line(&line, path, true) {
                         if let Err(e) = app_handle.emit("history-entry", &entry) {
                             eprintln!("Failed to emit entry: {}", e);
                         }
@@ -226,7 +227,7 @@ async fn process_file_update(app_handle: &AppHandle, path: &PathBuf) {
 }
 
 /// Parse a transcript JSONL line into a HistoryEntry
-fn parse_transcript_line(line: &str, path: &std::path::Path) -> Result<(HistoryEntry, i64), String> {
+fn parse_transcript_line(line: &str, path: &std::path::Path, is_streaming: bool) -> Result<(HistoryEntry, i64), String> {
     let json: serde_json::Value = serde_json::from_str(line.trim())
         .map_err(|e| format!("JSON parse error: {}", e))?;
 
@@ -292,6 +293,7 @@ fn parse_transcript_line(line: &str, path: &std::path::Path) -> Result<(HistoryE
         project: project_str,
         tool_name,
         tokens,
+        is_streaming,
     };
 
     Ok((entry, timestamp_ms))
@@ -655,7 +657,7 @@ pub async fn load_history_for_active_sessions(
 
                         // Check if this file contains entries for any active session
                         while let Ok(Some(line)) = lines.next_line().await {
-                            if let Ok((entry, _)) = parse_transcript_line(&line, path) {
+                            if let Ok((entry, _)) = parse_transcript_line(&line, path, false) {
                                 if let Some(ref tmux_session) = entry.tmux_session {
                                     if active_sessions.contains(tmux_session) {
                                         has_active_session = true;

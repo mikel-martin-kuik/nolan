@@ -84,22 +84,12 @@ Where `$PROJECTS_DIR` is set by launch scripts to `$NOLAN_ROOT/projects`.
 | progress.md | $DOCS_PATH[/component] | Carl's implementation status |
 | NOTES.md | $DOCS_PATH | Dan's coordination hub |
 
-## Agent Handoffs
+## Completing Work
 
-When work is complete:
-
-1. Mark **Status:** Complete in output file
-2. Stop the session
-3. Handoff to Dan happens **automatically** via the stop hook
-   - Handoff marker is added to output file
-   - Notification sent to Dan via team communication system
-
-**Ana, Bill, Enzo, and Carl:** Handoffs are automatic on stop.
-
-**Dan and Ralph:** Can stop without handoffs.
+Ensure your output file has all required sections. Handoff is automatic when you finish.
 
 ## Agent Environment
-The `AGENT_NAME` environment variable is automatically set by the launch scripts (`launch-core.sh`, `spawn-agent.sh`). This variable is used by validation hooks to identify the active agent.
+The `AGENT_NAME` environment variable is automatically set by the Tauri GUI when launching agents. This variable is used by validation hooks to identify the active agent.
 
 This is used by validation hooks to determine required output sections.
 ## QA Review Protocol

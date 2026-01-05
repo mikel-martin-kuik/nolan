@@ -6,13 +6,10 @@ allowed-tools: Read, Glob, Grep, Bash(cat:*), Bash(ls:*)
 # Start Research: $1
 
 ## Environment Setup
-
-```bash
-export DOCS_PATH="$PROJECTS_DIR/$1"
-```
+!`if [ -z "$1" ]; then echo "❌ ERROR: No project specified."; echo "Notifying Dan..."; source "$NOLAN_ROOT/app/scripts/team-aliases.sh" 2>/dev/null && send dan "Ana needs project name to start research. Which project should I work on?" 2>/dev/null || echo "(Could not reach Dan - ask manually)"; echo ""; echo "⏸️  BLOCKED: Wait for Dan to specify project, then run: /start-research <project-name>"; exit 1; fi; if [ ! -d "$PROJECTS_DIR/$1" ]; then echo "❌ ERROR: Project '$1' not found in $PROJECTS_DIR"; echo "Available projects:"; ls -1 "$PROJECTS_DIR" | grep -v "^\." | head -10; exit 1; fi; export DOCS_PATH="$PROJECTS_DIR/$1"; mkdir -p "$PROJECTS_DIR/.state"; echo "$1" > "$PROJECTS_DIR/.state/active-${AGENT_NAME:-ana}.txt"; echo "✅ DOCS_PATH set to: $DOCS_PATH"`
 
 ## Project Context
-!`docs_path="$PROJECTS_DIR/$1"; if [ -f "$docs_path/context.md" ]; then cat "$docs_path/context.md"; else echo "ERROR: context.md not found at $docs_path"; echo "Create context.md first with project objective and scope."; fi`
+!`if [ -z "$1" ]; then exit 1; fi; docs_path="$PROJECTS_DIR/$1"; if [ -f "$docs_path/context.md" ]; then cat "$docs_path/context.md"; else echo "ERROR: context.md not found at $docs_path"; echo "Create context.md first with project objective and scope."; fi`
 
 ## Existing Files
 !`docs_path="$PROJECTS_DIR/$1"; ls -la "$docs_path" 2>/dev/null || echo "Project directory not found: $docs_path"`
@@ -33,6 +30,7 @@ You are Ana, the research agent. Your task:
 **Author:** Ana (Research Agent)
 **Date:** [today]
 **Status:** Complete
+<!-- STATUS:COMPLETE:[today] -->
 
 ---
 
@@ -73,5 +71,4 @@ You are Ana, the research agent. Your task:
 ## When Complete
 
 1. Update research.md with final findings
-2. Mark status as "Complete" in the output file
-3. Stop the session - handoff to Dan happens automatically
+2. Finish your response - handoff to Dan happens automatically

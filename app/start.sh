@@ -1,86 +1,166 @@
 #!/usr/bin/env bash
-# start.sh - Launch Communicator and Lifecycle Manager with UI windows
+# start.sh - Launch Nolan GUI Control Panel
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPTS_DIR="$DIR/scripts"
-LAUNCH_DIR="$(pwd)"
+set -euo pipefail
 
-# Parse arguments
-LEGACY_MODE=false
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --legacy)
-            LEGACY_MODE=true
-            shift
-            ;;
-        *)
-            echo "Unknown option: $1"
-            echo "Usage: $0 [--legacy]"
-            echo "  --legacy    Run in legacy mode (immortal sessions only, no GUI)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GUI_BINARY="$SCRIPT_DIR/src-tauri/target/release/nolan"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Nolan - Agent Control Panel"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+check_dependencies() {
+    local missing=()
+
+    if ! command -v node &> /dev/null; then
+        missing+=("node (Node.js)")
+    fi
+    if ! command -v npm &> /dev/null; then
+        missing+=("npm")
+    fi
+    if ! command -v cargo &> /dev/null; then
+        missing+=("cargo (Rust)")
+    fi
+
+    if ! command -v gnome-terminal &> /dev/null; then
+        echo -e "${YELLOW}⚠ Warning: gnome-terminal not found. Agent terminal launching will fail.${NC}"
+    fi
+
+    if [ ${#missing[@]} -ne 0 ]; then
+        echo -e "${RED}✗ Missing required dependencies:${NC}"
+        for dep in "${missing[@]}"; do
+            echo "  - $dep"
+        done
+        echo ""
+        echo "Install dependencies and try again."
+        exit 1
+    fi
+}
+
+build_if_needed() {
+    if [ ! -f "$GUI_BINARY" ]; then
+        echo -e "${YELLOW}GUI binary not found. Building...${NC}"
+        echo ""
+
+        cd "$SCRIPT_DIR"
+
+        if [ ! -d "node_modules" ]; then
+            echo "Installing npm dependencies..."
+            npm install || {
+                echo -e "${RED}✗ npm install failed${NC}"
+                exit 1
+            }
+        fi
+
+        echo "Building Tauri application (this may take several minutes)..."
+        npm run tauri build || {
+            echo -e "${RED}✗ Build failed${NC}"
+            echo ""
+            echo "Try manual build:"
+            echo "  cd $SCRIPT_DIR"
+            echo "  npm install"
+            echo "  npm run tauri build"
             exit 1
-            ;;
-    esac
-done
+        }
 
-# Kill any existing watchdogs to avoid duplicates
-pkill -f "immortal-session.sh" 2>/dev/null || true
-
-if [ "$LEGACY_MODE" = true ]; then
-    #######################################
-    # Communicator session
-    #######################################
-    if ! tmux has-session -t communicator 2>/dev/null; then
-        cmd="bash $SCRIPTS_DIR/communicator-ui.sh --ui; exec bash"
-        tmux new-session -d -s communicator -c "$LAUNCH_DIR" "$cmd"
-        gnome-terminal --title="📡 Communicator" -- tmux attach -t communicator &
+        echo -e "${GREEN}✓ Build complete${NC}"
+        echo ""
     fi
+}
 
-    #######################################
-    # History Log session (separate terminal)
-    #######################################
-    if ! tmux has-session -t history-log 2>/dev/null; then
-        cmd="bash $SCRIPTS_DIR/tail-history.sh; exec bash"
-        tmux new-session -d -s history-log -c "$LAUNCH_DIR" "$cmd"
-        gnome-terminal --title="📜 History Log" --geometry=80x30 -- tmux attach -t history-log &
-    fi
-
-    #######################################
-    # Lifecycle Manager session
-    #######################################
-    if ! tmux has-session -t lifecycle 2>/dev/null; then
-        cmd="bash $SCRIPTS_DIR/lifecycle-manager.sh --ui; exec bash"
-        tmux new-session -d -s lifecycle -c "$DIR" "$cmd"
-    fi
-fi
-
-#######################################
-# Launch immortal watchdogs
-# Wait for terminals to attach before starting watchdogs
-#######################################
-if [ "$LEGACY_MODE" = true ]; then
-    sleep 2
-    "$SCRIPTS_DIR/immortal-session.sh" communicator "📡 Communicator" &
-    "$SCRIPTS_DIR/immortal-session.sh" history-log "📜 History Log" &
-    "$SCRIPTS_DIR/immortal-session.sh" lifecycle "🧬 Lifecycle" &
-fi
-
-#######################################
-# Launch GUI Control Panel (or finish in legacy mode)
-#######################################
-
-if [ "$LEGACY_MODE" = true ]; then
-    echo "=== Running in LEGACY mode ==="
-    echo "No GUI windows launched."
-    echo "Use tmux directly to manage sessions."
-else
-    echo "=== Support Systems Initialized ==="
-    echo "📡 Communicator: Online (Immortal Window)"
-    echo "📜 History Log:  Online (Immortal Window)"
-    echo "🧬 Lifecycle:    Online (Immortal Window)"
-    echo ""
-    echo "Use 'launch-core' in Lifecycle Manager to start agents."
-    echo ""
+launch_gui() {
     echo "Launching GUI Control Panel..."
+    echo ""
 
-    "$SCRIPTS_DIR/start-gui.sh" --force
-fi
+    # Set NOLAN_ROOT environment variable for the GUI process
+    export NOLAN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+    nohup "$GUI_BINARY" > /tmp/nolan.log 2>&1 &
+    local pid=$!
+
+    sleep 2
+    if ps -p $pid > /dev/null; then
+        echo -e "${GREEN}✓ Nolan launched successfully (PID: $pid)${NC}"
+        echo ""
+        echo "Logs: /tmp/nolan.log"
+        echo "To stop: pkill -f nolan"
+    else
+        echo -e "${RED}✗ GUI failed to start. Check logs:${NC}"
+        echo "  tail /tmp/nolan.log"
+        exit 1
+    fi
+}
+
+launch_dev() {
+    echo "Launching GUI in development mode..."
+    echo ""
+
+    # Set NOLAN_ROOT environment variable for the dev process
+    export NOLAN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+    cd "$SCRIPT_DIR"
+
+    if [ ! -d "node_modules" ]; then
+        echo "Installing npm dependencies..."
+        npm install
+    fi
+
+    npm run tauri dev
+}
+
+main() {
+    DEV_MODE=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dev|-d)
+                DEV_MODE=true
+                shift
+                ;;
+            --help|-h)
+                echo "Usage: start.sh [OPTIONS]"
+                echo ""
+                echo "Options:"
+                echo "  --dev, -d      Launch in development mode (hot reload)"
+                echo "  --help, -h     Show this help message"
+                echo ""
+                echo "Examples:"
+                echo "  ./start.sh              # Launch production build"
+                echo "  ./start.sh --dev        # Launch dev mode with hot reload"
+                echo ""
+                echo "Note: Single-instance enforcement is automatic."
+                echo "      If Nolan is already running, it will be focused."
+                exit 0
+                ;;
+            *)
+                echo -e "${RED}Unknown option: $1${NC}"
+                echo "Use --help for usage information"
+                exit 1
+                ;;
+        esac
+    done
+
+    check_dependencies
+
+    if [ "$DEV_MODE" = true ]; then
+        launch_dev
+    else
+        build_if_needed
+        launch_gui
+    fi
+
+    echo ""
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "  Nolan is ready!"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
+main "$@"

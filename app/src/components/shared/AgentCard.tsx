@@ -1,14 +1,12 @@
 import React from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Terminal, X, Play, Eraser, MessageSquare } from 'lucide-react';
+import { Terminal, Play, Eraser, Trash2 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Tooltip } from '@/components/ui/tooltip';
 import { useAgentStore } from '@/store/agentStore';
 import { useToastStore } from '@/store/toastStore';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
-import { AgentMessagesDialog } from '@/components/shared/AgentMessagesDialog';
 import { AGENT_DESCRIPTIONS, isValidAgentName } from '@/types';
 import type { AgentStatus as AgentStatusType } from '@/types';
 
@@ -41,7 +39,8 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [showKillDialog, setShowKillDialog] = React.useState(false);
   const [showClearContextDialog, setShowClearContextDialog] = React.useState(false);
-  const [showMessagesDialog, setShowMessagesDialog] = React.useState(false);
+  const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number } | null>(null);
+  const contextMenuRef = React.useRef<HTMLDivElement>(null);
 
   // Check if this is a core agent (session name matches agent-{name} exactly, no number)
   const isCoreAgent = /^agent-(ana|bill|carl|dan|enzo|ralph)$/.test(agent.session);
@@ -116,14 +115,6 @@ export const AgentCard: React.FC<AgentCardProps> = ({
     }
   };
 
-  // Handle kill action - opens confirmation dialog
-  const handleKill = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation(); // Prevent card click
-    if (!agent.active) return;
-    setShowKillDialog(true);
-  };
-
   // Confirmed kill action
   const handleConfirmKill = async () => {
     setIsProcessing(true);
@@ -135,14 +126,6 @@ export const AgentCard: React.FC<AgentCardProps> = ({
     } finally {
       setIsProcessing(false);
     }
-  };
-
-  // Handle clear context action - opens confirmation dialog
-  const handleClearContext = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation(); // Prevent card click
-    if (!agent.active) return;
-    setShowClearContextDialog(true);
   };
 
   // Confirmed clear context action
@@ -161,36 +144,82 @@ export const AgentCard: React.FC<AgentCardProps> = ({
     }
   };
 
-  // Handle show messages action
-  const handleShowMessages = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation(); // Prevent card click
-    if (!agent.active) return;
-    setShowMessagesDialog(true);
-  };
-
   // Determine if card should be clickable
   const isClickable = showActions && !disabled && !isProcessing;
 
+  // Unique identifier for this card's menu
+  const menuId = React.useRef(`agent-card-menu-${agent.session}`);
+
+  // Handle right-click context menu
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!agent.active || !showActions) return;
+
+    // Broadcast event to close all other agent card menus
+    window.dispatchEvent(new CustomEvent('agent-card-menu-open', { detail: menuId.current }));
+
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY
+    });
+  };
+
+  // Close context menu when clicking outside or when another card opens its menu
+  React.useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+        setContextMenu(null);
+      }
+    };
+
+    const handleOtherMenuOpen = (e: CustomEvent<string>) => {
+      // Close this menu if another card opened its menu
+      if (e.detail !== menuId.current) {
+        setContextMenu(null);
+      }
+    };
+
+    if (contextMenu) {
+      document.addEventListener('click', handleClickOutside);
+      window.addEventListener('agent-card-menu-open', handleOtherMenuOpen as EventListener);
+      return () => {
+        document.removeEventListener('click', handleClickOutside);
+        window.removeEventListener('agent-card-menu-open', handleOtherMenuOpen as EventListener);
+      };
+    }
+  }, [contextMenu]);
+
+  // Handle context menu option clicks
+  const handleClearFromMenu = () => {
+    setContextMenu(null);
+    setShowClearContextDialog(true);
+  };
+
+  const handleKillFromMenu = () => {
+    setContextMenu(null);
+    setShowKillDialog(true);
+  };
+
+
   return (
-    <Card
-      className={`
-        transition-all duration-200 rounded-xl backdrop-blur-sm
-        ${isClickable ? 'cursor-pointer active:scale-[0.98]' : ''}
-        ${isProcessing ? 'opacity-50' : ''}
-        ${disabled ? 'cursor-not-allowed opacity-60' : ''}
-        ${agent.active
-          ? 'bg-card/80 border border-green-500/30 shadow-lg shadow-green-500/5 hover:border-green-400/50 hover:bg-card'
-          : 'bg-card/20 border border-dashed border-border opacity-60 hover:opacity-80 hover:border-primary/40 hover:bg-card/40'
-        }
-      `}
-      onClick={isClickable ? (e) => handleCardClick(e) : undefined}
-      onKeyDown={isClickable ? handleKeyDown : undefined}
-      tabIndex={isClickable ? 0 : undefined}
-      role={isClickable ? 'button' : undefined}
-      aria-label={isClickable ? primaryAction.ariaLabel : undefined}
-      aria-disabled={disabled || isProcessing}
-    >
+    <>
+      <Card
+        className={`
+          glass-card transition-all duration-200 rounded-2xl
+          ${isClickable ? 'cursor-pointer active:scale-[0.98]' : ''}
+          ${isProcessing ? 'opacity-50' : ''}
+          ${disabled ? 'cursor-not-allowed opacity-60' : ''}
+          ${agent.active ? 'glass-active' : 'opacity-80 hover:opacity-100'}
+        `}
+        onClick={isClickable ? (e) => handleCardClick(e) : undefined}
+        onKeyDown={isClickable ? handleKeyDown : undefined}
+        onContextMenu={handleContextMenu}
+        tabIndex={isClickable ? 0 : undefined}
+        role={isClickable ? 'button' : undefined}
+        aria-label={isClickable ? primaryAction.ariaLabel : undefined}
+        aria-disabled={disabled || isProcessing}
+      >
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2 text-base">
@@ -213,60 +242,30 @@ export const AgentCard: React.FC<AgentCardProps> = ({
             {/* Instance number badge for spawned agents */}
             {instanceNumber !== undefined && (
               <Badge variant="outline" className="text-xs">
-                #{instanceNumber}
+                {instanceNumber}
               </Badge>
             )}
           </CardTitle>
 
-          <div className="flex items-center gap-2">
-            {/* Clear Context button (only when active and actions enabled) */}
-            {agent.active && showActions && (
-              <Tooltip content="Clear" side="left">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleClearContext}
-                  aria-label={`Clear ${agent.name} context`}
-                  disabled={disabled || isProcessing}
-                  className="h-6 w-6 text-muted-foreground hover:text-yellow-500 hover:bg-transparent"
-                >
-                  <Eraser className="h-3.5 w-3.5" />
-                </Button>
-              </Tooltip>
-            )}
-
-            {/* Messages button (only when active and actions enabled) */}
-            {agent.active && showActions && (
-              <Tooltip content="Messages" side="left">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleShowMessages}
-                  aria-label={`View messages for ${agent.name}`}
-                  disabled={disabled || isProcessing}
-                  className="h-6 w-6 text-muted-foreground hover:text-blue-500 hover:bg-transparent"
-                >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                </Button>
-              </Tooltip>
-            )}
-
-            {/* Kill button (only when active and actions enabled) */}
-            {agent.active && showActions && (
-              <Tooltip content="Kill" side="left">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleKill}
-                  aria-label={`Kill ${agent.name} agent`}
-                  disabled={disabled || isProcessing}
-                  className="h-6 w-6 text-muted-foreground hover:text-red-500 hover:bg-transparent"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </Button>
-              </Tooltip>
-            )}
-          </div>
+          {/* Project bubble - right corner (max 6 chars) */}
+          {agent.active && (() => {
+            const projectName = agent.current_project || 'VIBING';
+            const isShortened = projectName.length > 6;
+            const bubble = (
+              <span
+                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                  agent.current_project
+                    ? 'bg-primary/10 text-primary border border-primary/20'
+                    : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                {projectName.slice(0, 6)}
+              </span>
+            );
+            return isShortened ? (
+              <Tooltip content={projectName} side="top">{bubble}</Tooltip>
+            ) : bubble;
+          })()}
         </div>
 
         <CardDescription className={agent.active ? 'text-muted-foreground' : 'text-muted-foreground/60'}>
@@ -286,34 +285,24 @@ export const AgentCard: React.FC<AgentCardProps> = ({
               </span>
             </div>
           )}
-
-          {/* Context usage (only when active and available) */}
-          {agent.active && agent.context_usage !== undefined && (
-            <div className="space-y-1">
-              <div className="flex items-center justify-end text-xs">
-                <span className="text-foreground font-mono">{agent.context_usage}%</span>
-              </div>
-              <div className="w-full bg-secondary rounded-full h-1.5">
-                <div
-                  className={`h-1.5 rounded-full transition-all ${
-                    agent.context_usage >= 60 ? 'bg-red-500' :
-                    agent.context_usage >= 40 ? 'bg-yellow-500' :
-                    'bg-green-500'
-                  }`}
-                  style={{ width: `${agent.context_usage}%` }}
-                />
-              </div>
-            </div>
-          )}
         </div>
 
-        {/* Action hint (only show when clickable) - pinned to bottom */}
-        {isClickable && (
-          <div className={`mt-auto pt-4 text-xs flex items-center gap-2 ${
-            !agent.active ? 'text-primary' : 'text-muted-foreground'
-          }`}>
-            <primaryAction.icon className="w-3 h-3" aria-hidden="true" />
-            <span>Click to {primaryAction.label.toLowerCase()}</span>
+        {/* Context usage bar at bottom (only when active and available) */}
+        {agent.active && agent.context_usage !== undefined && (
+          <div className="mt-auto space-y-1">
+            <div className="flex items-center justify-end text-xs">
+              <span className="text-foreground font-mono">{agent.context_usage}%</span>
+            </div>
+            <div className="w-full bg-secondary rounded-full h-1.5">
+              <div
+                className={`h-1.5 rounded-full transition-all ${
+                  agent.context_usage >= 60 ? 'bg-red-500' :
+                  agent.context_usage >= 40 ? 'bg-yellow-500' :
+                  'bg-green-500'
+                }`}
+                style={{ width: `${agent.context_usage}%` }}
+              />
+            </div>
           </div>
         )}
       </CardContent>
@@ -341,14 +330,34 @@ export const AgentCard: React.FC<AgentCardProps> = ({
         onConfirm={handleConfirmClearContext}
         variant="default"
       />
+      </Card>
 
-      {/* Messages dialog */}
-      <AgentMessagesDialog
-        open={showMessagesDialog}
-        onOpenChange={setShowMessagesDialog}
-        sessionName={agent.session}
-        agentName={agent.name}
-      />
-    </Card>
+      {/* Context menu dropdown - rendered completely outside Card */}
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-50 bg-secondary border border-border rounded-md shadow-lg py-1 min-w-[180px]"
+          style={{
+            left: `${contextMenu.x}px`,
+            top: `${contextMenu.y}px`,
+          }}
+        >
+          <button
+            onClick={handleClearFromMenu}
+            className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
+          >
+            <Eraser className="w-4 h-4" />
+            Clear Context
+          </button>
+          <button
+            onClick={handleKillFromMenu}
+            className="w-full px-3 py-2 text-sm flex items-center gap-2 text-red-500 hover:bg-accent transition-colors text-left"
+          >
+            <Trash2 className="w-4 h-4" />
+            Kill Agent
+          </button>
+        </div>
+      )}
+    </>
   );
 };

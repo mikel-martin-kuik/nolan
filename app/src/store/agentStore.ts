@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { AgentStatusList, AgentName } from '../types';
+import type { AgentStatusList, AgentName, ClaudeModel } from '../types';
 import { useToastStore } from './toastStore';
 
 interface AgentStore {
@@ -15,9 +15,9 @@ interface AgentStore {
 
   // Actions
   updateStatus: () => Promise<void>;
-  launchCore: () => Promise<void>;
+  launchCore: (projectName: string, initialPrompt?: string) => Promise<void>;
   killCore: () => Promise<void>;
-  spawnAgent: (agent: AgentName, force?: boolean) => Promise<void>;
+  spawnAgent: (agent: AgentName, force?: boolean, model?: ClaudeModel) => Promise<void>;
   restartCoreAgent: (agent: AgentName) => Promise<void>;
   killInstance: (session: string) => Promise<void>;
   killAllInstances: (agent: AgentName) => Promise<void>;
@@ -54,16 +54,16 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     }
   },
 
-  // Launch core team
-  launchCore: async () => {
+  // Launch core team with project context
+  launchCore: async (projectName: string, initialPrompt?: string) => {
     try {
       set({ loading: true, error: null });
 
-      await invoke<string>('launch_core');
+      await invoke<string>('launch_core', { projectName, initialPrompt });
 
       // Status will update via 'agent-status-changed' event
       set({ loading: false });
-      useToastStore.getState().success('Core team launched successfully');
+      useToastStore.getState().success(`Core team launched for ${projectName}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       set({ error: message, loading: false });
@@ -89,11 +89,11 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   },
 
   // Spawn a new agent instance
-  spawnAgent: async (agent: AgentName, force = false) => {
+  spawnAgent: async (agent: AgentName, force = false, model?: ClaudeModel) => {
     try {
       set({ loading: true, error: null });
 
-      await invoke<string>('spawn_agent', { agent, force });
+      await invoke<string>('spawn_agent', { agent, force, model });
 
       // Status will update via 'agent-status-changed' event
       set({ loading: false });

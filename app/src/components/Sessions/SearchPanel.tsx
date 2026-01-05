@@ -26,7 +26,7 @@ export function SearchPanel({ onResultClick }: SearchPanelProps) {
   };
 
   return (
-    <div className="bg-card/50 backdrop-blur-xl rounded-2xl border border-border shadow-xl p-4 mb-4">
+    <div className="glass-card rounded-2xl p-4 mb-4">
       <div className="flex items-center gap-2 mb-4">
         <input
           type="text"
@@ -56,7 +56,7 @@ export function SearchPanel({ onResultClick }: SearchPanelProps) {
               <div
                 key={`${match.session_id}-${index}`}
                 onClick={() => handleResultClick(match)}
-                className="p-3 border border-border rounded-xl hover:bg-accent cursor-pointer transition-colors"
+                className="glass-card rounded-xl p-3 cursor-pointer transition-all duration-200"
               >
                 <div className="flex items-start justify-between mb-1">
                   <div className="font-medium text-sm text-foreground">

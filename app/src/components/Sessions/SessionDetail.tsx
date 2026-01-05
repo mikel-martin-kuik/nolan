@@ -25,21 +25,21 @@ function MessageCard({ message }: { message: MessageContent }) {
   };
 
   return (
-    <div className={`border-l-4 ${typeColors[message.type]} p-4 mb-4 bg-white dark:bg-gray-900`}>
+    <div className={`border-l-4 ${typeColors[message.type]} p-4 mb-4 glass-card rounded-xl`}>
       <div className="flex justify-between items-start mb-2">
         <div className="font-medium text-sm">
           {typeLabels[message.type]}
-          {message.tool_name && <span className="text-gray-500 ml-2">({message.tool_name})</span>}
+          {message.tool_name && <span className="text-muted-foreground ml-2">({message.tool_name})</span>}
         </div>
         {message.timestamp && (
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-muted-foreground">
             {new Date(message.timestamp).toLocaleString()}
           </div>
         )}
       </div>
       <MessageRenderer content={message.content} />
       {message.tokens && (
-        <div className="mt-2 text-xs text-gray-500 font-mono">
+        <div className="mt-2 text-xs text-muted-foreground font-mono">
           Tokens: {message.tokens.input_tokens + message.tokens.output_tokens}
           (${message.tokens.total_cost.toFixed(4)})
         </div>
@@ -54,10 +54,10 @@ export function SessionDetail({ sessionId, onClose }: SessionDetailProps) {
   if (!sessionId) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div className="glass-card rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="p-6 border-b dark:border-gray-700">
+        <div className="p-6 border-b border-border">
           <div className="flex justify-between items-start">
             <div className="flex-1">
               {isLoading && <div>Loading...</div>}
@@ -65,7 +65,7 @@ export function SessionDetail({ sessionId, onClose }: SessionDetailProps) {
               {detail && (
                 <>
                   <h2 className="text-xl font-bold">{detail.session.summary}</h2>
-                  <div className="text-sm text-gray-500 mt-2">
+                  <div className="text-sm text-muted-foreground mt-2">
                     {new Date(detail.session.first_timestamp).toLocaleString()} -
                     {new Date(detail.session.last_timestamp).toLocaleString()}
                   </div>
@@ -80,7 +80,7 @@ export function SessionDetail({ sessionId, onClose }: SessionDetailProps) {
             </div>
             <button
               onClick={onClose}
-              className="ml-4 px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded hover:bg-gray-300 dark:hover:bg-gray-600"
+              className="ml-4 px-4 py-2 bg-secondary hover:bg-accent rounded-xl transition-colors"
             >
               Close
             </button>

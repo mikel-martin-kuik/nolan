@@ -47,179 +47,37 @@ pub struct ProjectFile {
 }
 
 /// Parse project status from NOTES.md content
-/// CRITICAL: Must align with validation hooks (validate-phase-complete.py, session-context.sh)
+/// MARKER-ONLY: Single source of truth via structured markers
+/// No heuristics, no legacy pattern matching
 ///
-/// Complete patterns (from session-context.sh:36 and actual NOTES.md):
-/// - `**Status:** Complete` (exact, from hooks)
-/// - `**Status:** ✅ Complete`
-/// - `**Status:** ✅ COMPLETE - DEPLOYED`
-/// - `**Phase**: ✅ COMPLETE - PRODUCTION`
-/// - `## Project Status: CLOSED`
-/// - `## Status: APPROVED - Implementation Phase` → Complete when has deployment indicators
-///
-/// In Progress patterns (from validate-phase-complete.py:121 and actual NOTES.md):
-/// - `STATUS: IN_PROGRESS` (uppercase, from hooks)
-/// - `Status: IN_PROGRESS` (from hooks)
-/// - `**Status**: In Progress`
-/// - `## Status: APPROVED - Implementation Phase`
-/// - `**Assigned:** Ana/Bill/Carl/Enzo`
-///
-/// Pending:
-/// - No status section or no NOTES.md
+/// Markers:
+/// - `<!-- PROJECT:STATUS:COMPLETE:date -->` → Complete
+/// - `<!-- PROJECT:STATUS:CLOSED:date -->` → Complete
+/// - `<!-- PROJECT:STATUS:ARCHIVED:date -->` → Complete
+/// - `<!-- PROJECT:STATUS:INPROGRESS:date -->` → InProgress
+/// - No marker → Pending
 fn parse_project_status(notes_content: &str) -> (ProjectStatus, Option<String>) {
-    // Pattern 1: Check for uppercase STATUS: IN_PROGRESS (from validate-phase-complete.py:121)
     for line in notes_content.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with('|') {
-            continue; // Skip table rows
-        }
 
-        // Exact hook pattern: STATUS: IN_PROGRESS or Status: IN_PROGRESS
-        if trimmed.contains("STATUS: IN_PROGRESS") || trimmed.contains("Status: IN_PROGRESS") {
-            return (ProjectStatus::InProgress, Some(trimmed.to_string()));
-        }
-    }
-
-    // Pattern 2: Check for "## Project Status: CLOSED" header (explicit complete)
-    for line in notes_content.lines() {
-        let line_lower = line.to_lowercase();
-        if line_lower.starts_with("## project status:") && line_lower.contains("closed") {
-            return (ProjectStatus::Complete, Some(line.trim().to_string()));
-        }
-    }
-
-    // Pattern 3: Check **Status:** lines (not in tables)
-    // This matches session-context.sh:36 pattern: **Status:** Complete
-    for line in notes_content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('|') {
-            continue; // Skip table rows
-        }
-
-        let line_lower = trimmed.to_lowercase();
-
-        // Check for **Status:** / **Status**: / **PROJECT STATUS:** field
-        if line_lower.contains("**status:**") || line_lower.contains("**status**:")
-            || line_lower.contains("**project status:**") || line_lower.contains("**project status**:") {
-
-            // COMPLETE: Check for complete indicators
-            if line_lower.contains("complete") {
-                // Complete with deployment/production indicators
-                if line_lower.contains("deployed")
-                    || line_lower.contains("production")
-                    || line_lower.contains("closed")
-                    || line_lower.contains("deployment ready")
-                    || line_lower.contains("production ready")
-                    || line_lower.contains("full refactor")
-                    || trimmed.ends_with("Complete") // Exact hook pattern
-                    || trimmed.ends_with("✓")
-                    || (line_lower.contains("✅") && line_lower.contains("complete"))
-                {
-                    return (ProjectStatus::Complete, Some(trimmed.to_string()));
-                }
-            }
-
-            // Also check for deployed/production without "complete"
-            if line_lower.contains("deployed to production")
-                || (line_lower.contains("✅") && line_lower.contains("deployed"))
-            {
-                return (ProjectStatus::Complete, Some(trimmed.to_string()));
-            }
-
-            // IN PROGRESS: Generic "In Progress" or specific phase indicators
-            // Only match "APPROVED - [Phase]" pattern, not "All phases approved"
-            if line_lower.contains("in progress")
-                || line_lower.contains("implementation phase")
-                || line_lower.contains("research phase")
-                || line_lower.contains("planning phase")
-                || line_lower.contains("qa phase")
-                || line_lower.contains("enhancement phase")
-                || line_lower.contains("approved - implementation phase")
-                || line_lower.contains("approved - research phase")
-                || line_lower.contains("approved - planning phase")
-            {
-                return (ProjectStatus::InProgress, Some(trimmed.to_string()));
-            }
-        }
-
-        // Check for **Phase:** or **Current Phase:** field
-        if line_lower.contains("**phase**:") || line_lower.contains("**current phase:**") {
-            // COMPLETE: Phase with checkmark + complete/enhanced indicators
-            if (line_lower.contains("✅") && line_lower.contains("feature enhanced"))
-                || (line_lower.contains("✅") && line_lower.contains("complete"))
-                || ((line_lower.contains("complete") || line_lower.contains("feature enhanced")) &&
-                    (line_lower.contains("deployed")
-                     || line_lower.contains("production")
-                     || line_lower.contains("closed")
-                     || line_lower.contains("refactor")
-                     || line_lower.contains("approved")
-                     || line_lower.contains("project complete")))
-            {
-                return (ProjectStatus::Complete, Some(trimmed.to_string()));
-            }
-
-            // IN PROGRESS: Active phase names
-            if line_lower.contains("research")
-                || line_lower.contains("planning")
-                || line_lower.contains("implementation")
-                || line_lower.contains("qa")
-                || line_lower.contains("enhancement")
-            {
-                return (ProjectStatus::InProgress, Some(trimmed.to_string()));
-            }
-        }
-    }
-
-    // Pattern 4: Check for table rows with Final QA PASS or Closure APPROVED
-    for line in notes_content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('|') && (
-            (trimmed.contains("Final QA") && trimmed.contains("PASS"))
-            || (trimmed.contains("Closure") && trimmed.contains("PO") && trimmed.contains("APPROVED"))
-            || (trimmed.contains("Final Approval") && trimmed.contains("COMPLETE"))
-        ) {
+        // Complete markers
+        if trimmed.contains("<!-- PROJECT:STATUS:COMPLETE") {
             return (ProjectStatus::Complete, Some(trimmed.to_string()));
         }
-    }
-
-    // Pattern 4: Check for **Assigned:** line (indicates in progress)
-    for line in notes_content.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with('|') {
-            continue;
+        if trimmed.contains("<!-- PROJECT:STATUS:CLOSED") {
+            return (ProjectStatus::Complete, Some(trimmed.to_string()));
         }
-        let line_lower = trimmed.to_lowercase();
-        if (line_lower.contains("**assigned:**") || line_lower.contains("**assigned**:"))
-            && (line_lower.contains("ana")
-                || line_lower.contains("bill")
-                || line_lower.contains("carl")
-                || line_lower.contains("enzo")
-                || line_lower.contains("ralph"))
-        {
+        if trimmed.contains("<!-- PROJECT:STATUS:ARCHIVED") {
+            return (ProjectStatus::Complete, Some(trimmed.to_string()));
+        }
+
+        // In Progress marker
+        if trimmed.contains("<!-- PROJECT:STATUS:INPROGRESS") {
             return (ProjectStatus::InProgress, Some(trimmed.to_string()));
         }
     }
 
-    // Pattern 5: Check ## Status: header
-    for line in notes_content.lines() {
-        let line_lower = line.to_lowercase();
-        if line_lower.starts_with("## status:") {
-            if line_lower.contains("closed")
-                || (line_lower.contains("complete") && !line_lower.contains("phase"))
-            {
-                return (ProjectStatus::Complete, Some(line.trim().to_string()));
-            }
-            if line_lower.contains("approved")
-                || line_lower.contains("phase")
-                || line_lower.contains("progress")
-                || line_lower.contains("in progress")
-            {
-                return (ProjectStatus::InProgress, Some(line.trim().to_string()));
-            }
-        }
-    }
-
-    // Default to pending (no clear status found)
+    // No marker = pending (explicit marking required)
     (ProjectStatus::Pending, None)
 }
 
@@ -269,8 +127,8 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
             .unwrap_or("")
             .to_string();
 
-        // Skip hidden directories
-        if name.starts_with('.') {
+        // Skip hidden directories (.legacy, .state) and templates (_*)
+        if name.starts_with('.') || name.starts_with('_') {
             continue;
         }
 
@@ -579,4 +437,83 @@ pub async fn read_project_file(
         .map_err(|e| format!("Failed to read file: {}", e))?;
 
     Ok(content)
+}
+
+/// Read the roadmap.md file from the projects directory
+#[tauri::command]
+pub async fn read_roadmap() -> Result<String, String> {
+    let projects_dir = get_projects_dir()?;
+    let roadmap_path = projects_dir.join("roadmap.md");
+
+    // Check if roadmap exists
+    if !roadmap_path.exists() {
+        return Err("Roadmap file not found. Create roadmap.md in the projects directory.".to_string());
+    }
+
+    // Read roadmap content
+    let content = fs::read_to_string(&roadmap_path)
+        .map_err(|e| format!("Failed to read roadmap: {}", e))?;
+
+    Ok(content)
+}
+
+/// Create a new project directory with initial NOTES.md
+#[tauri::command]
+pub async fn create_project(project_name: String) -> Result<String, String> {
+    // Validate project name: only lowercase letters, numbers, and hyphens
+    if project_name.is_empty() {
+        return Err("Project name cannot be empty".to_string());
+    }
+
+    // Check for invalid characters
+    if !project_name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+        return Err("Project name can only contain lowercase letters, numbers, and hyphens".to_string());
+    }
+
+    // No leading/trailing hyphens
+    if project_name.starts_with('-') || project_name.ends_with('-') {
+        return Err("Project name cannot start or end with a hyphen".to_string());
+    }
+
+    // No double hyphens
+    if project_name.contains("--") {
+        return Err("Project name cannot contain consecutive hyphens".to_string());
+    }
+
+    let projects_dir = get_projects_dir()?;
+    let project_path = projects_dir.join(&project_name);
+
+    // Check if project already exists
+    if project_path.exists() {
+        return Err(format!("Project '{}' already exists", project_name));
+    }
+
+    // Create project directory
+    fs::create_dir_all(&project_path)
+        .map_err(|e| format!("Failed to create project directory: {}", e))?;
+
+    // Create initial NOTES.md with IN_PROGRESS marker
+    let now = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let notes_content = format!(
+        r#"# {}
+
+<!-- PROJECT:STATUS:INPROGRESS:{} -->
+
+## Current Status
+
+**Phase**: Initializing
+**Assigned**: Dan
+
+## Notes
+
+Project created via Nolan Dashboard.
+"#,
+        project_name, now
+    );
+
+    let notes_path = project_path.join("NOTES.md");
+    fs::write(&notes_path, notes_content)
+        .map_err(|e| format!("Failed to create NOTES.md: {}", e))?;
+
+    Ok(project_path.to_string_lossy().to_string())
 }

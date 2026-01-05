@@ -6,6 +6,7 @@ export interface AgentStatus {
   session: string;
   attached: boolean;
   context_usage?: number;  // Context window usage percentage (0-100)
+  current_project?: string;  // Current project from statusline (undefined if VIBING)
 }
 
 export interface AgentStatusList {
@@ -49,6 +50,15 @@ export const AGENT_TEXT_COLORS: Record<AgentName, string> = {
   ralph: 'text-agents-ralph',
 };
 
+// Claude Code model types
+export type ClaudeModel = 'opus' | 'sonnet' | 'haiku';
+
+export const CLAUDE_MODELS: { id: ClaudeModel; label: string; hint: string }[] = [
+  { id: 'opus', label: 'Opus', hint: 'Powerful' },
+  { id: 'sonnet', label: 'Sonnet', hint: 'Balanced' },
+  { id: 'haiku', label: 'Haiku', hint: 'Fast' },
+];
+
 
 // History log types
 export interface TokenInfo {
@@ -68,4 +78,5 @@ export interface HistoryEntry {
   project?: string;
   tool_name?: string;
   tokens?: TokenInfo;
+  is_streaming?: boolean;  // true for real-time entries, false for bulk historical load
 }

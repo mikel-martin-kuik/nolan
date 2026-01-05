@@ -1,375 +1,407 @@
-# Agent communication aliases (read-only, no spawn/kill/shutdown)
-# Dynamically discovers active agents from tmux sessions
-# Note: Use C-m instead of Enter - Enter creates newlines in Claude Code input
-# FIX: Added 50ms delay between text and keystroke to prevent race condition where
-# Claude Code's input handler isn't ready for the C-m submission keystroke
+# Agent communication aliases - reliable messaging for interactive CLI tools
+# Supports: Claude Code, Codex, Gemini CLI, and similar TTY-based tools
+#
+# Key features:
+# - capture-pane polling for delivery verification (pipe-pane incompatible with Claude Code)
+# - Copy-mode detection and exit before sending
+# - Message IDs for tracking and verification
+# - Parallel-safe with inter-message delays
 
-# ===== RETRY CONFIGURATION =====
-# Configure message delivery retry behavior
-NOLAN_MSG_TIMEOUT="${NOLAN_MSG_TIMEOUT:-5}"              # Timeout per attempt (seconds)
-NOLAN_MSG_POLL_INTERVAL="${NOLAN_MSG_POLL_INTERVAL:-0.2}" # Poll interval (seconds)
-NOLAN_MSG_RETRY_COUNT="${NOLAN_MSG_RETRY_COUNT:-2}"      # Number of retries after initial attempt
+set -o pipefail
 
-# ===== DYNAMIC AGENT DISCOVERY =====
-# Discovers all active agent sessions matching pattern: agent-<name> or agent-<name>-<number>
+# ===== CONFIGURATION =====
+NOLAN_ROOT="${NOLAN_ROOT:-$HOME/.nolan}"
+NOLAN_MAILBOX="${NOLAN_MAILBOX:-$NOLAN_ROOT/mailbox}"
+NOLAN_MSG_TIMEOUT="${NOLAN_MSG_TIMEOUT:-5}"
+NOLAN_MSG_RETRY="${NOLAN_MSG_RETRY:-2}"
 
-list_agents() {
-    local agents=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -E '^agent-[a-z]+(-[0-9]+)?$' | sort)
-    if [ -z "$agents" ]; then
-        echo "No active agent sessions found"
-        return 1
-    fi
-    echo "=== Active Agent Sessions ==="
-    echo "$agents" | sed 's/^agent-/  /'
+# Ensure mailbox directory exists
+mkdir -p "$NOLAN_MAILBOX"
+
+# ===== CORE UTILITIES =====
+
+# List agent sessions (pattern: agent-<name> or agent-<name>-<N>)
+_get_sessions() {
+    local pattern="${1:-^agent-[a-z]+(-[0-9]+)?$}"
+    tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -E "$pattern" | sort
 }
 
-# Get agent name from session (strips "agent-" prefix and returns just the name)
-# For "agent-ana" returns "ana"
-# For "agent-ana-2" returns "ana-2"
-get_agent_name() {
-    local session="$1"
-    echo "${session#agent-}"  # Remove "agent-" prefix
+# Check if agent exists
+_agent_exists() {
+    tmux has-session -t "agent-$1" 2>/dev/null
 }
 
-# Check if a specific agent session exists
-agent_exists() {
+# Get output log path for an agent
+_outlog() {
+    echo "$NOLAN_MAILBOX/$1.out"
+}
+
+# Generate unique message ID
+_msg_id() {
+    echo "MSG_$(date +%s%N | sha256sum | cut -c1-8)"
+}
+
+# ===== OUTPUT CAPTURE =====
+# Uses tmux pipe-pane for continuous output logging (more reliable than capture-pane polling)
+
+# Enable output capture for an agent session
+enable_capture() {
     local agent="$1"
-    local session="agent-${agent}"
-    tmux has-session -t "$session" 2>/dev/null
+    local session="agent-$agent"
+    local outlog=$(_outlog "$agent")
+
+    _agent_exists "$agent" || { echo "Agent '$agent' not found"; return 1; }
+
+    # Start piping output to log file (appends, survives reconnects)
+    tmux pipe-pane -t "$session" -o "cat >> '$outlog'"
+    echo "Output capture enabled: $outlog"
 }
 
-# ===== COPY-MODE ESCAPE =====
-# Ensures pane is not in copy-mode (scroll mode) before sending messages
-# This prevents messages from being lost when user has scrolled in tmux
+# Disable output capture
+disable_capture() {
+    local agent="$1"
+    _agent_exists "$agent" || return 1
+    tmux pipe-pane -t "agent-$agent"
+    echo "Output capture disabled for $agent"
+}
 
-exit_copy_mode() {
+# Truncate log if over 1MB to prevent bloat
+_maybe_truncate_log() {
+    local outlog="$1"
+    local max_size=1048576  # 1MB
+    [ -f "$outlog" ] || return 0
+    local size=$(stat -c%s "$outlog" 2>/dev/null || echo 0)
+    if [ "$size" -gt "$max_size" ]; then
+        # Keep last 100KB
+        tail -c 102400 "$outlog" > "${outlog}.tmp" && mv "${outlog}.tmp" "$outlog"
+    fi
+}
+
+# Auto-enable capture for all agents (call on source or after new agents start)
+_init_capture() {
+    for session in $(_get_sessions); do
+        local agent="${session#agent-}"
+        local outlog=$(_outlog "$agent")
+        [ -f "$outlog" ] || touch "$outlog"
+        _maybe_truncate_log "$outlog"
+        tmux pipe-pane -t "$session" -o "cat >> '$outlog'" 2>/dev/null
+    done
+}
+
+# ===== COPY-MODE HANDLING =====
+# Ensures pane is not in scroll mode before sending
+
+_exit_copy_mode() {
     local session="$1"
-
-    # Check if pane is in copy-mode using tmux format variable
     local in_mode=$(tmux display-message -t "$session" -p '#{pane_in_mode}' 2>/dev/null)
 
-    if [ "$in_mode" = "1" ]; then
-        # Exit copy-mode by sending 'q' (standard copy-mode exit key)
-        tmux send-keys -t "$session" q
-        sleep 0.1
+    [ "$in_mode" = "1" ] || return 0
 
-        # Verify exit worked, try Escape as fallback
-        in_mode=$(tmux display-message -t "$session" -p '#{pane_in_mode}' 2>/dev/null)
-        if [ "$in_mode" = "1" ]; then
-            tmux send-keys -t "$session" Escape
-            sleep 0.1
-        fi
-    fi
+    # Try 'q' first (standard), then Escape (fallback)
+    tmux send-keys -t "$session" q
+    sleep 0.05
+
+    in_mode=$(tmux display-message -t "$session" -p '#{pane_in_mode}' 2>/dev/null)
+    [ "$in_mode" = "1" ] && tmux send-keys -t "$session" Escape
+    sleep 0.05
+
+    # Clear any artifacts from copy mode exit (prevents leading brackets)
+    tmux send-keys -t "$session" C-u
+    sleep 0.02
 }
 
-# ===== VERIFIED SEND (with receipt confirmation) =====
-# Usage: send_verified "ana" "message" [timeout_seconds]
-# Usage: send_verified "ana-2" "message to spawned" [timeout_seconds]
-# Returns: 0 if delivered, 1 if timeout, 2 if agent not found
+# ===== MESSAGE DELIVERY =====
 
-send_verified() {
+# Wait for message ID to appear in pane output
+# Uses capture-pane polling (pipe-pane doesn't work with Claude Code)
+_wait_for_delivery() {
     local agent="$1"
-    local message="$2"
-    local timeout="${3:-${NOLAN_MSG_TIMEOUT}}"
-    local retry_count="${4:-${NOLAN_MSG_RETRY_COUNT}}"
-    local session="agent-${agent}"
+    local msg_id="$2"
+    local timeout="$3"
+    local session="agent-$agent"
+    local deadline=$(($(date +%s) + timeout))
 
-    if ! agent_exists "$agent"; then
-        echo "✗ Error: Agent '${agent}' not found. Use 'list_agents' to see active agents."
-        return 2
-    fi
-
-    local msg_id="MSG_$(date +%s%N | sha256sum | cut -c1-8)"
-    local prefixed_msg="${msg_id}: ${message}"
-    local attempt=0
-
-    while [ $attempt -le $retry_count ]; do
-        [ $attempt -gt 0 ] && echo "  ↻ Retry $attempt of $retry_count for ${agent}"
-
-        # Exit copy-mode if active (prevents messages from going to scroll buffer)
-        exit_copy_mode "$session"
-
-        # Send message with ID prefix
-        tmux send-keys -t "$session" -l "$prefixed_msg"
-        sleep 0.05
-        tmux send-keys -t "$session" C-m
-
-        # Poll for delivery with timeout
-        local start_time=$(date +%s)
-        local pasted_seen=false
-        while true; do
-            local pane_content=$(tmux capture-pane -t "$session" -p -S -200)
-
-            # Check if message ID appears in the agent's pane (indicating it was received)
-            # Use -S -200 to capture scrollback (long messages push MSG_ID off visible area)
-            if echo "$pane_content" | grep -q "$msg_id"; then
-                echo "✓ Delivered to ${agent}: $msg_id"
-                return 0
-            fi
-
-            # Check for [Pasted text #N +X lines] indicator (Claude Code paste mode)
-            # When this appears, the MSG_ID is hidden - we need to wait for submission
-            if echo "$pane_content" | grep -qE "\[Pasted text #[0-9]+ \+[0-9]+ lines\]"; then
-                if [ "$pasted_seen" = false ]; then
-                    pasted_seen=true
-                    # Message is in paste buffer but not yet visible
-                    # The C-m was already sent, just wait for processing
-                    sleep 0.5
-                    continue
-                fi
-            fi
-
-            # Check timeout
-            local elapsed=$(($(date +%s) - start_time))
-            [ $elapsed -gt $timeout ] && break
-            sleep ${NOLAN_MSG_POLL_INTERVAL}
-        done
-
-        # Timeout - check if stuck (prompt ">", msg_id visible, or paste indicator)
-        # Use -S -200 to capture scrollback
-        if tmux capture-pane -t "$session" -p -S -200 | grep -qE "^>|^${msg_id}|\[Pasted text #"; then
-            echo "  ! Forcing submit with C-m"
-            sleep 0.1
-            tmux send-keys -t "$session" C-m
-            sleep 0.5
-            if tmux capture-pane -t "$session" -p -S -200 | grep -q "$msg_id"; then
-                echo "✓ Delivered to ${agent} after force-submit: $msg_id"
-                return 0
-            fi
+    # Poll capture-pane for message ID
+    while [ $(date +%s) -lt $deadline ]; do
+        if tmux capture-pane -t "$session" -p -S -200 2>/dev/null | grep -q "$msg_id"; then
+            return 0
         fi
-
-        # Retry entire message
-        attempt=$((attempt + 1))
+        sleep 0.3
     done
 
-    echo "✗ Timeout: Failed to deliver to ${agent} after $((retry_count + 1)) attempts"
     return 1
 }
 
-# ===== DELIVERY CHECK (manual verification) =====
-# Usage: check-delivery ana "MSG_12345678"
-# Usage: check-delivery ana-2 "MSG_12345678"
+# Send message using bracketed paste mode (safer for special characters and multi-line)
+# Bracketed paste: \e[200~ starts paste, \e[201~ ends paste
+# This is standard and supported by most modern terminals/CLI tools
+_send_bracketed() {
+    local session="$1"
+    local message="$2"
 
-check-delivery() {
-    local agent="$1"
-    local msg_id="$2"
-    local session="agent-${agent}"
+    # Start bracketed paste
+    tmux send-keys -t "$session" -l $'\e[200~'
 
-    if [ -z "$msg_id" ]; then
-        echo "Usage: check-delivery <agent> <msg_id>"
-        echo "Example: check-delivery ana MSG_12345678"
-        echo "Example: check-delivery ana-2 MSG_12345678"
-        return 1
-    fi
+    # Send message content (literal mode preserves special chars)
+    tmux send-keys -t "$session" -l "$message"
 
-    if ! agent_exists "$agent"; then
-        echo "✗ Error: Agent '${agent}' not found"
-        return 1
-    fi
+    # End bracketed paste
+    tmux send-keys -t "$session" -l $'\e[201~'
 
-    if tmux capture-pane -t "$session" -p -S -200 | grep -q "$msg_id"; then
-        echo "✓ Message found in ${agent}'s pane: $msg_id"
-        return 0
-    else
-        echo "✗ Message NOT found in ${agent}'s pane: $msg_id"
-        return 1
-    fi
+    # Small delay then submit
+    sleep 0.03
+    tmux send-keys -t "$session" C-m
 }
 
-# ===== RESEND HELPER =====
-# Usage: resend-with-force ana "message"
-# Usage: resend-with-force ana-2 "message"
-# Sends message, if not confirmed after 2s, sends C-m again to force submit
+# Send message with plain send-keys
+_send_plain() {
+    local session="$1"
+    local message="$2"
 
-resend-with-force() {
+    tmux send-keys -t "$session" -l "$message"
+    sleep 0.03
+    tmux send-keys -t "$session" C-m
+}
+
+# Force submit (retry C-m if stuck in input mode)
+_force_submit() {
+    local session="$1"
+    sleep 0.1
+    tmux send-keys -t "$session" C-m
+    sleep 0.3
+}
+
+# ===== MAIN SEND FUNCTION =====
+
+# Send verified message to agent
+# Usage: send <agent> "message" [timeout] [retries]
+# Returns: 0=delivered, 1=timeout, 2=agent not found
+# NOTE: For reliable delivery, use sequential sends. Parallel sends may concatenate.
+send() {
     local agent="$1"
     local message="$2"
-    local session="agent-${agent}"
+    local timeout="${3:-$NOLAN_MSG_TIMEOUT}"
+    local retries="${4:-$NOLAN_MSG_RETRY}"
+    local session="agent-$agent"
 
-    if ! agent_exists "$agent"; then
-        echo "✗ Error: Agent '${agent}' not found. Use 'list_agents' to see active agents."
-        return 1
-    fi
+    # Validate agent exists
+    _agent_exists "$agent" || { echo "Agent '$agent' not found"; return 2; }
 
-    # Exit copy-mode if active (prevents messages from going to scroll buffer)
-    exit_copy_mode "$session"
+    # Generate message ID
+    local msg_id=$(_msg_id)
+    local full_msg="${msg_id}: ${message}"
 
-    echo "Sending to ${agent}..."
-    tmux send-keys -t "$session" -l "$message"
-    sleep 0.05
-    tmux send-keys -t "$session" C-m
+    local attempt=0
+    while [ $attempt -le $retries ]; do
+        [ $attempt -gt 0 ] && echo "  Retry $attempt/$retries..."
 
-    sleep 2
+        # Prepare pane (exit copy mode if active)
+        _exit_copy_mode "$session"
 
-    # Check if it appears to be processing
-    if tmux capture-pane -t "$session" -p | grep -qE "Working|Thinking|Doing|Processing|Calculating"; then
-        echo "✓ Message appears to be processing"
-        return 0
-    elif tmux capture-pane -t "$session" -p | grep -q "^>"; then
-        echo "! Message in input state, forcing submit with extra C-m"
-        sleep 0.1
-        tmux send-keys -t "$session" C-m
-        sleep 0.5
-        if tmux capture-pane -t "$session" -p | grep -qE "Working|Thinking|Doing|Processing|Calculating"; then
-            echo "✓ Message now processing after force-submit"
+        # Send message
+        _send_plain "$session" "$full_msg"
+
+        # Wait for delivery confirmation via capture-pane
+        if _wait_for_delivery "$agent" "$msg_id" "$timeout"; then
+            echo "Delivered to $agent: $msg_id"
             return 0
-        else
-            echo "✗ Message may not have submitted"
-            return 1
         fi
-    fi
+
+        # Check if stuck (prompt visible or paste indicator) and force submit
+        local pane=$(tmux capture-pane -t "$session" -p 2>/dev/null)
+        if echo "$pane" | grep -qE "^>|\[Pasted text"; then
+            echo "  Force submit..."
+            _force_submit "$session"
+            sleep 0.5
+
+            # Re-check delivery after force submit
+            if tmux capture-pane -t "$session" -p -S -100 2>/dev/null | grep -q "$msg_id"; then
+                echo "Delivered to $agent (after force): $msg_id"
+                return 0
+            fi
+        fi
+
+        ((attempt++))
+    done
+
+    echo "Failed to deliver to $agent after $((retries + 1)) attempts"
+    return 1
 }
 
-# ===== SHOW AGENT PANE (for debugging) =====
-# Usage: show-agent ana [lines]
-# Usage: show-agent ana-2 [lines]
-# Shows last N lines of an agent's pane
+# Alias for backward compatibility
+send_verified() { send "$@"; }
 
-show-agent() {
-    local agent="$1"
-    local lines="${2:-30}"
-    local session="agent-${agent}"
+# ===== AGENT FUNCTIONS =====
 
-    if ! agent_exists "$agent"; then
-        echo "✗ Error: Agent '${agent}' not found. Use 'list_agents' to see active agents."
-        return 1
-    fi
-
-    echo "=== Agent: ${agent} (last ${lines} lines) ==="
-    tmux capture-pane -t "$session" -p -S "-${lines}"
+# List active agents
+list_agents() {
+    local agents=$(_get_sessions)
+    [ -z "$agents" ] && echo "No active agents" && return 1
+    echo "=== Active Agents ==="
+    echo "$agents" | sed 's/^agent-/  /'
 }
 
-# ===== DYNAMIC FUNCTION BUILDERS =====
-# Creates verified communication functions for all agents
-# ALL communication is verified with message IDs and delivery confirmation
-
-# Build dynamic functions for discovered agents
-# This allows: ana_verify "msg" 10, ana_2_verify "msg" 10, etc.
-# Note: For spawned instances (ana-2, ana-3), use underscores in function names (ana_2, ana_3)
-_build_agent_functions() {
-    local sessions=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -E '^agent-[a-z]+(-[0-9]+)?$' | sort)
-
-    for session in $sessions; do
-        local agent_name=$(get_agent_name "$session")
-
-        # Convert hyphens to underscores for function names (bash doesn't allow hyphens)
-        # ana-2 becomes ana_2, bill-3 becomes bill_3
-        local func_name="${agent_name//-/_}"
-
-        # Create ONLY verified function (e.g., ana_verify, ana_2_verify)
-        # This ensures ALL communication is ID-tracked and delivery-confirmed
-        # Usage: ana_verify "message" [timeout_seconds]
-        eval "${func_name}() { send_verified '${agent_name}' \"\$@\"; }"
+# Build dynamic functions (ana "msg", carl "msg", etc.)
+_build_functions() {
+    for session in $(_get_sessions); do
+        local name="${session#agent-}"
+        local func="${name//-/_}"  # ana-2 -> ana_2
+        eval "${func}() { send '$name' \"\$@\"; }"
     done
 }
 
-# Build functions once on source
-_build_agent_functions
-
-# Optionally rebuild functions if needed (call this if agents appear after sourcing)
-rebuild_aliases() {
-    echo "Rebuilding agent aliases..."
-    _build_agent_functions
-    echo "✓ Aliases rebuilt"
+# Rebuild aliases (call after new agents start)
+rebuild() {
+    _build_functions
+    echo "Rebuilt aliases"
     list_agents
 }
 
-# ===== TEAM BROADCAST =====
-# Send verified message to all core agents (not spawned instances)
-team() {
-    local message="$@"
-    local count=0
+# ===== BROADCAST =====
 
-    # Get list of core agent sessions only (no numbers at the end)
-    local core_agents=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -E '^agent-[a-z]+$' | sort)
+# Internal broadcast helper
+_broadcast() {
+    local pattern="$1" label="$2"; shift 2
+    local message="$*"
+    local agents=$(_get_sessions "$pattern")
+    local count=0 failed=0
 
-    if [ -z "$core_agents" ]; then
-        echo "No core agent sessions found"
-        return 1
-    fi
-
-    for session in $core_agents; do
-        local agent_name=$(get_agent_name "$session")
-        send_verified "$agent_name" "$message"
-        ((count++))
-    done
-
-    echo "→ Verified broadcast to core team ($count agents): $message"
-}
-
-# Send verified message to ALL active agents (core + spawned)
-all() {
-    local message="$@"
-    local count=0
-
-    local agents=$(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -E '^agent-[a-z]+(-[0-9]+)?$' | sort)
-
-    if [ -z "$agents" ]; then
-        echo "No agent sessions found"
-        return 1
-    fi
+    [ -z "$agents" ] && echo "No agents match pattern" && return 1
 
     for session in $agents; do
-        local agent_name=$(get_agent_name "$session")
-        send_verified "$agent_name" "$message"
-        ((count++))
+        if send "${session#agent-}" "$message"; then
+            ((count++))
+        else
+            ((failed++))
+        fi
     done
 
-    echo "→ Verified broadcast to ALL agents ($count total): $message"
+    echo "Broadcast to $label: $count delivered, $failed failed"
+    [ $failed -eq 0 ]
+}
+
+# Send to core agents only (no spawned instances)
+team() { _broadcast '^agent-[a-z]+$' "core team" "$@"; }
+
+# Send to all agents (core + spawned)
+all() { _broadcast '^agent-[a-z]+(-[0-9]+)?$' "all agents" "$@"; }
+
+# ===== DEBUGGING =====
+
+# Show agent's recent output (uses capture-pane - most reliable for Claude Code)
+show() {
+    local agent="$1"
+    local lines="${2:-30}"
+
+    _agent_exists "$agent" || { echo "Agent '$agent' not found"; return 1; }
+
+    echo "=== $agent pane (last $lines lines) ==="
+    tmux capture-pane -t "agent-$agent" -p -S "-$lines"
+}
+
+# Check if message was delivered (uses capture-pane)
+check() {
+    local agent="$1"
+    local msg_id="$2"
+
+    [ -z "$msg_id" ] && echo "Usage: check <agent> <msg_id>" && return 1
+    _agent_exists "$agent" || { echo "Agent '$agent' not found"; return 1; }
+
+    if tmux capture-pane -t "agent-$agent" -p -S -200 | grep -q "$msg_id"; then
+        echo "Found: $msg_id"
+        return 0
+    fi
+
+    echo "Not found: $msg_id"
+    return 1
+}
+
+# Show agent output log path
+logpath() {
+    local agent="$1"
+    _agent_exists "$agent" || { echo "Agent '$agent' not found"; return 1; }
+    echo $(_outlog "$agent")
+}
+
+# Tail agent output in real-time
+tail_agent() {
+    local agent="$1"
+    _agent_exists "$agent" || { echo "Agent '$agent' not found"; return 1; }
+
+    local outlog=$(_outlog "$agent")
+    [ -f "$outlog" ] || { echo "No output log for $agent"; return 1; }
+
+    echo "=== Tailing $agent output (Ctrl+C to stop) ==="
+    tail -f "$outlog"
 }
 
 # ===== HELP =====
-help_aliases() {
+
+help() {
     cat <<'EOF'
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                    AGENT COMMUNICATION COMMANDS                              ║
-╚══════════════════════════════════════════════════════════════════════════════╝
+AGENT COMMUNICATION
 
-DYNAMIC AGENT DISCOVERY
-  list_agents                  Show all active agent sessions
-  rebuild_aliases              Rebuild functions (if agents appear after sourcing)
+  list_agents          Show active agents
+  rebuild              Rebuild aliases after new agents start
 
-VERIFIED SEND (with message ID tracking and delivery confirmation)
-  <agent> "message" [timeout]   Send with verified delivery
-    Example: ana "Hello" 5
-    Example: ana_2 "Message to spawned instance" 10  (note: underscore not hyphen)
+SEND (with delivery confirmation)
+  send <agent> "msg" [timeout] [retries]
+  <agent> "msg"        Shorthand (e.g., ana "Hello", carl_2 "msg")
 
-BROADCAST (all verified with IDs)
-  team "message"                Send verified message to all core agents (ana, bill, carl, dan, enzo, ralph)
-  all "message"                 Send verified message to ALL active agents (core + spawned)
+BROADCAST
+  team "msg"           Core agents only
+  all "msg"            All agents (core + spawned)
 
-DEBUGGING
-  show-agent <agent> [lines]    Display agent's pane (last N lines)
-    Example: show-agent ana 50
-    Example: show-agent ana-2 30
+OUTPUT & DEBUGGING
+  show <agent> [lines]     Recent output from log or pane
+  tail_agent <agent>       Real-time output tail
+  check <agent> <msg_id>   Verify delivery
+  logpath <agent>          Show output log path
 
-  check-delivery <agent> <msg_id>   Verify message ID is in pane
-    Example: check-delivery ana MSG_12345678
+OUTPUT CAPTURE
+  enable_capture <agent>   Start logging agent output
+  disable_capture <agent>  Stop logging
 
-  resend-with-force <agent> "message"   Send and force-submit if stuck
-    Example: resend-with-force ana "Stuck message"
+CONFIGURATION (environment variables)
+  NOLAN_MAILBOX       Output log directory (default: ~/.nolan/mailbox)
+  NOLAN_MSG_TIMEOUT   Delivery timeout in seconds (default: 5)
+  NOLAN_MSG_RETRY     Retry attempts (default: 2)
 
-EXAMPLES
-  ✓ Send verified message to core agent:
-    ana "Please start research on authentication" 10
-
-  ✓ Send verified message to spawned agent:
-    ana_2 "Status update for investigation #2" 10
-
-  ✓ Broadcast verified message to team:
-    team "HANDOFF: Research complete"
-
-  ✓ Broadcast to all agents:
-    all "Meeting in 5 minutes"
-
-  ✓ Check agent's pane:
-    show-agent bill 100
-
-  ✓ Verify a message was delivered:
-    check-delivery ana MSG_12345678
-
+NOTES
+  - Use single quotes for messages with special chars: send ana 'path is $HOME'
+  - Functions are exported for subshell use (parallel with &)
+  - Install inotify-tools for faster delivery confirmation
 EOF
 }
 
-# Print available agents on sourcing (optional - comment out if you prefer quiet)
-# list_agents 2>/dev/null || true
+# Aliases for backward compatibility
+help_aliases() { help; }
+show-agent() { show "$@"; }
+check-delivery() { check "$@"; }
+rebuild_aliases() { rebuild; }
+
+# ===== EXPORT FUNCTIONS FOR SUBSHELLS =====
+# Required for parallel execution with & or xargs
+export -f _get_sessions _agent_exists _outlog _msg_id
+export -f _exit_copy_mode _wait_for_delivery _send_plain _force_submit
+export -f send send_verified list_agents
+export -f enable_capture disable_capture
+export -f show check logpath tail_agent
+export -f team all _broadcast
+
+# Export config vars
+export NOLAN_ROOT NOLAN_MAILBOX NOLAN_MSG_TIMEOUT NOLAN_MSG_RETRY
+
+# ===== INITIALIZATION =====
+# Note: pipe-pane capture removed - incompatible with Claude Code sessions
+_build_functions
+
+# Export dynamic agent functions after building
+_export_agent_functions() {
+    for session in $(_get_sessions); do
+        local func="${session#agent-}"
+        func="${func//-/_}"
+        export -f "$func" 2>/dev/null || true
+    done
+}
+_export_agent_functions

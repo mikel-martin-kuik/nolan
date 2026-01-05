@@ -55,7 +55,7 @@ function App() {
                           className={cn(
                             "w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200",
                             isActive
-                              ? "bg-primary/20 text-primary shadow-lg shadow-primary/20"
+                              ? "bg-foreground/10 text-foreground shadow-sm"
                               : "text-muted-foreground hover:text-foreground hover:bg-accent"
                           )}
                         >

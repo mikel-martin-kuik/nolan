@@ -3,11 +3,13 @@ import { useAgentStore } from '../../store/agentStore';
 import { useToastStore } from '../../store/toastStore';
 import { AgentCard } from '../shared/AgentCard';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
+import { ProjectSelectModal } from '../shared/ProjectSelectModal';
 import { Tooltip } from '../ui/tooltip';
-import { Users, Terminal, Play, XCircle, Plus, LayoutGrid, ArrowRight, ArrowDown } from 'lucide-react';
+import { Users, Play, XCircle, Plus, LayoutGrid, ArrowRight, ArrowDown } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import { AGENT_COLORS, AGENT_DESCRIPTIONS } from '@/types';
-import type { AgentName } from '@/types';
+import type { AgentName, ClaudeModel } from '@/types';
+import type { ProjectInfo } from '@/types/projects';
+import { ModelSelectDialog } from '../shared/ModelSelectDialog';
 
 export const StatusPanel: React.FC = () => {
   const {
@@ -24,9 +26,14 @@ export const StatusPanel: React.FC = () => {
   const { error: showError } = useToastStore();
 
   // Confirmation dialog states
-  const [showLaunchDialog, setShowLaunchDialog] = useState(false);
+  const [showProjectSelectModal, setShowProjectSelectModal] = useState(false);
   const [showKillDialog, setShowKillDialog] = useState(false);
   const [showKillRalphDialog, setShowKillRalphDialog] = useState(false);
+  const [showModelSelectDialog, setShowModelSelectDialog] = useState(false);
+
+  // Projects for the launch modal
+  const [projects, setProjects] = useState<ProjectInfo[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
 
   // Setup event listeners and auto-refresh status
   useEffect(() => {
@@ -57,16 +64,32 @@ export const StatusPanel: React.FC = () => {
 
 
   // Handler functions
-  const handleLaunchCoreClick = () => {
-    setShowLaunchDialog(true);
+  const handleLaunchCoreClick = async () => {
+    // Fetch projects before showing modal
+    setProjectsLoading(true);
+    try {
+      const projectList = await invoke<ProjectInfo[]>('list_projects');
+      setProjects(projectList);
+    } catch (error) {
+      console.error('Failed to fetch projects:', error);
+      setProjects([]);
+    } finally {
+      setProjectsLoading(false);
+    }
+    setShowProjectSelectModal(true);
   };
 
-  const handleConfirmLaunch = async () => {
+  const handleProjectLaunch = async (projectName: string, initialPrompt: string, isNew: boolean) => {
     try {
-      await launchCore();
+      // If it's a new project, create it first
+      if (isNew) {
+        await invoke('create_project', { projectName });
+      }
+
+      // Launch core team with project context
+      await launchCore(projectName, initialPrompt);
 
       // Open team terminals after successful launch
-      // Event-driven updates will refresh status
       try {
         await invoke('open_core_team_terminals');
       } catch (terminalError) {
@@ -102,11 +125,18 @@ export const StatusPanel: React.FC = () => {
   };
 
   // Handler for spawning any agent type
-  const handleSpawnAgent = async (agentName: AgentName) => {
+  const handleSpawnAgent = async (agentName: AgentName, model?: ClaudeModel) => {
     try {
-      await spawnAgent(agentName, false);
+      // Capture existing sessions BEFORE spawning to detect the new one
+      const { spawnedSessions: beforeSessions } = useAgentStore.getState();
+      const existingSessionNames = new Set(
+        beforeSessions
+          .filter(s => s.session.startsWith(`agent-${agentName}-`))
+          .map(s => s.session)
+      );
 
-      // Wait for status update via event-driven refresh
+      await spawnAgent(agentName, false, model);
+
       // Poll for new session with timeout
       const maxAttempts = 10;
       const pollInterval = 100; // ms
@@ -124,30 +154,37 @@ export const StatusPanel: React.FC = () => {
           agent.session.startsWith(`agent-${agentName}-`)
         );
 
-        if (agentSessions.length > 0) {
-          // Get most recent (highest instance number)
-          const sorted = agentSessions.sort((a, b) => {
-            const numA = parseInt(a.session.match(new RegExp(`agent-${agentName}-(\\d+)`))?.[1] || '0', 10);
-            const numB = parseInt(b.session.match(new RegExp(`agent-${agentName}-(\\d+)`))?.[1] || '0', 10);
-            return numB - numA;
-          });
-          newSession = sorted[0].session;
+        // Find the NEW session (one that didn't exist before)
+        const newSessions = agentSessions.filter(s => !existingSessionNames.has(s.session));
+        if (newSessions.length > 0) {
+          newSession = newSessions[0].session;
           break;
         }
       }
 
-      if (newSession) {
+      // Only open terminal for non-Ralph agents (Ralph stays detached)
+      if (newSession && agentName !== 'ralph') {
         try {
           await invoke('open_agent_terminal', { session: newSession });
         } catch (terminalError) {
           console.error('Failed to open terminal:', terminalError);
         }
-      } else {
+      } else if (!newSession) {
         console.warn(`Spawned session for ${agentName} not found after polling`);
       }
     } catch (error) {
       console.error(`Failed to spawn ${agentName}:`, error);
     }
+  };
+
+  // Handler for showing model select dialog for Ralph
+  const handleSpawnRalphClick = () => {
+    setShowModelSelectDialog(true);
+  };
+
+  // Handler for when model is selected
+  const handleModelSelect = (model: ClaudeModel) => {
+    handleSpawnAgent('ralph', model);
   };
 
   // Handler for killing all Ralph instances
@@ -193,8 +230,8 @@ export const StatusPanel: React.FC = () => {
   };
 
   return (
-    <div className="h-full flex justify-center">
-      <div className="w-full max-w-[1600px] flex flex-col gap-6">
+    <div className="h-full">
+      <div className="w-full space-y-6 h-full flex flex-col">
         {/* Header */}
         <div>
           <h1 className="text-2xl font-semibold text-foreground flex items-center gap-3">
@@ -203,9 +240,12 @@ export const StatusPanel: React.FC = () => {
           <p className="text-muted-foreground text-sm mt-1">
             Monitor all your available agents
           </p>
+        </div>
 
-          {/* Organization Control Buttons */}
-          <div className="flex gap-1.5 mt-4">
+        {/* Controls + Dan row */}
+        <div className="relative">
+          {/* Organization Control Buttons - positioned left */}
+          <div className="absolute left-0 top-0 flex gap-1.5">
             <Tooltip content="Launch" side="bottom">
               <button
                 onClick={handleLaunchCoreClick}
@@ -246,23 +286,21 @@ export const StatusPanel: React.FC = () => {
               </button>
             </Tooltip>
           </div>
-        </div>
 
-        {/* Scrum Master - Dan (Coordinator) */}
-        <div>
-            <div className="flex justify-center">
-              <div className="w-full max-w-[260px]">
-                {coreAgents.filter(a => a.name === 'dan').map((agent) => (
-                  <AgentCard
-                    key={agent.name}
-                    agent={agent}
-                    variant="dashboard"
-                    showActions={true}
-                  />
-                ))}
-              </div>
+          {/* Scrum Master - Dan (Coordinator) - truly centered */}
+          <div className="flex justify-center">
+            <div className="w-[260px]">
+              {coreAgents.filter(a => a.name === 'dan').map((agent) => (
+                <AgentCard
+                  key={agent.name}
+                  agent={agent}
+                  variant="dashboard"
+                  showActions={true}
+                />
+              ))}
             </div>
           </div>
+        </div>
 
           {/* Arrow separator */}
           <div className="flex justify-center py-6">
@@ -303,44 +341,46 @@ export const StatusPanel: React.FC = () => {
                 <span>Free Agents</span>
                 {spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length > 0 && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
-                    {1 + spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length}
+                    {spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length}
                   </span>
                 )}
               </span>
               <div className="h-px flex-1 bg-border/50" />
             </div>
 
-            {/* Free Agent Control Buttons */}
-            <div className="flex gap-1.5 mb-4">
-              <Tooltip content="Kill All" side="top">
-                <button
-                  onClick={handleKillAllRalph}
-                  disabled={loading || (!coreAgents.some(a => a.name === 'ralph' && a.active) && spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length === 0)}
-                  className="w-9 h-9 rounded-xl flex items-center justify-center
-                    bg-secondary/50 border border-border text-muted-foreground
-                    hover:bg-red-500/10 hover:border-red-400/20 hover:text-red-500
-                    active:scale-95 transition-all duration-200
-                    disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
-                >
-                  <XCircle className="w-4 h-4" />
-                </button>
-              </Tooltip>
-              <Tooltip content="Terminals" side="top">
-                <button
-                  onClick={handleOpenAllRalphTerminals}
-                  disabled={loading || (!coreAgents.some(a => a.name === 'ralph' && a.active) && spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length === 0)}
-                  className="w-9 h-9 rounded-xl flex items-center justify-center
-                    bg-secondary/50 border border-border text-muted-foreground
-                    hover:bg-accent hover:border-border hover:text-foreground
-                    active:scale-95 transition-all duration-200
-                    disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
-                >
-                  <LayoutGrid className="w-4 h-4" />
-                </button>
-              </Tooltip>
-            </div>
+            {/* Free Agent Cards with absolute buttons */}
+            <div className="relative">
+              {/* Free Agent Control Buttons - positioned left */}
+              <div className="absolute left-0 top-0 flex gap-1.5">
+                <Tooltip content="Kill All" side="bottom">
+                  <button
+                    onClick={handleKillAllRalph}
+                    disabled={loading || spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length === 0}
+                    className="w-9 h-9 rounded-xl flex items-center justify-center
+                      bg-secondary/50 border border-border text-muted-foreground
+                      hover:bg-red-500/10 hover:border-red-400/20 hover:text-red-500
+                      active:scale-95 transition-all duration-200
+                      disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
+                  >
+                    <XCircle className="w-4 h-4" />
+                  </button>
+                </Tooltip>
+                <Tooltip content="Terminals" side="bottom">
+                  <button
+                    onClick={handleOpenAllRalphTerminals}
+                    disabled={loading || spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length === 0}
+                    className="w-9 h-9 rounded-xl flex items-center justify-center
+                      bg-secondary/50 border border-border text-muted-foreground
+                      hover:bg-accent hover:border-border hover:text-foreground
+                      active:scale-95 transition-all duration-200
+                      disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                  </button>
+                </Tooltip>
+              </div>
 
-            <div className="flex flex-wrap justify-center gap-4">
+              <div className="flex flex-wrap justify-center gap-4">
               {/* Core Ralph */}
               {coreAgents.filter(a => a.name === 'ralph').map((agent) => (
                 <div key={agent.name} className="w-full sm:w-[260px] flex-shrink-0">
@@ -368,7 +408,7 @@ export const StatusPanel: React.FC = () => {
               {/* Spawn Ralph Button */}
               <div className="w-full sm:w-[260px] flex-shrink-0">
                 <button
-                  onClick={() => handleSpawnAgent('ralph')}
+                  onClick={handleSpawnRalphClick}
                   disabled={loading}
                   className="w-full min-h-[160px] transition-all duration-200 rounded-xl backdrop-blur-sm
                     cursor-pointer active:scale-[0.98]
@@ -381,20 +421,19 @@ export const StatusPanel: React.FC = () => {
                   <Plus className="w-8 h-8 text-foreground/50" />
                 </button>
               </div>
+              </div>
             </div>
           </div>
 
       </div>
 
-      {/* Launch Core confirmation dialog */}
-      <ConfirmDialog
-        open={showLaunchDialog}
-        onOpenChange={setShowLaunchDialog}
-        title="Launch Core Team"
-        description="Launch all 6 core team agents (Ana, Bill, Carl, Dan, Enzo, Ralph)? This will start agents and open the team terminal grid."
-        confirmLabel="Launch"
-        cancelLabel="Cancel"
-        onConfirm={handleConfirmLaunch}
+      {/* Project Select Modal for Launch */}
+      <ProjectSelectModal
+        open={showProjectSelectModal}
+        onOpenChange={setShowProjectSelectModal}
+        onLaunch={handleProjectLaunch}
+        projects={projects}
+        isLoading={projectsLoading || loading}
       />
 
       {/* Kill Core confirmation dialog */}
@@ -419,6 +458,13 @@ export const StatusPanel: React.FC = () => {
         cancelLabel="Cancel"
         onConfirm={handleConfirmKillRalph}
         variant="destructive"
+      />
+
+      {/* Model selection dialog for Ralph */}
+      <ModelSelectDialog
+        open={showModelSelectDialog}
+        onOpenChange={setShowModelSelectDialog}
+        onSelect={handleModelSelect}
       />
     </div>
   );

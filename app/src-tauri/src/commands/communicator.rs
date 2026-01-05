@@ -1,13 +1,18 @@
 use serde::Serialize;
 use regex::Regex;
-use shell_escape::escape;
 use std::process::Command;
+use std::time::{Duration, Instant};
+use std::thread;
 use once_cell::sync::Lazy;
+use uuid::Uuid;
 
 // Valid agent names
 const VALID_AGENTS: &[&str] = &["ana", "bill", "carl", "dan", "enzo", "ralph"];
 
-// Compile regex patterns once at startup to avoid repeated compilation
+// Core agents (not ralph)
+const CORE_AGENTS: &[&str] = &["ana", "bill", "carl", "dan", "enzo"];
+
+// Compile regex patterns once at startup
 static RE_AGENT_NAME: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^([a-z]+)$").expect("Invalid regex pattern for agent name")
 });
@@ -24,50 +29,176 @@ static RE_SESSION_INSTANCE: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^agent-([a-z]+)-[0-9]+$").expect("Invalid regex pattern for session instance")
 });
 
-/// Parse message ID from send_verified output
-/// Expected format: "✓ Delivered to {agent}: MSG_12345678"
-fn parse_message_id(output: &str) -> Option<String> {
-    let re = Regex::new(r"✓ Delivered to [a-z0-9_-]+: (MSG_[a-f0-9]{8})").ok()?;
-    let caps = re.captures(output)?;
-    caps.get(1).map(|m| m.as_str().to_string())  // Safe access instead of indexing
+// Message delivery configuration
+const DEFAULT_TIMEOUT_SECS: u64 = 5;
+const DEFAULT_RETRY_COUNT: u32 = 2;
+const POLL_INTERVAL_MS: u64 = 200;
+
+/// Generate a unique message ID (MSG_XXXXXXXX format)
+fn generate_message_id() -> String {
+    let uuid = Uuid::new_v4();
+    // Take first 8 hex characters from UUID
+    format!("MSG_{}", &uuid.simple().to_string()[..8])
 }
 
-/// Send a verified message using team-aliases.sh send_verified function
-/// This provides message IDs, delivery confirmation, and retry logic
-/// SECURITY: Uses shell-escape to prevent command injection
-fn send_verified(agent: &str, message: &str, timeout: u32) -> Result<String, String> {
-    let nolan_root = crate::constants::get_nolan_root()?;
-
-    let escaped_agent = escape(agent.into());
-    let escaped_message = escape(message.into());
-    let escaped_root = escape(nolan_root.as_str().into());
-
-    let script = format!(
-        "source {}/app/scripts/team-aliases.sh && send_verified {} {} {}",
-        escaped_root, escaped_agent, escaped_message, timeout
-    );
-
-    let output = Command::new("bash")
-        .arg("-c")
-        .arg(&script)
+/// Check if tmux pane is in copy-mode and exit it
+fn exit_copy_mode(session: &str) -> Result<(), String> {
+    // Check if in copy mode
+    let output = Command::new("tmux")
+        .args(&["display-message", "-t", session, "-p", "#{pane_in_mode}"])
         .output()
-        .map_err(|e| format!("Failed to execute send_verified: {}", e))?;
+        .map_err(|e| format!("Failed to check copy mode: {}", e))?;
 
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let mode = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-    // Map exit codes to specific errors
-    match output.status.code() {
-        Some(0) => {
-            // Success - parse message ID from output
-            parse_message_id(&stdout)
-                .ok_or_else(|| format!("Failed to parse message ID from: {}", stdout))
-        },
-        Some(1) => Err(format!("Timeout: Failed to deliver to '{}'", agent)),
-        Some(2) => Err(format!("Agent '{}' not found or offline", agent)),
-        Some(code) => Err(format!("send_verified failed with code {}: {}", code, stderr)),
-        None => Err("send_verified terminated by signal".to_string()),
+    if mode == "1" {
+        // Send 'q' to exit copy-mode
+        let _ = Command::new("tmux")
+            .args(&["send-keys", "-t", session, "q"])
+            .output();
+        thread::sleep(Duration::from_millis(100));
+
+        // Verify exit worked, try Escape as fallback
+        let output = Command::new("tmux")
+            .args(&["display-message", "-t", session, "-p", "#{pane_in_mode}"])
+            .output()
+            .map_err(|e| format!("Failed to verify copy mode exit: {}", e))?;
+
+        let mode = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if mode == "1" {
+            let _ = Command::new("tmux")
+                .args(&["send-keys", "-t", session, "Escape"])
+                .output();
+            thread::sleep(Duration::from_millis(100));
+        }
     }
+
+    Ok(())
+}
+
+/// Capture tmux pane content (last N lines of scrollback)
+fn capture_pane(session: &str, scrollback_lines: i32) -> Result<String, String> {
+    let output = Command::new("tmux")
+        .args(&["capture-pane", "-t", session, "-p", "-S", &format!("-{}", scrollback_lines)])
+        .output()
+        .map_err(|e| format!("Failed to capture pane: {}", e))?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Try to force submit by sending C-m if message appears stuck
+fn try_force_submit(session: &str, msg_id: &str) -> Result<bool, String> {
+    // Check if message is in input prompt or visible
+    let pane_content = capture_pane(session, 200)?;
+
+    // If we see the prompt ">" or the message ID or paste indicator, force submit
+    if pane_content.contains(">") || pane_content.contains(msg_id) || pane_content.contains("[Pasted text #") {
+        thread::sleep(Duration::from_millis(100));
+        let _ = Command::new("tmux")
+            .args(&["send-keys", "-t", session, "C-m"])
+            .output();
+        thread::sleep(Duration::from_millis(500));
+
+        // Check if message now appears in pane
+        let pane_content = capture_pane(session, 200)?;
+        if pane_content.contains(msg_id) {
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
+/// Check if agent session exists
+fn agent_session_exists(agent: &str) -> bool {
+    let session = format!("agent-{}", agent);
+    crate::tmux::session::session_exists(&session).unwrap_or(false)
+}
+
+/// Native verified message delivery with message IDs, retry logic, and delivery confirmation
+/// Returns the message ID on success
+fn send_verified_native(
+    agent: &str,
+    message: &str,
+    timeout_secs: u64,
+    retry_count: u32,
+) -> Result<String, String> {
+    let session = format!("agent-{}", agent);
+
+    // Verify session exists
+    if !crate::tmux::session::session_exists(&session)? {
+        return Err(format!("Agent '{}' not found or offline", agent));
+    }
+
+    let msg_id = generate_message_id();
+    let prefixed_msg = format!("{}: {}", msg_id, message);
+
+    for attempt in 0..=retry_count {
+        if attempt > 0 {
+            // Log retry (visible in Tauri debug logs)
+            eprintln!("Retry {} of {} for {}", attempt, retry_count, agent);
+        }
+
+        // Exit copy-mode if active (prevents messages going to scroll buffer)
+        exit_copy_mode(&session)?;
+
+        // Send message with ID prefix using literal mode
+        let output = Command::new("tmux")
+            .args(&["send-keys", "-t", &session, "-l", &prefixed_msg])
+            .output()
+            .map_err(|e| format!("Failed to send message: {}", e))?;
+
+        if !output.status.success() {
+            return Err(format!("tmux send-keys failed: {}", String::from_utf8_lossy(&output.stderr)));
+        }
+
+        // Small delay before sending Enter
+        thread::sleep(Duration::from_millis(50));
+
+        // Send C-m (Enter) to submit
+        let output = Command::new("tmux")
+            .args(&["send-keys", "-t", &session, "C-m"])
+            .output()
+            .map_err(|e| format!("Failed to send enter: {}", e))?;
+
+        if !output.status.success() {
+            return Err(format!("tmux send-keys C-m failed: {}", String::from_utf8_lossy(&output.stderr)));
+        }
+
+        // Poll for delivery confirmation
+        let start = Instant::now();
+        let mut pasted_seen = false;
+
+        while start.elapsed().as_secs() < timeout_secs {
+            let pane_content = capture_pane(&session, 200)?;
+
+            // Check if message ID appears in the agent's pane (indicating it was received)
+            if pane_content.contains(&msg_id) {
+                return Ok(msg_id);
+            }
+
+            // Check for [Pasted text #N +X lines] indicator (Claude Code paste mode)
+            // When this appears, the MSG_ID is hidden - we need to wait for submission
+            if pane_content.contains("[Pasted text #") {
+                if !pasted_seen {
+                    pasted_seen = true;
+                    // Message is in paste buffer but not yet visible
+                    // The C-m was already sent, just wait for processing
+                    thread::sleep(Duration::from_millis(500));
+                    continue;
+                }
+            }
+
+            thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+        }
+
+        // Timeout - try force submit
+        if try_force_submit(&session, &msg_id)? {
+            return Ok(msg_id);
+        }
+    }
+
+    Err(format!("Timeout: Failed to deliver to '{}' after {} attempts", agent, retry_count + 1))
 }
 
 /// Send a message to a specific agent
@@ -94,48 +225,25 @@ pub async fn send_message(target: String, message: String) -> Result<String, Str
         ));
     }
 
-    // Use send_verified from team-aliases.sh with 5 second timeout
-    send_verified(&target, &message, 5)
-}
-
-/// Extract agent name from delivery confirmation line
-/// Expected format: "✓ Delivered to {agent}: MSG_12345678"
-fn extract_agent_from_line(line: &str) -> Option<String> {
-    let re = Regex::new(r"✓ Delivered to ([a-z0-9_-]+):").ok()?;
-    re.captures(line).map(|caps| caps[1].to_string())
+    // Use native send_verified with default timeout
+    send_verified_native(&target, &message, DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT)
 }
 
 /// Broadcast a message to the core team (Ana, Bill, Carl, Dan, Enzo)
 #[tauri::command]
 pub async fn broadcast_team(message: String) -> Result<BroadcastResult, String> {
-    let nolan_root = crate::constants::get_nolan_root()?;
-
-    let escaped_message = escape(message.as_str().into());
-    let escaped_root = escape(nolan_root.as_str().into());
-
-    let script = format!(
-        "source {}/app/scripts/team-aliases.sh && team {}",
-        escaped_root, escaped_message
-    );
-
-    let output = Command::new("bash")
-        .arg("-c")
-        .arg(&script)
-        .output()
-        .map_err(|e| format!("Failed to execute team broadcast: {}", e))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-
     let mut successful = Vec::new();
     let mut failed = Vec::new();
 
-    for line in stdout.lines() {
-        if line.starts_with("✓ Delivered to") {
-            if let Some(agent) = extract_agent_from_line(line) {
-                successful.push(agent);
-            }
-        } else if line.starts_with("✗") {
-            failed.push(line.trim_start_matches("✗ ").to_string());
+    for &agent in CORE_AGENTS {
+        // Check if agent session exists before sending
+        if !agent_session_exists(agent) {
+            continue; // Skip offline agents
+        }
+
+        match send_verified_native(agent, &message, DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT) {
+            Ok(msg_id) => successful.push(format!("{} ({})", agent, msg_id)),
+            Err(e) => failed.push(format!("{}: {}", agent, e)),
         }
     }
 
@@ -151,34 +259,31 @@ pub async fn broadcast_team(message: String) -> Result<BroadcastResult, String> 
 /// Broadcast a message to all active agent sessions (core + spawned)
 #[tauri::command]
 pub async fn broadcast_all(message: String) -> Result<BroadcastResult, String> {
-    let nolan_root = crate::constants::get_nolan_root()?;
-
-    let escaped_message = escape(message.as_str().into());
-    let escaped_root = escape(nolan_root.as_str().into());
-
-    let script = format!(
-        "source {}/app/scripts/team-aliases.sh && all {}",
-        escaped_root, escaped_message
-    );
-
-    let output = Command::new("bash")
-        .arg("-c")
-        .arg(&script)
-        .output()
-        .map_err(|e| format!("Failed to execute all broadcast: {}", e))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let sessions = crate::tmux::session::list_sessions()?;
 
     let mut successful = Vec::new();
     let mut failed = Vec::new();
 
-    for line in stdout.lines() {
-        if line.starts_with("✓ Delivered to") {
-            if let Some(agent) = extract_agent_from_line(line) {
-                successful.push(agent);
-            }
-        } else if line.starts_with("✗") {
-            failed.push(line.trim_start_matches("✗ ").to_string());
+    for session in sessions {
+        // Extract agent name from session (agent-{name} or agent-{name}-{N})
+        let agent_name = if let Some(caps) = RE_SESSION_NAME.captures(&session) {
+            caps[1].to_string()
+        } else if RE_SESSION_INSTANCE.is_match(&session) {
+            // For spawned instances, use full identifier (e.g., "ana-2")
+            session.strip_prefix("agent-").unwrap_or(&session).to_string()
+        } else {
+            continue; // Not an agent session
+        };
+
+        // Validate it's a real agent
+        let base_agent = agent_name.split('-').next().unwrap_or(&agent_name);
+        if !VALID_AGENTS.contains(&base_agent) {
+            continue;
+        }
+
+        match send_verified_native(&agent_name, &message, DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT) {
+            Ok(msg_id) => successful.push(format!("{} ({})", agent_name, msg_id)),
+            Err(e) => failed.push(format!("{}: {}", agent_name, e)),
         }
     }
 

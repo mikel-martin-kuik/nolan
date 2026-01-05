@@ -470,7 +470,7 @@ export const HistoryCommunicatorPanel: React.FC = () => {
           {/* Left Side - Sessions (2/3 width) */}
           <div className="flex-[2] overflow-hidden">
             {/* Log Entries Card */}
-            <div className="bg-card/50 backdrop-blur-xl border border-border rounded-2xl p-6 shadow-xl h-full flex flex-col">
+            <div className="glass-card rounded-2xl p-6 h-full flex flex-col">
           {/* Header with controls */}
           <div className="flex items-center justify-between mb-4 flex-shrink-0">
             <div className="flex items-center gap-2">
@@ -619,13 +619,13 @@ export const HistoryCommunicatorPanel: React.FC = () => {
       {/* Right Side - Message Form (1/3 width) */}
       <div className="flex-1 flex flex-col overflow-hidden gap-4">
         {/* Message form card */}
-        <div className="bg-card/50 backdrop-blur-xl border border-border rounded-2xl p-6 shadow-xl flex-shrink-0">
+        <div className="glass-card rounded-2xl p-6 flex-shrink-0">
           <MessageForm onMessageSent={handleMessageSent} />
         </div>
 
         {/* Message history - takes remaining space when present */}
         {messageHistory.length > 0 && (
-          <div className="bg-card/50 backdrop-blur-xl border border-border rounded-2xl p-4 shadow-xl flex-1 flex flex-col min-h-0 overflow-hidden">
+          <div className="glass-card rounded-2xl p-4 flex-1 flex flex-col min-h-0 overflow-hidden">
             <div className="flex items-center gap-2 mb-3 flex-shrink-0">
               <h2 className="text-sm font-semibold text-foreground">Recent Messages</h2>
               <span className="text-xs text-muted-foreground">({messageHistory.length})</span>
@@ -634,7 +634,7 @@ export const HistoryCommunicatorPanel: React.FC = () => {
               {messageHistory.map((msg, index) => (
                 <div
                   key={index}
-                  className="bg-secondary/50 border border-border rounded-lg p-2"
+                  className="glass-card rounded-xl p-2"
                 >
                   <div className="flex items-start justify-between mb-1">
                     <span className="font-mono text-xs text-primary">
@@ -665,7 +665,7 @@ export const HistoryCommunicatorPanel: React.FC = () => {
             onClick={() => setSelectedEntry(null)}
           >
             <div
-              className="bg-card/95 backdrop-blur-xl border border-border rounded-2xl shadow-2xl w-full max-w-2xl h-[60vh] flex flex-col"
+              className="glass-card glass-active rounded-2xl w-full max-w-2xl h-[60vh] flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Popup header */}

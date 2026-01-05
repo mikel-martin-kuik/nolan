@@ -90,7 +90,5 @@ You are Carl, the implementation agent. Your task:
 
 1. Update progress.md with final status
 2. Run validation checks from plan.md
-3. Add handoff marker and send notification:
-   - **Execute `/handoff carl dan`** - this handles everything automatically
-   - OR manually: add marker + send message (see /handoff command for details)
-4. **Do NOT send a separate message via team-aliases before running /handoff** - it causes duplication
+3. Mark status as "Complete" in the output file
+4. Stop the session - handoff to Dan happens automatically

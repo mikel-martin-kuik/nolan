@@ -73,7 +73,5 @@ You are Ana, the research agent. Your task:
 ## When Complete
 
 1. Update research.md with final findings
-2. Add handoff marker and send notification:
-   - **Execute `/handoff ana dan`** - this handles everything automatically
-   - OR manually: add marker + send message (see /handoff command for details)
-3. **Do NOT send a separate message via team-aliases before running /handoff** - it causes duplication
+2. Mark status as "Complete" in the output file
+3. Stop the session - handoff to Dan happens automatically

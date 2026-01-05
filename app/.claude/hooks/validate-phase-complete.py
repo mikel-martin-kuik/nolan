@@ -14,6 +14,7 @@ import sys
 import os
 import re
 from pathlib import Path
+from datetime import datetime
 
 def get_docs_path():
     """Get active project docs path from NOTES.md files."""
@@ -71,8 +72,37 @@ def check_agent_output(docs_path, agent):
     return None  # All checks passed
 
 
+def trigger_handoff(docs_path, agent, output_file):
+    """Automatically trigger handoff by adding marker and sending message."""
+    filepath = docs_path / output_file
+
+    try:
+        # Add handoff marker
+        handoff_marker = f"\n---\n**Handoff:** Automatically sent to dan at {Path(__file__).parent}"
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
+        handoff_marker = f"\n---\n**Handoff:** Sent to dan at {timestamp}"
+
+        with open(filepath, 'a') as f:
+            f.write(handoff_marker)
+
+        # Send handoff message via team-aliases
+        import subprocess
+        nolan_root = os.environ.get('NOLAN_ROOT', '')
+        if nolan_root:
+            msg = f"HANDOFF: {agent} → dan | Project: {docs_path.name} | Status: COMPLETE"
+            cmd = f'source "{nolan_root}/app/scripts/team-aliases.sh" && dan "{msg}"'
+            try:
+                subprocess.run(['bash', '-c', cmd], timeout=10, capture_output=True)
+            except Exception as e:
+                # Log but don't fail - handoff marker was added
+                pass
+
+        return True
+    except Exception as e:
+        return False
+
 def check_handoff_done(docs_path, agent):
-    """Check if handoff marker exists in output file."""
+    """Auto-trigger handoff if work is complete and marker missing."""
     output_files = {
         'ana': 'research.md',
         'bill': 'plan.md',
@@ -105,7 +135,11 @@ def check_handoff_done(docs_path, agent):
 
     # Work is complete - check for handoff marker
     if '**Handoff:**' not in content:
-        return f"Work is complete but handoff not done. Run /handoff {agent} dan before stopping."
+        # Auto-trigger handoff
+        if trigger_handoff(docs_path, agent, output_files[agent]):
+            return None  # Handoff triggered successfully, allow stop
+        else:
+            return f"Work complete but handoff automation failed. Please run: /handoff {agent} dan"
 
     return None  # Handoff marker found
 

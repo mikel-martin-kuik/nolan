@@ -84,43 +84,19 @@ Where `$PROJECTS_DIR` is set by launch scripts to `$NOLAN_ROOT/projects`.
 | progress.md | $DOCS_PATH[/component] | Carl's implementation status |
 | NOTES.md | $DOCS_PATH | Dan's coordination hub |
 
-## Agent Communication
+## Agent Handoffs
 
-Send messages to other agents using team-aliases:
+When work is complete:
 
-```bash
-source "$NOLAN_ROOT/app/scripts/team-aliases.sh" && <agent> '<message>'
-```
+1. Mark **Status:** Complete in output file
+2. Stop the session
+3. Handoff to Dan happens **automatically** via the stop hook
+   - Handoff marker is added to output file
+   - Notification sent to Dan via team communication system
 
-| Command | Target | Use Case |
-|---------|--------|----------|
-| `ana '<msg>'` | Research agent | Status requests, direct communication |
-| `bill '<msg>'` | Planning agent | Status requests, direct communication |
-| `carl '<msg>'` | Implementation agent | Status requests, direct communication |
-| `dan '<msg>'` | Scrum master | Status requests, coordination |
-| `team '<msg>'` | All agents | Team-wide announcements |
+**Ana, Bill, Enzo, and Carl:** Handoffs are automatic on stop.
 
-### Handoff Workflow
-
-⚠️ **IMPORTANT:** For handoffs, use `/handoff` command/skill instead of manual messages:
-
-```bash
-/handoff <from-agent> <to-agent>    # e.g., /handoff ana bill
-```
-
-The `/handoff` command handles:
-- Adding handoff marker to output file
-- Sending handoff notification to Dan
-
-**Do NOT send a handoff message manually AND also run /handoff** - this causes message duplication.
-
-### When to Use Manual Messages
-
-Use manual messages for:
-- Status updates mid-phase
-- Urgent coordination
-- Direct agent-to-agent requests
-- Non-handoff notifications
+**Dan and Ralph:** Can stop without handoffs.
 
 ## Agent Environment
 The `AGENT_NAME` environment variable is automatically set by the launch scripts (`launch-core.sh`, `spawn-agent.sh`). This variable is used by validation hooks to identify the active agent.

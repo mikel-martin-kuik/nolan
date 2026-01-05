@@ -38,6 +38,30 @@ agent_exists() {
     tmux has-session -t "$session" 2>/dev/null
 }
 
+# ===== COPY-MODE ESCAPE =====
+# Ensures pane is not in copy-mode (scroll mode) before sending messages
+# This prevents messages from being lost when user has scrolled in tmux
+
+exit_copy_mode() {
+    local session="$1"
+
+    # Check if pane is in copy-mode using tmux format variable
+    local in_mode=$(tmux display-message -t "$session" -p '#{pane_in_mode}' 2>/dev/null)
+
+    if [ "$in_mode" = "1" ]; then
+        # Exit copy-mode by sending 'q' (standard copy-mode exit key)
+        tmux send-keys -t "$session" q
+        sleep 0.1
+
+        # Verify exit worked, try Escape as fallback
+        in_mode=$(tmux display-message -t "$session" -p '#{pane_in_mode}' 2>/dev/null)
+        if [ "$in_mode" = "1" ]; then
+            tmux send-keys -t "$session" Escape
+            sleep 0.1
+        fi
+    fi
+}
+
 # ===== VERIFIED SEND (with receipt confirmation) =====
 # Usage: send_verified "ana" "message" [timeout_seconds]
 # Usage: send_verified "ana-2" "message to spawned" [timeout_seconds]
@@ -61,6 +85,9 @@ send_verified() {
 
     while [ $attempt -le $retry_count ]; do
         [ $attempt -gt 0 ] && echo "  ↻ Retry $attempt of $retry_count for ${agent}"
+
+        # Exit copy-mode if active (prevents messages from going to scroll buffer)
+        exit_copy_mode "$session"
 
         # Send message with ID prefix
         tmux send-keys -t "$session" -l "$prefixed_msg"
@@ -163,6 +190,9 @@ resend-with-force() {
         echo "✗ Error: Agent '${agent}' not found. Use 'list_agents' to see active agents."
         return 1
     fi
+
+    # Exit copy-mode if active (prevents messages from going to scroll buffer)
+    exit_copy_mode "$session"
 
     echo "Sending to ${agent}..."
     tmux send-keys -t "$session" -l "$message"

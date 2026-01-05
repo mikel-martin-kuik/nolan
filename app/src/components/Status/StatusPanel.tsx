@@ -296,51 +296,50 @@ export const StatusPanel: React.FC = () => {
 
           {/* Ralph - Free Agent */}
           <div className="mt-auto pt-8">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-xs text-muted-foreground uppercase tracking-wider flex items-center gap-3 flex-1">
-                <div className="h-px flex-1 bg-border/50" />
-                <span className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/30 border border-border/40">
-                  <Users className="w-3.5 h-3.5" />
-                  <span>Free Agents</span>
-                  {spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length > 0 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
-                      {1 + spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length}
-                    </span>
-                  )}
-                </span>
-                <div className="h-px flex-1 bg-border/50" />
-              </div>
-
-              {/* Free Agent Control Buttons */}
-              <div className="flex gap-1.5 ml-4">
-                <Tooltip content="Kill All" side="top">
-                  <button
-                    onClick={handleKillAllRalph}
-                    disabled={loading || (!coreAgents.some(a => a.name === 'ralph' && a.active) && spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length === 0)}
-                    className="w-9 h-9 rounded-xl flex items-center justify-center
-                      bg-secondary/50 border border-border text-muted-foreground
-                      hover:bg-red-500/10 hover:border-red-400/20 hover:text-red-500
-                      active:scale-95 transition-all duration-200
-                      disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
-                  >
-                    <XCircle className="w-4 h-4" />
-                  </button>
-                </Tooltip>
-                <Tooltip content="Terminals" side="top">
-                  <button
-                    onClick={handleOpenAllRalphTerminals}
-                    disabled={loading || (!coreAgents.some(a => a.name === 'ralph' && a.active) && spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length === 0)}
-                    className="w-9 h-9 rounded-xl flex items-center justify-center
-                      bg-secondary/50 border border-border text-muted-foreground
-                      hover:bg-accent hover:border-border hover:text-foreground
-                      active:scale-95 transition-all duration-200
-                      disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
-                  >
-                    <LayoutGrid className="w-4 h-4" />
-                  </button>
-                </Tooltip>
-              </div>
+            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-3">
+              <div className="h-px flex-1 bg-border/50" />
+              <span className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/30 border border-border/40">
+                <Users className="w-3.5 h-3.5" />
+                <span>Free Agents</span>
+                {spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length > 0 && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
+                    {1 + spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length}
+                  </span>
+                )}
+              </span>
+              <div className="h-px flex-1 bg-border/50" />
             </div>
+
+            {/* Free Agent Control Buttons */}
+            <div className="flex gap-1.5 mb-4">
+              <Tooltip content="Kill All" side="top">
+                <button
+                  onClick={handleKillAllRalph}
+                  disabled={loading || (!coreAgents.some(a => a.name === 'ralph' && a.active) && spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length === 0)}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center
+                    bg-secondary/50 border border-border text-muted-foreground
+                    hover:bg-red-500/10 hover:border-red-400/20 hover:text-red-500
+                    active:scale-95 transition-all duration-200
+                    disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
+                >
+                  <XCircle className="w-4 h-4" />
+                </button>
+              </Tooltip>
+              <Tooltip content="Terminals" side="top">
+                <button
+                  onClick={handleOpenAllRalphTerminals}
+                  disabled={loading || (!coreAgents.some(a => a.name === 'ralph' && a.active) && spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length === 0)}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center
+                    bg-secondary/50 border border-border text-muted-foreground
+                    hover:bg-accent hover:border-border hover:text-foreground
+                    active:scale-95 transition-all duration-200
+                    disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+              </Tooltip>
+            </div>
+
             <div className="flex flex-wrap justify-center gap-4">
               {/* Core Ralph */}
               {coreAgents.filter(a => a.name === 'ralph').map((agent) => (

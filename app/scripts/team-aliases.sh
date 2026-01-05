@@ -69,11 +69,27 @@ send_verified() {
 
         # Poll for delivery with timeout
         local start_time=$(date +%s)
+        local pasted_seen=false
         while true; do
+            local pane_content=$(tmux capture-pane -t "$session" -p -S -200)
+
             # Check if message ID appears in the agent's pane (indicating it was received)
-            if tmux capture-pane -t "$session" -p | grep -q "$msg_id"; then
+            # Use -S -200 to capture scrollback (long messages push MSG_ID off visible area)
+            if echo "$pane_content" | grep -q "$msg_id"; then
                 echo "✓ Delivered to ${agent}: $msg_id"
                 return 0
+            fi
+
+            # Check for [Pasted text #N +X lines] indicator (Claude Code paste mode)
+            # When this appears, the MSG_ID is hidden - we need to wait for submission
+            if echo "$pane_content" | grep -qE "\[Pasted text #[0-9]+ \+[0-9]+ lines\]"; then
+                if [ "$pasted_seen" = false ]; then
+                    pasted_seen=true
+                    # Message is in paste buffer but not yet visible
+                    # The C-m was already sent, just wait for processing
+                    sleep 0.5
+                    continue
+                fi
             fi
 
             # Check timeout
@@ -82,13 +98,14 @@ send_verified() {
             sleep ${NOLAN_MSG_POLL_INTERVAL}
         done
 
-        # Timeout - check if stuck (prompt ">" or msg_id visible but not submitted)
-        if tmux capture-pane -t "$session" -p | grep -qE "^>|^${msg_id}"; then
+        # Timeout - check if stuck (prompt ">", msg_id visible, or paste indicator)
+        # Use -S -200 to capture scrollback
+        if tmux capture-pane -t "$session" -p -S -200 | grep -qE "^>|^${msg_id}|\[Pasted text #"; then
             echo "  ! Forcing submit with C-m"
             sleep 0.1
             tmux send-keys -t "$session" C-m
             sleep 0.5
-            if tmux capture-pane -t "$session" -p | grep -q "$msg_id"; then
+            if tmux capture-pane -t "$session" -p -S -200 | grep -q "$msg_id"; then
                 echo "✓ Delivered to ${agent} after force-submit: $msg_id"
                 return 0
             fi
@@ -123,7 +140,7 @@ check-delivery() {
         return 1
     fi
 
-    if tmux capture-pane -t "$session" -p | grep -q "$msg_id"; then
+    if tmux capture-pane -t "$session" -p -S -200 | grep -q "$msg_id"; then
         echo "✓ Message found in ${agent}'s pane: $msg_id"
         return 0
     else

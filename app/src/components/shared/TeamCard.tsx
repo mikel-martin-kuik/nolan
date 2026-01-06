@@ -52,10 +52,8 @@ export const TeamCard: React.FC<TeamCardProps> = ({
 
   return (
     <Card className="bg-transparent border-2 border-dashed border-border/60 rounded-2xl p-4 sm:p-6 relative shadow-none w-fit mx-auto">
-      {/* Top row: Controls left, Project label right */}
-      <div className="flex items-center justify-between mb-2">
-        {/* Team Control Buttons */}
-        <div className="flex gap-1.5">
+      {/* Team Control Buttons - Absolute positioned */}
+      <div className="absolute top-2 left-4 sm:top-6 sm:left-6 flex gap-1.5">
           <Tooltip content="Launch" side="bottom">
             <button
               onClick={onLaunch}
@@ -97,23 +95,22 @@ export const TeamCard: React.FC<TeamCardProps> = ({
           </Tooltip>
         </div>
 
-        {/* Team Project Label */}
-        {anyActive && (
-          <span
-            className={`inline-flex items-center px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap ${
-              teamProject
-                ? 'bg-primary/10 text-primary border border-primary/20'
-                : 'bg-muted text-muted-foreground'
-            }`}
-          >
-            {teamProject || 'VIBING'}
-          </span>
-        )}
-      </div>
+      {/* Team Project Label - Absolute positioned */}
+      {anyActive && (
+        <span
+          className={`absolute top-2 right-4 sm:top-6 sm:right-6 inline-flex items-center px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium whitespace-nowrap ${
+            teamProject
+              ? 'bg-primary/10 text-primary border border-primary/20'
+              : 'bg-muted text-muted-foreground'
+          }`}
+        >
+          {teamProject || 'VIBING'}
+        </span>
+      )}
 
       {/* Dan (Scrum Master) - Centered at top */}
       {dan && (
-        <div className="flex justify-center pt-1 sm:pt-2">
+        <div className="flex justify-center">
           <div className="w-[clamp(140px,70vw,180px)]">
             <AgentCard
               agent={dan}

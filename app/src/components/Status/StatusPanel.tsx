@@ -229,18 +229,19 @@ export const StatusPanel: React.FC = () => {
 
   return (
     <div className="h-full">
-      <div className="w-full space-y-6 h-full flex flex-col">
+      <div className="w-full h-full flex flex-col">
         {/* Header */}
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground flex items-center gap-3">
+        <div className="mb-6">
+          <h1 className="text-lg font-semibold text-foreground flex items-center gap-3">
             Organization
           </h1>
-          <p className="text-muted-foreground text-sm mt-1">
+          <p className="text-muted-foreground text-xs mt-1">
             Monitor all your available agents
           </p>
         </div>
 
         {/* Core Team Card */}
+        <div className="mb-6">
         <TeamCard
           agents={coreAgents.filter(a => a.name !== 'ralph')}
           showActions={true}
@@ -249,9 +250,10 @@ export const StatusPanel: React.FC = () => {
           onKill={handleKillCoreClick}
           onShowTerminals={handleShowTerminals}
         />
+        </div>
 
-          {/* Ralph - Free Agent */}
-          <div className="mt-auto pt-8">
+        {/* Ralph - Free Agent */}
+        <div className="mt-auto pt-8">
             <div className="text-xs text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-3">
               <div className="h-px flex-1 bg-border/50" />
               <span className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/30 border border-border/40">

@@ -6,22 +6,24 @@ import { cn } from '@/lib/utils';
 
 // All expected files in order
 const WORKFLOW_STEPS = [
-  { key: 'NOTES' },
+  { key: 'prompt' },
   { key: 'context' },
   { key: 'research' },
   { key: 'plan' },
   { key: 'qa-review' },
   { key: 'progress' },
+  { key: 'NOTES' },
 ];
 
 // File type display order
 const FILE_ORDER: Record<string, number> = {
-  'NOTES': 0,
+  'prompt': 0,
   'context': 1,
   'research': 2,
   'plan': 3,
   'qa-review': 4,
   'progress': 5,
+  'NOTES': 6,
 };
 
 interface ProjectListItemProps {
@@ -95,7 +97,7 @@ export function ProjectListItem({
             />
           ))}
           <span className="text-[10px] text-muted-foreground ml-1.5">
-            {completedCount}/6
+            {completedCount}/{WORKFLOW_STEPS.length}
           </span>
         </div>
       </button>

@@ -14,12 +14,13 @@ pub enum ProjectStatus {
 
 /// Expected workflow files for scaffolding
 const EXPECTED_FILES: &[&str] = &[
-    "NOTES.md",
+    "prompt.md",
     "context.md",
     "research.md",
     "plan.md",
     "qa-review.md",
     "progress.md",
+    "NOTES.md",
 ];
 
 #[derive(Debug, Clone, Serialize)]
@@ -455,6 +456,69 @@ pub async fn read_roadmap() -> Result<String, String> {
         .map_err(|e| format!("Failed to read roadmap: {}", e))?;
 
     Ok(content)
+}
+
+/// Write content to a project file
+#[tauri::command]
+pub async fn write_project_file(
+    project_name: String,
+    file_path: String,
+    content: String,
+) -> Result<(), String> {
+    // CRITICAL SECURITY: Validate inputs
+
+    // Validate project_name - no path traversal
+    if project_name.contains("..") || project_name.contains('/') || project_name.contains('\\') {
+        return Err("Invalid project name: path traversal not allowed".to_string());
+    }
+
+    // Validate file_path - must end in .md and no absolute paths
+    if !file_path.ends_with(".md") {
+        return Err("Invalid file: only markdown files allowed".to_string());
+    }
+    if file_path.starts_with('/') || file_path.starts_with('\\') {
+        return Err("Invalid file path: absolute paths not allowed".to_string());
+    }
+    if file_path.contains("..") {
+        return Err("Invalid file path: path traversal not allowed".to_string());
+    }
+
+    // Build full path
+    let projects_dir = get_projects_dir()?;
+    let project_path = projects_dir.join(&project_name);
+    let full_path = project_path.join(&file_path);
+
+    // Verify project directory exists
+    if !project_path.exists() {
+        return Err(format!("Project '{}' not found", project_name));
+    }
+
+    // Canonicalize project directory to verify it's within projects
+    let canonical_projects_dir = projects_dir
+        .canonicalize()
+        .map_err(|e| format!("Projects directory error: {}", e))?;
+
+    let canonical_project_dir = project_path
+        .canonicalize()
+        .map_err(|e| format!("Project directory error: {}", e))?;
+
+    if !canonical_project_dir.starts_with(&canonical_projects_dir) {
+        return Err("Security violation: path traversal detected".to_string());
+    }
+
+    // Ensure parent directories exist for nested files
+    if let Some(parent) = full_path.parent() {
+        if !parent.exists() {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("Failed to create directory: {}", e))?;
+        }
+    }
+
+    // Write file content
+    fs::write(&full_path, &content)
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+
+    Ok(())
 }
 
 /// Create a new project directory with initial NOTES.md

@@ -1,11 +1,12 @@
 import { useEffect, useState, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { MessageRenderer } from '../Sessions/MessageRenderer';
-import { FileText, RefreshCw, FolderOpen } from 'lucide-react';
+import { FileText, RefreshCw, FolderOpen, Pencil, X, Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 // File type metadata - minimal
 const FILE_META: Record<string, { owner: string; label: string }> = {
+  'prompt': { owner: 'PO', label: 'Prompt' },
   'context': { owner: 'PO', label: 'Context' },
   'NOTES': { owner: 'Dan', label: 'Notes' },
   'research': { owner: 'Ana', label: 'Research' },
@@ -23,6 +24,9 @@ export function ProjectFileViewer({ project, file }: ProjectFileViewerProps) {
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editContent, setEditContent] = useState<string>('');
+  const [saving, setSaving] = useState(false);
 
   // Determine file type from filename
   const fileType = useMemo(() => {
@@ -53,7 +57,38 @@ export function ProjectFileViewer({ project, file }: ProjectFileViewerProps) {
 
   useEffect(() => {
     loadFile();
+    setIsEditing(false); // Reset edit mode when file changes
   }, [project, file]);
+
+  const handleEdit = () => {
+    setEditContent(content);
+    setIsEditing(true);
+  };
+
+  const handleCancel = () => {
+    setIsEditing(false);
+    setEditContent('');
+  };
+
+  const handleSave = async () => {
+    if (!project || !file) return;
+
+    setSaving(true);
+    setError(null);
+    try {
+      await invoke('write_project_file', {
+        projectName: project,
+        filePath: file,
+        content: editContent
+      });
+      setContent(editContent);
+      setIsEditing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="glass-card rounded-xl h-full flex flex-col">
@@ -78,14 +113,47 @@ export function ProjectFileViewer({ project, file }: ProjectFileViewerProps) {
             )}
           </div>
           {project && file && (
-            <button
-              onClick={loadFile}
-              disabled={loading}
-              className="p-1.5 hover:bg-accent rounded transition-colors disabled:opacity-50"
-              title="Refresh"
-            >
-              <RefreshCw className={cn("w-3.5 h-3.5 text-muted-foreground", loading && "animate-spin")} />
-            </button>
+            <div className="flex items-center gap-1">
+              {isEditing ? (
+                <>
+                  <button
+                    onClick={handleCancel}
+                    disabled={saving}
+                    className="p-1.5 hover:bg-accent rounded transition-colors disabled:opacity-50"
+                    title="Cancel"
+                  >
+                    <X className="w-3.5 h-3.5 text-muted-foreground" />
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="p-1.5 hover:bg-accent rounded transition-colors disabled:opacity-50 text-green-500"
+                    title="Save"
+                  >
+                    <Save className={cn("w-3.5 h-3.5", saving && "animate-pulse")} />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={handleEdit}
+                    disabled={loading || !content}
+                    className="p-1.5 hover:bg-accent rounded transition-colors disabled:opacity-50"
+                    title="Edit"
+                  >
+                    <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
+                  </button>
+                  <button
+                    onClick={loadFile}
+                    disabled={loading}
+                    className="p-1.5 hover:bg-accent rounded transition-colors disabled:opacity-50"
+                    title="Refresh"
+                  >
+                    <RefreshCw className={cn("w-3.5 h-3.5 text-muted-foreground", loading && "animate-spin")} />
+                  </button>
+                </>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -122,9 +190,18 @@ export function ProjectFileViewer({ project, file }: ProjectFileViewerProps) {
         )}
 
         {content && !loading && !error && (
-          <div className="p-6 prose prose-slate dark:prose-invert max-w-none prose-headings:scroll-mt-4 prose-sm">
-            <MessageRenderer content={content} />
-          </div>
+          isEditing ? (
+            <textarea
+              value={editContent}
+              onChange={(e) => setEditContent(e.target.value)}
+              className="w-full h-full p-6 bg-transparent text-foreground font-mono text-sm resize-none focus:outline-none"
+              spellCheck={false}
+            />
+          ) : (
+            <div className="p-6 prose prose-slate dark:prose-invert max-w-none prose-headings:scroll-mt-4 prose-sm">
+              <MessageRenderer content={content} />
+            </div>
+          )
         )}
       </div>
     </div>

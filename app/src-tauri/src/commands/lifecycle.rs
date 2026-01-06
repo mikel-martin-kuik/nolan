@@ -211,12 +211,20 @@ pub async fn launch_core(
     let projects_dir_str = projects_dir.to_string_lossy();
     let docs_path_str = docs_path.to_string_lossy();
 
-    // Write initial prompt to prompt.md if provided
-    if let Some(ref prompt) = initial_prompt {
-        let prompt_file = docs_path.join("prompt.md");
+    // Determine effective prompt: read from file if exists, otherwise use initial_prompt
+    // This preserves any updates made during project iterations
+    let prompt_file = docs_path.join("prompt.md");
+    let effective_prompt: Option<String> = if prompt_file.exists() {
+        // Read existing prompt.md (iteration case - preserves manual edits)
+        fs::read_to_string(&prompt_file).ok().filter(|s| !s.trim().is_empty())
+    } else if let Some(ref prompt) = initial_prompt {
+        // First launch: write initial prompt to file
         fs::write(&prompt_file, prompt)
             .map_err(|e| format!("Failed to write prompt.md: {}", e))?;
-    }
+        Some(prompt.clone())
+    } else {
+        None
+    };
 
     let mut launched = Vec::new();
     let mut already_running = Vec::new();
@@ -267,7 +275,7 @@ pub async fn launch_core(
 
     // If Dan was launched and we have a prompt, wait for Claude to be ready then send it
     if launched.contains(&"dan".to_string()) {
-        if let Some(prompt) = initial_prompt.clone() {
+        if let Some(prompt) = effective_prompt {
             tokio::spawn(async move {
                 // Wait for Claude to be ready (poll for status line indicator)
                 let dan_session = "agent-dan";

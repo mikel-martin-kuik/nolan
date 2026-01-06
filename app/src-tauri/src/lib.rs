@@ -107,6 +107,7 @@ pub fn run() {
             list_projects,
             list_project_files,
             read_project_file,
+            write_project_file,
             read_roadmap,
             create_project,
             // Usage commands

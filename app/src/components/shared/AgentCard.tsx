@@ -150,7 +150,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
 
     setContextMenu({
       x: e.clientX,
-      y: e.clientY
+      y: e.clientY - 120
     });
   };
 

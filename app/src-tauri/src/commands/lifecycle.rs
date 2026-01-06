@@ -113,6 +113,69 @@ fn find_next_available_instance(agent: &str) -> Result<u32, String> {
     Ok(running_nums.last().map(|n| n + 1).unwrap_or(start))
 }
 
+/// Get the active project DOCS_PATH from team context
+/// Tries state file first, then falls back to reading project from running team member's statusline
+fn get_docs_path_from_team_context() -> Result<String, String> {
+    use std::fs;
+    use std::process::Command;
+
+    let projects_dir = crate::utils::paths::get_projects_dir()?;
+
+    // Try to read state file first
+    let state_file = projects_dir.join(".state").join("active-project.txt");
+    if state_file.exists() {
+        if let Ok(docs_path) = fs::read_to_string(&state_file) {
+            let trimmed = docs_path.trim().to_string();
+            if !trimmed.is_empty() {
+                return Ok(trimmed);
+            }
+        }
+    }
+
+    // Fallback: Find running team member and extract project from their statusline
+    let sessions = crate::tmux::session::list_sessions()?;
+
+    // Priority order: Dan first (Scrum Master has best context), then others
+    let agent_priority = ["dan", "ana", "bill", "carl", "enzo"];
+
+    for &agent_name in &agent_priority {
+        let session = format!("agent-{}", agent_name);
+        if !sessions.contains(&session) {
+            continue; // Agent not running, try next
+        }
+
+        // Capture last 5 lines from pane
+        let output = Command::new("tmux")
+            .args(&["capture-pane", "-t", &session, "-p", "-S", "-5"])
+            .output();
+
+        if let Ok(o) = output {
+            let content = String::from_utf8_lossy(&o.stdout);
+
+            // Look for statusline with project: "agent | model | XX% | $Y | project"
+            for line in content.lines().rev() {
+                // Match pattern like: "  dan | sonnet | 42% | $0.12 | my-project"
+                if let Some(caps) = regex::Regex::new(r"\|\s+(\S+)\s*$")
+                    .ok()
+                    .and_then(|re| re.captures(line))
+                {
+                    let project_name = caps[1].trim().to_string();
+                    if !project_name.is_empty() && project_name != "VIBING" {
+                        let docs_path = projects_dir.join(&project_name);
+                        if docs_path.exists() {
+                            return Ok(docs_path.to_string_lossy().to_string());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Err(
+        "No active team context found. Please launch the core team with a project first.".to_string(),
+    )
+}
+
 /// Launch core team agents (dan, ana, bill, carl, enzo) with project context
 #[tauri::command]
 pub async fn launch_core(
@@ -135,6 +198,14 @@ pub async fn launch_core(
     if !docs_path.exists() {
         return Err(format!("Project directory does not exist: {:?}", docs_path));
     }
+
+    // Write team state: store the active project for restart_core_agent to inherit
+    let state_dir = projects_dir.join(".state");
+    fs::create_dir_all(&state_dir)
+        .map_err(|e| format!("Failed to create state directory: {}", e))?;
+    let state_file = state_dir.join("active-project.txt");
+    fs::write(&state_file, docs_path.to_string_lossy().to_string())
+        .map_err(|e| format!("Failed to write team state: {}", e))?;
 
     let nolan_root_str = nolan_root.to_string_lossy();
     let projects_dir_str = projects_dir.to_string_lossy();
@@ -193,6 +264,50 @@ pub async fn launch_core(
     tokio::spawn(async move {
         emit_status_change(&app_clone).await;
     });
+
+    // If Dan was launched and we have a prompt, wait for Claude to be ready then send it
+    if launched.contains(&"dan".to_string()) {
+        if let Some(prompt) = initial_prompt.clone() {
+            tokio::spawn(async move {
+                // Wait for Claude to be ready (poll for status line indicator)
+                let dan_session = "agent-dan";
+                let max_attempts = 30; // 30 seconds max
+                let poll_interval = std::time::Duration::from_secs(1);
+
+                for _ in 0..max_attempts {
+                    tokio::time::sleep(poll_interval).await;
+
+                    // Check if Claude is ready by looking for the status line
+                    let output = Command::new("tmux")
+                        .args(&["capture-pane", "-t", dan_session, "-p", "-S", "-3"])
+                        .output();
+
+                    if let Ok(o) = output {
+                        let content = String::from_utf8_lossy(&o.stdout);
+                        // Claude is ready when we see the status line pattern (contains "|")
+                        // or the input prompt (">")
+                        if content.contains(" | ") || content.lines().any(|l| l.trim().starts_with(">")) {
+                            // Small extra delay for UI to settle
+                            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+                            // Send the prompt to Dan
+                            let _ = Command::new("tmux")
+                                .args(&["send-keys", "-t", dan_session, "-l", &prompt])
+                                .output();
+
+                            // Small delay then send Enter
+                            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                            let _ = Command::new("tmux")
+                                .args(&["send-keys", "-t", dan_session, "C-m"])
+                                .output();
+
+                            break;
+                        }
+                    }
+                }
+            });
+        }
+    }
 
     // Build result message
     let mut msg = String::new();
@@ -395,13 +510,16 @@ pub async fn restart_core_agent(app_handle: AppHandle, agent: String) -> Result<
     let projects_dir_str = projects_dir.to_string_lossy();
     let agent_dir_str = agent_dir.to_string_lossy();
 
+    // Inherit DOCS_PATH from active team to rejoin the project
+    let docs_path = get_docs_path_from_team_context()?;
+
     // All core agents use sonnet
     let model = "sonnet";
 
-    // Create tmux session (same as launch-core.sh)
+    // Create tmux session with inherited project context
     let cmd = format!(
-        "export AGENT_NAME={} NOLAN_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\"; claude --dangerously-skip-permissions --model {}; exec bash",
-        agent, nolan_root_str, projects_dir_str, agent_dir_str, model
+        "export AGENT_NAME={} NOLAN_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\" DOCS_PATH=\"{}\"; claude --dangerously-skip-permissions --model {}; exec bash",
+        agent, nolan_root_str, projects_dir_str, agent_dir_str, docs_path, model
     );
 
     let output = Command::new("tmux")
@@ -784,6 +902,54 @@ pub async fn open_core_team_terminals() -> Result<String, String> {
     }
 
     Ok(format!("Opened {} core team terminals", opened.len()))
+}
+
+/// Read agent's CLAUDE.md file content
+/// Creates the file with a template if it doesn't exist
+#[tauri::command]
+pub async fn read_agent_claude_md(agent: String) -> Result<String, String> {
+    use std::fs;
+
+    // Validate agent name
+    validate_agent_name(&agent)?;
+
+    // Get agent directory
+    let agent_dir = crate::utils::paths::get_agents_dir()?.join(&agent);
+    let claude_md_path = agent_dir.join("CLAUDE.md");
+
+    // Create file with template if it doesn't exist
+    if !claude_md_path.exists() {
+        let template = format!(
+            "# {} Agent Instructions\n\nAdd custom instructions for this agent here.\n",
+            agent.to_uppercase()
+        );
+        fs::write(&claude_md_path, &template)
+            .map_err(|e| format!("Failed to create CLAUDE.md: {}", e))?;
+        return Ok(template);
+    }
+
+    // Read file content
+    fs::read_to_string(&claude_md_path)
+        .map_err(|e| format!("Failed to read CLAUDE.md: {}", e))
+}
+
+/// Write agent's CLAUDE.md file content
+#[tauri::command]
+pub async fn write_agent_claude_md(agent: String, content: String) -> Result<String, String> {
+    use std::fs;
+
+    // Validate agent name
+    validate_agent_name(&agent)?;
+
+    // Get agent directory
+    let agent_dir = crate::utils::paths::get_agents_dir()?.join(&agent);
+    let claude_md_path = agent_dir.join("CLAUDE.md");
+
+    // Write file content
+    fs::write(&claude_md_path, content)
+        .map_err(|e| format!("Failed to write CLAUDE.md: {}", e))?;
+
+    Ok(format!("Saved CLAUDE.md for {}", agent))
 }
 
 /// Send a command to an agent session (like /clear)

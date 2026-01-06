@@ -2,10 +2,11 @@ import { create } from 'zustand';
 import { HistoryEntry } from '../types';
 
 // Maximum entries to keep per agent
-const MAX_ENTRIES_PER_AGENT = 50;
+const MAX_ENTRIES_PER_AGENT = 100;
 
-// Activity threshold in milliseconds (5 seconds)
-const ACTIVITY_THRESHOLD_MS = 5000;
+// Activity threshold in milliseconds (12 seconds)
+// Longer threshold to avoid flickering when model outputs then keeps thinking
+const ACTIVITY_THRESHOLD_MS = 12000;
 
 export interface AgentLiveOutput {
   entries: HistoryEntry[];
@@ -17,8 +18,11 @@ interface LiveOutputStore {
   // Per-agent output buffers keyed by tmux_session
   agentOutputs: Record<string, AgentLiveOutput>;
 
-  // Track which agent cards are expanded
-  expandedAgents: Set<string>;
+  // Track which agent cards are expanded (using Record for proper Zustand equality)
+  expandedAgents: Record<string, boolean>;
+
+  // Selected agent session for modal view (null = modal closed)
+  selectedSession: string | null;
 
   // Global auto-scroll setting
   autoScroll: boolean;
@@ -26,8 +30,11 @@ interface LiveOutputStore {
   // Actions
   addEntry: (entry: HistoryEntry) => void;
   getOutputForSession: (tmuxSession: string) => AgentLiveOutput | undefined;
+  isExpanded: (tmuxSession: string) => boolean;
   toggleExpanded: (tmuxSession: string) => void;
   setExpanded: (tmuxSession: string, expanded: boolean) => void;
+  openModal: (tmuxSession: string) => void;
+  closeModal: () => void;
   clearSession: (tmuxSession: string) => void;
   clearAll: () => void;
   toggleAutoScroll: () => void;
@@ -43,17 +50,27 @@ const getEntryKey = (entry: HistoryEntry): string => {
 };
 
 export const useLiveOutputStore = create<LiveOutputStore>((set, get) => {
-  // Set up activity decay timer
+  // Set up activity decay timer - only runs when there are active sessions
   let decayInterval: ReturnType<typeof setInterval> | null = null;
 
   const startDecayTimer = () => {
     if (decayInterval) return;
 
     decayInterval = setInterval(() => {
-      const now = Date.now();
       const state = get();
-      let hasChanges = false;
+      const hasActiveSessions = Object.values(state.agentOutputs).some(output => output.isActive);
 
+      // Stop timer if no active sessions to save CPU
+      if (!hasActiveSessions) {
+        if (decayInterval) {
+          clearInterval(decayInterval);
+          decayInterval = null;
+        }
+        return;
+      }
+
+      const now = Date.now();
+      let hasChanges = false;
       const newOutputs = { ...state.agentOutputs };
 
       for (const [session, output] of Object.entries(newOutputs)) {
@@ -69,17 +86,29 @@ export const useLiveOutputStore = create<LiveOutputStore>((set, get) => {
     }, 1000);
   };
 
-  // Start the decay timer immediately
-  startDecayTimer();
+  const stopDecayTimer = () => {
+    if (decayInterval) {
+      clearInterval(decayInterval);
+      decayInterval = null;
+    }
+  };
 
   return {
     agentOutputs: {},
-    expandedAgents: new Set(),
+    expandedAgents: {},
+    selectedSession: null,
     autoScroll: true,
+
+    isExpanded: (tmuxSession) => {
+      return get().expandedAgents[tmuxSession] === true;
+    },
 
     addEntry: (entry) => {
       const session = entry.tmux_session;
       if (!session) return;
+
+      // Start decay timer when first entry arrives
+      startDecayTimer();
 
       set((state) => {
         const existing = state.agentOutputs[session] || {
@@ -123,38 +152,57 @@ export const useLiveOutputStore = create<LiveOutputStore>((set, get) => {
 
     toggleExpanded: (tmuxSession) => {
       set((state) => {
-        const newExpanded = new Set(state.expandedAgents);
-        if (newExpanded.has(tmuxSession)) {
-          newExpanded.delete(tmuxSession);
-        } else {
-          newExpanded.add(tmuxSession);
-        }
-        return { expandedAgents: newExpanded };
+        const currentValue = state.expandedAgents[tmuxSession] === true;
+        return {
+          expandedAgents: {
+            ...state.expandedAgents,
+            [tmuxSession]: !currentValue,
+          },
+        };
       });
     },
 
     setExpanded: (tmuxSession, expanded) => {
-      set((state) => {
-        const newExpanded = new Set(state.expandedAgents);
-        if (expanded) {
-          newExpanded.add(tmuxSession);
-        } else {
-          newExpanded.delete(tmuxSession);
-        }
-        return { expandedAgents: newExpanded };
-      });
+      set((state) => ({
+        expandedAgents: {
+          ...state.expandedAgents,
+          [tmuxSession]: expanded,
+        },
+      }));
+    },
+
+    openModal: (tmuxSession) => {
+      set({ selectedSession: tmuxSession });
+    },
+
+    closeModal: () => {
+      set({ selectedSession: null });
     },
 
     clearSession: (tmuxSession) => {
       set((state) => {
-        const newOutputs = { ...state.agentOutputs };
-        delete newOutputs[tmuxSession];
-        return { agentOutputs: newOutputs };
+        const existing = state.agentOutputs[tmuxSession];
+        if (!existing || existing.entries.length === 0) {
+          return state;
+        }
+
+        // Keep only the last entry
+        const lastEntry = existing.entries[existing.entries.length - 1];
+        return {
+          agentOutputs: {
+            ...state.agentOutputs,
+            [tmuxSession]: {
+              ...existing,
+              entries: [lastEntry],
+            },
+          },
+        };
       });
     },
 
     clearAll: () => {
-      set({ agentOutputs: {}, expandedAgents: new Set() });
+      stopDecayTimer();
+      set({ agentOutputs: {}, expandedAgents: {} });
     },
 
     toggleAutoScroll: () => {

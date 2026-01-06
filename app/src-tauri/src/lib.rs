@@ -13,6 +13,7 @@ use commands::communicator::*;
 use commands::history::*;
 use commands::sessions::*;
 use commands::projects::*;
+use commands::usage::*;
 use commands::*;
 use tauri::Manager;
 use services::python_service::PythonService;
@@ -82,6 +83,8 @@ pub fn run() {
             launch_terminal,
             open_agent_terminal,
             open_core_team_terminals,
+            read_agent_claude_md,
+            write_agent_claude_md,
             send_agent_command,
             // Communicator commands
             send_message,
@@ -106,6 +109,10 @@ pub fn run() {
             read_project_file,
             read_roadmap,
             create_project,
+            // Usage commands
+            get_usage_stats,
+            get_usage_by_date_range,
+            get_session_stats,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

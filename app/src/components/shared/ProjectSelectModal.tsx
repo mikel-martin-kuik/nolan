@@ -6,6 +6,15 @@ import {
   AlertDialogTitle,
   AlertDialogFooter,
 } from '@/components/ui/alert-dialog';
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { ProjectInfo } from '@/types/projects';
 import { FolderOpen, Plus, Rocket } from 'lucide-react';
 
@@ -105,49 +114,56 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
                 name="mode"
                 checked={mode === 'existing'}
                 onChange={() => handleModeChange('existing')}
-                className="w-4 h-4 text-primary"
+                className="w-4 h-4 text-primary shrink-0"
               />
-              <FolderOpen className="w-4 h-4 text-muted-foreground" />
+              <FolderOpen className="w-4 h-4 text-muted-foreground shrink-0" />
               <span className="text-sm text-foreground">Select Existing Project</span>
             </label>
 
             {/* Project Dropdown */}
-            <select
-              value={selectedProject}
-              onChange={(e) => handleProjectChange(e.target.value)}
-              disabled={mode !== 'existing' || projects.length === 0}
-              className="ml-7 w-full bg-secondary/50 border border-border rounded-lg px-3 py-2
-                text-foreground text-sm focus:outline-none focus:ring-2 focus:ring-primary/50
-                disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {projects.length === 0 ? (
-                <option value="">No projects available</option>
-              ) : (
-                <>
-                  {groupedProjects.inprogress.length > 0 && (
-                    <optgroup label="In Progress">
-                      {groupedProjects.inprogress.map(p => (
-                        <option key={p.name} value={p.name}>{p.name}</option>
-                      ))}
-                    </optgroup>
+            <div className="pl-7">
+              <Select
+                value={selectedProject}
+                onValueChange={handleProjectChange}
+                disabled={mode !== 'existing' || projects.length === 0}
+              >
+                <SelectTrigger className="w-full bg-secondary/50 border-border">
+                  <SelectValue placeholder="Select a project" />
+                </SelectTrigger>
+                <SelectContent>
+                  {projects.length === 0 ? (
+                    <SelectItem value="" disabled>No projects available</SelectItem>
+                  ) : (
+                    <>
+                      {groupedProjects.inprogress.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel>In Progress</SelectLabel>
+                          {groupedProjects.inprogress.map(p => (
+                            <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
+                      {groupedProjects.pending.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel>Pending</SelectLabel>
+                          {groupedProjects.pending.map(p => (
+                            <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
+                      {groupedProjects.complete.length > 0 && (
+                        <SelectGroup>
+                          <SelectLabel>Complete</SelectLabel>
+                          {groupedProjects.complete.map(p => (
+                            <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
+                          ))}
+                        </SelectGroup>
+                      )}
+                    </>
                   )}
-                  {groupedProjects.pending.length > 0 && (
-                    <optgroup label="Pending">
-                      {groupedProjects.pending.map(p => (
-                        <option key={p.name} value={p.name}>{p.name}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                  {groupedProjects.complete.length > 0 && (
-                    <optgroup label="Complete">
-                      {groupedProjects.complete.map(p => (
-                        <option key={p.name} value={p.name}>{p.name}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                </>
-              )}
-            </select>
+                </SelectContent>
+              </Select>
+            </div>
 
             {/* New Project Option */}
             <label className="flex items-center gap-3 cursor-pointer mt-2">
@@ -156,23 +172,25 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
                 name="mode"
                 checked={mode === 'new'}
                 onChange={() => handleModeChange('new')}
-                className="w-4 h-4 text-primary"
+                className="w-4 h-4 text-primary shrink-0"
               />
-              <Plus className="w-4 h-4 text-muted-foreground" />
+              <Plus className="w-4 h-4 text-muted-foreground shrink-0" />
               <span className="text-sm text-foreground">Create New Project</span>
             </label>
 
             {/* New Project Name Input */}
-            <input
-              type="text"
-              value={newProjectName}
-              onChange={(e) => setNewProjectName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
-              placeholder="project-name"
-              disabled={mode !== 'new'}
-              className="ml-7 w-full bg-secondary/50 border border-border rounded-lg px-3 py-2
-                text-foreground text-sm placeholder-muted-foreground focus:outline-none focus:ring-2
-                focus:ring-primary/50 disabled:opacity-50 disabled:cursor-not-allowed"
-            />
+            <div className="pl-7">
+              <input
+                type="text"
+                value={newProjectName}
+                onChange={(e) => setNewProjectName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
+                placeholder="project-name"
+                disabled={mode !== 'new'}
+                className="w-full bg-secondary/50 border border-border rounded-lg px-3 py-2
+                  text-foreground text-sm placeholder-muted-foreground focus:outline-none focus:ring-2
+                  focus:ring-primary/50 disabled:opacity-50 disabled:cursor-not-allowed"
+              />
+            </div>
           </div>
 
           {/* Prompt Textarea */}

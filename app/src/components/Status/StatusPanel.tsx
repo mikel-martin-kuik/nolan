@@ -2,10 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { useAgentStore } from '../../store/agentStore';
 import { useToastStore } from '../../store/toastStore';
 import { AgentCard } from '../shared/AgentCard';
+import { TeamCard } from '../shared/TeamCard';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
 import { ProjectSelectModal } from '../shared/ProjectSelectModal';
 import { Tooltip } from '../ui/tooltip';
-import { Users, Play, XCircle, Plus, LayoutGrid, ArrowRight, ArrowDown } from 'lucide-react';
+import { Users, Plus, XCircle, LayoutGrid } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import type { AgentName, ClaudeModel } from '@/types';
 import type { ProjectInfo } from '@/types/projects';
@@ -51,9 +52,6 @@ export const StatusPanel: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Empty deps - run once on mount
 
-  // Compute button states
-  const allCoreActive = coreAgents.every(agent => agent.active);
-  const anyCoreActive = coreAgents.some(agent => agent.active);
 
   // Extract instance numbers from spawned sessions for display
   const spawnedWithInstances = spawnedSessions.map(agent => {
@@ -242,95 +240,15 @@ export const StatusPanel: React.FC = () => {
           </p>
         </div>
 
-        {/* Controls + Dan row */}
-        <div className="relative">
-          {/* Organization Control Buttons - positioned left */}
-          <div className="absolute left-0 top-0 flex gap-1.5">
-            <Tooltip content="Launch" side="bottom">
-              <button
-                onClick={handleLaunchCoreClick}
-                disabled={loading || allCoreActive}
-                className="w-9 h-9 rounded-xl flex items-center justify-center
-                  bg-secondary/50 border border-border text-muted-foreground
-                  hover:bg-emerald-500/10 hover:border-emerald-400/20 hover:text-emerald-500
-                  active:scale-95 transition-all duration-200
-                  disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
-              >
-                <Play className="w-4 h-4" />
-              </button>
-            </Tooltip>
-            <Tooltip content="Kill" side="bottom">
-              <button
-                onClick={handleKillCoreClick}
-                disabled={loading || !anyCoreActive}
-                className="w-9 h-9 rounded-xl flex items-center justify-center
-                  bg-secondary/50 border border-border text-muted-foreground
-                  hover:bg-red-500/10 hover:border-red-400/20 hover:text-red-500
-                  active:scale-95 transition-all duration-200
-                  disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
-              >
-                <XCircle className="w-4 h-4" />
-              </button>
-            </Tooltip>
-            <Tooltip content="Terminals" side="bottom">
-              <button
-                onClick={handleShowTerminals}
-                disabled={loading || !anyCoreActive}
-                className="w-9 h-9 rounded-xl flex items-center justify-center
-                  bg-secondary/50 border border-border text-muted-foreground
-                  hover:bg-accent hover:border-border hover:text-foreground
-                  active:scale-95 transition-all duration-200
-                  disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
-              >
-                <LayoutGrid className="w-4 h-4" />
-              </button>
-            </Tooltip>
-          </div>
-
-          {/* Scrum Master - Dan (Coordinator) - truly centered */}
-          <div className="flex justify-center">
-            <div className="w-[260px]">
-              {coreAgents.filter(a => a.name === 'dan').map((agent) => (
-                <AgentCard
-                  key={agent.name}
-                  agent={agent}
-                  variant="dashboard"
-                  showActions={true}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-
-          {/* Arrow separator */}
-          <div className="flex justify-center py-6">
-            <ArrowDown className="w-6 h-6 text-primary/40" />
-          </div>
-
-          {/* Workflow Agents */}
-          <div>
-            <div className="flex flex-wrap justify-center gap-4 lg:gap-12">
-              {['ana', 'bill', 'enzo', 'carl'].map((agentName, index) => {
-                const agent = coreAgents.find(a => a.name === agentName);
-                return agent ? (
-                  <React.Fragment key={agent.name}>
-                    <div className="w-full sm:w-[260px] flex-shrink-0">
-                      <AgentCard
-                        agent={agent}
-                        variant="dashboard"
-                        showActions={true}
-                      />
-                    </div>
-                    {index < 3 && (
-                      <div className="hidden lg:flex items-center justify-center flex-shrink-0">
-                        <ArrowRight className="w-6 h-6 text-primary/40" />
-                      </div>
-                    )}
-                  </React.Fragment>
-                ) : null;
-              })}
-            </div>
-          </div>
+        {/* Core Team Card */}
+        <TeamCard
+          agents={coreAgents.filter(a => a.name !== 'ralph')}
+          showActions={true}
+          loading={loading}
+          onLaunch={handleLaunchCoreClick}
+          onKill={handleKillCoreClick}
+          onShowTerminals={handleShowTerminals}
+        />
 
           {/* Ralph - Free Agent */}
           <div className="mt-auto pt-8">
@@ -380,10 +298,10 @@ export const StatusPanel: React.FC = () => {
                 </Tooltip>
               </div>
 
-              <div className="flex flex-wrap justify-center gap-4">
+              <div className="flex flex-wrap justify-center gap-2 lg:gap-4">
               {/* Core Ralph */}
               {coreAgents.filter(a => a.name === 'ralph').map((agent) => (
-                <div key={agent.name} className="w-full sm:w-[260px] flex-shrink-0">
+                <div key={agent.name} className="w-[clamp(120px,calc(70vw/2),160px)]">
                   <AgentCard
                     agent={agent}
                     variant="dashboard"
@@ -396,21 +314,22 @@ export const StatusPanel: React.FC = () => {
               {spawnedWithInstances
                 .filter(agent => agent.session.startsWith('agent-ralph-'))
                 .map((agent) => (
-                  <div key={agent.session} className="w-full sm:w-[260px] flex-shrink-0">
+                  <div key={agent.session} className="w-[clamp(120px,calc(70vw/2),160px)]">
                     <AgentCard
                       agent={agent}
                       variant="dashboard"
+                      showActions={true}
                       instanceNumber={agent.instanceNumber}
                     />
                   </div>
                 ))}
 
               {/* Spawn Ralph Button */}
-              <div className="w-full sm:w-[260px] flex-shrink-0">
+              <div className="w-[clamp(120px,calc(70vw/2),160px)]">
                 <button
                   onClick={handleSpawnRalphClick}
                   disabled={loading}
-                  className="w-full min-h-[160px] transition-all duration-200 rounded-xl backdrop-blur-sm
+                  className="w-full h-full py-4 transition-all duration-200 rounded-xl backdrop-blur-sm
                     cursor-pointer active:scale-[0.98]
                     bg-card/60 border border-dashed border-border/60
                     hover:bg-card/80 hover:border-purple-400/40
@@ -418,7 +337,7 @@ export const StatusPanel: React.FC = () => {
                     flex items-center justify-center"
                   aria-label="Spawn new Ralph instance"
                 >
-                  <Plus className="w-8 h-8 text-foreground/50" />
+                  <Plus className="w-6 h-6 text-foreground/50" />
                 </button>
               </div>
               </div>

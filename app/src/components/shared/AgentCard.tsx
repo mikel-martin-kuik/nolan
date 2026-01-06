@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Terminal, Play, Eraser, Trash2 } from 'lucide-react';
+import { Terminal, Play, Trash2, MessageSquare, Send, X, FileEdit, Save } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip } from '@/components/ui/tooltip';
@@ -25,6 +25,9 @@ interface AgentCardProps {
 
   /** Instance number for spawned agents (e.g., 2 for agent-ana-2) */
   instanceNumber?: number;
+
+  /** Hide project label (used when inside TeamCard) */
+  hideProject?: boolean;
 }
 
 export const AgentCard: React.FC<AgentCardProps> = ({
@@ -33,14 +36,21 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   showActions = true,
   disabled = false,
   instanceNumber,
+  hideProject = false,
 }) => {
   const { spawnAgent, restartCoreAgent, killInstance } = useAgentStore();
-  const { error: showError } = useToastStore();
+  const { error: showError, success: showSuccess } = useToastStore();
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [showKillDialog, setShowKillDialog] = React.useState(false);
-  const [showClearContextDialog, setShowClearContextDialog] = React.useState(false);
+  const [showMessageDialog, setShowMessageDialog] = useState(false);
+  const [messageText, setMessageText] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [showClaudeMdDialog, setShowClaudeMdDialog] = useState(false);
+  const [claudeMdContent, setClaudeMdContent] = useState('');
+  const [isSavingClaudeMd, setIsSavingClaudeMd] = useState(false);
   const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number } | null>(null);
   const contextMenuRef = React.useRef<HTMLDivElement>(null);
+  const messageInputRef = React.useRef<HTMLTextAreaElement>(null);
 
   // Check if this is a core agent (session name matches agent-{name} exactly, no number)
   const isCoreAgent = /^agent-(ana|bill|carl|dan|enzo|ralph)$/.test(agent.session);
@@ -75,18 +85,13 @@ export const AgentCard: React.FC<AgentCardProps> = ({
       };
     } else {
       return {
-        label: `Open terminal`,
-        ariaLabel: `Open terminal for ${agent.name}`,
-        icon: Terminal,
-        handler: async () => {
-          setIsProcessing(true);
-          try {
-            await invoke('open_agent_terminal', { session: agent.session });
-          } catch (error) {
-            showError(`Failed to open terminal: ${error}`);
-          } finally {
-            setIsProcessing(false);
-          }
+        label: `Send message`,
+        ariaLabel: `Send message to ${agent.name}`,
+        icon: MessageSquare,
+        handler: () => {
+          setShowMessageDialog(true);
+          // Focus the textarea after the dialog opens
+          setTimeout(() => messageInputRef.current?.focus(), 100);
         }
       };
     }
@@ -128,22 +133,6 @@ export const AgentCard: React.FC<AgentCardProps> = ({
     }
   };
 
-  // Confirmed clear context action
-  const handleConfirmClearContext = async () => {
-    setIsProcessing(true);
-    try {
-      await invoke('send_agent_command', {
-        session: agent.session,
-        command: '/clear'
-      });
-    } catch (error) {
-      console.error('Failed to clear context:', error);
-      showError(`Failed to clear context: ${error}`);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   // Determine if card should be clickable
   const isClickable = showActions && !disabled && !isProcessing;
 
@@ -154,7 +143,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!agent.active || !showActions) return;
+    if (!showActions) return;
 
     // Broadcast event to close all other agent card menus
     window.dispatchEvent(new CustomEvent('agent-card-menu-open', { detail: menuId.current }));
@@ -165,40 +154,117 @@ export const AgentCard: React.FC<AgentCardProps> = ({
     });
   };
 
+  // Create stable handler callbacks to avoid event listener leaks
+  const handleClickOutside = useCallback((e: MouseEvent) => {
+    if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+      setContextMenu(null);
+    }
+  }, []);
+
+  const handleOtherMenuOpen = useCallback((e: Event) => {
+    // Close this menu if another card opened its menu
+    const customEvent = e as CustomEvent<string>;
+    if (customEvent.detail !== menuId.current) {
+      setContextMenu(null);
+    }
+  }, []);
+
   // Close context menu when clicking outside or when another card opens its menu
   React.useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
-        setContextMenu(null);
-      }
+    if (!contextMenu) return;
+
+    document.addEventListener('click', handleClickOutside);
+    window.addEventListener('agent-card-menu-open', handleOtherMenuOpen);
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+      window.removeEventListener('agent-card-menu-open', handleOtherMenuOpen);
     };
+  }, [contextMenu, handleClickOutside, handleOtherMenuOpen]);
 
-    const handleOtherMenuOpen = (e: CustomEvent<string>) => {
-      // Close this menu if another card opened its menu
-      if (e.detail !== menuId.current) {
-        setContextMenu(null);
-      }
-    };
-
-    if (contextMenu) {
-      document.addEventListener('click', handleClickOutside);
-      window.addEventListener('agent-card-menu-open', handleOtherMenuOpen as EventListener);
-      return () => {
-        document.removeEventListener('click', handleClickOutside);
-        window.removeEventListener('agent-card-menu-open', handleOtherMenuOpen as EventListener);
-      };
-    }
-  }, [contextMenu]);
-
-  // Handle context menu option clicks
-  const handleClearFromMenu = () => {
-    setContextMenu(null);
-    setShowClearContextDialog(true);
-  };
-
+  // Handle context menu option click
   const handleKillFromMenu = () => {
     setContextMenu(null);
     setShowKillDialog(true);
+  };
+
+  // Handle open terminal from context menu
+  const handleOpenTerminal = async () => {
+    setContextMenu(null);
+    setIsProcessing(true);
+    try {
+      await invoke('open_agent_terminal', { session: agent.session });
+    } catch (error) {
+      showError(`Failed to open terminal: ${error}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Handle edit CLAUDE.md from context menu
+  const handleEditClaudeMd = async () => {
+    setContextMenu(null);
+    try {
+      const content = await invoke<string>('read_agent_claude_md', { agent: agent.name });
+      setClaudeMdContent(content);
+      setShowClaudeMdDialog(true);
+    } catch (error) {
+      showError(`Failed to load CLAUDE.md: ${error}`);
+    }
+  };
+
+  // Handle save CLAUDE.md
+  const handleSaveClaudeMd = async () => {
+    setIsSavingClaudeMd(true);
+    try {
+      await invoke('write_agent_claude_md', { agent: agent.name, content: claudeMdContent });
+      showSuccess(`Saved CLAUDE.md for ${agent.name}`);
+      setShowClaudeMdDialog(false);
+    } catch (error) {
+      showError(`Failed to save CLAUDE.md: ${error}`);
+    } finally {
+      setIsSavingClaudeMd(false);
+    }
+  };
+
+  // Handle keyboard shortcuts in CLAUDE.md dialog
+  const handleClaudeMdKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 's' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleSaveClaudeMd();
+    } else if (e.key === 'Escape') {
+      setShowClaudeMdDialog(false);
+    }
+  };
+
+  // Handle sending message to agent
+  const handleSendMessage = async () => {
+    if (!messageText.trim()) return;
+
+    setIsSending(true);
+    try {
+      // Use agent name for core agents, session name for spawned
+      const target = isCoreAgent ? agent.name : agent.session.replace('agent-', '');
+      await invoke<string>('send_message', { target, message: messageText });
+      showSuccess(`Message sent to ${agent.name}`);
+      setMessageText('');
+      setShowMessageDialog(false);
+    } catch (error) {
+      showError(`Failed to send message: ${error}`);
+    } finally {
+      setIsSending(false);
+    }
+  };
+
+  // Handle keyboard shortcuts in message dialog
+  const handleMessageKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleSendMessage();
+    } else if (e.key === 'Escape') {
+      setShowMessageDialog(false);
+      setMessageText('');
+    }
   };
 
 
@@ -206,7 +272,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
     <>
       <Card
         className={`
-          glass-card transition-all duration-200 rounded-2xl
+          glass-card transition-all duration-200 rounded-xl
           ${isClickable ? 'cursor-pointer active:scale-[0.98]' : ''}
           ${isProcessing ? 'opacity-50' : ''}
           ${disabled ? 'cursor-not-allowed opacity-60' : ''}
@@ -220,12 +286,12 @@ export const AgentCard: React.FC<AgentCardProps> = ({
         aria-label={isClickable ? primaryAction.ariaLabel : undefined}
         aria-disabled={disabled || isProcessing}
       >
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-base">
+      <CardHeader className="p-2 sm:p-3 pb-1 sm:pb-2">
+        <div className="flex items-center justify-between gap-1 flex-wrap">
+          <CardTitle className="flex items-center gap-1 text-xs sm:text-sm">
             {/* Status indicator dot */}
             <div
-              className={`w-2.5 h-2.5 rounded-full ${
+              className={`w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full flex-shrink-0 ${
                 agent.active
                   ? 'bg-green-500 shadow-lg shadow-green-500/50 animate-pulse'
                   : 'bg-muted-foreground/40 border border-muted-foreground/60'
@@ -235,25 +301,25 @@ export const AgentCard: React.FC<AgentCardProps> = ({
             />
 
             {/* Agent name */}
-            <span className={`capitalize ${agent.active ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+            <span className={`capitalize truncate ${agent.active ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
               {agent.name}
             </span>
 
             {/* Instance number badge for spawned agents */}
             {instanceNumber !== undefined && (
-              <Badge variant="outline" className="text-xs">
+              <Badge variant="outline" className="text-[10px] px-1 py-0">
                 {instanceNumber}
               </Badge>
             )}
           </CardTitle>
 
-          {/* Project bubble - right corner (max 6 chars) */}
-          {agent.active && (() => {
+          {/* Project bubble - right corner (max 6 chars) - hidden when inside TeamCard */}
+          {!hideProject && agent.active && (() => {
             const projectName = agent.current_project || 'VIBING';
             const isShortened = projectName.length > 6;
             const bubble = (
               <span
-                className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+                className={`inline-flex items-center px-1 py-0 rounded-full text-[9px] sm:text-[10px] font-medium whitespace-nowrap ${
                   agent.current_project
                     ? 'bg-primary/10 text-primary border border-primary/20'
                     : 'bg-muted text-muted-foreground'
@@ -268,43 +334,24 @@ export const AgentCard: React.FC<AgentCardProps> = ({
           })()}
         </div>
 
-        <CardDescription className={agent.active ? 'text-muted-foreground' : 'text-muted-foreground/60'}>
+        <CardDescription className={`text-[10px] sm:text-xs line-clamp-1 ${agent.active ? 'text-muted-foreground' : 'text-muted-foreground/60'}`}>
           {description}
         </CardDescription>
       </CardHeader>
 
-      <CardContent className="text-sm flex flex-col min-h-[80px]">
+      <CardContent className="p-2 sm:p-3 pt-0 text-[10px] sm:text-xs">
         {/* Session info */}
-        <div className="text-muted-foreground space-y-1">
+        <div className="text-muted-foreground">
           {/* Additional info for lifecycle variant */}
           {variant === 'lifecycle' && agent.active && (
-            <div className="flex items-center gap-2 text-xs">
-              <Terminal className="w-3 h-3 text-muted-foreground" aria-hidden="true" />
+            <div className="flex items-center gap-1.5 text-[10px]">
+              <Terminal className="w-2.5 h-2.5 text-muted-foreground" aria-hidden="true" />
               <span className="text-muted-foreground">
-                {agent.attached ? 'Terminal attached' : 'Terminal detached'}
+                {agent.attached ? 'Attached' : 'Detached'}
               </span>
             </div>
           )}
         </div>
-
-        {/* Context usage bar at bottom (only when active and available) */}
-        {agent.active && agent.context_usage !== undefined && (
-          <div className="mt-auto space-y-1">
-            <div className="flex items-center justify-end text-xs">
-              <span className="text-foreground font-mono">{agent.context_usage}%</span>
-            </div>
-            <div className="w-full bg-secondary rounded-full h-1.5">
-              <div
-                className={`h-1.5 rounded-full transition-all ${
-                  agent.context_usage >= 60 ? 'bg-red-500' :
-                  agent.context_usage >= 40 ? 'bg-yellow-500' :
-                  'bg-green-500'
-                }`}
-                style={{ width: `${agent.context_usage}%` }}
-              />
-            </div>
-          </div>
-        )}
       </CardContent>
 
       {/* Kill confirmation dialog */}
@@ -319,17 +366,6 @@ export const AgentCard: React.FC<AgentCardProps> = ({
         variant="destructive"
       />
 
-      {/* Clear context confirmation dialog */}
-      <ConfirmDialog
-        open={showClearContextDialog}
-        onOpenChange={setShowClearContextDialog}
-        title="Clear Agent Context"
-        description={`Are you sure you want to clear ${agent.name}'s conversation context? This will remove all previous messages from the agent's memory.`}
-        confirmLabel="Clear"
-        cancelLabel="Cancel"
-        onConfirm={handleConfirmClearContext}
-        variant="default"
-      />
       </Card>
 
       {/* Context menu dropdown - rendered completely outside Card */}
@@ -342,20 +378,128 @@ export const AgentCard: React.FC<AgentCardProps> = ({
             top: `${contextMenu.y}px`,
           }}
         >
+          {agent.active && (
+            <button
+              onClick={handleOpenTerminal}
+              className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
+            >
+              <Terminal className="w-4 h-4" />
+              Open Terminal
+            </button>
+          )}
           <button
-            onClick={handleClearFromMenu}
+            onClick={handleEditClaudeMd}
             className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
           >
-            <Eraser className="w-4 h-4" />
-            Clear Context
+            <FileEdit className="w-4 h-4" />
+            Edit CLAUDE.md
           </button>
-          <button
-            onClick={handleKillFromMenu}
-            className="w-full px-3 py-2 text-sm flex items-center gap-2 text-red-500 hover:bg-accent transition-colors text-left"
-          >
-            <Trash2 className="w-4 h-4" />
-            Kill Agent
-          </button>
+          {agent.active && (
+            <button
+              onClick={handleKillFromMenu}
+              className="w-full px-3 py-2 text-sm flex items-center gap-2 text-red-500 hover:bg-accent transition-colors text-left"
+            >
+              <Trash2 className="w-4 h-4" />
+              Kill Agent
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Message dialog */}
+      {showMessageDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => {
+              setShowMessageDialog(false);
+              setMessageText('');
+            }}
+          />
+          <div className="relative bg-background border border-border rounded-xl shadow-lg p-4 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-primary" />
+                Message {agent.name}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowMessageDialog(false);
+                  setMessageText('');
+                }}
+                className="p-1 rounded hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <textarea
+              ref={messageInputRef}
+              value={messageText}
+              onChange={(e) => setMessageText(e.target.value)}
+              onKeyDown={handleMessageKeyDown}
+              placeholder="Type your message..."
+              rows={4}
+              className="w-full bg-secondary/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+              disabled={isSending}
+            />
+            <div className="flex items-center justify-between mt-3">
+              <span className="text-xs text-muted-foreground">
+                Ctrl+Enter to send
+              </span>
+              <button
+                onClick={handleSendMessage}
+                disabled={isSending || !messageText.trim()}
+                className="px-4 py-2 rounded-lg flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+              >
+                <Send className="w-4 h-4" />
+                Send
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CLAUDE.md edit dialog */}
+      {showClaudeMdDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowClaudeMdDialog(false)}
+          />
+          <div className="relative bg-background border border-border rounded-xl shadow-lg p-4 w-full max-w-2xl mx-4 max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <FileEdit className="w-4 h-4 text-primary" />
+                Edit CLAUDE.md - {agent.name}
+              </h3>
+              <button
+                onClick={() => setShowClaudeMdDialog(false)}
+                className="p-1 rounded hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <textarea
+              value={claudeMdContent}
+              onChange={(e) => setClaudeMdContent(e.target.value)}
+              onKeyDown={handleClaudeMdKeyDown}
+              className="flex-1 min-h-[300px] w-full bg-secondary/50 border border-border rounded-lg px-3 py-2 text-sm text-foreground font-mono placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 resize-none"
+              disabled={isSavingClaudeMd}
+            />
+            <div className="flex items-center justify-between mt-3">
+              <span className="text-xs text-muted-foreground">
+                Ctrl+S to save
+              </span>
+              <button
+                onClick={handleSaveClaudeMd}
+                disabled={isSavingClaudeMd}
+                className="px-4 py-2 rounded-lg flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+              >
+                <Save className="w-4 h-4" />
+                Save
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>

@@ -1,30 +1,85 @@
-import { useState } from 'react';
-import { Home, MessageSquare, FolderOpen } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Home, FolderOpen, Activity, DollarSign } from 'lucide-react';
 import { QueryClientProvider } from '@tanstack/react-query';
+import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import { queryClient } from './lib/queryClient';
 import { ThemeProvider } from './lib/theme';
 import { AppErrorBoundary } from './components/shared/AppErrorBoundary';
 import { StatusPanel } from './components/Status/StatusPanel';
-import { HistoryCommunicatorPanel } from './components/HistoryCommunicator/HistoryCommunicatorPanel';
 import { ProjectsPanel } from './components/Projects/ProjectsPanel';
+import { LivePanel } from './components/Live/LivePanel';
+import { UsagePanel } from './components/Usage/UsagePanel';
 import { ToastContainer } from './components/shared/Toast';
 import { BrandHeader } from './components/shared/BrandHeader';
 import { ThemeToggle } from './components/shared/ThemeToggle';
 import { useToastStore } from './store/toastStore';
+import { useLiveOutputStore } from './store/liveOutputStore';
 import { Tooltip } from './components/ui/tooltip';
 import { cn } from './lib/utils';
+import { HistoryEntry } from './types';
 import './App.css';
 
-type Tab = 'status' | 'history-communicator' | 'projects';
+type Tab = 'status' | 'projects' | 'live' | 'usage';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('status');
   const { toasts, removeToast } = useToastStore();
 
+  const addEntry = useLiveOutputStore((state) => state.addEntry);
+
+  // Setup live output streaming
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+
+    const setup = async () => {
+      // Listen for history entries and route to live output store
+      unlisten = await listen<HistoryEntry>('history-entry', (event) => {
+        const entry = event.payload;
+        // Only add entries that have a tmux_session (active agent)
+        if (entry.tmux_session) {
+          addEntry(entry);
+        }
+      });
+
+      // Start the history stream (watches JSONL files)
+      await invoke('start_history_stream').catch((err) => {
+        console.error('Failed to start history stream:', err);
+      });
+
+      // Load recent history for active sessions (last hour)
+      // Small delay to let agent status populate first
+      setTimeout(async () => {
+        try {
+          const status = await invoke<{ core_agents: { session: string }[]; spawned_sessions: { session: string }[] }>('get_agent_status');
+          const sessions = [
+            ...status.core_agents.map(a => a.session),
+            ...status.spawned_sessions.map(a => a.session),
+          ];
+          if (sessions.length > 0) {
+            await invoke('load_history_for_active_sessions', {
+              activeSessions: sessions,
+              hours: 1,
+            });
+          }
+        } catch (err) {
+          console.error('Failed to load history for active sessions:', err);
+        }
+      }, 500);
+    };
+
+    setup();
+
+    return () => {
+      if (unlisten) unlisten();
+    };
+  }, [addEntry]);
+
   const tabs = [
     { id: 'status' as Tab, label: 'Dashboard', tooltip: 'Dashboard', icon: Home },
-    { id: 'history-communicator' as Tab, label: 'History & Communicator', tooltip: 'History', icon: MessageSquare },
+    { id: 'live' as Tab, label: 'Live', tooltip: 'Live Output', icon: Activity },
     { id: 'projects' as Tab, label: 'Projects', tooltip: 'Projects', icon: FolderOpen },
+    { id: 'usage' as Tab, label: 'Usage', tooltip: 'Usage & Costs', icon: DollarSign },
   ];
 
   return (
@@ -73,8 +128,9 @@ function App() {
               {/* Main content */}
               <main className="flex-1 overflow-auto p-6">
                 {activeTab === 'status' && <StatusPanel />}
-                {activeTab === 'history-communicator' && <HistoryCommunicatorPanel />}
+                {activeTab === 'live' && <LivePanel />}
                 {activeTab === 'projects' && <ProjectsPanel />}
+                {activeTab === 'usage' && <UsagePanel />}
               </main>
             </div>
           </div>

@@ -93,12 +93,28 @@
     box-shadow: var(--glass-shadow), var(--glass-inset);
     backdrop-filter: blur(16px) saturate(180%);
     -webkit-backdrop-filter: blur(16px) saturate(180%);
+    transform: translateZ(0);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 
   .glass-card:hover {
     background: var(--glass-bg-hover);
     border-color: var(--glass-border-hover);
     box-shadow: var(--glass-shadow-hover), var(--glass-inset);
+  }
+
+  .glass-card.no-hover,
+  .glass-card.no-hover:hover {
+    background: var(--glass-bg) !important;
+    border-color: var(--glass-border) !important;
+    box-shadow: var(--glass-shadow), var(--glass-inset) !important;
+  }
+
+  .glass-card * {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   .glass-card.glass-active {
@@ -146,5 +162,38 @@
 
   .prose h1, .prose h2, .prose h3, .prose h4 {
     @apply scroll-mt-4;
+  }
+
+  /* GPU-accelerated animations for status indicators */
+  .animate-pulse-gpu {
+    animation: pulse-gpu 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes pulse-gpu {
+    0%, 100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.5;
+    }
+  }
+
+  /* Status indicator with optimized shadow animation */
+  .status-indicator-active {
+    will-change: box-shadow;
+  }
+
+  /* Smooth spin animation with GPU acceleration */
+  .spin-gpu {
+    animation: spin-gpu 1s linear infinite;
+  }
+
+  @keyframes spin-gpu {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
   }
 }

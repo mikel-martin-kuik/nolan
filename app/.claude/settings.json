@@ -28,6 +28,11 @@
             "type": "command",
             "command": "\"$AGENT_DIR\"/.claude/hooks/validate-handoff.sh",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "\"$AGENT_DIR\"/.claude/hooks/block-msg-ids.sh",
+            "timeout": 5
           }
         ]
       }

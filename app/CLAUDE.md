@@ -88,6 +88,18 @@ Where `$PROJECTS_DIR` is set by launch scripts to `$NOLAN_ROOT/projects`.
 
 Ensure your output file has all required sections. Handoff is automatic when you finish.
 
+## Message IDs - DO NOT DOCUMENT
+
+**CRITICAL:** Message IDs (MSG_xxx) are **only** for verifying message delivery between agents. They have **NO project tracking value**.
+
+**NEVER**:
+- Include "Assignment Marker" language in messages to agents
+- Document MSG_IDs in NOTES.md, context.md, research.md, plan.md, qa-review.md, progress.md, or any project files
+- Reference MSG_IDs anywhere except the Handoff Log table in NOTES.md
+- Tell agents to track or note MSG_IDs in their output files
+
+**The Handoff Log table in NOTES.md** is the ONLY place MSG_IDs should appear, purely to verify message delivery.
+
 ## Agent Environment
 The `AGENT_NAME` environment variable is automatically set by the Tauri GUI when launching agents. This variable is used by validation hooks to identify the active agent.
 

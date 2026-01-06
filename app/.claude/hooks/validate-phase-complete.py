@@ -159,7 +159,7 @@ def trigger_handoff(docs_path, agent, output_file):
         return False
 
 def check_handoff_done(docs_path, agent):
-    """Auto-trigger handoff if output file has required sections and marker missing."""
+    """Auto-trigger handoff if output file has required sections and marker missing or stale."""
     output_files = {
         'ana': 'research.md',
         'bill': 'plan.md',
@@ -193,17 +193,37 @@ def check_handoff_done(docs_path, agent):
         return None  # Required sections missing, other check handles this
 
     # Required sections present - check for automated handoff marker
-    # Legacy markers are ignored (might be manually added)
-    # Only the marker added by trigger_handoff() counts
-    has_automated_marker = '<!-- HANDOFF:' in content
-    if not has_automated_marker:
+    # Parse timestamp from most recent marker to detect stale handoffs
+    needs_handoff = False
+    marker_pattern = r'<!-- HANDOFF:(\d{4}-\d{2}-\d{2} \d{2}:\d{2}):'
+    matches = re.findall(marker_pattern, content)
+
+    if not matches:
+        # No automated marker found at all
+        needs_handoff = True
+    else:
+        # Parse most recent marker timestamp
+        latest_marker_time = matches[-1]  # Get last match (most recent)
+        try:
+            marker_dt = datetime.strptime(latest_marker_time, '%Y-%m-%d %H:%M')
+            current_dt = datetime.now()
+            minutes_elapsed = (current_dt - marker_dt).total_seconds() / 60
+
+            # If more than 5 minutes since last handoff, trigger new one
+            if minutes_elapsed > 5:
+                needs_handoff = True
+        except ValueError:
+            # Couldn't parse timestamp, treat as missing
+            needs_handoff = True
+
+    if needs_handoff:
         # Auto-trigger handoff
         if trigger_handoff(docs_path, agent, output_files[agent]):
             return None  # Handoff triggered successfully, allow stop
         else:
             return f"Work complete but handoff automation failed. Please run: /handoff {agent} dan"
 
-    return None  # Handoff marker found
+    return None  # Handoff marker found and recent
 
 def check_notes_status(docs_path):
     """Check NOTES.md for incomplete markers."""

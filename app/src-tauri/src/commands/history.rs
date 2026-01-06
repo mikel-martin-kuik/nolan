@@ -268,7 +268,14 @@ fn parse_transcript_line(line: &str, path: &std::path::Path, is_streaming: bool)
 
     // Extract cwd (agent directory) and find matching tmux session
     let cwd = json.get("cwd").and_then(|v| v.as_str());
-    let tmux_session = cwd.and_then(|dir| find_tmux_session(dir));
+    let mut tmux_session = cwd.and_then(|dir| find_tmux_session(dir));
+
+    // Fallback: If no session found via cwd, try to infer from agent name
+    if tmux_session.is_none() {
+        if let Some(ref agent_name) = agent {
+            tmux_session = find_session_by_agent_name(agent_name);
+        }
+    }
 
     // Extract message content
     let message = extract_message_content(&json, &entry_type);
@@ -381,6 +388,23 @@ async fn load_session_index() -> Result<(), String> {
     Ok(())
 }
 
+/// Core agent names for fallback matching
+const CORE_AGENT_NAMES: &[&str] = &["dan", "ana", "bill", "carl", "enzo", "ralph"];
+
+/// Find session by agent name directly (for fallback when cwd lookup fails)
+fn find_session_by_agent_name(agent_name: &str) -> Option<String> {
+    use crate::tmux::session::session_exists;
+
+    if CORE_AGENT_NAMES.contains(&agent_name) {
+        // Try core agent session pattern: agent-{name}
+        let session_name = format!("agent-{}", agent_name);
+        if let Ok(true) = session_exists(&session_name) {
+            return Some(session_name);
+        }
+    }
+    None
+}
+
 /// Find matching tmux session from registry based on agent directory (O(1) with index)
 fn find_tmux_session(agent_dir: &str) -> Option<String> {
     use crate::tmux::session::session_exists;
@@ -405,6 +429,22 @@ fn find_tmux_session(agent_dir: &str) -> Option<String> {
                         continue;
                     }
                 }
+            }
+        }
+    }
+
+    // Fallback: Try to infer session from agent directory path
+    // Look for /agents/{name}/ pattern in the path
+    if let Some(agents_idx) = agent_dir.find("/agents/") {
+        let after_agents = &agent_dir[agents_idx + 8..];
+        // Get the agent name (first path component after /agents/)
+        let agent_name = after_agents.split('/').next().unwrap_or("");
+
+        if CORE_AGENT_NAMES.contains(&agent_name) {
+            // Try core agent session pattern: agent-{name}
+            let session_name = format!("agent-{}", agent_name);
+            if let Ok(true) = session_exists(&session_name) {
+                return Some(session_name);
             }
         }
     }

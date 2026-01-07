@@ -68,7 +68,7 @@ try:
     # Handle unknown agent - block writes to any output files
     if not agent:
         # Block writes to common output files if agent is unknown
-        protected = ['research.md', 'plan.md', 'progress.md', 'qa-review.md', 'NOTES.md']
+        protected = ['research.md', 'plan.md', 'progress.md', 'plan-review.md', 'implementation-audit.md', 'NOTES.md']
         if filename in protected:
             print(f"BLOCKED: Unknown agent cannot write to {filename}. Set AGENT_NAME environment variable.", file=sys.stderr)
             sys.exit(2)

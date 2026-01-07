@@ -324,23 +324,29 @@ def main():
     agent = os.environ.get('AGENT_NAME', '').lower()
 
     if not agent:
-        # Try to infer from current working directory
+        # Try to infer from current working directory using team config
         cwd = Path.cwd()
-        if 'ana' in str(cwd).lower():
-            agent = 'ana'
-        elif 'bill' in str(cwd).lower():
-            agent = 'bill'
-        elif 'carl' in str(cwd).lower():
-            agent = 'carl'
-        elif 'enzo' in str(cwd).lower():
-            agent = 'enzo'
-        elif 'ralph' in str(cwd).lower():
-            agent = 'ralph'
+        try:
+            team = load_team_config(docs_path)
+            agent_names = [a['name'].lower() for a in team['team']['agents']]
+            for name in agent_names:
+                if name in str(cwd).lower():
+                    agent = name
+                    break
+        except Exception:
+            # Fallback: approve if we can't determine agent
+            pass
 
-    # Ralph is exempt from all validation - utility agent without workflow requirements
-    if agent == 'ralph':
-        print(json.dumps({"decision": "approve"}))
-        return
+    # Agents with multi_instance: true are exempt from workflow validation
+    if agent:
+        try:
+            team = load_team_config(docs_path)
+            agent_config = get_agent_config(team, agent)
+            if agent_config and agent_config.get('multi_instance', False):
+                print(json.dumps({"decision": "approve"}))
+                return
+        except Exception:
+            pass
 
     # Check agent-specific output
     if agent:
@@ -352,8 +358,16 @@ def main():
             }))
             return
 
-        # Check handoff was done (only for non-dan agents)
-        if agent != 'dan':
+        # Check handoff was done (only for non-coordinator agents)
+        # Get coordinator from team config
+        coordinator = 'dan'  # fallback
+        try:
+            team = load_team_config(docs_path)
+            coordinator = team['team']['workflow']['coordinator']
+        except Exception:
+            pass
+
+        if agent != coordinator:
             error = check_handoff_done(docs_path, agent)
             if error:
                 print(json.dumps({

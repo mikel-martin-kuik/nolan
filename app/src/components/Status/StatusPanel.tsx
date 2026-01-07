@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useAgentStore } from '../../store/agentStore';
 import { useToastStore } from '../../store/toastStore';
+import { useTeamStore } from '../../store/teamStore';
 import { AgentCard } from '../shared/AgentCard';
 import { TeamCard } from '../shared/TeamCard';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
@@ -10,6 +11,7 @@ import { Users, Plus, XCircle, LayoutGrid } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import type { AgentName, ClaudeModel } from '@/types';
 import { getRalphDisplayName } from '@/lib/agentIdentity';
+import { getCoreTeamMembers } from '@/types';
 import type { ProjectInfo } from '@/types/projects';
 import { ModelSelectDialog } from '../shared/ModelSelectDialog';
 
@@ -26,6 +28,14 @@ export const StatusPanel: React.FC = () => {
     setupEventListeners
   } = useAgentStore();
   const { error: showError } = useToastStore();
+  const { currentTeam } = useTeamStore();
+
+  // Get core team member names from team config for dialog display
+  const coreTeamMemberNames = useMemo(() => {
+    const members = getCoreTeamMembers(currentTeam);
+    // Capitalize names for display
+    return members.map(name => name.charAt(0).toUpperCase() + name.slice(1)).join(', ');
+  }, [currentTeam]);
 
   // Confirmation dialog states
   const [showProjectSelectModal, setShowProjectSelectModal] = useState(false);
@@ -367,7 +377,7 @@ export const StatusPanel: React.FC = () => {
         open={showKillDialog}
         onOpenChange={setShowKillDialog}
         title="Kill All Core Agents"
-        description={`This will terminate all running core agents (Ana, Bill, Carl, Dan, Enzo, ${ralphDisplayName}). Spawned instances will not be affected. Are you sure?`}
+        description={`This will terminate all running core agents (${coreTeamMemberNames}). Spawned instances will not be affected. Are you sure?`}
         confirmLabel="Kill All"
         cancelLabel="Cancel"
         onConfirm={handleConfirmKill}

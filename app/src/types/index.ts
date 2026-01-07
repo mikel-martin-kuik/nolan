@@ -152,7 +152,7 @@ export type TurnCategory =
 /**
  * Workflow files in order of execution
  */
-export const WORKFLOW_FILES = ['context', 'research', 'plan', 'qa-review', 'progress'] as const;
+export const WORKFLOW_FILES = ['context', 'research', 'plan', 'plan-review', 'progress', 'implementation-audit'] as const;
 export type WorkflowFile = typeof WORKFLOW_FILES[number];
 
 /**
@@ -167,97 +167,190 @@ export interface WorkflowPhase {
 }
 
 /**
- * Workflow dependency tree - the complete dependency graph
- *
- * Workflow Flow:
- *   Dan → Ana → Bill → Enzo → Carl → Enzo → Done
- *         │      │       │      │       │
- *         ▼      ▼       ▼      ▼       ▼
- *      research plan  qa-review progress qa-review
+ * Derive workflow phases from team config
+ * Returns array of phases with proper owner, file, and nextAgent
  */
-export const WORKFLOW_PHASES: WorkflowPhase[] = [
-  { phase: 0, name: 'CONTEXT',     owner: 'dan',  file: 'context',   nextAgent: 'ana' },
-  { phase: 1, name: 'RESEARCH',    owner: 'ana',  file: 'research',  nextAgent: 'bill' },
-  { phase: 2, name: 'PLANNING',    owner: 'bill', file: 'plan',      nextAgent: 'enzo' },
-  { phase: 3, name: 'QA_PLAN',     owner: 'enzo', file: 'qa-review', nextAgent: 'carl' },
-  { phase: 4, name: 'IMPLEMENT',   owner: 'carl', file: 'progress',  nextAgent: 'enzo' },
-  { phase: 5, name: 'QA_PROGRESS', owner: 'enzo', file: 'qa-review', nextAgent: null },
-];
+export function getWorkflowPhases(team: TeamConfig | null): WorkflowPhase[] {
+  if (!team) return [];
+
+  return team.team.workflow.phases.map((phase, index) => {
+    const nextPhase = team.team.workflow.phases[index + 1];
+    // Map output file to WorkflowFile type (strip .md extension if present)
+    const fileBase = phase.output.replace(/\.md$/, '') as WorkflowFile;
+
+    return {
+      phase: index,
+      name: phase.name.toUpperCase().replace(/[- ]/g, '_'),
+      owner: phase.owner,
+      file: fileBase,
+      nextAgent: nextPhase?.owner ?? null,
+    };
+  });
+}
 
 /**
- * Agent dependency relationships
- * - upstream: who this agent waits on (blocks them)
- * - downstream: who waits on this agent (they block)
+ * Derive agent dependencies from team config workflow phases
+ */
+export function getAgentDependencies(team: TeamConfig | null): Record<AgentName, {
+  upstream: AgentName[];
+  downstream: AgentName[];
+}> {
+  if (!team) return {};
+
+  const deps: Record<AgentName, { upstream: AgentName[]; downstream: AgentName[] }> = {};
+
+  // Initialize all agents with empty dependencies
+  for (const agent of team.team.agents) {
+    deps[agent.name] = { upstream: [], downstream: [] };
+  }
+
+  // Build dependencies from workflow phases
+  const phases = team.team.workflow.phases;
+  for (let i = 0; i < phases.length; i++) {
+    const phase = phases[i];
+    const owner = phase.owner;
+
+    // upstream: find phases this phase requires
+    for (const req of phase.requires) {
+      const requiredPhase = phases.find(p => p.output === req || p.output === `${req}.md`);
+      if (requiredPhase && requiredPhase.owner !== owner) {
+        if (!deps[owner].upstream.includes(requiredPhase.owner)) {
+          deps[owner].upstream.push(requiredPhase.owner);
+        }
+      }
+    }
+
+    // downstream: next phase owner
+    const nextPhase = phases[i + 1];
+    if (nextPhase && nextPhase.owner !== owner) {
+      if (!deps[owner].downstream.includes(nextPhase.owner)) {
+        deps[owner].downstream.push(nextPhase.owner);
+      }
+    }
+  }
+
+  return deps;
+}
+
+/**
+ * Get agent workflow role from team config
+ */
+export function getAgentWorkflowRole(team: TeamConfig | null, agentName: string): {
+  produces: WorkflowFile | null;
+  requires: WorkflowFile[];
+  description: string;
+} {
+  if (!team) {
+    return { produces: null, requires: [], description: '' };
+  }
+
+  const agent = team.team.agents.find(a => a.name === agentName);
+  if (!agent) {
+    return { produces: null, requires: [], description: '' };
+  }
+
+  // Find the phase owned by this agent
+  const phase = team.team.workflow.phases.find(p => p.owner === agentName);
+
+  if (!phase) {
+    // Agent not in workflow (e.g., ralph)
+    return {
+      produces: null,
+      requires: [],
+      description: agent.role,
+    };
+  }
+
+  // Map output to WorkflowFile
+  const produces = phase.output.replace(/\.md$/, '') as WorkflowFile;
+
+  // Map requires to WorkflowFile[]
+  const requires = phase.requires.map(r => r.replace(/\.md$/, '') as WorkflowFile);
+
+  return {
+    produces,
+    requires,
+    description: agent.role,
+  };
+}
+
+/**
+ * Get file-to-agent mapping from team config
+ */
+export function getFileToAgent(team: TeamConfig | null): Record<string, string> {
+  if (!team) return {};
+
+  const mapping: Record<string, string> = {};
+  for (const phase of team.team.workflow.phases) {
+    // Use file basename without .md extension
+    const fileKey = phase.output.replace(/\.md$/, '');
+    mapping[fileKey] = phase.owner;
+  }
+  return mapping;
+}
+
+/**
+ * Check if a session is a core agent from team config
+ */
+export function isCoreAgent(sessionName: string, team: TeamConfig | null): boolean {
+  if (!team) return false;
+
+  // Extract agent name from session: agent-{name} or agent-{name}-{id}
+  const match = sessionName.match(/^agent-([a-z]+)(?:-[a-z0-9]+)?$/);
+  if (!match) return false;
+
+  const agentName = match[1];
+  const coreMembers = [
+    team.team.workflow.coordinator,
+    ...team.team.agents.filter(a => a.workflow_participant).map(a => a.name)
+  ];
+
+  return coreMembers.includes(agentName);
+}
+
+/**
+ * Get core team members from team config (coordinator + workflow participants)
+ */
+export function getCoreTeamMembers(team: TeamConfig | null): string[] {
+  if (!team) return [];
+
+  const members = new Set<string>();
+  members.add(team.team.workflow.coordinator);
+
+  for (const agent of team.team.agents) {
+    if (agent.workflow_participant) {
+      members.add(agent.name);
+    }
+  }
+
+  return Array.from(members);
+}
+
+// Legacy constants for backward compatibility (will be removed)
+// These are now derived from team config at runtime
+// TODO: Remove these after all usage sites are updated
+
+/**
+ * @deprecated Use getWorkflowPhases(team) instead
+ */
+export const WORKFLOW_PHASES: WorkflowPhase[] = [];
+
+/**
+ * @deprecated Use getAgentDependencies(team) instead
  */
 export const AGENT_DEPENDENCIES: Record<AgentName, {
-  upstream: AgentName[];    // Agents that block this agent
-  downstream: AgentName[];  // Agents blocked by this agent
-}> = {
-  dan: {
-    upstream: [],              // Dan waits on nobody
-    downstream: ['ana'],       // Ana waits on Dan (context)
-  },
-  ana: {
-    upstream: ['dan'],         // Ana waits on Dan
-    downstream: ['bill'],      // Bill waits on Ana
-  },
-  bill: {
-    upstream: ['ana'],         // Bill waits on Ana
-    downstream: ['enzo', 'carl'], // Enzo and Carl wait on Bill
-  },
-  enzo: {
-    upstream: ['bill', 'carl'], // Enzo waits on Bill OR Carl (phase-dependent)
-    downstream: ['carl'],       // Carl waits on Enzo (after QA pass 1)
-  },
-  carl: {
-    upstream: ['bill', 'enzo'], // Carl waits on Bill AND Enzo
-    downstream: ['enzo'],       // Enzo waits on Carl (QA pass 2)
-  },
-  ralph: {
-    upstream: [],              // Ralph waits on nobody
-    downstream: [],            // Nobody waits on Ralph
-  },
-};
+  upstream: AgentName[];
+  downstream: AgentName[];
+}> = {};
 
 /**
- * Agent role in the workflow (kept for backward compatibility)
+ * @deprecated Use getAgentWorkflowRole(team, agentName) instead
  */
 export const AGENT_WORKFLOW_ROLE: Record<AgentName, {
   produces: WorkflowFile | null;
   requires: WorkflowFile[];
   description: string;
-}> = {
-  dan: {
-    produces: 'context',
-    requires: [],
-    description: 'Coordinates workflow, creates context'
-  },
-  ana: {
-    produces: 'research',
-    requires: ['context'],
-    description: 'Researches and produces research.md'
-  },
-  bill: {
-    produces: 'plan',
-    requires: ['research'],
-    description: 'Plans implementation from research'
-  },
-  enzo: {
-    produces: 'qa-review',
-    requires: [], // Dynamic: plan OR progress depending on phase
-    description: 'Reviews plans and implementations'
-  },
-  carl: {
-    produces: 'progress',
-    requires: ['plan', 'qa-review'],
-    description: 'Implements from approved plan'
-  },
-  ralph: {
-    produces: null,
-    requires: [],
-    description: 'Free agent, no fixed dependencies'
-  }
-};
+}> = {};
 
 /**
  * Computed workflow state for an agent

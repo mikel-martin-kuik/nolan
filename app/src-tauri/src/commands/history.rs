@@ -13,6 +13,7 @@ use std::sync::mpsc;
 use dashmap::DashMap;
 use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::Mutex;
+use crate::config::TeamConfig;
 use crate::services::python_service::PythonService;
 
 // Global flag to prevent multiple streaming tasks
@@ -388,9 +389,6 @@ async fn load_session_index() -> Result<(), String> {
     Ok(())
 }
 
-/// Core agent names for fallback matching
-const CORE_AGENT_NAMES: &[&str] = &["dan", "ana", "bill", "carl", "enzo", "ralph"];
-
 /// Update the session index with a new session entry
 /// Called by lifecycle when a new session is spawned
 pub fn update_session_index(tmux_session: &str, agent: &str, agent_dir: &str) {
@@ -411,8 +409,14 @@ pub fn update_session_index(tmux_session: &str, agent: &str, agent_dir: &str) {
 /// Find session by agent name directly (for fallback when cwd lookup fails)
 fn find_session_by_agent_name(agent_name: &str) -> Option<String> {
     use crate::tmux::session::session_exists;
+    use crate::config::TeamConfig;
 
-    if CORE_AGENT_NAMES.contains(&agent_name) {
+    // Load team config to get valid agent names
+    let agent_names: Vec<String> = TeamConfig::load("default")
+        .map(|team| team.agent_names().iter().map(|s| s.to_string()).collect())
+        .unwrap_or_default();
+
+    if agent_names.iter().any(|n| n == agent_name) {
         // Try core agent session pattern: agent-{name}
         let session_name = format!("agent-{}", agent_name);
         if let Ok(true) = session_exists(&session_name) {
@@ -457,7 +461,12 @@ fn find_tmux_session(agent_dir: &str) -> Option<String> {
         // Get the agent name (first path component after /agents/)
         let agent_name = after_agents.split('/').next().unwrap_or("");
 
-        if CORE_AGENT_NAMES.contains(&agent_name) {
+        // Load team config to check if this is a valid agent name
+        let is_valid_agent = TeamConfig::load("default")
+            .map(|team| team.agent_names().iter().any(|n| *n == agent_name))
+            .unwrap_or(false);
+
+        if is_valid_agent {
             // Try core agent session pattern: agent-{name}
             let session_name = format!("agent-{}", agent_name);
             if let Ok(true) = session_exists(&session_name) {

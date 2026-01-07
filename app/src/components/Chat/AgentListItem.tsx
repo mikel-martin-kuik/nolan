@@ -2,10 +2,11 @@ import React, { memo, useCallback, useRef, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Clock, MessageSquareX, Eraser, Terminal } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { AgentStatus, AGENT_DESCRIPTIONS, AgentWorkflowState, AgentName, WORKFLOW_FILES } from '../../types';
+import { AgentStatus, AGENT_DESCRIPTIONS, AgentWorkflowState, AgentName, WORKFLOW_FILES, TeamConfig, isCoreAgent as checkIsCoreAgent } from '../../types';
 import { getAgentDisplayNameForUI } from '../../lib/agentIdentity';
 import { useLiveOutputStore, AgentLiveOutput } from '../../store/liveOutputStore';
 import { useTerminalStore } from '../../store/terminalStore';
+import { useTeamStore } from '../../store/teamStore';
 import { useToastStore } from '../../store/toastStore';
 import { getBlockerMessage } from '../../lib/workflowStatus';
 import { cn } from '../../lib/utils';
@@ -25,13 +26,13 @@ interface AgentListItemProps {
  * Get display name for an agent, handling spawned instances
  * Uses agentIdentity utility for consistent naming (ralph shows as fun name)
  */
-function getAgentDisplayName(agent: AgentStatus): string {
+function getAgentDisplayName(agent: AgentStatus, team: TeamConfig | null): string {
   const session = agent.session;
   const withoutPrefix = session.replace(/^agent-/, '');
   const parts = withoutPrefix.split('-');
 
-  // Check if this is a core agent
-  const isCoreAgent = /^agent-(ana|bill|carl|dan|enzo|ralph)$/.test(session);
+  // Check if this is a core agent using team config
+  const isCoreAgent = checkIsCoreAgent(session, team);
 
   // Extract instanceId for spawned agents
   const instanceId = parts.length > 1 ? parts.slice(1).join('-') : undefined;
@@ -50,6 +51,7 @@ export const AgentListItem: React.FC<AgentListItemProps> = memo(({
   const clearSession = useLiveOutputStore((state) => state.clearSession);
   const openTerminalModal = useTerminalStore((state) => state.openModal);
   const { error: showError } = useToastStore();
+  const { currentTeam } = useTeamStore();
 
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -59,7 +61,7 @@ export const AgentListItem: React.FC<AgentListItemProps> = memo(({
   const lastEntry = entries[entries.length - 1];
   const description = AGENT_DESCRIPTIONS[agent.name as AgentName] || 'Agent';
   const blockerMessage = workflowState ? getBlockerMessage(workflowState) : null;
-  const displayName = getAgentDisplayName(agent);
+  const displayName = getAgentDisplayName(agent, currentTeam);
 
   // Check if a workflow file is completed (has HANDOFF marker)
   const isFileCompleted = (key: string): boolean => {

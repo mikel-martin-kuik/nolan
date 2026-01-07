@@ -4,8 +4,6 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use crate::config::TeamConfig;
 use crate::constants::{
-    VALID_AGENTS,
-    CORE_AGENTS,
     PROTECTED_SESSIONS,
     RE_AGENT_SESSION,
     RE_CORE_AGENT,
@@ -33,12 +31,16 @@ fn validate_agent_session(session: &str) -> Result<(), String> {
         ));
     };
 
-    // Validate agent name
+    // Validate agent name against team config
     let agent_name = &caps[1];
-    if !VALID_AGENTS.contains(&agent_name) {
+    let team = TeamConfig::load("default")
+        .map_err(|e| format!("Failed to load team config: {}", e))?;
+    let valid_agents = team.agent_names();
+
+    if !valid_agents.contains(&agent_name) {
         return Err(format!(
             "Invalid agent name: '{}'. Valid agents: {:?}",
-            agent_name, VALID_AGENTS
+            agent_name, valid_agents
         ));
     }
 
@@ -55,10 +57,14 @@ fn validate_agent_session(session: &str) -> Result<(), String> {
 
 /// Validates agent name for spawn operations
 fn validate_agent_name(agent: &str) -> Result<(), String> {
-    if !VALID_AGENTS.contains(&agent) {
+    let team = TeamConfig::load("default")
+        .map_err(|e| format!("Failed to load team config: {}", e))?;
+    let valid_agents = team.agent_names();
+
+    if !valid_agents.contains(&agent) {
         return Err(format!(
             "Invalid agent: '{}'. Valid agents: {:?}",
-            agent, VALID_AGENTS
+            agent, valid_agents
         ));
     }
     Ok(())
@@ -90,11 +96,6 @@ fn get_team_state_dir(team_name: &str) -> Result<std::path::PathBuf, String> {
 /// Get path to team's active project state file
 fn get_team_active_project_file(team_name: &str) -> Result<std::path::PathBuf, String> {
     Ok(get_team_state_dir(team_name)?.join("active-project.txt"))
-}
-
-/// Get path to agent's active project state file
-fn get_agent_state_file(agent: &str, team_name: &str) -> Result<std::path::PathBuf, String> {
-    Ok(get_team_state_dir(team_name)?.join(format!("active-{}.txt", agent)))
 }
 
 /// Register a session in the session registry for history lookup
@@ -141,15 +142,142 @@ fn get_default_model(agent: &str, team: &TeamConfig) -> String {
         .unwrap_or_else(|| "sonnet".to_string())
 }
 
+/// Determine which agents are needed based on project phase status in NOTES.md
+/// Returns None if NOTES.md doesn't exist (new project - launch all agents)
+/// Returns Some(Vec<agent_names>) for existing projects based on incomplete phases
+fn determine_needed_agents(docs_path: &std::path::Path, team: &TeamConfig) -> Option<Vec<String>> {
+    use std::fs;
+
+    let notes_path = docs_path.join("NOTES.md");
+    let content = fs::read_to_string(&notes_path).ok()?;
+
+    // Check if project is complete - only launch coordinator
+    let coordinator = team.coordinator().to_string();
+    if content.contains("<!-- PROJECT:STATUS:COMPLETE") {
+        return Some(vec![coordinator.clone()]);
+    }
+
+    // Parse Phase Status table to find incomplete phases
+    // Format: | Phase | Status | Assigned | Output |
+    let mut needed_agents: Vec<String> = vec![coordinator.clone()]; // Coordinator always needed
+
+    // Build phase-to-agent mapping from team config workflow phases
+    let mut phase_to_agent: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for phase in &team.team.workflow.phases {
+        // Add multiple variations of phase name for matching
+        let phase_lower = phase.name.to_lowercase();
+        phase_to_agent.insert(phase_lower.clone(), phase.owner.clone());
+        // Also add common abbreviations
+        if phase_lower.contains("research") {
+            phase_to_agent.insert("research".to_string(), phase.owner.clone());
+        }
+        if phase_lower.contains("plan") && !phase_lower.contains("review") {
+            phase_to_agent.insert("planning".to_string(), phase.owner.clone());
+            phase_to_agent.insert("plan".to_string(), phase.owner.clone());
+        }
+        if phase_lower.contains("implement") {
+            phase_to_agent.insert("implementation".to_string(), phase.owner.clone());
+            phase_to_agent.insert("implement".to_string(), phase.owner.clone());
+        }
+        if phase_lower.contains("review") || phase_lower.contains("qa") {
+            phase_to_agent.insert("qa".to_string(), phase.owner.clone());
+            phase_to_agent.insert("qa review".to_string(), phase.owner.clone());
+        }
+    }
+
+    // Find the Phase Status table
+    let lines: Vec<&str> = content.lines().collect();
+    let mut in_phase_table = false;
+    let mut has_incomplete_phases = false;
+
+    for line in &lines {
+        let line_lower = line.to_lowercase();
+
+        // Detect table header
+        if line_lower.contains("| phase") && line_lower.contains("| status") {
+            in_phase_table = true;
+            continue;
+        }
+
+        // Skip separator line
+        if in_phase_table && line.starts_with("|---") {
+            continue;
+        }
+
+        // End of table
+        if in_phase_table && !line.starts_with('|') {
+            break;
+        }
+
+        if in_phase_table {
+            // Parse table row: | Phase | Status | ...
+            let parts: Vec<&str> = line.split('|').map(|s| s.trim()).collect();
+            if parts.len() >= 3 {
+                let phase = parts[1].to_lowercase();
+                let status = parts[2].to_lowercase();
+
+                // Check if phase is NOT complete
+                let is_complete = status.contains("complete") || status.contains("✅");
+
+                if !is_complete {
+                    has_incomplete_phases = true;
+                    // Find which agent owns this phase
+                    for (phase_keyword, agent) in &phase_to_agent {
+                        if phase.contains(phase_keyword) {
+                            if !needed_agents.contains(agent) {
+                                needed_agents.push(agent.clone());
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // If no incomplete phases found but project not marked complete,
+    // launch all agents (could be starting new work)
+    if !has_incomplete_phases && needed_agents.len() == 1 {
+        return None; // Launch all
+    }
+
+    // Find implementation agent and its QA reviewer from workflow phases
+    // If implementation agent is needed, also include its QA reviewer
+    let impl_phase = team.team.workflow.phases.iter()
+        .find(|p| p.name.to_lowercase().contains("implement") && !p.name.to_lowercase().contains("audit"));
+    let review_phase = team.team.workflow.phases.iter()
+        .find(|p| p.name.to_lowercase().contains("review") && !p.name.to_lowercase().contains("audit"));
+
+    if let (Some(impl_p), Some(review_p)) = (impl_phase, review_phase) {
+        if needed_agents.contains(&impl_p.owner) && !needed_agents.contains(&review_p.owner) {
+            needed_agents.push(review_p.owner.clone());
+        }
+    }
+
+    Some(needed_agents)
+}
+
 /// Count actual running spawned instances for an agent
-/// Ralph uses agent-ralph-{name} format, others use agent-{name}-{number}
+/// Ralph uses ephemeral agent-ralph-{5chars} format, others use agent-{name}-{number}
 fn count_running_instances(agent: &str) -> Result<usize, String> {
     let sessions = crate::tmux::session::list_sessions()?;
-    // Match both numbered and named instances (agent-{name}-{alphanumeric})
-    let pattern = format!(r"^agent-{}-[a-z0-9]+$", agent);
-    let re = Regex::new(&pattern)
-        .map_err(|e| format!("Invalid regex pattern: {}", e))?;
-    Ok(sessions.iter().filter(|s| re.is_match(s)).count())
+
+    if agent == "ralph" {
+        // For Ralph, count ephemeral instances: agent-ralph-{5chars}
+        Ok(sessions.iter().filter(|s| {
+            if let Some(instance_id) = s.strip_prefix("agent-ralph-") {
+                instance_id.len() == 5 && instance_id.chars().all(|c| c.is_alphanumeric())
+            } else {
+                false
+            }
+        }).count())
+    } else {
+        // For other agents, count numbered instances: agent-{name}-{number}
+        let pattern = format!(r"^agent-{}-[0-9]+$", agent);
+        let re = Regex::new(&pattern)
+            .map_err(|e| format!("Invalid regex pattern: {}", e))?;
+        Ok(sessions.iter().filter(|s| re.is_match(s)).count())
+    }
 }
 
 /// Find next available instance number with gap reuse
@@ -183,28 +311,34 @@ fn find_next_available_instance(agent: &str) -> Result<u32, String> {
     Ok(running_nums.last().map(|n| n + 1).unwrap_or(start))
 }
 
-/// Find next available Ralph instance name from RALPH_NAMES
-/// Returns the first name not currently in use
-fn find_next_available_ralph_name() -> Result<String, String> {
-    use crate::constants::RALPH_NAMES;
+/// Generate a random 4-letter alphanumeric name
+/// Used for ephemeral agent directories to avoid collisions
+fn generate_random_name() -> String {
+    use std::collections::hash_map::RandomState;
+    use std::hash::{BuildHasher, Hash, Hasher};
 
-    let sessions = crate::tmux::session::list_sessions()?;
+    // Use timestamp + random hash to generate a 5-letter name
+    // (5 chars to avoid collision with agent names like bill, carl, enzo which are 4 chars)
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
 
-    // Extract names currently in use (from agent-ralph-{name} sessions)
-    let used_names: std::collections::HashSet<&str> = sessions.iter()
-        .filter_map(|s| s.strip_prefix("agent-ralph-"))
-        .collect();
+    // Also add a random component
+    let random_state = RandomState::new();
+    let mut hasher = random_state.build_hasher();
+    now.hash(&mut hasher);
+    let hash_value = hasher.finish();
 
-    // Find first available name
-    for name in RALPH_NAMES {
-        if !used_names.contains(name) {
-            return Ok(name.to_string());
-        }
+    // Convert to base36 and take 5 chars
+    const CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
+    let mut name = String::with_capacity(5);
+    let mut val = hash_value;
+    for _ in 0..5 {
+        name.push(CHARS[(val % 36) as usize] as char);
+        val /= 36;
     }
-
-    // All names in use - fall back to numbered instance
-    let next_num = find_next_available_instance("ralph")?;
-    Ok(next_num.to_string())
+    name
 }
 
 /// Get the active project DOCS_PATH from team context
@@ -346,11 +480,30 @@ pub async fn launch_core(
         followup_prompt.clone()
     };
 
+    // Determine which agents to launch based on project phase status
+    // For new projects (initial_prompt present), launch all agents
+    // For existing projects, only launch agents needed for current/upcoming phases
+    let agents_to_launch: Vec<String> = if initial_prompt.is_some() {
+        // New project - launch all core team members
+        team.core_team_members().iter().map(|s| s.to_string()).collect()
+    } else {
+        // Existing project - determine needed agents from NOTES.md phase status
+        determine_needed_agents(&docs_path, &team)
+            .unwrap_or_else(|| team.core_team_members().iter().map(|s| s.to_string()).collect())
+    };
+
     let mut launched = Vec::new();
     let mut already_running = Vec::new();
     let mut errors = Vec::new();
+    let mut skipped = Vec::new();
 
-    for agent in team.workflow_participants() {
+    for agent in team.core_team_members() {
+        // Skip agents not needed for current project phase
+        if !agents_to_launch.contains(&agent.to_string()) {
+            skipped.push(agent.to_string());
+            continue;
+        }
+
         let session = format!("agent-{}", agent);
         let agent_dir = agents_base.join(agent);
         let agent_dir_str = agent_dir.to_string_lossy();
@@ -407,12 +560,13 @@ pub async fn launch_core(
         emit_status_change(&app_clone).await;
     });
 
-    // If Dan was launched and we have a prompt, wait for Claude to be ready then send it
-    if launched.contains(&"dan".to_string()) {
+    // If coordinator was launched and we have a prompt, wait for Claude to be ready then send it
+    let coordinator = team.coordinator().to_string();
+    if launched.contains(&coordinator) {
         if let Some(prompt) = effective_prompt {
+            let coordinator_session = format!("agent-{}", coordinator);
             tokio::spawn(async move {
                 // Wait for Claude to be ready (poll for status line indicator)
-                let dan_session = "agent-dan";
                 let max_attempts = 30; // 30 seconds max
                 let poll_interval = std::time::Duration::from_secs(1);
 
@@ -421,7 +575,7 @@ pub async fn launch_core(
 
                     // Check if Claude is ready by looking for the status line
                     let output = Command::new("tmux")
-                        .args(&["capture-pane", "-t", dan_session, "-p", "-S", "-3"])
+                        .args(&["capture-pane", "-t", &coordinator_session, "-p", "-S", "-3"])
                         .output();
 
                     if let Ok(o) = output {
@@ -432,15 +586,15 @@ pub async fn launch_core(
                             // Small extra delay for UI to settle
                             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-                            // Send the prompt to Dan
+                            // Send the prompt to coordinator
                             let _ = Command::new("tmux")
-                                .args(&["send-keys", "-t", dan_session, "-l", &prompt])
+                                .args(&["send-keys", "-t", &coordinator_session, "-l", &prompt])
                                 .output();
 
                             // Small delay then send Enter
                             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                             let _ = Command::new("tmux")
-                                .args(&["send-keys", "-t", dan_session, "C-m"])
+                                .args(&["send-keys", "-t", &coordinator_session, "C-m"])
                                 .output();
 
                             break;
@@ -459,6 +613,10 @@ pub async fn launch_core(
     if !already_running.is_empty() {
         if !msg.is_empty() { msg.push_str(". "); }
         msg.push_str(&format!("Already running: {}", already_running.join(", ")));
+    }
+    if !skipped.is_empty() {
+        if !msg.is_empty() { msg.push_str(". "); }
+        msg.push_str(&format!("Skipped (not needed for current phase): {}", skipped.join(", ")));
     }
     if !errors.is_empty() {
         if !msg.is_empty() { msg.push_str(". "); }
@@ -488,7 +646,7 @@ pub async fn kill_core(app_handle: AppHandle) -> Result<String, String> {
     let mut not_running = Vec::new();
     let mut errors = Vec::new();
 
-    for agent in team.workflow_participants() {
+    for agent in team.core_team_members() {
         let session = format!("agent-{}", agent);
 
         match crate::tmux::session::session_exists(&session) {
@@ -539,6 +697,9 @@ pub async fn kill_core(app_handle: AppHandle) -> Result<String, String> {
 #[tauri::command]
 pub async fn spawn_agent(app_handle: AppHandle, agent: String, force: bool, model: Option<String>) -> Result<String, String> {
     use std::process::Command;
+    use std::fs;
+    #[cfg(unix)]
+    use std::os::unix::fs::symlink;
 
     // Load team config
     let team = TeamConfig::load("default")
@@ -569,13 +730,35 @@ pub async fn spawn_agent(app_handle: AppHandle, agent: String, force: bool, mode
     }
 
     // Find next available instance identifier
-    // Ralph uses fun names (ziggy, nova, etc.), other agents use numbers
+    // For Ralph agents, generate a random 4-letter name for ephemeral directories
+    // Other agents use numbered instances
     let instance_id = if agent == "ralph" {
-        find_next_available_ralph_name()?
+        generate_random_name()
     } else {
         find_next_available_instance(&agent)?.to_string()
     };
-    let session = format!("agent-{}-{}", agent, instance_id);
+
+    // For Ralph, create ephemeral agent directory: /agents/agent-{random4letter}/
+    // For other agents, use numbered instances: /agents/{agent}-{number}/
+    let agents_dir = crate::utils::paths::get_agents_dir()?;
+    let agent_dir = if agent == "ralph" {
+        // Ephemeral Ralph: agent-{random5} directory at top level (flat for .claude loading)
+        agents_dir.join(format!("agent-{}", instance_id))
+    } else {
+        // Numbered instances for other agents
+        let base_agent_dir = agents_dir.join(&agent);
+        if !base_agent_dir.exists() {
+            return Err(format!("Agent directory not found: {:?}", base_agent_dir));
+        }
+        base_agent_dir
+    };
+
+    // Session naming: agent-ralph-{random5} for Ralph (matches frontend), agent-{name}-{num} for others
+    let session = if agent == "ralph" {
+        format!("agent-ralph-{}", instance_id)
+    } else {
+        format!("agent-{}-{}", agent, instance_id)
+    };
 
     // Check if this session already exists (shouldn't happen, but safety check)
     if crate::tmux::session::session_exists(&session)? {
@@ -585,11 +768,50 @@ pub async fn spawn_agent(app_handle: AppHandle, agent: String, force: bool, mode
     // Get paths using utility functions
     let nolan_root = crate::utils::paths::get_nolan_root()?;
     let projects_dir = crate::utils::paths::get_projects_dir()?;
-    let agent_dir = crate::utils::paths::get_agents_dir()?.join(&agent);
 
-    // Verify agent directory exists
+    // Create ephemeral agent directory structure
     if !agent_dir.exists() {
-        return Err(format!("Agent directory not found: {:?}", agent_dir));
+        fs::create_dir_all(&agent_dir)
+            .map_err(|e| format!("Failed to create agent directory: {}", e))?;
+
+        // Create symlink to .claude so Claude Code loads settings
+        #[cfg(unix)]
+        {
+            let app_claude = crate::utils::paths::get_nolan_app_root()
+                .ok()
+                .and_then(|root| {
+                    let path = root.join(".claude");
+                    if path.exists() {
+                        Some(path)
+                    } else {
+                        None
+                    }
+                });
+
+            if let Some(claude_path) = app_claude {
+                let claude_link = agent_dir.join(".claude");
+                if !claude_link.exists() && !claude_link.is_symlink() {
+                    if let Err(e) = symlink(&claude_path, &claude_link) {
+                        eprintln!("Warning: Failed to create .claude symlink: {}", e);
+                    }
+                }
+            }
+        }
+
+        // Create symlink to CLAUDE.md for agent instructions
+        #[cfg(unix)]
+        {
+            let base_agent_dir = agents_dir.join(&agent);
+            let claude_md_src = base_agent_dir.join("CLAUDE.md");
+            if claude_md_src.exists() {
+                let claude_md_link = agent_dir.join("CLAUDE.md");
+                if !claude_md_link.exists() {
+                    if let Err(e) = symlink(&claude_md_src, &claude_md_link) {
+                        eprintln!("Warning: Failed to create CLAUDE.md symlink: {}", e);
+                    }
+                }
+            }
+        }
     }
 
     // Convert paths to strings for command
@@ -644,11 +866,16 @@ pub async fn spawn_agent(app_handle: AppHandle, agent: String, force: bool, mode
 pub async fn restart_core_agent(app_handle: AppHandle, agent: String) -> Result<String, String> {
     use std::process::Command;
 
-    // Validate this is a core agent (not ralph - use spawn for ralph)
-    if !CORE_AGENTS.contains(&agent.as_str()) {
+    // Load team config
+    let team = TeamConfig::load("default")
+        .map_err(|e| format!("Failed to load team config: {}", e))?;
+
+    // Validate this is a core agent (not a multi-instance agent - use spawn for those)
+    let core_members = team.core_team_members();
+    if !core_members.contains(&agent.as_str()) {
         return Err(format!(
             "Cannot restart '{}' as core agent. Use spawn instead. Core agents: {:?}",
-            agent, CORE_AGENTS
+            agent, core_members
         ));
     }
 
@@ -680,8 +907,8 @@ pub async fn restart_core_agent(app_handle: AppHandle, agent: String) -> Result<
     // Inherit DOCS_PATH from active team to rejoin the project
     let docs_path = get_docs_path_from_team_context()?;
 
-    // All core agents use sonnet
-    let model = "sonnet";
+    // Get agent's model from team config
+    let model = get_default_model(&agent, &team);
 
     // Create tmux session with inherited project context
     let cmd = format!(
@@ -725,6 +952,8 @@ pub async fn restart_core_agent(app_handle: AppHandle, agent: String) -> Result<
 /// Kill a specific agent instance
 #[tauri::command]
 pub async fn kill_instance(app_handle: AppHandle, session: String) -> Result<String, String> {
+    use std::fs;
+
     // SECURITY: Validate session name before killing
     validate_agent_session(&session)?;
 
@@ -735,6 +964,23 @@ pub async fn kill_instance(app_handle: AppHandle, session: String) -> Result<Str
 
     // Kill the session
     crate::tmux::session::kill_session(&session)?;
+
+    // For ephemeral Ralph agents (agent-ralph-{random5}), delete the agent directory
+    // Session: agent-ralph-{5chars}, Directory: agent-{5chars}
+    if let Some(instance_id) = session.strip_prefix("agent-ralph-") {
+        if instance_id.len() == 5 && instance_id.chars().all(|c| c.is_alphanumeric()) {
+            // This is an ephemeral agent, delete its directory
+            let agents_dir = crate::utils::paths::get_agents_dir()
+                .unwrap_or_else(|_| std::path::PathBuf::new());
+            let agent_path = agents_dir.join(format!("agent-{}", instance_id));
+
+            if agent_path.exists() {
+                if let Err(e) = fs::remove_dir_all(&agent_path) {
+                    eprintln!("Warning: Failed to delete ephemeral agent directory: {}", e);
+                }
+            }
+        }
+    }
 
     // Emit status change event after successful kill
     let app_clone = app_handle.clone();
@@ -748,20 +994,43 @@ pub async fn kill_instance(app_handle: AppHandle, session: String) -> Result<Str
 /// Kill all spawned instances of an agent
 #[tauri::command]
 pub async fn kill_all_instances(app_handle: AppHandle, agent: String) -> Result<String, String> {
+    use std::fs;
+
     // Validate agent name
     validate_agent_name(&agent)?;
 
-    // Find all spawned instances: agent-{name}-2, agent-{name}-3, etc.
     let sessions = crate::tmux::session::list_sessions()?;
-    let pattern = format!("^agent-{}-[0-9]+$", agent);
-    let re = Regex::new(&pattern)
-        .map_err(|e| format!("Invalid regex pattern: {}", e))?;
-
     let mut killed: Vec<String> = Vec::new();
-    for session in &sessions {
-        if re.is_match(session) {
-            if crate::tmux::session::kill_session(session).is_ok() {
-                killed.push(session.to_string());
+
+    if agent == "ralph" {
+        // For Ralph, find all ephemeral instances: agent-ralph-{5chars}
+        for session in &sessions {
+            if let Some(instance_id) = session.strip_prefix("agent-ralph-") {
+                if instance_id.len() == 5 && instance_id.chars().all(|c| c.is_alphanumeric()) {
+                    if crate::tmux::session::kill_session(session).is_ok() {
+                        // Delete the ephemeral agent directory (agent-{5chars})
+                        let agents_dir = crate::utils::paths::get_agents_dir()
+                            .unwrap_or_else(|_| std::path::PathBuf::new());
+                        let agent_path = agents_dir.join(format!("agent-{}", instance_id));
+                        if agent_path.exists() {
+                            let _ = fs::remove_dir_all(&agent_path);
+                        }
+                        killed.push(session.to_string());
+                    }
+                }
+            }
+        }
+    } else {
+        // For other agents, find numbered instances: agent-{name}-{number}
+        let pattern = format!("^agent-{}-[0-9]+$", agent);
+        let re = Regex::new(&pattern)
+            .map_err(|e| format!("Invalid regex pattern: {}", e))?;
+
+        for session in &sessions {
+            if re.is_match(session) {
+                if crate::tmux::session::kill_session(session).is_ok() {
+                    killed.push(session.to_string());
+                }
             }
         }
     }
@@ -853,6 +1122,12 @@ fn parse_statusline(session: &str) -> StatusLineData {
 pub async fn get_agent_status() -> Result<AgentStatusList, String> {
     let sessions = crate::tmux::session::list_sessions()?;
 
+    // Load team config first to get valid agent lists
+    let team = TeamConfig::load("default")
+        .map_err(|e| format!("Failed to load team config: {}", e))?;
+    let core_members: Vec<&str> = team.core_team_members();
+    let valid_agents: Vec<&str> = team.agent_names();
+
     // Filter to agent-* sessions only
     let mut core_agents = Vec::new();
     let mut spawned_sessions = Vec::new();
@@ -862,7 +1137,7 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
             // Check if it's a core agent (agent-{name} without number)
             if let Some(caps) = RE_CORE_AGENT.captures(&session) {
                 let agent_name = caps[1].to_string();
-                if CORE_AGENTS.contains(&agent_name.as_str()) {
+                if core_members.contains(&agent_name.as_str()) {
                     // Get session info
                     if let Ok(info) = crate::tmux::session::get_session_info(&session) {
                         // Parse statusline data
@@ -881,7 +1156,7 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
                 }
             } else if let Some(caps) = RE_SPAWNED_AGENT.captures(&session) {
                 let agent_name = caps[1].to_string();
-                if VALID_AGENTS.contains(&agent_name.as_str()) {
+                if valid_agents.contains(&agent_name.as_str()) {
                     // Get session info
                     if let Ok(info) = crate::tmux::session::get_session_info(&session) {
                         // Parse statusline data
@@ -899,17 +1174,14 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
                     }
                 }
             }
+            // Note: Ephemeral sessions (agent-{name}-{5chars}) are handled by RE_SPAWNED_AGENT above
         }
     }
 
-    // Load team config to get workflow participants
-    let team = TeamConfig::load("default")
-        .map_err(|e| format!("Failed to load team config: {}", e))?;
-
-    // Add inactive core agents (only workflow participants)
-    for agent in team.workflow_participants() {
+    // Add inactive core agents (coordinator + workflow participants)
+    for agent in &core_members {
         let session_name = format!("agent-{}", agent);
-        if !core_agents.iter().any(|a| a.name == agent) {
+        if !core_agents.iter().any(|a| a.name == *agent) {
             core_agents.push(AgentStatus {
                 name: agent.to_string(),
                 active: false,
@@ -1024,6 +1296,13 @@ pub async fn open_agent_terminal(session: String) -> Result<String, String> {
         .arg(&session)
         .output();
 
+    // Reset tmux window to auto-size mode
+    // This allows the external terminal to resize the pane to its own dimensions
+    // instead of being locked to the embedded terminal's size
+    let _ = Command::new("tmux")
+        .args(&["resize-window", "-t", &session, "-A"])
+        .output();
+
     // Small delay to allow terminal window to close
     std::thread::sleep(std::time::Duration::from_millis(100));
 
@@ -1039,21 +1318,35 @@ pub async fn open_agent_terminal(session: String) -> Result<String, String> {
 pub async fn open_core_team_terminals() -> Result<String, String> {
     use std::process::Command;
 
+    // Load team config to get core team members
+    let team = TeamConfig::load("default")
+        .map_err(|e| format!("Failed to load team config: {}", e))?;
+
+    // Build list of core agent sessions from team config
+    let core_agent_sessions: Vec<String> = team.core_team_members()
+        .iter()
+        .map(|agent| format!("agent-{}", agent))
+        .collect();
+
     // Verify at least some core agents are running
     let sessions = crate::tmux::session::list_sessions()?;
-    let core_agents = ["agent-ana", "agent-bill", "agent-carl", "agent-dan", "agent-enzo"];
 
     let mut opened = Vec::new();
     let mut errors = Vec::new();
 
-    for session in &core_agents {
-        if sessions.contains(&session.to_string()) {
+    for session in &core_agent_sessions {
+        if sessions.contains(session) {
             // Detach any existing clients from this session first
             // This closes existing terminal windows and prevents duplicates
             let _ = Command::new("tmux")
                 .arg("detach-client")
                 .arg("-s")
                 .arg(session)
+                .output();
+
+            // Reset tmux window to auto-size mode for external terminal
+            let _ = Command::new("tmux")
+                .args(&["resize-window", "-t", session, "-A"])
                 .output();
 
             // Small delay to allow terminal windows to close
@@ -1286,4 +1579,43 @@ pub async fn send_terminal_key(session: String, key: String) -> Result<String, S
     crate::tmux::terminal_input::send_terminal_key(&session, &key)?;
 
     Ok(format!("Sent key '{}' to {}", key, session))
+}
+
+/// Resize a terminal session (tmux pane)
+/// Notifies the PTY (pseudo-terminal) of new dimensions so content reflows properly
+/// This is essential for vim, tmux, and other terminal applications to know the new size
+#[tauri::command]
+pub async fn resize_terminal(session: String, cols: u32, rows: u32) -> Result<String, String> {
+    use std::process::Command;
+
+    // Validate session name
+    validate_agent_session(&session)?;
+
+    // Verify session exists
+    if !crate::tmux::session::session_exists(&session)? {
+        return Err(format!("Session '{}' does not exist", session));
+    }
+
+    // Validate dimensions (reasonable min/max to prevent errors)
+    if cols < 20 || cols > 500 {
+        return Err(format!("Invalid column count: {}. Must be between 20 and 500.", cols));
+    }
+    if rows < 5 || rows > 200 {
+        return Err(format!("Invalid row count: {}. Must be between 5 and 200.", rows));
+    }
+
+    // Resize the tmux window to match the xterm.js dimensions
+    let output = Command::new("tmux")
+        .args(&["resize-window", "-t", &session, "-x", &cols.to_string(), "-y", &rows.to_string()])
+        .output()
+        .map_err(|e| format!("Failed to resize tmux window: {}", e))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Failed to resize terminal: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    Ok(format!("Resized {} to {}x{}", session, cols, rows))
 }

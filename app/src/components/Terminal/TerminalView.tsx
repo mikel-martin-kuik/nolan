@@ -11,6 +11,7 @@ interface TerminalViewProps {
   session: string;
   agentName: string;
   onClose?: () => void;
+  fontSize?: number;
 }
 
 interface TerminalOutputEvent {
@@ -37,10 +38,22 @@ function getAgentTheme() {
  *
  * Embeddable xterm.js terminal with bidirectional communication to backend
  */
-export function TerminalView({ session, agentName, onClose }: TerminalViewProps) {
+export function TerminalView({ session, agentName, onClose, fontSize = 13 }: TerminalViewProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const lastDimensionsRef = useRef<{ cols: number; rows: number } | null>(null);
+  const userScrolledRef = useRef(false);
+  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Debounce function for resize events
+  const debounce = (fn: () => void, delay: number) => {
+    let timeout: ReturnType<typeof setTimeout>;
+    return () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(fn, delay);
+    };
+  };
 
   useEffect(() => {
     if (!terminalRef.current) return;
@@ -50,12 +63,14 @@ export function TerminalView({ session, agentName, onClose }: TerminalViewProps)
     const terminal = new Terminal({
       theme,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-      fontSize: 13,
+      fontSize,
       cursorBlink: false,
       cursorStyle: 'bar',
       cursorInactiveStyle: 'none', // Hide cursor when not focused
       scrollback: 10000,
       convertEol: true,
+      // Prevent auto-scrolling on every output - we'll handle this manually
+      scrollOnUserInput: true,
     });
 
     xtermRef.current = terminal;
@@ -75,16 +90,84 @@ export function TerminalView({ session, agentName, onClose }: TerminalViewProps)
     terminal.open(terminalRef.current);
     fitAddon.fit();
 
-    // Handle window resize
-    const handleResize = () => {
+    // Smart fit function - only fit if container dimensions actually changed
+    const smartFit = () => {
+      if (!terminalRef.current) return;
+
+      const rect = terminalRef.current.getBoundingClientRect();
+      const currentDims = { cols: Math.floor(rect.width), rows: Math.floor(rect.height) };
+
+      // Only fit if dimensions changed significantly (more than 10px)
+      const lastDims = lastDimensionsRef.current;
+      if (lastDims &&
+          Math.abs(currentDims.cols - lastDims.cols) < 10 &&
+          Math.abs(currentDims.rows - lastDims.rows) < 10) {
+        return; // Skip fit - dimensions haven't changed enough
+      }
+
+      lastDimensionsRef.current = currentDims;
       fitAddon.fit();
     };
-    window.addEventListener('resize', handleResize);
+
+    // Debounced fit function for resize events
+    const debouncedFit = debounce(smartFit, 100);
+
+    // Handle window resize
+    window.addEventListener('resize', debouncedFit);
+
+    // Add ResizeObserver to detect container dimension changes (for draggable modal)
+    const resizeObserver = new ResizeObserver(() => {
+      debouncedFit();
+    });
+
+    if (terminalRef.current) {
+      resizeObserver.observe(terminalRef.current);
+    }
+
+    // Track user scroll - when user scrolls up, stop auto-scrolling
+    terminal.onScroll(() => {
+      const viewport = terminal.buffer.active;
+      const isAtBottom = viewport.baseY + terminal.rows >= viewport.length;
+
+      if (!isAtBottom) {
+        userScrolledRef.current = true;
+        // Reset user scroll flag after 3 seconds of no scrolling
+        if (scrollTimeoutRef.current) {
+          clearTimeout(scrollTimeoutRef.current);
+        }
+        scrollTimeoutRef.current = setTimeout(() => {
+          userScrolledRef.current = false;
+        }, 3000);
+      } else {
+        userScrolledRef.current = false;
+      }
+    });
+
+    // Listen for terminal resize events from xterm.js
+    // This fires after FitAddon.fit() recalculates dimensions
+    terminal.onResize((dimensions) => {
+      // Notify backend of new PTY dimensions
+      invoke('resize_terminal', {
+        session,
+        cols: dimensions.cols,
+        rows: dimensions.rows,
+      }).catch((err) => {
+        console.error(`Failed to resize PTY for ${session}:`, err);
+      });
+    });
 
     // Setup terminal output listener
     const unsubscribeOutput = listen<TerminalOutputEvent>('terminal-output', (event) => {
       if (event.payload.session === session) {
+        // Save scroll position before write
+        const wasAtBottom = !userScrolledRef.current;
+
         terminal.write(event.payload.data);
+
+        // Only scroll to bottom if user hasn't manually scrolled up
+        if (wasAtBottom && !userScrolledRef.current) {
+          terminal.scrollToBottom();
+        }
       }
     });
 
@@ -116,7 +199,13 @@ export function TerminalView({ session, agentName, onClose }: TerminalViewProps)
 
     // Cleanup on unmount
     return () => {
-      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('resize', debouncedFit);
+      resizeObserver.disconnect();
+
+      // Clear scroll timeout
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
 
       // Unsubscribe from events
       unsubscribeOutput.then(unsub => unsub());
@@ -130,7 +219,7 @@ export function TerminalView({ session, agentName, onClose }: TerminalViewProps)
       // Dispose terminal
       terminal.dispose();
     };
-  }, [session, agentName]);
+  }, [session, agentName, fontSize]);
 
   return (
     <div className="relative w-full h-full">

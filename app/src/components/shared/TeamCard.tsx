@@ -8,6 +8,7 @@ import { AgentCard } from './AgentCard';
 import { cn } from '@/lib/utils';
 import type { AgentStatus as AgentStatusType } from '@/types';
 import type { ProjectInfo } from '@/types/projects';
+import { useTeamStore } from '@/store/teamStore';
 
 // Workflow steps for progress tracking (same as ProjectListItem)
 const WORKFLOW_STEPS = [
@@ -43,19 +44,28 @@ export const TeamCard: React.FC<TeamCardProps> = ({
   onKill,
   onShowTerminals,
 }) => {
-  // Get Dan (coordinator)
-  const dan = agents.find(a => a.name === 'dan');
+  // Get team config from store
+  const { currentTeam } = useTeamStore();
 
-  // Get workflow agents in order
-  const workflowAgents = ['ana', 'bill', 'enzo', 'carl']
+  // Get coordinator from team config
+  const coordinatorName = currentTeam?.team.workflow.coordinator ?? 'dan';
+  const coordinator = agents.find(a => a.name === coordinatorName);
+
+  // Get workflow agents from team config (in phase order)
+  const workflowAgentNames = currentTeam?.team.workflow.phases
+    .map(p => p.owner)
+    .filter((name, index, arr) => arr.indexOf(name) === index) // unique
+    .filter(name => name !== coordinatorName) // exclude coordinator
+    ?? [];
+  const workflowAgents = workflowAgentNames
     .map(name => agents.find(a => a.name === name))
     .filter((a): a is AgentStatusType => a !== undefined);
 
-  // Determine team project - use Dan's project or first active agent's project
+  // Determine team project - use coordinator's project or first active agent's project
   const getTeamProject = (): string | undefined => {
-    // Priority: Dan's project > any active agent's project
-    if (dan?.active && dan.current_project) {
-      return dan.current_project;
+    // Priority: coordinator's project > any active agent's project
+    if (coordinator?.active && coordinator.current_project) {
+      return coordinator.current_project;
     }
     const activeAgent = agents.find(a => a.active && a.current_project);
     return activeAgent?.current_project;
@@ -161,12 +171,12 @@ export const TeamCard: React.FC<TeamCardProps> = ({
         </div>
       )}
 
-      {/* Dan (Scrum Master) - Centered at top */}
-      {dan && (
+      {/* Coordinator (Scrum Master) - Centered at top */}
+      {coordinator && (
         <div className="flex justify-center">
           <div className="w-[clamp(140px,70vw,180px)]">
             <AgentCard
-              agent={dan}
+              agent={coordinator}
               variant="dashboard"
               showActions={showActions}
               hideProject

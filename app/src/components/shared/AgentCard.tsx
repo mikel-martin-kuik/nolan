@@ -5,8 +5,10 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/com
 import { Tooltip } from '@/components/ui/tooltip';
 import { useAgentStore } from '@/store/agentStore';
 import { useToastStore } from '@/store/toastStore';
+import { useTerminalStore } from '@/store/terminalStore';
+import { useTeamStore } from '@/store/teamStore';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
-import { AGENT_DESCRIPTIONS } from '@/types';
+import { AGENT_DESCRIPTIONS, isCoreAgent as checkIsCoreAgent } from '@/types';
 import { getAgentDisplayNameForUI } from '@/lib/agentIdentity';
 import type { AgentStatus as AgentStatusType } from '@/types';
 
@@ -40,6 +42,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
 }) => {
   const { spawnAgent, restartCoreAgent, killInstance } = useAgentStore();
   const { error: showError, success: showSuccess } = useToastStore();
+  const openTerminalModal = useTerminalStore((state) => state.openModal);
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [showKillDialog, setShowKillDialog] = React.useState(false);
   const [showMessageDialog, setShowMessageDialog] = useState(false);
@@ -52,8 +55,11 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   const contextMenuRef = React.useRef<HTMLDivElement>(null);
   const messageInputRef = React.useRef<HTMLTextAreaElement>(null);
 
-  // Check if this is a core agent (session name matches agent-{name} exactly, no number)
-  const isCoreAgent = /^agent-(ana|bill|carl|dan|enzo|ralph)$/.test(agent.session);
+  // Get team config for core agent detection
+  const { currentTeam } = useTeamStore();
+
+  // Check if this is a core agent using team config
+  const isCoreAgent = checkIsCoreAgent(agent.session, currentTeam);
 
   // Get visual display name (ralph shows as random fun name, others show normally)
   const displayName = getAgentDisplayNameForUI(agent.name, instanceId, isCoreAgent);
@@ -201,6 +207,12 @@ export const AgentCard: React.FC<AgentCardProps> = ({
     }
   };
 
+  // Handle open terminal from context menu
+  const handleOpenTerminal = () => {
+    setContextMenu(null);
+    openTerminalModal(agent.session, agent.name);
+  };
+
   // Handle save CLAUDE.md
   const handleSaveClaudeMd = async () => {
     setIsSavingClaudeMd(true);
@@ -343,6 +355,15 @@ export const AgentCard: React.FC<AgentCardProps> = ({
             top: `${contextMenu.y}px`,
           }}
         >
+          {agent.active && (
+            <button
+              onClick={handleOpenTerminal}
+              className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
+            >
+              <Terminal className="w-4 h-4" />
+              Open Terminal
+            </button>
+          )}
           <button
             onClick={handleEditClaudeMd}
             className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"

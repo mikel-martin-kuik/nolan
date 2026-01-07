@@ -1,166 +1,143 @@
 team:
-  name: "default"
-  description: "Default Nolan team with standard workflow"
-  version: "1.0.0"
-
+  name: default
+  description: Default Nolan team with standard workflow
+  version: 1.0.0
   agents:
-    - name: "ana"
-      role: "Research"
-      model: "sonnet"
-      color: "#a855f7"
-      output_file: "research.md"
-      required_sections:
-        - "## Problem"
-        - "## Findings"
-        - "## Recommendations"
-      file_permissions: "restricted"
-      workflow_participant: true
-      awaits_qa: false
-
-    - name: "bill"
-      role: "Planning"
-      model: "sonnet"
-      color: "#3b82f6"
-      output_file: "plan.md"
-      required_sections:
-        - "## Overview"
-        - "## Tasks"
-        - "## Risks"
-      file_permissions: "restricted"
-      workflow_participant: true
-      awaits_qa: true
-      qa_passes: 1
-
-    - name: "carl"
-      role: "Implementation"
-      model: "sonnet"
-      color: "#6366f1"
-      output_file: "progress.md"
-      required_sections:
-        - "## Status"
-        - "## Changes"
-      file_permissions: "restricted"
-      workflow_participant: true
-      awaits_qa: true
-      qa_passes: 1
-
-    - name: "dan"
-      role: "Scrum Master"
-      model: "sonnet"
-      color: "#8b5cf6"
-      output_file: "NOTES.md"
-      required_sections:
-        - "## Current Assignment"
-        - "## Phase Status"
-        - "## Handoff Log"
-      file_permissions: "permissive"
-      workflow_participant: false
-
-    - name: "enzo"
-      role: "QA"
-      model: "sonnet"
-      color: "#ec4899"
-      output_file: "qa-review.md"
-      required_sections:
-        - "## Summary"
-        - "## Findings"
-        - "## Recommendation"
-      file_permissions: "restricted"
-      workflow_participant: true
-      awaits_qa: false
-
-    - name: "ralph"
-      role: "Vibe"
-      model: "haiku"
-      color: "#71717a"
-      output_file: null
-      required_sections: []
-      file_permissions: "no_projects"
-      workflow_participant: false
-      multi_instance: true
-      max_instances: 16
-      instance_names:
-        - "ziggy"
-        - "nova"
-        - "echo"
-        - "pixel"
-        - "cosmo"
-        - "blitz"
-        - "dash"
-        - "flux"
-        - "spark"
-        - "byte"
-        - "glitch"
-        - "neon"
-        - "pulse"
-        - "turbo"
-        - "zephyr"
-        - "volt"
-
+  - name: ana
+    role: Research
+    model: sonnet
+    color: '#a855f7'
+    output_file: research.md
+    required_sections:
+    - '## Problem'
+    - '## Findings'
+    - '## Recommendations'
+    file_permissions: restricted
+    workflow_participant: true
+    awaits_qa: false
+    multi_instance: false
+    instance_names: []
+  - name: bill
+    role: Planning
+    model: sonnet
+    color: '#3b82f6'
+    output_file: plan.md
+    required_sections:
+    - '## Overview'
+    - '## Tasks'
+    - '## Risks'
+    file_permissions: restricted
+    workflow_participant: true
+    awaits_qa: true
+    qa_passes: 1
+    multi_instance: false
+    instance_names: []
+  - name: carl
+    role: Implementation
+    model: sonnet
+    color: '#6366f1'
+    output_file: progress.md
+    required_sections:
+    - '## Status'
+    - '## Changes'
+    file_permissions: restricted
+    workflow_participant: true
+    awaits_qa: true
+    qa_passes: 1
+    multi_instance: false
+    instance_names: []
+  - name: dan
+    role: Scrum Master
+    model: sonnet
+    color: '#8b5cf6'
+    output_file: NOTES.md
+    required_sections:
+    - '## Current Assignment'
+    - '## Phase Status'
+    - '## Handoff Log'
+    file_permissions: permissive
+    workflow_participant: false
+    awaits_qa: false
+    multi_instance: false
+    instance_names: []
+  - name: enzo
+    role: Plan Reviewer
+    model: sonnet
+    color: '#ec4899'
+    output_file: plan-review.md
+    required_sections:
+    - '## Summary'
+    - '## Findings'
+    - '## Recommendation'
+    file_permissions: restricted
+    workflow_participant: true
+    awaits_qa: false
+    multi_instance: false
+    instance_names: []
+  - name: frank
+    role: Implementation Auditor
+    model: opus
+    color: '#f43f5e'
+    output_file: implementation-audit.md
+    required_sections:
+    - '## Summary'
+    - '## Findings'
+    - '## Recommendation'
+    file_permissions: restricted
+    workflow_participant: true
+    awaits_qa: false
+    multi_instance: false
+    instance_names: []
   workflow:
-    coordinator: "dan"
+    coordinator: dan
     phases:
-      - name: "Research"
-        owner: "ana"
-        output: "research.md"
-        requires:
-          - "context.md"
-        template: "Investigate and research the problem as described in context.md"
-
-      - name: "Planning"
-        owner: "bill"
-        output: "plan.md"
-        requires:
-          - "research.md"
-        template: "Create detailed implementation plan based on research findings"
-
-      - name: "QA Review (Plan)"
-        owner: "enzo"
-        output: "qa-review.md"
-        requires:
-          - "plan.md"
-        template: "Review implementation plan for completeness and correctness"
-
-      - name: "Implementation"
-        owner: "carl"
-        output: "progress.md"
-        requires:
-          - "plan.md"
-          - "qa-review.md"
-        template: "Implement changes following the approved plan"
-
-      - name: "QA Review (Implementation)"
-        owner: "enzo"
-        output: "qa-review.md"
-        requires:
-          - "progress.md"
-        template: "Verify implementation meets requirements and quality standards"
-
+    - name: Research
+      owner: ana
+      output: research.md
+      requires:
+      - context.md
+      template: Investigate and research the problem as described in context.md
+    - name: Planning
+      owner: bill
+      output: plan.md
+      requires:
+      - research.md
+      template: Create detailed implementation plan based on research findings
+    - name: Plan Review
+      owner: enzo
+      output: plan-review.md
+      requires:
+      - plan.md
+      template: Review implementation plan for feasibility, research alignment, architecture, and completeness
+    - name: Implementation
+      owner: carl
+      output: progress.md
+      requires:
+      - plan.md
+      - plan-review.md
+      template: Implement changes following the approved plan
+    - name: Implementation Audit
+      owner: frank
+      output: implementation-audit.md
+      requires:
+      - progress.md
+      template: Audit implementation for code execution, security, integration, and plan compliance
   communication:
     broadcast_groups:
-      - name: "core"
-        pattern: "^agent-[a-z]+$"
-        members:
-          - "ana"
-          - "bill"
-          - "carl"
-          - "dan"
-          - "enzo"
-
-      - name: "all_agents"
-        pattern: "^agent-[a-z]+(-[0-9]+)?$"
-        members:
-          - "ana"
-          - "bill"
-          - "carl"
-          - "dan"
-          - "enzo"
-          - "ralph"
-
-      - name: "workflow_team"
-        pattern: "(status|update|blocked)"
-        members:
-          - "ana"
-          - "bill"
-          - "carl"
-          - "enzo"
+    - name: core
+      pattern: ^agent-[a-z]+$
+      members:
+      - ana
+      - bill
+      - carl
+      - enzo
+      - frank
+    - name: all_agents
+      pattern: ^agent-[a-z]+(-[0-9]+)?$
+      members:
+      - ana
+      - bill
+      - carl
+      - dan
+      - enzo
+      - frank

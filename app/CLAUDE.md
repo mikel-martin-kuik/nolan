@@ -16,8 +16,9 @@ Team of 5 agents with Scrum Master coordination. Product Owner involved only on 
 | Project Manager | Dan | sonnet | NOTES.md |
 | Research | Ana | sonnet | research.md |
 | TechLead | Bill | sonnet | plan.md |
-| QA | Enzo | sonnet | qa-review.md |
+| Plan Reviewer | Enzo | sonnet | plan-review.md |
 | Developer | Carl | sonnet | progress.md |
+| Implementation Auditor | Frank | opus | implementation-audit.md |
 
 ## Workflow
 
@@ -36,13 +37,13 @@ Enzo ─┘
 2. Ana completes research.md → reports to Dan
 3. Dan reviews → assigns Bill to plan
 4. Bill completes plan.md → reports to Dan
-5. Dan reviews → assigns Enzo to QA
-6. Enzo completes qa-review.md → reports to Dan
-7. Dan reviews → assigns Carl to implement (or Bill to fix if QA issues)
+5. Dan reviews → assigns Enzo to review plan
+6. Enzo completes plan-review.md → reports to Dan
+7. Dan reviews → assigns Carl to implement (or Bill to revise if plan issues)
 8. Carl completes progress.md → reports to Dan
-9. Dan reviews → assigns Enzo to QA
-10. Enzo completes qa-review.md → reports to Dan
-11. Dan reviews → Done (or Carl to fix if QA issues)
+9. Dan reviews → assigns Frank to audit
+10. Frank completes implementation-audit.md → reports to Dan
+11. Dan reviews → Done (or Carl to fix if audit issues)
 ```
 
 
@@ -86,8 +87,9 @@ Where `$PROJECTS_DIR` is set by launch scripts to `$NOLAN_ROOT/projects`.
 | context.md | $DOCS_PATH | Project overview (everyone reads) |
 | research.md | $DOCS_PATH[/component] | Ana's findings |
 | plan.md | $DOCS_PATH[/component] | Bill's implementation plan |
-| qa-review.md | $DOCS_PATH[/component] | Enzo's QA findings |
+| plan-review.md | $DOCS_PATH[/component] | Enzo's plan validation |
 | progress.md | $DOCS_PATH[/component] | Carl's implementation status |
+| implementation-audit.md | $DOCS_PATH[/component] | Frank's implementation audit |
 | NOTES.md | $DOCS_PATH | Dan's coordination hub |
 
 ## Handoff Protocol (STANDARDIZED)
@@ -117,8 +119,9 @@ Agents receive assignments via:
 Ensure your output file has all required sections:
 - **Ana**: research.md with ## Problem, ## Findings, ## Recommendations
 - **Bill**: plan.md with ## Overview, ## Tasks, ## Risks
-- **Enzo**: qa-review.md with ## Summary, ## Findings, ## Recommendation
+- **Enzo**: plan-review.md with ## Summary, ## Findings, ## Recommendation
 - **Carl**: progress.md with ## Status, ## Changes
+- **Frank**: implementation-audit.md with ## Summary, ## Findings, ## Recommendation
 
 **Automatic handoff:** When you stop (Ctrl+D or /stop), the Stop hook validates your output and automatically:
 1. Adds handoff marker to your file
@@ -160,21 +163,41 @@ The `AGENT_NAME` environment variable is automatically set by the Tauri GUI when
 This is used by validation hooks to determine required output sections.
 ## QA Review Protocol
 
-**When:** After each plan.md (Bill) or progress.md (Carl)
+### Plan Review (Enzo)
+
+**When:** After each plan.md (Bill)
 
 **Who:** Enzo
 
-**Trigger:** Dan notifies Enzo when output ready
+**Trigger:** Dan notifies Enzo when plan ready for review
 
 **Checklist:**
-- [ ] Code executes (syntax, dependencies)
-- [ ] Paths resolve ($HOME not ~, interpreters specified)
+- [ ] Technically feasible (can be implemented as designed)
+- [ ] Research alignment (matches Ana's findings and recommendations)
+- [ ] Architecture sound (maintainable, follows patterns)
+- [ ] Complete (all context.md requirements addressed)
+
+**Output:** `plan-review.md` in same location as plan.md
+
+**Gate:** Critical/High issues block handoff to Carl. Medium can proceed with tracking.
+
+### Implementation Audit (Frank)
+
+**When:** After each progress.md (Carl)
+
+**Who:** Frank
+
+**Trigger:** Dan notifies Frank when implementation ready for audit
+
+**Checklist:**
+- [ ] Code executes (syntax, dependencies, paths)
 - [ ] Security (no injection, secrets, proper escaping)
-- [ ] Integration with existing codebase
+- [ ] Integration (works with existing codebase)
+- [ ] Plan compliance (matches approved plan)
 
-**Output:** `qa-review.md` in same location as reviewed file
+**Output:** `implementation-audit.md` in same location as progress.md
 
-**Gate:** Critical/High issues block handoff. Medium can proceed with tracking.
+**Gate:** Critical/High issues block completion. Medium can track for future fix.
 
 ### QA Severity Levels
 

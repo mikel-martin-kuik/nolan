@@ -4,15 +4,14 @@
  * Computes agent status based on project files and dependency tree.
  *
  * Dependency Graph:
- *   Dan ──▶ Ana ──▶ Bill ──▶ Enzo ──▶ Carl ──▶ Enzo ──▶ Done
+ *   Dan ──▶ Ana ──▶ Bill ──▶ Enzo ──▶ Carl ──▶ Frank ──▶ Done
  *           │        │        │        │        │
  *           ▼        ▼        ▼        ▼        ▼
- *        context  research   plan   qa-review progress
- *                                    (pass 1)  qa-review
- *                                              (pass 2)
+ *        context  research   plan  plan-review progress
+ *                                              implementation-audit
  *
  * Key concepts:
- * - Phase: The current workflow step (0-5)
+ * - Phase: The current workflow step (0-6)
  * - Phase Owner: The agent responsible for the current phase
  * - isNextUp: True if this agent is the phase owner
  * - waitingOnMe: Agents blocked waiting for this agent's output
@@ -27,23 +26,15 @@ import type {
   AgentWorkflowState,
   TurnCategory,
   TeamConfig,
+  WorkflowPhase,
 } from '../types';
 import type { FileCompletion } from '../types/projects';
 import {
-  AGENT_WORKFLOW_ROLE,
-  WORKFLOW_PHASES,
-  AGENT_DEPENDENCIES,
+  getWorkflowPhases,
+  getAgentDependencies,
+  getAgentWorkflowRole,
+  getFileToAgent,
 } from '../types';
-
-// Legacy constant for backward compatibility (will be removed after migration)
-// TODO: Replace with dynamic mapping from team.team.workflow.phases
-const FILE_TO_AGENT: Record<WorkflowFile, AgentName> = {
-  'context': 'dan',
-  'research': 'ana',
-  'plan': 'bill',
-  'qa-review': 'enzo',
-  'progress': 'carl',
-};
 
 // Status display configuration
 const STATUS_CONFIG: Record<WorkflowStatus, { label: string; color: string }> = {
@@ -100,13 +91,14 @@ function hasFileExists(files: string[] | FileCompletion[], fileKey: WorkflowFile
 /**
  * Determine the current workflow phase based on completed files (HANDOFF markers).
  *
- * Phase progression (5 phases, matching 5 workflow files):
+ * Phase progression (6 phases, matching 6 workflow files):
  *   0: No files completed (need context.md)
  *   1: context completed (need research.md)
  *   2: research completed (need plan.md)
- *   3: plan completed (need qa-review.md)
- *   4: qa-review completed (need progress.md)
- *   5: All complete (progress.md completed)
+ *   3: plan completed (need plan-review.md)
+ *   4: plan-review completed (need progress.md)
+ *   5: progress completed (need implementation-audit.md)
+ *   6: All complete (implementation-audit.md completed)
  *
  * Note: Completion is determined by HANDOFF markers, not just file existence.
  */
@@ -114,24 +106,27 @@ function getCurrentPhase(files: string[] | FileCompletion[]): number {
   const hasContext = hasFile(files, 'context');
   const hasResearch = hasFile(files, 'research');
   const hasPlan = hasFile(files, 'plan');
-  const hasQaReview = hasFile(files, 'qa-review');
+  const hasPlanReview = hasFile(files, 'plan-review');
   const hasProgress = hasFile(files, 'progress');
+  const hasAudit = hasFile(files, 'implementation-audit');
 
   // Count completed phases
-  if (hasProgress) return 5;  // All complete
-  if (hasQaReview) return 4;  // QA review done, need progress
-  if (hasPlan) return 3;      // Plan done, need QA review
-  if (hasResearch) return 2;  // Research done, need plan
-  if (hasContext) return 1;   // Context done, need research
-  return 0;                   // No files completed yet
+  if (hasAudit) return 6;          // All complete
+  if (hasProgress) return 5;       // Progress done, need audit
+  if (hasPlanReview) return 4;     // Plan review done, need progress
+  if (hasPlan) return 3;           // Plan done, need plan review
+  if (hasResearch) return 2;       // Research done, need plan
+  if (hasContext) return 1;        // Context done, need research
+  return 0;                        // No files completed yet
 }
 
 /**
  * Get phase information from phase number
  */
-function getPhaseInfo(phase: number): { owner: AgentName | null; name: string } {
-  if (phase >= 0 && phase < WORKFLOW_PHASES.length) {
-    const p = WORKFLOW_PHASES[phase];
+function getPhaseInfo(phase: number, team: TeamConfig | null): { owner: AgentName | null; name: string } {
+  const phases = getWorkflowPhases(team);
+  if (phase >= 0 && phase < phases.length) {
+    const p = phases[phase];
     return { owner: p.owner, name: p.name };
   }
   return { owner: null, name: 'COMPLETE' };
@@ -142,69 +137,22 @@ function getPhaseInfo(phase: number): { owner: AgentName | null; name: string } 
 // =============================================================================
 
 /**
- * Get Enzo's required file based on current phase.
- * Enzo has two QA passes:
- *   - Pass 1 (phase 3): Review plan.md
- *   - Pass 2 (phase 5): Review progress.md
- */
-function getEnzoRequiredFile(files: string[] | FileCompletion[]): WorkflowFile {
-  const hasProgress = hasFileExists(files, 'progress');
-
-  // If progress exists, Enzo needs to review it (pass 2)
-  if (hasProgress) {
-    return 'progress';
-  }
-  // Otherwise Enzo needs to review plan (pass 1)
-  return 'plan';
-}
-
-/**
- * Determine which QA pass Enzo is on
- */
-function getEnzoQAPass(files: string[] | FileCompletion[]): 1 | 2 | null {
-  const hasPlan = hasFileExists(files, 'plan');
-  const hasProgress = hasFileExists(files, 'progress');
-  const hasQaReview = hasFileExists(files, 'qa-review');
-
-  if (hasProgress) {
-    return 2; // Reviewing or done reviewing progress
-  }
-  if (hasPlan && !hasQaReview) {
-    return 1; // Needs to review plan
-  }
-  if (hasPlan && hasQaReview && !hasProgress) {
-    return 1; // Done with pass 1, waiting for Carl
-  }
-  return null;
-}
-
-/**
- * Find missing dependency for an agent, with phase awareness for Enzo
+ * Find missing dependency for an agent
  */
 function findMissingDependency(
   agentName: AgentName,
-  files: string[] | FileCompletion[]
+  files: string[] | FileCompletion[],
+  team: TeamConfig | null
 ): { file: WorkflowFile; agent: AgentName } | null {
-  // Special handling for Enzo (dual-phase QA)
-  if (agentName === 'enzo') {
-    const requiredFile = getEnzoRequiredFile(files);
-    if (!hasFile(files, requiredFile)) {
-      return {
-        file: requiredFile,
-        agent: FILE_TO_AGENT[requiredFile],
-      };
-    }
-    return null;
-  }
-
-  // Standard dependency check for other agents
-  const role = AGENT_WORKFLOW_ROLE[agentName];
+  // Standard dependency check for all agents
+  const role = getAgentWorkflowRole(team, agentName);
+  const fileToAgent = getFileToAgent(team);
 
   for (const requiredFile of role.requires) {
     if (!hasFile(files, requiredFile)) {
       return {
         file: requiredFile,
-        agent: FILE_TO_AGENT[requiredFile],
+        agent: fileToAgent[requiredFile] ?? 'unknown',
       };
     }
   }
@@ -219,9 +167,10 @@ function findMissingDependency(
 /**
  * Determine who should be working based on current phase
  */
-function determinePhaseOwner(phase: number): AgentName | null {
-  if (phase >= 0 && phase < WORKFLOW_PHASES.length) {
-    return WORKFLOW_PHASES[phase].owner;
+function determinePhaseOwner(phase: number, team: TeamConfig | null): AgentName | null {
+  const phases = getWorkflowPhases(team);
+  if (phase >= 0 && phase < phases.length) {
+    return phases[phase].owner;
   }
   return null;
 }
@@ -231,14 +180,16 @@ function determinePhaseOwner(phase: number): AgentName | null {
  */
 function getWaitingOnMe(
   agentName: AgentName,
-  files: string[] | FileCompletion[]
+  files: string[] | FileCompletion[],
+  team: TeamConfig | null
 ): AgentName[] {
   const waiting: AgentName[] = [];
-  const downstream = AGENT_DEPENDENCIES[agentName].downstream;
+  const dependencies = getAgentDependencies(team);
+  const downstream = dependencies[agentName]?.downstream ?? [];
 
   for (const dependentAgent of downstream) {
     // Check if this dependent agent is actually blocked by us
-    const missingDep = findMissingDependency(dependentAgent, files);
+    const missingDep = findMissingDependency(dependentAgent, files, team);
     if (missingDep && missingDep.agent === agentName) {
       waiting.push(dependentAgent);
     }
@@ -313,10 +264,11 @@ export function computeWorkflowState(
   team: TeamConfig
 ): AgentWorkflowState {
   const agentName = agent.name as AgentName;
-  const role = AGENT_WORKFLOW_ROLE[agentName];
+  const role = getAgentWorkflowRole(team, agentName);
+  const dependencies = getAgentDependencies(team);
   const currentPhase = getCurrentPhase(files);
-  const phaseInfo = getPhaseInfo(currentPhase);
-  const phaseOwner = determinePhaseOwner(currentPhase);
+  const phaseInfo = getPhaseInfo(currentPhase, team);
+  const phaseOwner = determinePhaseOwner(currentPhase, team);
 
   // Default state
   let status: WorkflowStatus = 'idle';
@@ -345,7 +297,7 @@ export function computeWorkflowState(
   }
   // 4. Check for blocked state (missing dependencies)
   else {
-    const missingDep = findMissingDependency(agentName, files);
+    const missingDep = findMissingDependency(agentName, files, team);
 
     if (missingDep) {
       status = 'blocked';
@@ -353,33 +305,23 @@ export function computeWorkflowState(
       blockedByFile = missingDep.file;
       canStart = false;
     }
-    // 5. Check if agent's output already exists (they're done or in QA)
+    // 5. Check if agent's output already exists (they're done or awaiting review)
     else if (role.produces && hasFile(files, role.produces)) {
-      // Check if this agent has multi-pass QA (e.g., Enzo)
+      // Check if output is awaiting review (agents with awaits_qa: true)
       const currentAgentConfig = team.team.agents.find(a => a.name === agentName);
-      if (currentAgentConfig?.qa_passes && currentAgentConfig.qa_passes > 1) {
-        const pass = getEnzoQAPass(files);
-        qaPass = pass;
-        // Complete when final pass is done
-        if (pass !== null && pass === currentAgentConfig.qa_passes && hasFile(files, 'qa-review')) {
-          status = 'complete';
-        } else if (pass !== null && pass > 0 && hasFile(files, 'qa-review')) {
-          // Intermediate pass done, waiting for next phase
-          status = 'complete';
-        } else {
-          status = 'ready';
-        }
-      }
-      // Check if output is awaiting QA (agents with awaits_qa: true)
-      else if (currentAgentConfig?.awaits_qa) {
-        // Find QA agent in team config
-        const qaAgent = team.team.agents.find(a => a.qa_passes && a.qa_passes > 0);
-        const qaAgentName = qaAgent?.name || 'enzo'; // Fallback to 'enzo' for backward compat
-
-        if (!hasFile(files, 'qa-review')) {
-          status = 'blocked';
-          awaitingQA = true;
-          blockedBy = qaAgentName as AgentName;
+      if (currentAgentConfig?.awaits_qa) {
+        // Check if downstream reviewer has completed their file
+        const downstream = dependencies[agentName]?.downstream ?? [];
+        if (downstream.length > 0) {
+          const reviewerAgent = downstream[0] as AgentName;
+          const reviewerRole = getAgentWorkflowRole(team, reviewerAgent);
+          if (reviewerRole.produces && !hasFile(files, reviewerRole.produces)) {
+            status = 'blocked';
+            awaitingQA = true;
+            blockedBy = reviewerAgent;
+          } else {
+            status = 'complete';
+          }
         } else {
           status = 'complete';
         }
@@ -418,7 +360,7 @@ export function computeWorkflowState(
   }
 
   // Calculate who is waiting on this agent
-  const waitingOnMe = getWaitingOnMe(agentName, files);
+  const waitingOnMe = getWaitingOnMe(agentName, files, team);
 
   // Determine turn category
   const turnCategory = determineTurnCategory(
@@ -428,11 +370,6 @@ export function computeWorkflowState(
     waitingOnMe,
     team
   );
-
-  // Get QA pass for agents with multi-pass QA (e.g., Enzo)
-  if (agentConfigForSpecialCases?.qa_passes && agentConfigForSpecialCases.qa_passes > 1) {
-    qaPass = getEnzoQAPass(files);  // TODO: Generalize this for any multi-pass QA agent
-  }
 
   const config = STATUS_CONFIG[status];
 
@@ -592,8 +529,6 @@ export {
   hasFileExists,
   getCurrentPhase,
   getPhaseInfo,
-  getEnzoRequiredFile,
-  getEnzoQAPass,
   findMissingDependency,
   determinePhaseOwner,
   getWaitingOnMe,

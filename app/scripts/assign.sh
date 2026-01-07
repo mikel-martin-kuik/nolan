@@ -151,7 +151,7 @@ case "$PHASE" in
         ;;
     Implement)
         ASSIGNMENT_SECTION+=$'\n'"- plan.md - Bill's implementation plan"
-        ASSIGNMENT_SECTION+=$'\n'"- qa-review.md - Enzo's QA findings"
+        ASSIGNMENT_SECTION+=$'\n'"- plan-review.md - Enzo's plan review"
         ;;
 esac
 

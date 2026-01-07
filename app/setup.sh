@@ -71,9 +71,27 @@ echo "Setting up Claude settings inheritance..."
 if [ -d "$NOLAN_APP_ROOT/.claude" ]; then
     AGENTS_DIR="$NOLAN_APP_ROOT/agents"
     if [ -d "$AGENTS_DIR" ]; then
+        # Clean up any leftover ephemeral agent directories (alphanumeric IDs with digits)
+        for ephemeral_dir in "$AGENTS_DIR"/agent-*; do
+            if [ -d "$ephemeral_dir" ]; then
+                agent_name=$(basename "$ephemeral_dir")
+                # Only delete if it matches ephemeral pattern (contains digits)
+                if [[ "$agent_name" =~ ^agent-[a-z0-9]*[0-9][a-z0-9]*$ ]]; then
+                    echo "  🗑 Cleaning up leftover ephemeral directory: $agent_name"
+                    rm -rf "$ephemeral_dir"
+                fi
+            fi
+        done
+
         for agent_dir in "$AGENTS_DIR"/*; do
             if [ -d "$agent_dir" ]; then
                 agent_name=$(basename "$agent_dir")
+
+                # Skip ephemeral agent directories (alphanumeric IDs with digits)
+                if [[ "$agent_name" =~ ^agent-[a-z0-9]*[0-9][a-z0-9]*$ ]]; then
+                    continue
+                fi
+
                 agent_claude_link="$agent_dir/.claude"
 
                 # Remove existing symlink if it exists

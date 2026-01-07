@@ -127,6 +127,17 @@ impl TeamConfig {
             .collect()
     }
 
+    /// Get core team members (coordinator + workflow participants)
+    /// These are the agents launched/killed together as the core team
+    pub fn core_team_members(&self) -> Vec<&str> {
+        let mut members: Vec<&str> = self.workflow_participants();
+        let coordinator = self.coordinator();
+        if !members.contains(&coordinator) {
+            members.push(coordinator);
+        }
+        members
+    }
+
     /// Get all agent names
     pub fn agent_names(&self) -> Vec<&str> {
         self.team.agents.iter()

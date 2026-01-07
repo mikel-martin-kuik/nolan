@@ -1,13 +1,10 @@
 use regex::Regex;
 use once_cell::sync::Lazy;
 
-/// Valid agent names that can be spawned/killed
-/// TODO: Remove after refactoring all usage sites to use team config
-pub const VALID_AGENTS: &[&str] = &["ana", "bill", "carl", "dan", "enzo", "ralph"];
-
-/// Core team agents (shown in status panel, launched together)
-/// TODO: Remove after refactoring all usage sites to use team config
-pub const CORE_AGENTS: &[&str] = &["ana", "bill", "carl", "dan", "enzo"];
+// Agent names are now loaded from team configuration (teams/*.yaml)
+// Use TeamConfig::agent_names() for valid agents
+// Use TeamConfig::core_team_members() for core team agents
+// See src-tauri/src/config/mod.rs for TeamConfig implementation
 
 /// Protected infrastructure sessions that should never be killed
 pub const PROTECTED_SESSIONS: &[&str] = &["communicator", "history-log", "lifecycle"];

@@ -99,6 +99,7 @@ pub fn run() {
             stop_terminal_stream,
             send_terminal_input,
             send_terminal_key,
+            resize_terminal,
             // Communicator commands
             send_message,
             broadcast_team,

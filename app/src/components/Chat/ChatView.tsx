@@ -4,13 +4,15 @@ import { invoke } from '@tauri-apps/api/core';
 import { useLiveOutputStore } from '../../store/liveOutputStore';
 import { useAgentStore } from '../../store/agentStore';
 import { useChatViewStore } from '../../store/chatViewStore';
+import { useTeamStore } from '../../store/teamStore';
 import { useWorkflowStatus, type AgentWithWorkflow } from '../../hooks/useWorkflowStatus';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatInput } from './ChatInput';
 import { AgentListItem } from './AgentListItem';
 import { cn } from '../../lib/utils';
-import type { AgentStatus } from '../../types';
+import type { AgentStatus, TeamConfig } from '../../types';
 import { getAgentDisplayNameForUI } from '../../lib/agentIdentity';
+import { isCoreAgent as checkIsCoreAgent } from '../../types';
 
 // Group configuration with icons and colors
 const GROUP_CONFIG = {
@@ -40,13 +42,13 @@ const GROUP_CONFIG = {
  * Get display name for an agent, handling spawned instances
  * Uses agentIdentity utility for consistent naming (ralph shows as fun name)
  */
-function getAgentDisplayName(agent: AgentStatus): string {
+function getAgentDisplayName(agent: AgentStatus, team: TeamConfig | null): string {
   const session = agent.session;
   const withoutPrefix = session.replace(/^agent-/, '');
   const parts = withoutPrefix.split('-');
 
-  // Check if this is a core agent
-  const isCoreAgent = /^agent-(ana|bill|carl|dan|enzo|ralph)$/.test(session);
+  // Check if this is a core agent using team config
+  const isCoreAgent = checkIsCoreAgent(session, team);
 
   // Extract instanceId for spawned agents
   const instanceId = parts.length > 1 ? parts.slice(1).join('-') : undefined;
@@ -58,6 +60,7 @@ export const ChatView: React.FC = () => {
   const { activeSession, setActiveChat } = useChatViewStore();
   const { agentOutputs, clearAll, clearSession } = useLiveOutputStore();
   const { coreAgents, spawnedSessions } = useAgentStore();
+  const { currentTeam } = useTeamStore();
   const { grouped, projectFiles } = useWorkflowStatus();
   const [isRestarting, setIsRestarting] = React.useState(false);
 
@@ -292,7 +295,7 @@ export const ChatView: React.FC = () => {
                 )}
               />
               <div>
-                <h3 className="font-medium">{getAgentDisplayName(currentAgent)}</h3>
+                <h3 className="font-medium">{getAgentDisplayName(currentAgent, currentTeam)}</h3>
                 <p className="text-xs text-muted-foreground">
                   {currentWorkflowState?.statusLabel || (isActive ? 'Working' : 'Idle')}
                 </p>

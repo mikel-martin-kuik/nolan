@@ -6,7 +6,6 @@ use std::thread;
 use once_cell::sync::Lazy;
 use uuid::Uuid;
 use crate::config::TeamConfig;
-use crate::constants::VALID_AGENTS;
 
 // Compile regex patterns once at startup
 static RE_AGENT_NAME: Lazy<Regex> = Lazy::new(|| {
@@ -205,16 +204,21 @@ fn send_verified_native(
 /// Send a message to a specific agent
 #[tauri::command]
 pub async fn send_message(target: String, message: String) -> Result<String, String> {
+    // Load team config to get valid agent names
+    let team = TeamConfig::load("default")
+        .map_err(|e| format!("Failed to load team config: {}", e))?;
+    let valid_agents: Vec<&str> = team.agent_names();
+
     // Validate target is either:
     // 1. A core agent name (e.g., "ana", "bill")
     // 2. A spawned session name (e.g., "ana-2", "bill-3")
 
     let is_valid = if let Some(caps) = RE_AGENT_NAME.captures(&target) {
         // Core agent name
-        VALID_AGENTS.contains(&&caps[1])
+        valid_agents.contains(&&caps[1])
     } else if let Some(caps) = RE_AGENT_INSTANCE.captures(&target) {
         // Spawned session name
-        VALID_AGENTS.contains(&&caps[1])
+        valid_agents.contains(&&caps[1])
     } else {
         false
     };
@@ -266,6 +270,11 @@ pub async fn broadcast_team(message: String) -> Result<BroadcastResult, String> 
 /// Broadcast a message to all active agent sessions (core + spawned)
 #[tauri::command]
 pub async fn broadcast_all(message: String) -> Result<BroadcastResult, String> {
+    // Load team config to get valid agent names
+    let team = TeamConfig::load("default")
+        .map_err(|e| format!("Failed to load team config: {}", e))?;
+    let valid_agents: Vec<&str> = team.agent_names();
+
     let sessions = crate::tmux::session::list_sessions()?;
 
     let mut successful = Vec::new();
@@ -284,7 +293,7 @@ pub async fn broadcast_all(message: String) -> Result<BroadcastResult, String> {
 
         // Validate it's a real agent
         let base_agent = agent_name.split('-').next().unwrap_or(&agent_name);
-        if !VALID_AGENTS.contains(&base_agent) {
+        if !valid_agents.contains(&base_agent) {
             continue;
         }
 
@@ -307,6 +316,11 @@ pub async fn broadcast_all(message: String) -> Result<BroadcastResult, String> {
 /// Get list of available message targets (active agent sessions)
 #[tauri::command]
 pub async fn get_available_targets() -> Result<TargetList, String> {
+    // Load team config to get valid agent names
+    let team = TeamConfig::load("default")
+        .map_err(|e| format!("Failed to load team config: {}", e))?;
+    let valid_agents: Vec<&str> = team.agent_names();
+
     let sessions = crate::tmux::session::list_sessions()?;
 
     let mut core_agents = Vec::new();
@@ -317,7 +331,7 @@ pub async fn get_available_targets() -> Result<TargetList, String> {
             // Check if it's a core agent (agent-{name} without number)
             if let Some(caps) = RE_SESSION_NAME.captures(&session) {
                 let agent_name = caps[1].to_string();
-                if VALID_AGENTS.contains(&agent_name.as_str()) {
+                if valid_agents.contains(&agent_name.as_str()) {
                     core_agents.push(agent_name);
                 }
             } else if RE_SESSION_INSTANCE.is_match(&session) {

@@ -21,6 +21,8 @@ export type AgentName = string;
 export interface TeamConfig {
   team: {
     name: string;
+    description?: string;
+    version?: string;
     agents: AgentConfig[];
     workflow: WorkflowConfig;
     communication: CommunicationConfig;

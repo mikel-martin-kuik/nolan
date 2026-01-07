@@ -147,6 +147,8 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
       const config: TeamConfig = {
         team: {
           name,
+          description: description || undefined,
+          version: '1.0.0',
           agents,
           workflow: {
             coordinator,

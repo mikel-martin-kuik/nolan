@@ -12,8 +12,10 @@ pub struct TeamConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Team {
     pub name: String,
-    pub description: String,
-    pub version: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
     pub agents: Vec<AgentConfig>,
     pub workflow: WorkflowConfig,
     pub communication: CommunicationConfig,

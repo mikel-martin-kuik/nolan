@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTeamStore } from '../../store/teamStore';
 import { useToastStore } from '../../store/toastStore';
@@ -16,6 +16,7 @@ export const TeamsPanel: React.FC = () => {
   const [agentInfos, setAgentInfos] = useState<AgentDirectoryInfo[]>([]);
   const [contextMenuTeam, setContextMenuTeam] = useState<string | null>(null);
   const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   // Fetch agent directories for role/model info
   const fetchAgentInfos = useCallback(async () => {
@@ -107,17 +108,19 @@ export const TeamsPanel: React.FC = () => {
   };
 
   // Close context menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = () => {
+  const handleClickOutside = useCallback((e: MouseEvent) => {
+    if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
       setContextMenuTeam(null);
       setContextMenuPos(null);
-    };
-
-    if (contextMenuPos) {
-      document.addEventListener('click', handleClickOutside);
-      return () => document.removeEventListener('click', handleClickOutside);
     }
-  }, [contextMenuPos]);
+  }, []);
+
+  useEffect(() => {
+    if (!contextMenuPos) return;
+
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [contextMenuPos, handleClickOutside]);
 
   if (isEditing) {
     return (
@@ -132,7 +135,7 @@ export const TeamsPanel: React.FC = () => {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-xl font-semibold text-foreground">Team Configurations</h1>
           <p className="text-sm text-muted-foreground">Manage agent teams and workflows</p>
@@ -147,56 +150,68 @@ export const TeamsPanel: React.FC = () => {
       </div>
 
       {/* Team List and Details */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-0">
-        {/* Team List */}
-        <div className="lg:col-span-1 bg-card/50 backdrop-blur-sm rounded-xl border border-border p-4 overflow-auto relative">
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4">
+      <div className="flex-1 flex gap-4 overflow-hidden min-h-0">
+        {/* Team List - Fixed Width */}
+        <div className="w-[320px] flex flex-col flex-shrink-0 bg-card/50 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider px-4 pt-4 pb-2 flex-shrink-0">
             Available Teams ({availableTeams.length})
           </h2>
-          <div className="space-y-2">
+          <div className="flex-1 overflow-auto px-2 pb-4 space-y-1">
             {availableTeams.map((teamName) => (
               <button
                 key={teamName}
                 onClick={() => handleSelectTeam(teamName)}
                 onContextMenu={(e) => handleContextMenu(e, teamName)}
-                className={`w-full text-left p-3 rounded-lg transition-colors flex items-center gap-3 ${
+                className={`w-full text-left p-2.5 rounded-lg transition-colors flex items-center gap-2 ${
                   selectedTeam === teamName
                     ? 'bg-primary/10 border border-primary/30 text-foreground'
                     : 'bg-secondary/30 border border-border hover:bg-secondary/50 text-foreground'
                 }`}
               >
-                <FileText className="w-4 h-4 text-muted-foreground" />
-                <span className="font-medium truncate">{teamName}</span>
+                <FileText className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                <span className="font-medium text-sm truncate">{teamName}</span>
                 {teamName === 'default' && (
-                  <span className="ml-auto text-xs px-2 py-0.5 rounded bg-primary/20 text-primary flex-shrink-0">
+                  <span className="ml-auto text-[10px] px-1.5 py-0.5 rounded bg-primary/20 text-primary flex-shrink-0">
                     Default
                   </span>
                 )}
                 {selectedTeam === teamName && (
-                  <Check className="w-4 h-4 text-primary ml-auto flex-shrink-0" />
+                  <Check className="w-3.5 h-3.5 text-primary ml-auto flex-shrink-0" />
                 )}
               </button>
             ))}
             {availableTeams.length === 0 && (
-              <p className="text-sm text-muted-foreground text-center py-4">
+              <p className="text-xs text-muted-foreground text-center py-4">
                 No teams found. Create your first team.
               </p>
             )}
           </div>
 
-          {/* Context Menu */}
+          {/* Context Menu - Positioned like AgentCard */}
           {contextMenuTeam && contextMenuPos && (
             <div
-              className="fixed bg-card border border-border rounded-lg shadow-lg p-1 z-50"
+              ref={contextMenuRef}
+              className="fixed z-50 bg-secondary border border-border rounded-md shadow-lg py-1 min-w-[180px]"
               style={{
                 left: `${contextMenuPos.x}px`,
                 top: `${contextMenuPos.y}px`,
               }}
             >
               <button
+                onClick={() => {
+                  handleSelectTeam(contextMenuTeam);
+                  setContextMenuTeam(null);
+                  setContextMenuPos(null);
+                }}
+                className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
+              >
+                <Edit2 className="w-4 h-4" />
+                Edit Team
+              </button>
+              <button
                 onClick={() => handleDeleteTeam(contextMenuTeam)}
                 disabled={contextMenuTeam === 'default'}
-                className="w-full text-left px-4 py-2 rounded-md text-sm text-destructive hover:bg-destructive/10 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+                className="w-full px-3 py-2 text-sm flex items-center gap-2 text-red-500 hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-left"
               >
                 <Trash2 className="w-4 h-4" />
                 Delete Team
@@ -205,8 +220,8 @@ export const TeamsPanel: React.FC = () => {
           )}
         </div>
 
-        {/* Team Details */}
-        <div className="lg:col-span-3 bg-card/50 backdrop-blur-sm rounded-xl border border-border p-6 overflow-auto">
+        {/* Team Details - Flexible */}
+        <div className="flex-1 bg-card/50 backdrop-blur-sm rounded-xl border border-border p-6 overflow-auto">
           {teamConfig ? (
             <div>
               {/* Team Header */}

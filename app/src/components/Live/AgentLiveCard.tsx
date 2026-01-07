@@ -2,7 +2,8 @@ import React, { useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { MessageSquareX, Eraser, Clock, Terminal, MessageCircle } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { AgentStatus, AGENT_DESCRIPTIONS, AgentWorkflowState, WORKFLOW_FILES } from '../../types';
+import { AgentStatus, AGENT_DESCRIPTIONS, AgentWorkflowState, getWorkflowSteps } from '../../types';
+import { useTeamStore } from '../../store/teamStore';
 import { getAgentVisualName } from '../../lib/agentIdentity';
 import type { FileCompletion } from '../../types/projects';
 import { useLiveOutputStore, AgentLiveOutput } from '../../store/liveOutputStore';
@@ -35,6 +36,8 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = ({
   const openTerminalModal = useTerminalStore((state) => state.openModal);
   const setActiveChat = useChatViewStore((state) => state.setActiveChat);
   const { error: showError } = useToastStore();
+  const currentTeam = useTeamStore((state) => state.currentTeam);
+  const workflowSteps = getWorkflowSteps(currentTeam);
   const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number } | null>(null);
   const [showTerminal, setShowTerminal] = React.useState(false);
   const contextMenuRef = React.useRef<HTMLDivElement>(null);
@@ -113,7 +116,7 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = ({
       document.removeEventListener('click', handleClickOutside);
       window.removeEventListener('live-card-menu-open', handleOtherMenuOpen);
     };
-  }, [contextMenu, handleClickOutside, handleOtherMenuOpen]);
+  }, [contextMenu]);
 
   const handleClearMessagesFromMenu = () => {
     setContextMenu(null);
@@ -273,14 +276,14 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = ({
         {/* Workflow progress dots (only show if agent has a project) */}
         {workflowState && agent.current_project && agent.current_project !== 'VIBING' && (
           <div className="flex items-center gap-1 mb-2">
-            {WORKFLOW_FILES.map((file) => (
+            {workflowSteps.map((step) => (
               <div
-                key={file}
+                key={step.key}
                 className={cn(
                   'w-1.5 h-1.5 rounded-full transition-colors',
-                  isFileCompleted(file) ? 'bg-primary' : 'bg-muted-foreground/20'
+                  isFileCompleted(step.key) ? 'bg-primary' : 'bg-muted-foreground/20'
                 )}
-                title={`${file}.md${isFileCompleted(file) ? ' (completed)' : ''}`}
+                title={`${step.key}.md${isFileCompleted(step.key) ? ' (completed)' : ''}`}
               />
             ))}
             <span className="text-[10px] text-muted-foreground ml-1">

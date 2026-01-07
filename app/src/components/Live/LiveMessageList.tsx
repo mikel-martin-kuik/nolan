@@ -1,14 +1,17 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Copy, Check } from 'lucide-react';
+import { Copy, Check, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { HistoryEntry } from '../../types';
 import { useLiveOutputStore } from '../../store/liveOutputStore';
 import { cn } from '../../lib/utils';
+import { AskUserQuestionDisplay } from '../Chat/AskUserQuestionDisplay';
 
 interface LiveMessageListProps {
   entries: HistoryEntry[];
   maxHeight?: string;
+  /** Session name for interactive responses (e.g., "agent-ana") */
+  session?: string;
 }
 
 // Memoized entry component to prevent unnecessary re-renders
@@ -17,6 +20,10 @@ interface MessageEntryProps {
   index: number;
   isCopied: boolean;
   onCopy: (entry: HistoryEntry) => void;
+  /** Session name for interactive responses */
+  session?: string;
+  /** Whether this is the last entry */
+  isLast?: boolean;
 }
 
 const MessageEntry = React.memo<MessageEntryProps>(({
@@ -24,26 +31,37 @@ const MessageEntry = React.memo<MessageEntryProps>(({
   index,
   isCopied,
   onCopy,
+  session,
+  isLast = false,
 }) => {
   const id = entry.uuid || `${entry.timestamp}-${index}`;
+  const isAskUserQuestion = entry.entry_type === 'tool_use' && entry.tool_name === 'AskUserQuestion';
 
   return (
     <div
       key={id}
       className={cn(
         'group relative px-3 py-2 rounded-lg text-sm',
-        getEntryBgColor(entry.entry_type)
+        isAskUserQuestion
+          ? 'bg-yellow-500/10 ring-2 ring-yellow-500/50'
+          : getEntryBgColor(entry.entry_type)
       )}
     >
       {/* Header row */}
       <div className="flex items-center justify-between text-xs mb-1">
         <div className="flex items-center gap-2">
-          <span className={cn('font-medium', getEntryTextColor(entry.entry_type))}>
+          <span className={cn('font-medium', isAskUserQuestion ? 'text-yellow-400' : getEntryTextColor(entry.entry_type))}>
             {formatEntryType(entry.entry_type)}
           </span>
           {entry.tool_name && (
-            <span className="text-muted-foreground">
+            <span className={cn('text-muted-foreground', isAskUserQuestion && 'text-yellow-400/80')}>
               ({entry.tool_name})
+            </span>
+          )}
+          {isAskUserQuestion && (
+            <span className="flex items-center gap-1 text-yellow-400">
+              <AlertCircle className="w-3 h-3" />
+              <span className="text-xs font-medium">Needs response</span>
             </span>
           )}
         </div>
@@ -60,7 +78,15 @@ const MessageEntry = React.memo<MessageEntryProps>(({
       </div>
 
       {/* Message content */}
-      {entry.entry_type.toLowerCase() === 'assistant' ? (
+      {isAskUserQuestion ? (
+        <AskUserQuestionDisplay
+          content={entry.message}
+          showNeedsResponse={!session}
+          isLast={isLast}
+          session={session}
+          interactive={!!session && isLast}
+        />
+      ) : entry.entry_type.toLowerCase() === 'assistant' ? (
         <div className="text-sm prose prose-sm dark:prose-invert max-w-none prose-p:my-1 prose-headings:my-2 prose-pre:my-2 prose-code:text-xs">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
             {truncateMessage(entry.message, 2000)}
@@ -86,12 +112,16 @@ const MessageEntry = React.memo<MessageEntryProps>(({
     </div>
   );
 }, (prevProps, nextProps) => {
-  // Custom comparison: only re-render if entry or copy state changed
-  return (
+  // Custom comparison: skip re-render if nothing changed
+  // Return true = skip re-render, false = do re-render
+  const shouldSkipRender = (
     prevProps.entry.uuid === nextProps.entry.uuid &&
     prevProps.entry.timestamp === nextProps.entry.timestamp &&
-    prevProps.isCopied === nextProps.isCopied
+    prevProps.isCopied === nextProps.isCopied &&
+    prevProps.session === nextProps.session &&
+    prevProps.isLast === nextProps.isLast
   );
+  return shouldSkipRender;
 });
 
 MessageEntry.displayName = 'MessageEntry';
@@ -99,12 +129,14 @@ MessageEntry.displayName = 'MessageEntry';
 export const LiveMessageList: React.FC<LiveMessageListProps> = ({
   entries,
   maxHeight = '300px',
+  session,
 }) => {
   const isFullHeight = maxHeight === '100%';
   const { autoScroll } = useLiveOutputStore();
   const scrollRef = useRef<HTMLDivElement>(null);
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Debounced auto-scroll to prevent excessive updates
   useEffect(() => {
@@ -133,9 +165,24 @@ export const LiveMessageList: React.FC<LiveMessageListProps> = ({
     if (entry.message) {
       await navigator.clipboard.writeText(entry.message);
     }
+
+    // Clear any existing timeout
+    if (copyTimeoutRef.current) {
+      clearTimeout(copyTimeoutRef.current);
+    }
+
     const id = entry.uuid || entry.timestamp;
     setCopiedId(id);
-    setTimeout(() => setCopiedId(null), 2000);
+    copyTimeoutRef.current = setTimeout(() => setCopiedId(null), 2000);
+  }, []);
+
+  // Cleanup copy timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) {
+        clearTimeout(copyTimeoutRef.current);
+      }
+    };
   }, []);
 
   return (
@@ -150,6 +197,7 @@ export const LiveMessageList: React.FC<LiveMessageListProps> = ({
       {entries.map((entry, index) => {
         const id = entry.uuid || `${entry.timestamp}-${index}`;
         const isCopied = copiedId === id;
+        const isLast = index === entries.length - 1;
 
         return (
           <MessageEntry
@@ -158,6 +206,8 @@ export const LiveMessageList: React.FC<LiveMessageListProps> = ({
             index={index}
             isCopied={isCopied}
             onCopy={handleCopy}
+            session={session}
+            isLast={isLast}
           />
         );
       })}

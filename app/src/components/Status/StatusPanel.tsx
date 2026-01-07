@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useAgentStore } from '../../store/agentStore';
 import { useToastStore } from '../../store/toastStore';
 import { useTeamStore } from '../../store/teamStore';
@@ -9,30 +9,34 @@ import { ProjectSelectModal, LaunchParams } from '../shared/ProjectSelectModal';
 import { Tooltip } from '../ui/tooltip';
 import { Users, Plus, XCircle, LayoutGrid } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
-import type { AgentName, ClaudeModel } from '@/types';
+import type { AgentName, ClaudeModel, TeamConfig } from '@/types';
 import { getRalphDisplayName } from '@/lib/agentIdentity';
-import { getCoreTeamMembers } from '@/types';
+import { getTeamMembers } from '@/types';
 import type { ProjectInfo } from '@/types/projects';
 import { ModelSelectDialog } from '../shared/ModelSelectDialog';
 
 export const StatusPanel: React.FC = () => {
   const {
-    coreAgents,
-    spawnedSessions,
+    teamAgents,
+    freeAgents,
     updateStatus,
-    launchCore,
-    killCore,
+    launchTeam,
+    killTeam,
     spawnAgent,
     killAllInstances,
     loading,
     setupEventListeners
   } = useAgentStore();
   const { error: showError } = useToastStore();
-  const { currentTeam } = useTeamStore();
+  const { currentTeam, availableTeams, teamConfigs, loadAvailableTeams, loadAllTeams } = useTeamStore();
 
-  // Get core team member names from team config for dialog display
-  const coreTeamMemberNames = useMemo(() => {
-    const members = getCoreTeamMembers(currentTeam);
+  // Track collapsed state per team (all collapsed by default)
+  const [collapsedTeams, setCollapsedTeams] = useState<Set<string>>(new Set());
+  const [teamsInitialized, setTeamsInitialized] = useState(false);
+
+  // Get team member names from team config for dialog display
+  const teamMemberNames = useMemo(() => {
+    const members = getTeamMembers(currentTeam);
     // Capitalize names for display
     return members.map(name => name.charAt(0).toUpperCase() + name.slice(1)).join(', ');
   }, [currentTeam]);
@@ -42,6 +46,9 @@ export const StatusPanel: React.FC = () => {
   const [showKillDialog, setShowKillDialog] = useState(false);
   const [showKillRalphDialog, setShowKillRalphDialog] = useState(false);
   const [showModelSelectDialog, setShowModelSelectDialog] = useState(false);
+
+  // Track which team is being targeted for launch/kill operations
+  const [targetTeam, setTargetTeam] = useState<string>('');
 
   // Projects for the launch modal
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
@@ -59,19 +66,56 @@ export const StatusPanel: React.FC = () => {
     const interval = setInterval(() => {
       updateStatus();
     }, 2000);
+
     return () => {
       clearInterval(interval);
-      // Note: Don't cleanup listeners here - they persist for app lifetime
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty deps - run once on mount
+  }, [updateStatus, setupEventListeners]);
+
+  // Load all teams on mount
+  useEffect(() => {
+    const initTeams = async () => {
+      await loadAvailableTeams();
+      await loadAllTeams();
+      setTeamsInitialized(true);
+    };
+    initTeams();
+  }, [loadAvailableTeams, loadAllTeams]);
+
+  // Initialize all teams as collapsed when teams are loaded
+  useEffect(() => {
+    if (teamsInitialized && availableTeams.length > 0) {
+      setCollapsedTeams(new Set(availableTeams));
+    }
+  }, [teamsInitialized, availableTeams]);
+
+  // Toggle collapse state for a team
+  const toggleTeamCollapse = useCallback((teamName: string) => {
+    setCollapsedTeams(prev => {
+      const next = new Set(prev);
+      if (next.has(teamName)) {
+        next.delete(teamName);
+      } else {
+        next.add(teamName);
+      }
+      return next;
+    });
+  }, []);
+
+  // Get agents for a specific team
+  const getAgentsForTeam = useCallback((teamConfig: TeamConfig) => {
+    const teamName = teamConfig.team.name;
+
+    // Filter teamAgents by team field (exclude ralph - it's a free agent)
+    return teamAgents.filter(a => a.team === teamName && a.name !== 'ralph');
+  }, [teamAgents]);
 
 
-  // Extract instance identifiers from spawned sessions for display
-  // Ralph uses names (ziggy, nova), others use numbers (2, 3)
-  const spawnedWithInstances = spawnedSessions.map(agent => {
-    const match = agent.session.match(/^agent-([a-z]+)-([a-z0-9]+)$/);
-    const instanceId = match ? match[2] : undefined;
+  // Extract instance identifiers from free agents for display
+  // Ralph uses names (ziggy, nova)
+  const freeAgentsWithInstances = freeAgents.map(agent => {
+    const match = agent.session.match(/^agent-ralph-([a-z0-9]+)$/);
+    const instanceId = match ? match[1] : undefined;
     return { ...agent, instanceId };
   }).sort((a, b) => {
     // Sort by creation timestamp to maintain order (oldest first)
@@ -83,7 +127,10 @@ export const StatusPanel: React.FC = () => {
 
 
   // Handler functions
-  const handleLaunchCoreClick = async () => {
+  const handleLaunchTeamClick = async (teamName: string) => {
+    // Store the target team for the launch operation
+    setTargetTeam(teamName);
+
     // Fetch projects before showing modal
     setProjectsLoading(true);
     try {
@@ -102,63 +149,68 @@ export const StatusPanel: React.FC = () => {
     try {
       const { projectName, isNew, initialPrompt, updatedOriginalPrompt, followupPrompt } = params;
 
-      // If it's a new project, create it first
+      // If it's a new project, create it first with the target team
       if (isNew) {
-        await invoke('create_project', { projectName });
+        await invoke('create_project', { projectName, teamName: targetTeam });
       }
 
-      // Launch core team with project context
-      // For new projects: pass initialPrompt (written to prompt.md and sent to Dan)
-      // For existing projects: pass updatedOriginalPrompt (only written if modified) and followupPrompt (sent to Dan)
-      await launchCore(projectName, initialPrompt, updatedOriginalPrompt, followupPrompt);
+      // Launch team with project context (team-scoped)
+      // For new projects: pass initialPrompt (written to prompt.md and sent to coordinator)
+      // For existing projects: pass updatedOriginalPrompt (only written if modified) and followupPrompt (sent to coordinator)
+      await launchTeam(targetTeam, projectName, initialPrompt, updatedOriginalPrompt, followupPrompt);
 
       // Open team terminals after successful launch
       try {
-        await invoke('open_core_team_terminals');
+        await invoke('open_team_terminals', { teamName: targetTeam });
       } catch (terminalError) {
         console.error('Failed to open team terminals:', terminalError);
         // Non-fatal - agents are still launched
       }
     } catch (error) {
-      console.error('Failed to launch core team:', error);
-      showError(`Failed to launch core team: ${error}`);
+      console.error('Failed to launch team:', error);
+      showError(`Failed to launch team: ${error}`);
     }
   };
 
-  const handleKillCoreClick = () => {
+  const handleKillTeamClick = (teamName: string) => {
+    setTargetTeam(teamName);
     setShowKillDialog(true);
   };
 
   const handleConfirmKill = async () => {
     try {
-      await killCore();
+      await killTeam(targetTeam);
     } catch (error) {
-      console.error('Failed to kill core team:', error);
-      showError(`Failed to kill core team: ${error}`);
+      console.error('Failed to kill team:', error);
+      showError(`Failed to kill team: ${error}`);
     }
   };
 
-  const handleShowTerminals = async () => {
+  const handleShowTerminals = async (teamName: string) => {
     try {
-      await invoke('open_core_team_terminals');
+      await invoke('open_team_terminals', { teamName });
     } catch (error) {
       console.error('Failed to open team terminals:', error);
       showError(`Failed to open terminals: ${error}`);
     }
   };
 
-  // Handler for spawning any agent type
-  const handleSpawnAgent = async (agentName: AgentName, model?: ClaudeModel) => {
+  // Handler for spawning any agent type (team-scoped)
+  const handleSpawnAgent = async (teamName: string, agentName: AgentName, model?: ClaudeModel) => {
     try {
       // Capture existing sessions BEFORE spawning to detect the new one
-      const { spawnedSessions: beforeSessions } = useAgentStore.getState();
+      const { freeAgents: beforeFreeAgents, teamAgents: beforeTeamAgents } = useAgentStore.getState();
+      // For team-scoped sessions: agent-{team}-{name}-{instance}
+      // For free agents (ralph): agent-ralph-{instance}
+      const sessionPrefix = agentName === 'ralph' ? 'agent-ralph-' : `agent-${teamName}-${agentName}-`;
+      const beforeSessions = agentName === 'ralph' ? beforeFreeAgents : beforeTeamAgents;
       const existingSessionNames = new Set(
         beforeSessions
-          .filter(s => s.session.startsWith(`agent-${agentName}-`))
+          .filter(s => s.session.startsWith(sessionPrefix))
           .map(s => s.session)
       );
 
-      await spawnAgent(agentName, false, model);
+      await spawnAgent(teamName, agentName, false, model);
 
       // Poll for new session with timeout
       const maxAttempts = 10;
@@ -169,12 +221,18 @@ export const StatusPanel: React.FC = () => {
         await new Promise(resolve => setTimeout(resolve, pollInterval));
 
         // Refresh status to get latest sessions
-        await updateStatus();
+        try {
+          await updateStatus();
+        } catch (error) {
+          console.error(`Failed to update status on attempt ${attempt}:`, error);
+          continue;
+        }
 
-        // Get fresh spawned sessions from store
-        const { spawnedSessions: currentSessions } = useAgentStore.getState();
+        // Get fresh sessions from store
+        const { freeAgents: currentFreeAgents, teamAgents: currentTeamAgents } = useAgentStore.getState();
+        const currentSessions = agentName === 'ralph' ? currentFreeAgents : currentTeamAgents;
         const agentSessions = currentSessions.filter(agent =>
-          agent.session.startsWith(`agent-${agentName}-`)
+          agent.session.startsWith(sessionPrefix)
         );
 
         // Find the NEW session (one that didn't exist before)
@@ -193,7 +251,7 @@ export const StatusPanel: React.FC = () => {
           console.error('Failed to open terminal:', terminalError);
         }
       } else if (!newSession) {
-        console.warn(`Spawned session for ${agentName} not found after polling`);
+        showError(`Failed to spawn ${agentName}: session not found after ${maxAttempts} attempts`);
       }
     } catch (error) {
       console.error(`Failed to spawn ${agentName}:`, error);
@@ -205,9 +263,9 @@ export const StatusPanel: React.FC = () => {
     setShowModelSelectDialog(true);
   };
 
-  // Handler for when model is selected
+  // Handler for when model is selected (Ralph is team-independent)
   const handleModelSelect = (model: ClaudeModel) => {
-    handleSpawnAgent('ralph', model);
+    handleSpawnAgent('', 'ralph', model);
   };
 
   // Handler for killing all Ralph instances
@@ -217,7 +275,8 @@ export const StatusPanel: React.FC = () => {
 
   const handleConfirmKillRalph = async () => {
     try {
-      await killAllInstances('ralph');
+      // Ralph is team-independent, use empty team name
+      await killAllInstances('', 'ralph');
     } catch (error) {
       console.error(`Failed to kill ${ralphDisplayName} instances:`, error);
       showError(`Failed to kill ${ralphDisplayName} instances: ${error}`);
@@ -227,11 +286,10 @@ export const StatusPanel: React.FC = () => {
   // Handler for opening all Ralph terminals
   const handleOpenAllRalphTerminals = async () => {
     try {
-      // Get all Ralph sessions (core + spawned)
-      const ralphSessions = [
-        ...coreAgents.filter(a => a.name === 'ralph' && a.active).map(a => a.session),
-        ...spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).map(s => s.session)
-      ];
+      // Get all Ralph sessions (from free agents)
+      const ralphSessions = freeAgents
+        .filter(a => a.name === 'ralph' && a.active)
+        .map(a => a.session);
 
       if (ralphSessions.length === 0) {
         showError(`No ${ralphDisplayName} agents are running`);
@@ -255,16 +313,31 @@ export const StatusPanel: React.FC = () => {
   return (
     <div className="h-full">
       <div className="w-full h-full flex flex-col">
-        {/* Core Team Card */}
-        <div className="mb-6">
-        <TeamCard
-          agents={coreAgents.filter(a => a.name !== 'ralph')}
-          showActions={true}
-          loading={loading}
-          onLaunch={handleLaunchCoreClick}
-          onKill={handleKillCoreClick}
-          onShowTerminals={handleShowTerminals}
-        />
+        {/* Teams Grid */}
+        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {availableTeams.map(teamName => {
+            const teamConfig = teamConfigs.get(teamName);
+            if (!teamConfig) return null;
+
+            const teamAgents = getAgentsForTeam(teamConfig);
+            const isCollapsed = collapsedTeams.has(teamName);
+
+            return (
+              <TeamCard
+                key={teamName}
+                teamName={teamConfig.team.name || teamName}
+                teamConfig={teamConfig}
+                agents={teamAgents}
+                collapsed={isCollapsed}
+                onToggleCollapse={() => toggleTeamCollapse(teamName)}
+                showActions={true}
+                loading={loading}
+                onLaunch={() => handleLaunchTeamClick(teamName)}
+                onKill={() => handleKillTeamClick(teamName)}
+                onShowTerminals={() => handleShowTerminals(teamName)}
+              />
+            );
+          })}
         </div>
 
         {/* Ralph - Free Agent */}
@@ -274,9 +347,9 @@ export const StatusPanel: React.FC = () => {
               <span className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/30 border border-border/40">
                 <Users className="w-3.5 h-3.5" />
                 <span>Free Agents</span>
-                {spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length > 0 && (
+                {freeAgents.filter(a => a.active).length > 0 && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
-                    {spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length}
+                    {freeAgents.filter(a => a.active).length}
                   </span>
                 )}
               </span>
@@ -290,7 +363,7 @@ export const StatusPanel: React.FC = () => {
                 <Tooltip content="Kill All" side="bottom">
                   <button
                     onClick={handleKillAllRalph}
-                    disabled={loading || spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length === 0}
+                    disabled={loading || freeAgents.filter(a => a.active).length === 0}
                     className="w-9 h-9 rounded-xl flex items-center justify-center
                       bg-secondary/50 border border-border text-muted-foreground
                       hover:bg-red-500/10 hover:border-red-400/20 hover:text-red-500
@@ -303,7 +376,7 @@ export const StatusPanel: React.FC = () => {
                 <Tooltip content="Terminals" side="bottom">
                   <button
                     onClick={handleOpenAllRalphTerminals}
-                    disabled={loading || spawnedSessions.filter(s => s.session.startsWith('agent-ralph-')).length === 0}
+                    disabled={loading || freeAgents.filter(a => a.active).length === 0}
                     className="w-9 h-9 rounded-xl flex items-center justify-center
                       bg-secondary/50 border border-border text-muted-foreground
                       hover:bg-accent hover:border-border hover:text-foreground
@@ -316,20 +389,9 @@ export const StatusPanel: React.FC = () => {
               </div>
 
               <div className="flex flex-wrap justify-center gap-2 lg:gap-4">
-              {/* Core Ralph */}
-              {coreAgents.filter(a => a.name === 'ralph').map((agent) => (
-                <div key={agent.name} className="w-[clamp(120px,calc(70vw/2),160px)]">
-                  <AgentCard
-                    agent={agent}
-                    variant="dashboard"
-                    showActions={true}
-                  />
-                </div>
-              ))}
-
-              {/* Spawned Ralph instances */}
-              {spawnedWithInstances
-                .filter(agent => agent.session.startsWith('agent-ralph-'))
+              {/* Free Agent instances (Ralph) */}
+              {freeAgentsWithInstances
+                .filter(agent => agent.active)
                 .map((agent) => (
                   <div key={agent.session} className="w-[clamp(120px,calc(70vw/2),160px)]">
                     <AgentCard
@@ -370,14 +432,15 @@ export const StatusPanel: React.FC = () => {
         onLaunch={handleProjectLaunch}
         projects={projects}
         isLoading={projectsLoading || loading}
+        teamName={targetTeam}
       />
 
-      {/* Kill Core confirmation dialog */}
+      {/* Kill Team confirmation dialog */}
       <ConfirmDialog
         open={showKillDialog}
         onOpenChange={setShowKillDialog}
-        title="Kill All Core Agents"
-        description={`This will terminate all running core agents (${coreTeamMemberNames}). Spawned instances will not be affected. Are you sure?`}
+        title="Kill All Team Agents"
+        description={`This will terminate all running team agents (${teamMemberNames}). Are you sure?`}
         confirmLabel="Kill All"
         cancelLabel="Cancel"
         onConfirm={handleConfirmKill}
@@ -389,7 +452,7 @@ export const StatusPanel: React.FC = () => {
         open={showKillRalphDialog}
         onOpenChange={setShowKillRalphDialog}
         title="Kill All Free Agents"
-        description={`This will terminate all ${ralphDisplayName} instances (core and spawned). Are you sure?`}
+        description={`This will terminate all ${ralphDisplayName} instances. Are you sure?`}
         confirmLabel="Kill All"
         cancelLabel="Cancel"
         onConfirm={handleConfirmKillRalph}

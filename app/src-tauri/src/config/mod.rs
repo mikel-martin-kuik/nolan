@@ -22,12 +22,10 @@ pub struct Team {
 }
 
 /// Agent configuration
+/// Note: role and model are no longer stored in team config - they come from agent.json
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
     pub name: String,
-    pub role: String,
-    pub model: String,
-    pub color: String,
     pub output_file: Option<String>,
     pub required_sections: Vec<String>,
     pub file_permissions: String,
@@ -36,12 +34,6 @@ pub struct AgentConfig {
     pub awaits_qa: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub qa_passes: Option<i32>,
-    #[serde(default)]
-    pub multi_instance: bool,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub max_instances: Option<i32>,
-    #[serde(default)]
-    pub instance_names: Vec<String>,
 }
 
 /// Workflow configuration with phases
@@ -82,6 +74,7 @@ impl TeamConfig {
     /// Security measures:
     /// - File size limit: 1MB max
     /// - YAML depth checked implicitly by serde_yaml recursion limits
+    /// - File permissions validated against allowed values
     pub fn load(team_name: &str) -> Result<Self, String> {
         let nolan_root = std::env::var("NOLAN_ROOT")
             .map_err(|_| "NOLAN_ROOT not set".to_string())?;
@@ -108,10 +101,28 @@ impl TeamConfig {
         let config: TeamConfig = serde_yaml::from_str(&contents)
             .map_err(|e| format!("Failed to parse YAML: {}", e))?;
 
-        // Note: serde_yaml depth limit is implicitly enforced by recursion limits
-        // Additional explicit depth validation can be added if needed
+        // Validate file permissions for all agents
+        config.validate()?;
 
         Ok(config)
+    }
+
+    /// Validate team configuration constraints
+    pub fn validate(&self) -> Result<(), String> {
+        const VALID_PERMISSIONS: &[&str] = &["restricted", "permissive", "no_projects"];
+
+        for agent in &self.team.agents {
+            if !VALID_PERMISSIONS.contains(&agent.file_permissions.as_str()) {
+                return Err(format!(
+                    "Invalid file_permissions for agent '{}': '{}'. Must be one of: {}",
+                    agent.name,
+                    agent.file_permissions,
+                    VALID_PERMISSIONS.join(", ")
+                ));
+            }
+        }
+
+        Ok(())
     }
 
     /// Get agent configuration by name
@@ -127,18 +138,7 @@ impl TeamConfig {
             .collect()
     }
 
-    /// Get core team members (coordinator + workflow participants)
-    /// These are the agents launched/killed together as the core team
-    pub fn core_team_members(&self) -> Vec<&str> {
-        let mut members: Vec<&str> = self.workflow_participants();
-        let coordinator = self.coordinator();
-        if !members.contains(&coordinator) {
-            members.push(coordinator);
-        }
-        members
-    }
-
-    /// Get all agent names
+    /// Get all agent names in this team
     pub fn agent_names(&self) -> Vec<&str> {
         self.team.agents.iter()
             .map(|a| a.name.as_str())
@@ -154,12 +154,6 @@ impl TeamConfig {
     pub fn is_workflow_participant(&self, agent_name: &str) -> bool {
         self.team.agents.iter()
             .any(|a| a.name == agent_name && a.workflow_participant)
-    }
-
-    /// Get model for specific agent
-    pub fn get_agent_model(&self, agent_name: &str) -> Option<&str> {
-        self.get_agent(agent_name)
-            .map(|a| a.model.as_str())
     }
 }
 

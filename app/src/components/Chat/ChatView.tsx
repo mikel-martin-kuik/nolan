@@ -4,15 +4,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { useLiveOutputStore } from '../../store/liveOutputStore';
 import { useAgentStore } from '../../store/agentStore';
 import { useChatViewStore } from '../../store/chatViewStore';
-import { useTeamStore } from '../../store/teamStore';
 import { useWorkflowStatus, type AgentWithWorkflow } from '../../hooks/useWorkflowStatus';
 import { ChatMessageList } from './ChatMessageList';
 import { ChatInput } from './ChatInput';
 import { AgentListItem } from './AgentListItem';
 import { cn } from '../../lib/utils';
-import type { AgentStatus, TeamConfig } from '../../types';
+import type { AgentStatus } from '../../types';
 import { getAgentDisplayNameForUI } from '../../lib/agentIdentity';
-import { isCoreAgent as checkIsCoreAgent } from '../../types';
 
 // Group configuration with icons and colors
 const GROUP_CONFIG = {
@@ -39,28 +37,34 @@ const GROUP_CONFIG = {
 } as const;
 
 /**
- * Get display name for an agent, handling spawned instances
+ * Get display name for an agent, handling instances
  * Uses agentIdentity utility for consistent naming (ralph shows as fun name)
  */
-function getAgentDisplayName(agent: AgentStatus, team: TeamConfig | null): string {
+function getAgentDisplayName(agent: AgentStatus): string {
   const session = agent.session;
-  const withoutPrefix = session.replace(/^agent-/, '');
-  const parts = withoutPrefix.split('-');
 
-  // Check if this is a core agent using team config
-  const isCoreAgent = checkIsCoreAgent(session, team);
+  // Check if this is a primary session (agent-{team}-{name}) vs an instance (agent-{team}-{name}-{num})
+  const isPrimarySession = session.match(/^agent-[a-z0-9]+-[a-z]+$/) !== null;
 
-  // Extract instanceId for spawned agents
-  const instanceId = parts.length > 1 ? parts.slice(1).join('-') : undefined;
+  // Extract instanceId for agent instances
+  // For ralph: agent-ralph-{id} -> id
+  // For team agents: agent-{team}-{name}-{id} -> id
+  let instanceId: string | undefined;
+  if (agent.name === 'ralph') {
+    const match = session.match(/^agent-ralph-([a-z0-9]+)$/);
+    instanceId = match ? match[1] : undefined;
+  } else {
+    const match = session.match(/^agent-[a-z0-9]+-[a-z]+-([a-z0-9]+)$/);
+    instanceId = match ? match[1] : undefined;
+  }
 
-  return getAgentDisplayNameForUI(agent.name, instanceId, isCoreAgent);
+  return getAgentDisplayNameForUI(agent.name, instanceId, isPrimarySession);
 }
 
 export const ChatView: React.FC = () => {
   const { activeSession, setActiveChat } = useChatViewStore();
   const { agentOutputs, clearAll, clearSession } = useLiveOutputStore();
-  const { coreAgents, spawnedSessions } = useAgentStore();
-  const { currentTeam } = useTeamStore();
+  const { teamAgents, freeAgents } = useAgentStore();
   const { grouped, projectFiles } = useWorkflowStatus();
   const [isRestarting, setIsRestarting] = React.useState(false);
 
@@ -69,8 +73,8 @@ export const ChatView: React.FC = () => {
 
   // Combine all agents
   const allAgents = useMemo(
-    () => [...coreAgents, ...spawnedSessions],
-    [coreAgents, spawnedSessions]
+    () => [...teamAgents, ...freeAgents],
+    [teamAgents, freeAgents]
   );
 
   // Flatten grouped agents in priority order: attention > active > blocked > idle
@@ -115,15 +119,31 @@ export const ChatView: React.FC = () => {
     }
   }, [activeSession, orderedAgents, setActiveChat]);
 
+  // Track restart timeout to ensure cleanup on unmount
+  const restartTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const handleRestartFeed = useCallback(async () => {
+    if (restartTimeoutRef.current) {
+      clearTimeout(restartTimeoutRef.current);
+    }
+
     setIsRestarting(true);
     try {
       await invoke('start_history_stream');
     } catch (err) {
       console.error('Failed to restart history stream:', err);
     } finally {
-      setTimeout(() => setIsRestarting(false), 1000);
+      restartTimeoutRef.current = setTimeout(() => setIsRestarting(false), 1000);
     }
+  }, []);
+
+  // Cleanup timeout on unmount
+  React.useEffect(() => {
+    return () => {
+      if (restartTimeoutRef.current) {
+        clearTimeout(restartTimeoutRef.current);
+      }
+    };
   }, []);
 
   const totalMessages = useMemo(
@@ -193,7 +213,7 @@ export const ChatView: React.FC = () => {
             <h2 className="text-sm font-medium">Agents</h2>
             {attentionCount > 0 && (
               <p className="text-[10px] text-yellow-400">
-                {attentionCount} need{attentionCount > 1 ? '' : 's'} response
+                {attentionCount} {attentionCount === 1 ? 'needs' : 'need'} response
               </p>
             )}
           </div>
@@ -295,7 +315,7 @@ export const ChatView: React.FC = () => {
                 )}
               />
               <div>
-                <h3 className="font-medium">{getAgentDisplayName(currentAgent, currentTeam)}</h3>
+                <h3 className="font-medium">{getAgentDisplayName(currentAgent)}</h3>
                 <p className="text-xs text-muted-foreground">
                   {currentWorkflowState?.statusLabel || (isActive ? 'Working' : 'Idle')}
                 </p>
@@ -349,6 +369,7 @@ export const ChatView: React.FC = () => {
           entries={entries}
           isActive={isActive}
           agentName={getAgentDisplayName(currentAgent)}
+          session={currentAgent.session}
         />
 
         {/* Input bar */}

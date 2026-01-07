@@ -62,10 +62,7 @@ export const useLiveOutputStore = create<LiveOutputStore>((set, get) => {
 
       // Stop timer if no active sessions to save CPU
       if (!hasActiveSessions) {
-        if (decayInterval) {
-          clearInterval(decayInterval);
-          decayInterval = null;
-        }
+        stopDecayTimer();
         return;
       }
 
@@ -202,7 +199,7 @@ export const useLiveOutputStore = create<LiveOutputStore>((set, get) => {
 
     clearAll: () => {
       stopDecayTimer();
-      set({ agentOutputs: {}, expandedAgents: {} });
+      set({ agentOutputs: {}, expandedAgents: {}, selectedSession: null });
     },
 
     toggleAutoScroll: () => {

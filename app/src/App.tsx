@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Home, FolderOpen, DollarSign, MessageCircle, Users } from 'lucide-react';
+import { Home, FolderOpen, DollarSign, MessageCircle, Users, FileUser } from 'lucide-react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
@@ -11,6 +11,7 @@ import { ProjectsPanel } from './components/Projects/ProjectsPanel';
 import { UsagePanel } from './components/Usage/UsagePanel';
 import { TeamsPanel } from './components/Teams';
 import { ChatView } from './components/Chat';
+import { AgentManager } from './components/Agents';
 import { ToastContainer } from './components/shared/Toast';
 import { TerminalModal } from './components/Terminal/TerminalModal';
 import { BrandHeader } from './components/shared/BrandHeader';
@@ -23,7 +24,7 @@ import { cn } from './lib/utils';
 import { HistoryEntry } from './types';
 import './App.css';
 
-type Tab = 'status' | 'chat' | 'projects' | 'teams' | 'usage';
+type Tab = 'status' | 'chat' | 'projects' | 'teams' | 'agents' | 'usage';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('status');
@@ -49,6 +50,7 @@ function App() {
   // Setup live output streaming
   useEffect(() => {
     let unlisten: (() => void) | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const setup = async () => {
       // Listen for history entries and route to live output store
@@ -68,12 +70,12 @@ function App() {
 
       // Load recent history for active sessions (last hour)
       // Small delay to let agent status populate first
-      setTimeout(async () => {
+      timeoutId = setTimeout(async () => {
         try {
-          const status = await invoke<{ core: { session: string }[]; spawned: { session: string }[] }>('get_agent_status');
+          const status = await invoke<{ team: { session: string }[]; free: { session: string }[] }>('get_agent_status');
           const sessions = [
-            ...status.core.map(a => a.session),
-            ...status.spawned.map(a => a.session),
+            ...status.team.map(a => a.session),
+            ...status.free.map(a => a.session),
           ];
           console.log('[App] Loading history for sessions:', sessions);
           if (sessions.length > 0) {
@@ -93,6 +95,7 @@ function App() {
 
     return () => {
       if (unlisten) unlisten();
+      if (timeoutId) clearTimeout(timeoutId);
     };
   }, [addEntry]);
 
@@ -101,6 +104,7 @@ function App() {
     { id: 'chat' as Tab, label: 'Chat', tooltip: 'Agents', icon: MessageCircle },
     { id: 'projects' as Tab, label: 'Projects', tooltip: 'Projects', icon: FolderOpen },
     { id: 'teams' as Tab, label: 'Teams', tooltip: 'Teams', icon: Users },
+    { id: 'agents' as Tab, label: 'Agents', tooltip: 'Agents', icon: FileUser },
     { id: 'usage' as Tab, label: 'Usage', tooltip: 'Usage', icon: DollarSign },
   ];
 
@@ -156,6 +160,7 @@ function App() {
                 {activeTab === 'chat' && <ChatView />}
                 {activeTab === 'projects' && <ProjectsPanel />}
                 {activeTab === 'teams' && <TeamsPanel />}
+                {activeTab === 'agents' && <AgentManager />}
                 {activeTab === 'usage' && <UsagePanel />}
               </main>
             </div>

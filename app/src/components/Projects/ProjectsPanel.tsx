@@ -5,6 +5,7 @@ import { ProjectList } from './ProjectList';
 import { ProjectFileViewer } from './ProjectFileViewer';
 import { RoadmapViewer } from './RoadmapViewer';
 import { ProjectInfo } from '@/types/projects';
+import { useTeamStore } from '@/store/teamStore';
 import {
   CheckCircle2,
   Clock,
@@ -20,6 +21,16 @@ export function ProjectsPanel() {
   const [activeTab, setActiveTab] = useState<TabType>('inprogress');
   const [showRoadmap, setShowRoadmap] = useState(true); // Default to roadmap
   const [roadmapSummary, setRoadmapSummary] = useState<{ version: string; vision: string } | null>(null);
+
+  // Load team configs for per-project workflow steps
+  const { loadAvailableTeams, loadAllTeams } = useTeamStore();
+  useEffect(() => {
+    const loadTeams = async () => {
+      await loadAvailableTeams();
+      await loadAllTeams();
+    };
+    loadTeams();
+  }, [loadAvailableTeams, loadAllTeams]);
 
   const { data: projects, isLoading, error } = useQuery({
     queryKey: ['projects'],

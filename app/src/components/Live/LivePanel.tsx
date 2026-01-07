@@ -37,6 +37,7 @@ const GROUP_CONFIG = {
 
 export const LivePanel: React.FC = () => {
   const [isRestarting, setIsRestarting] = useState(false);
+  const restartTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const {
     agentOutputs,
@@ -44,15 +45,15 @@ export const LivePanel: React.FC = () => {
     getActiveSessions,
   } = useLiveOutputStore();
 
-  const { coreAgents, spawnedSessions } = useAgentStore();
+  const { teamAgents, freeAgents } = useAgentStore();
 
   // Use the workflow status hook for dependency-aware grouping
   const { grouped, projectFiles } = useWorkflowStatus();
 
   // Combine all agents for display - memoized to avoid re-creating on every render
   const allAgents = useMemo(
-    () => [...coreAgents, ...spawnedSessions],
-    [coreAgents, spawnedSessions]
+    () => [...teamAgents, ...freeAgents],
+    [teamAgents, freeAgents]
   );
 
   // Get sessions that have output
@@ -115,15 +116,28 @@ export const LivePanel: React.FC = () => {
   };
 
   const handleRestartFeed = async () => {
+    if (restartTimeoutRef.current) {
+      clearTimeout(restartTimeoutRef.current);
+    }
+
     setIsRestarting(true);
     try {
       await invoke('start_history_stream');
     } catch (err) {
       console.error('Failed to restart history stream:', err);
     } finally {
-      setTimeout(() => setIsRestarting(false), 1000);
+      restartTimeoutRef.current = setTimeout(() => setIsRestarting(false), 1000);
     }
   };
+
+  // Cleanup timeout on unmount
+  React.useEffect(() => {
+    return () => {
+      if (restartTimeoutRef.current) {
+        clearTimeout(restartTimeoutRef.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="h-full flex flex-col gap-4">

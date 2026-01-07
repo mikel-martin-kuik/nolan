@@ -26,7 +26,6 @@ import type {
   AgentWorkflowState,
   TurnCategory,
   TeamConfig,
-  WorkflowPhase,
 } from '../types';
 import type { FileCompletion } from '../types/projects';
 import {
@@ -61,13 +60,13 @@ function hasFile(files: string[] | FileCompletion[], fileKey: WorkflowFile): boo
   // Check if it's FileCompletion[] (has 'completed' property)
   if (typeof files[0] === 'object' && 'completed' in files[0]) {
     const completions = files as FileCompletion[];
-    const fileCompletion = completions.find(f => f.file.includes(fileKey));
+    const fileCompletion = completions.find(f => f.file === `${fileKey}.md` || f.file === fileKey);
     return fileCompletion?.completed ?? false;
   }
 
   // Fallback: string[] - just check existence (backwards compatibility)
   const existingFiles = files as string[];
-  return existingFiles.some(f => f.includes(fileKey));
+  return existingFiles.some(f => f === `${fileKey}.md` || f === fileKey);
 }
 
 /**
@@ -79,45 +78,57 @@ function hasFileExists(files: string[] | FileCompletion[], fileKey: WorkflowFile
   // Check if it's FileCompletion[]
   if (typeof files[0] === 'object' && 'exists' in files[0]) {
     const completions = files as FileCompletion[];
-    const fileCompletion = completions.find(f => f.file.includes(fileKey));
+    const fileCompletion = completions.find(f => f.file === `${fileKey}.md` || f.file === fileKey);
     return fileCompletion?.exists ?? false;
   }
 
   // Fallback: string[] - just check existence
   const existingFiles = files as string[];
-  return existingFiles.some(f => f.includes(fileKey));
+  return existingFiles.some(f => f === `${fileKey}.md` || f === fileKey);
 }
 
 /**
  * Determine the current workflow phase based on completed files (HANDOFF markers).
  *
- * Phase progression (6 phases, matching 6 workflow files):
+ * Dynamic phase progression based on team config:
  *   0: No files completed (need context.md)
- *   1: context completed (need research.md)
- *   2: research completed (need plan.md)
- *   3: plan completed (need plan-review.md)
- *   4: plan-review completed (need progress.md)
- *   5: progress completed (need implementation-audit.md)
- *   6: All complete (implementation-audit.md completed)
+ *   1..N: Each phase completed in order from team.workflow.phases
+ *   N+1: All phases complete
  *
  * Note: Completion is determined by HANDOFF markers, not just file existence.
  */
-function getCurrentPhase(files: string[] | FileCompletion[]): number {
-  const hasContext = hasFile(files, 'context');
-  const hasResearch = hasFile(files, 'research');
-  const hasPlan = hasFile(files, 'plan');
-  const hasPlanReview = hasFile(files, 'plan-review');
-  const hasProgress = hasFile(files, 'progress');
-  const hasAudit = hasFile(files, 'implementation-audit');
+function getCurrentPhase(files: string[] | FileCompletion[], team: TeamConfig | null): number {
+  // First check if context is complete (prerequisite for all phases)
+  if (!hasFile(files, 'context')) {
+    return 0;
+  }
 
-  // Count completed phases
-  if (hasAudit) return 6;          // All complete
-  if (hasProgress) return 5;       // Progress done, need audit
-  if (hasPlanReview) return 4;     // Plan review done, need progress
-  if (hasPlan) return 3;           // Plan done, need plan review
-  if (hasResearch) return 2;       // Research done, need plan
-  if (hasContext) return 1;        // Context done, need research
-  return 0;                        // No files completed yet
+  // Validate team config exists
+  if (!team) {
+    console.warn('getCurrentPhase: team config is null, defaulting to phase 1');
+    return 1;
+  }
+
+  // Get phases from team config
+  const phases = getWorkflowPhases(team);
+  if (phases.length === 0) {
+    // Fallback for no phases - return 1 if context exists
+    return 1;
+  }
+
+  // Count completed phases by checking each phase's output file
+  let completedPhases = 0;
+  for (const phase of phases) {
+    if (hasFile(files, phase.file)) {
+      completedPhases++;
+    } else {
+      // Phases must be completed in order, stop at first incomplete
+      break;
+    }
+  }
+
+  // Phase 0 = no context, Phase 1 = context done, Phase 2+ = phases completed
+  return completedPhases + 1;
 }
 
 /**
@@ -266,7 +277,7 @@ export function computeWorkflowState(
   const agentName = agent.name as AgentName;
   const role = getAgentWorkflowRole(team, agentName);
   const dependencies = getAgentDependencies(team);
-  const currentPhase = getCurrentPhase(files);
+  const currentPhase = getCurrentPhase(files, team);
   const phaseInfo = getPhaseInfo(currentPhase, team);
   const phaseOwner = determinePhaseOwner(currentPhase, team);
 
@@ -388,7 +399,7 @@ export function computeWorkflowState(
 
     // Phase tracking
     currentPhase,
-    totalPhases: 5,  // 5 workflow files: context, research, plan, qa-review, progress
+    totalPhases: getWorkflowPhases(team).length + 1,  // context + phase outputs
     phaseOwner,
     phaseName: phaseInfo.name,
 

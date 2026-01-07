@@ -1,8 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useToastStore } from '../../store/toastStore';
 import { Save, X, Plus, Trash2, GripVertical } from 'lucide-react';
-import type { TeamConfig, AgentConfig, PhaseConfig } from '@/types';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Tooltip } from '@/components/ui/tooltip';
+import type { TeamConfig, AgentConfig, PhaseConfig, AgentDirectoryInfo } from '@/types';
 
 interface TeamEditorProps {
   teamConfig: TeamConfig | null;
@@ -12,9 +20,6 @@ interface TeamEditorProps {
 
 const DEFAULT_AGENT: AgentConfig = {
   name: '',
-  role: '',
-  model: 'sonnet',
-  color: '#6b7280',
   output_file: null,
   required_sections: [],
   file_permissions: 'restricted',
@@ -39,22 +44,45 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
 
   // Form state
   const [name, setName] = useState('');
+  const [originalName, setOriginalName] = useState<string | null>(null);
   const [description, setDescription] = useState('');
   const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [coordinator, setCoordinator] = useState('');
   const [phases, setPhases] = useState<PhaseConfig[]>([]);
 
+  // Available agents from Agents page
+  const [availableAgents, setAvailableAgents] = useState<AgentDirectoryInfo[]>([]);
+
+  // Fetch available agents
+  const fetchAvailableAgents = useCallback(async () => {
+    try {
+      const dirs = await invoke<AgentDirectoryInfo[]>('list_agent_directories');
+      // Filter out ephemeral agents and incomplete agents (missing metadata)
+      const filtered = dirs.filter(d => !d.name.startsWith('agent-') && d.role && d.model);
+      setAvailableAgents(filtered);
+    } catch (err) {
+      console.error('Failed to load agents:', err);
+    }
+  }, []);
+
+  // Fetch agents on mount
+  useEffect(() => {
+    fetchAvailableAgents();
+  }, [fetchAvailableAgents]);
+
   // Initialize form from existing config
   useEffect(() => {
     if (teamConfig) {
       setName(teamConfig.team.name);
-      setDescription((teamConfig.team as unknown as { description?: string }).description || '');
+      setOriginalName(teamConfig.team.name);
+      setDescription(teamConfig.team.description || '');
       setAgents([...teamConfig.team.agents]);
       setCoordinator(teamConfig.team.workflow.coordinator);
       setPhases([...teamConfig.team.workflow.phases]);
     } else {
       // Default for new team
       setName('');
+      setOriginalName(null);
       setDescription('');
       setAgents([{ ...DEFAULT_AGENT }]);
       setCoordinator('');
@@ -63,14 +91,34 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
   }, [teamConfig]);
 
   const handleAddAgent = () => {
-    const colors = ['#a855f7', '#3b82f6', '#6366f1', '#ec4899', '#10b981', '#f59e0b'];
     setAgents([
       ...agents,
-      {
-        ...DEFAULT_AGENT,
-        color: colors[agents.length % colors.length],
-      },
+      { ...DEFAULT_AGENT },
     ]);
+  };
+
+  // Handle agent selection from dropdown
+  const handleAgentSelect = (index: number, agentName: string) => {
+    const selectedAgent = availableAgents.find(a => a.name === agentName);
+    const newAgents = [...agents];
+    newAgents[index] = {
+      ...newAgents[index],
+      name: selectedAgent?.name || '',
+    };
+    setAgents(newAgents);
+  };
+
+  // Get agent info from availableAgents for display (role/model come from agent.json)
+  const getAgentInfo = (agentName: string) => {
+    return availableAgents.find(a => a.name === agentName);
+  };
+
+  // Get agents not yet added to the team
+  const getAvailableAgentsForSelection = (currentIndex: number) => {
+    const usedNames = agents
+      .filter((_, i) => i !== currentIndex)
+      .map(a => a.name);
+    return availableAgents.filter(a => !usedNames.includes(a.name));
   };
 
   const handleRemoveAgent = (index: number) => {
@@ -109,7 +157,7 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
       if (!/^[a-z][a-z0-9-]*$/.test(agent.name)) {
         return `Agent name '${agent.name}' is invalid. Must start with lowercase letter.`;
       }
-      if (!agent.role.trim()) return `Agent '${agent.name}' must have a role`;
+      // Role and model come from agent.json, validated in getAvailableAgentsForSelection
     }
 
     const agentNames = agents.map((a) => a.name);
@@ -144,6 +192,11 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
 
     setSaving(true);
     try {
+      // If editing an existing team and name changed, rename the file first
+      if (originalName && originalName !== name) {
+        await invoke('rename_team_config', { oldName: originalName, newName: name });
+      }
+
       const config: TeamConfig = {
         team: {
           name,
@@ -224,10 +277,9 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
                 onChange={(e) => setName(e.target.value.toLowerCase())}
                 placeholder="my-team"
                 className="w-full px-3 py-2 rounded-lg bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
-                disabled={!!teamConfig}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Lowercase letters, numbers, and hyphens only
+                {originalName ? 'Changing name will rename the config file' : 'Lowercase letters, numbers, and hyphens only'}
               </p>
             </div>
             <div>
@@ -269,60 +321,44 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
                 <div className="flex items-start gap-3">
                   <GripVertical className="w-4 h-4 text-muted-foreground mt-2" />
                   <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Name</label>
-                      <input
-                        type="text"
-                        value={agent.name}
-                        onChange={(e) =>
-                          handleAgentChange(index, 'name', e.target.value.toLowerCase())
-                        }
-                        placeholder="agent-name"
-                        className="w-full px-2 py-1 text-sm rounded bg-background border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Role</label>
-                      <input
-                        type="text"
-                        value={agent.role}
-                        onChange={(e) => handleAgentChange(index, 'role', e.target.value)}
-                        placeholder="Developer"
-                        className="w-full px-2 py-1 text-sm rounded bg-background border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Model</label>
-                      <select
-                        value={agent.model}
-                        onChange={(e) => handleAgentChange(index, 'model', e.target.value)}
-                        className="w-full px-2 py-1 text-sm rounded bg-background border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                    <div className="col-span-2">
+                      <Tooltip content="Select from agents created on the Agents page" side="top">
+                        <label className="block text-xs text-muted-foreground mb-1 w-fit cursor-help">Agent</label>
+                      </Tooltip>
+                      <Select
+                        value={agent.name || undefined}
+                        onValueChange={(value) => handleAgentSelect(index, value)}
                       >
-                        <option value="opus">Opus</option>
-                        <option value="sonnet">Sonnet</option>
-                        <option value="haiku">Haiku</option>
-                      </select>
+                        <SelectTrigger className="w-full h-8 text-sm">
+                          <SelectValue placeholder="Select agent..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {getAvailableAgentsForSelection(index).map((availAgent) => (
+                            <SelectItem key={availAgent.name} value={availAgent.name}>
+                              {availAgent.name} ({availAgent.role})
+                            </SelectItem>
+                          ))}
+                          {/* Include currently selected agent if it's not in available list */}
+                          {agent.name && !getAvailableAgentsForSelection(index).find(a => a.name === agent.name) && (
+                            <SelectItem value={agent.name}>
+                              {agent.name}
+                            </SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Color</label>
-                      <div className="flex gap-2 items-center">
-                        <input
-                          type="color"
-                          value={agent.color || '#6b7280'}
-                          onChange={(e) => handleAgentChange(index, 'color', e.target.value)}
-                          className="w-8 h-8 rounded cursor-pointer border-0"
-                        />
-                        <input
-                          type="text"
-                          value={agent.color || ''}
-                          onChange={(e) => handleAgentChange(index, 'color', e.target.value)}
-                          placeholder="#hex"
-                          className="flex-1 px-2 py-1 text-sm rounded bg-background border border-border text-foreground font-mono focus:outline-none focus:ring-1 focus:ring-primary/50"
-                        />
+                    {agent.name && getAgentInfo(agent.name) && (
+                      <div className="col-span-2 flex items-center gap-4 text-sm">
+                        <span className="text-muted-foreground">Role:</span>
+                        <span className="text-foreground">{getAgentInfo(agent.name)?.role}</span>
+                        <span className="text-muted-foreground ml-4">Model:</span>
+                        <span className="text-foreground capitalize">{getAgentInfo(agent.name)?.model}</span>
                       </div>
-                    </div>
+                    )}
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Output File</label>
+                      <Tooltip content="File this agent writes output to in the project directory" side="top">
+                        <label className="block text-xs text-muted-foreground mb-1 w-fit cursor-help">Output File</label>
+                      </Tooltip>
                       <input
                         type="text"
                         value={agent.output_file || ''}
@@ -334,42 +370,52 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Permissions</label>
-                      <select
+                      <Tooltip content="File access permissions for this agent" side="top">
+                        <label className="block text-xs text-muted-foreground mb-1 w-fit cursor-help">Permissions</label>
+                      </Tooltip>
+                      <Select
                         value={agent.file_permissions}
-                        onChange={(e) =>
-                          handleAgentChange(index, 'file_permissions', e.target.value)
+                        onValueChange={(value) =>
+                          handleAgentChange(index, 'file_permissions', value)
                         }
-                        className="w-full px-2 py-1 text-sm rounded bg-background border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
                       >
-                        <option value="restricted">Restricted</option>
-                        <option value="permissive">Permissive</option>
-                        <option value="no_projects">No Projects</option>
-                      </select>
+                        <SelectTrigger className="w-full h-8 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="restricted">Restricted</SelectItem>
+                          <SelectItem value="permissive">Permissive</SelectItem>
+                          <SelectItem value="no_projects">No Projects</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div className="flex items-center gap-4 col-span-2">
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={agent.workflow_participant}
-                          onChange={(e) =>
-                            handleAgentChange(index, 'workflow_participant', e.target.checked)
-                          }
-                          className="rounded border-border"
-                        />
-                        <span className="text-foreground">Workflow Participant</span>
-                      </label>
-                      <label className="flex items-center gap-2 text-sm">
-                        <input
-                          type="checkbox"
-                          checked={agent.awaits_qa || false}
-                          onChange={(e) =>
-                            handleAgentChange(index, 'awaits_qa', e.target.checked)
-                          }
-                          className="rounded border-border"
-                        />
-                        <span className="text-foreground">Awaits QA</span>
-                      </label>
+                      <Tooltip content="Include in core workflow and broadcast groups" side="top">
+                        <label className="flex items-center gap-2 text-sm cursor-help">
+                          <input
+                            type="checkbox"
+                            checked={agent.workflow_participant}
+                            onChange={(e) =>
+                              handleAgentChange(index, 'workflow_participant', e.target.checked)
+                            }
+                            className="rounded border-border"
+                          />
+                          <span className="text-foreground">Workflow Participant</span>
+                        </label>
+                      </Tooltip>
+                      <Tooltip content="Require QA review before completing phase" side="top">
+                        <label className="flex items-center gap-2 text-sm cursor-help">
+                          <input
+                            type="checkbox"
+                            checked={agent.awaits_qa || false}
+                            onChange={(e) =>
+                              handleAgentChange(index, 'awaits_qa', e.target.checked)
+                            }
+                            className="rounded border-border"
+                          />
+                          <span className="text-foreground">Awaits QA</span>
+                        </label>
+                      </Tooltip>
                     </div>
                   </div>
                   <button
@@ -393,24 +439,26 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
 
           {/* Coordinator */}
           <div className="mb-6">
-            <label className="block text-sm font-medium text-foreground mb-1">
-              Coordinator
-            </label>
-            <select
-              value={coordinator}
-              onChange={(e) => setCoordinator(e.target.value)}
-              className="w-full md:w-64 px-3 py-2 rounded-lg bg-background border border-border text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+            <Tooltip content="Agent that manages assignments and handoffs between team members" side="right">
+              <label className="block text-sm font-medium text-foreground mb-1 w-fit cursor-help">
+                Coordinator
+              </label>
+            </Tooltip>
+            <Select
+              value={coordinator || undefined}
+              onValueChange={setCoordinator}
             >
-              <option value="">Select coordinator...</option>
-              {agents.map((agent) => (
-                <option key={agent.name} value={agent.name}>
-                  {agent.name} ({agent.role})
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-muted-foreground mt-1">
-              The coordinator manages assignments and handoffs
-            </p>
+              <SelectTrigger className="w-full md:w-64">
+                <SelectValue placeholder="Select coordinator..." />
+              </SelectTrigger>
+              <SelectContent>
+                {agents.filter(a => a.name).map((agent) => (
+                  <SelectItem key={agent.name} value={agent.name}>
+                    {agent.name} {getAgentInfo(agent.name)?.role ? `(${getAgentInfo(agent.name)?.role})` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Phases */}
@@ -439,7 +487,9 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
                   </span>
                   <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-3">
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Phase Name</label>
+                      <Tooltip content="Name displayed in workflow status" side="top">
+                        <label className="block text-xs text-muted-foreground mb-1 w-fit cursor-help">Phase Name</label>
+                      </Tooltip>
                       <input
                         type="text"
                         value={phase.name}
@@ -449,22 +499,29 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Owner</label>
-                      <select
-                        value={phase.owner}
-                        onChange={(e) => handlePhaseChange(index, 'owner', e.target.value)}
-                        className="w-full px-2 py-1 text-sm rounded bg-background border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                      <Tooltip content="Agent responsible for completing this phase" side="top">
+                        <label className="block text-xs text-muted-foreground mb-1 w-fit cursor-help">Owner</label>
+                      </Tooltip>
+                      <Select
+                        value={phase.owner || undefined}
+                        onValueChange={(value) => handlePhaseChange(index, 'owner', value)}
                       >
-                        <option value="">Select owner...</option>
-                        {agents.map((agent) => (
-                          <option key={agent.name} value={agent.name}>
-                            {agent.name}
-                          </option>
-                        ))}
-                      </select>
+                        <SelectTrigger className="w-full h-8 text-sm">
+                          <SelectValue placeholder="Select owner..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {agents.filter(a => a.name).map((agent) => (
+                            <SelectItem key={agent.name} value={agent.name}>
+                              {agent.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Output File</label>
+                      <Tooltip content="File the owner creates upon completing this phase" side="top">
+                        <label className="block text-xs text-muted-foreground mb-1 w-fit cursor-help">Output File</label>
+                      </Tooltip>
                       <input
                         type="text"
                         value={phase.output}
@@ -474,7 +531,9 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-muted-foreground mb-1">Requires</label>
+                      <Tooltip content="Files that must exist before this phase can start" side="top">
+                        <label className="block text-xs text-muted-foreground mb-1 w-fit cursor-help">Requires</label>
+                      </Tooltip>
                       <input
                         type="text"
                         value={(phase.requires || []).join(', ')}

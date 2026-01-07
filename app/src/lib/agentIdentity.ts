@@ -61,16 +61,27 @@ function getRandomDisplayName(): AgentDisplayName {
  * Returns the same name across page reloads until explicitly reset
  */
 export function getRalphDisplayName(): AgentDisplayName {
-  // Check localStorage for existing assignment
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored && AGENT_DISPLAY_NAMES.includes(stored as AgentDisplayName)) {
-    return stored as AgentDisplayName;
-  }
+  try {
+    // Check localStorage for existing assignment
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored && AGENT_DISPLAY_NAMES.includes(stored as AgentDisplayName)) {
+      return stored as AgentDisplayName;
+    }
 
-  // Assign a new random name and persist it
-  const newName = getRandomDisplayName();
-  localStorage.setItem(STORAGE_KEY, newName);
-  return newName;
+    // Assign a new random name and persist it
+    const newName = getRandomDisplayName();
+    try {
+      localStorage.setItem(STORAGE_KEY, newName);
+    } catch (e) {
+      // localStorage is disabled in private mode - silently continue with random name
+      console.debug('localStorage unavailable, using in-memory storage');
+    }
+    return newName;
+  } catch (e) {
+    // If localStorage access throws, fall back to random name
+    console.debug('localStorage access failed:', e);
+    return getRandomDisplayName();
+  }
 }
 
 /**
@@ -79,7 +90,12 @@ export function getRalphDisplayName(): AgentDisplayName {
  */
 export function resetRalphDisplayName(): AgentDisplayName {
   const newName = getRandomDisplayName();
-  localStorage.setItem(STORAGE_KEY, newName);
+  try {
+    localStorage.setItem(STORAGE_KEY, newName);
+  } catch (e) {
+    // localStorage is disabled in private mode - silently continue
+    console.debug('localStorage unavailable for reset');
+  }
   return newName;
 }
 
@@ -100,27 +116,27 @@ export function getAgentVisualName(agentName: string): string {
 }
 
 /**
- * Get visual display name for a spawned agent instance
- * - For ralph spawned instances: the instanceId IS the display name (already a fun name)
- * - For ralph core agent: returns the assigned fun name
- * - For other spawned agents: returns "AgentName-InstanceNum" (e.g., "Ana-2")
- * - For other core agents: returns capitalized name
+ * Get visual display name for an agent
+ * - For ralph instances: the instanceId IS the display name (already a fun name)
+ * - For ralph primary session: returns the assigned fun name
+ * - For other agent instances: returns "AgentName-InstanceNum" (e.g., "Ana-2")
+ * - For other primary sessions: returns capitalized name
  *
  * @param agentName - Internal agent name
  * @param instanceId - Instance identifier (e.g., "2", "ziggy")
- * @param isCoreAgent - Whether this is a core agent (not spawned)
+ * @param isPrimarySession - Whether this is a primary session (not an instance)
  */
 export function getAgentDisplayNameForUI(
   agentName: string,
   instanceId?: string,
-  isCoreAgent: boolean = false
+  isPrimarySession: boolean = false
 ): string {
-  // For spawned instances
+  // For agent instances
   if (instanceId) {
     const isNumeric = /^\d+$/.test(instanceId);
 
     if (agentName === 'ralph') {
-      // Ralph spawned instances use their instanceId as display name (already a fun name)
+      // Ralph instances use their instanceId as display name (already a fun name)
       return instanceId.charAt(0).toUpperCase() + instanceId.slice(1);
     }
 
@@ -133,8 +149,8 @@ export function getAgentDisplayNameForUI(
     return instanceId.charAt(0).toUpperCase() + instanceId.slice(1);
   }
 
-  // For core agents
-  if (isCoreAgent || !instanceId) {
+  // For primary sessions
+  if (isPrimarySession || !instanceId) {
     return getAgentVisualName(agentName);
   }
 

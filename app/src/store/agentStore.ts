@@ -6,8 +6,8 @@ import { useToastStore } from './toastStore';
 
 interface AgentStore {
   // State
-  coreAgents: AgentStatusList['core'];
-  spawnedSessions: AgentStatusList['spawned'];
+  teamAgents: AgentStatusList['team'];
+  freeAgents: AgentStatusList['free'];
   loading: boolean;
   error: string | null;
   lastUpdate: number;
@@ -15,17 +15,18 @@ interface AgentStore {
 
   // Actions
   updateStatus: () => Promise<void>;
-  launchCore: (
+  launchTeam: (
+    teamName: string,
     projectName: string,
     initialPrompt?: string,
     updatedOriginalPrompt?: string,
     followupPrompt?: string
   ) => Promise<void>;
-  killCore: () => Promise<void>;
-  spawnAgent: (agent: AgentName, force?: boolean, model?: ClaudeModel) => Promise<void>;
-  restartCoreAgent: (agent: AgentName) => Promise<void>;
+  killTeam: (teamName: string) => Promise<void>;
+  spawnAgent: (teamName: string, agent: AgentName, force?: boolean, model?: ClaudeModel) => Promise<void>;
+  startAgent: (teamName: string, agent: AgentName) => Promise<void>;
   killInstance: (session: string) => Promise<void>;
-  killAllInstances: (agent: AgentName) => Promise<void>;
+  killAllInstances: (teamName: string, agent: AgentName) => Promise<void>;
   clearError: () => void;
   setupEventListeners: () => Promise<void>;
   cleanup: () => void;
@@ -33,8 +34,8 @@ interface AgentStore {
 
 export const useAgentStore = create<AgentStore>((set, get) => ({
   // Initial state
-  coreAgents: [],
-  spawnedSessions: [],
+  teamAgents: [],
+  freeAgents: [],
   loading: false,
   error: null,
   lastUpdate: 0,
@@ -48,8 +49,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       const status = await invoke<AgentStatusList>('get_agent_status');
 
       set({
-        coreAgents: status.core,
-        spawnedSessions: status.spawned,
+        teamAgents: status.team,
+        freeAgents: status.free,
         lastUpdate: Date.now(),
       });
     } catch (error) {
@@ -59,8 +60,9 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     }
   },
 
-  // Launch core team with project context
-  launchCore: async (
+  // Launch team with project context
+  launchTeam: async (
+    teamName: string,
     projectName: string,
     initialPrompt?: string,
     updatedOriginalPrompt?: string,
@@ -69,7 +71,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     try {
       set({ loading: true, error: null });
 
-      await invoke<string>('launch_core', {
+      await invoke<string>('launch_team', {
+        teamName,
         projectName,
         initialPrompt,
         updatedOriginalPrompt,
@@ -78,41 +81,41 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
 
       // Status will update via 'agent-status-changed' event
       set({ loading: false });
-      useToastStore.getState().success(`Core team launched for ${projectName}`);
+      useToastStore.getState().success(`Team ${teamName} launched for ${projectName}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       set({ error: message, loading: false });
-      useToastStore.getState().error(`Failed to launch core team: ${message}`);
+      useToastStore.getState().error(`Failed to launch team ${teamName}: ${message}`);
     }
   },
 
-  // Kill core team (requires user confirmation in component)
-  killCore: async () => {
+  // Kill team (requires user confirmation in component)
+  killTeam: async (teamName: string) => {
     try {
       set({ loading: true, error: null });
 
-      await invoke<string>('kill_core');
+      await invoke<string>('kill_team', { teamName });
 
       // Status will update via 'agent-status-changed' event
       set({ loading: false });
-      useToastStore.getState().success('Core team terminated');
+      useToastStore.getState().success(`Team ${teamName} terminated`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       set({ error: message, loading: false });
-      useToastStore.getState().error(`Failed to kill core team: ${message}`);
+      useToastStore.getState().error(`Failed to kill team ${teamName}: ${message}`);
     }
   },
 
   // Spawn a new agent instance
-  spawnAgent: async (agent: AgentName, force = false, model?: ClaudeModel) => {
+  spawnAgent: async (teamName: string, agent: AgentName, force = false, model?: ClaudeModel) => {
     try {
       set({ loading: true, error: null });
 
-      await invoke<string>('spawn_agent', { agent, force, model });
+      await invoke<string>('spawn_agent', { teamName, agent, force, model });
 
       // Status will update via 'agent-status-changed' event
       set({ loading: false });
-      useToastStore.getState().success(`Spawned ${agent} instance`);
+      useToastStore.getState().success(`Spawned ${agent} instance in team ${teamName}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       set({ error: message, loading: false });
@@ -120,20 +123,20 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     }
   },
 
-  // Restart a core agent (creates unnumbered session)
-  restartCoreAgent: async (agent: AgentName) => {
+  // Start a team agent (creates team-scoped session)
+  startAgent: async (teamName: string, agent: AgentName) => {
     try {
       set({ loading: true, error: null });
 
-      await invoke<string>('restart_core_agent', { agent });
+      await invoke<string>('start_agent', { teamName, agent });
 
       // Status will update via 'agent-status-changed' event
       set({ loading: false });
-      useToastStore.getState().success(`Restarted ${agent}`);
+      useToastStore.getState().success(`Started ${agent} in team ${teamName}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       set({ error: message, loading: false });
-      useToastStore.getState().error(`Failed to restart ${agent}: ${message}`);
+      useToastStore.getState().error(`Failed to start ${agent}: ${message}`);
     }
   },
 
@@ -155,11 +158,11 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   },
 
   // Kill all instances of an agent
-  killAllInstances: async (agent: AgentName) => {
+  killAllInstances: async (teamName: string, agent: AgentName) => {
     try {
       set({ loading: true, error: null });
 
-      const result = await invoke<string>('kill_all_instances', { agent });
+      const result = await invoke<string>('kill_all_instances', { teamName, agent });
 
       // Status will update via 'agent-status-changed' event
       set({ loading: false });
@@ -186,8 +189,8 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     // Listen for agent status changes from backend
     const unlisten = await listen<AgentStatusList>('agent-status-changed', (event) => {
       set({
-        coreAgents: event.payload.core,
-        spawnedSessions: event.payload.spawned,
+        teamAgents: event.payload.team,
+        freeAgents: event.payload.free,
         lastUpdate: Date.now(),
       });
     });

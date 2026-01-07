@@ -65,18 +65,18 @@ export interface WorkflowStatusResult {
  * Hook to get workflow status for all agents
  */
 export function useWorkflowStatus(): WorkflowStatusResult {
-  const { coreAgents, spawnedSessions } = useAgentStore();
+  const { teamAgents, freeAgents } = useAgentStore();
   const { agentOutputs } = useLiveOutputStore();
   const { currentTeam } = useTeamStore();
 
   // Find the current active project (from any active agent)
   const currentProject = useMemo(() => {
-    const allAgents = [...coreAgents, ...spawnedSessions];
+    const allAgents = [...teamAgents, ...freeAgents];
     const activeWithProject = allAgents.find(
       a => a.active && a.current_project && a.current_project !== 'VIBING'
     );
     return activeWithProject?.current_project || null;
-  }, [coreAgents, spawnedSessions]);
+  }, [teamAgents, freeAgents]);
 
   // Fetch project files if we have an active project
   const { data: projects, isLoading } = useQuery({
@@ -95,7 +95,7 @@ export function useWorkflowStatus(): WorkflowStatusResult {
 
   // Compute workflow state for each agent
   const agents = useMemo(() => {
-    const allAgents = [...coreAgents, ...spawnedSessions];
+    const allAgents = [...teamAgents, ...freeAgents];
 
     const computed = allAgents.map((agent): AgentWithWorkflow => {
       const output = agentOutputs[agent.session];
@@ -203,7 +203,7 @@ export function useWorkflowStatus(): WorkflowStatusResult {
 
     // Sort by workflow priority
     return computed.sort(sortByWorkflowPriority);
-  }, [coreAgents, spawnedSessions, agentOutputs, projectFiles, currentProject, projects, currentTeam]);
+  }, [teamAgents, freeAgents, agentOutputs, projectFiles, currentProject, projects, currentTeam]);
 
   // Group agents by workflow status
   const grouped = useMemo(() => {

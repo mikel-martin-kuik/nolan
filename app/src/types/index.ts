@@ -2,6 +2,7 @@
 
 export interface AgentStatus {
   name: string;
+  team: string;  // Team this agent belongs to (empty for ralph)
   active: boolean;
   session: string;
   attached: boolean;
@@ -11,8 +12,8 @@ export interface AgentStatus {
 }
 
 export interface AgentStatusList {
-  core: AgentStatus[];
-  spawned: AgentStatus[];  // Changed from string[] to AgentStatus[]
+  team: AgentStatus[];   // Agents belonging to teams (defined in team YAML config)
+  free: AgentStatus[];   // Free agents not bound to any team (e.g., ralph)
 }
 
 // Team configuration types matching Rust backend
@@ -29,20 +30,15 @@ export interface TeamConfig {
   };
 }
 
+// Note: role and model are no longer in team config - they come from agent.json
 export interface AgentConfig {
   name: string;
-  role: string;
-  model: string;
-  color?: string;
   output_file: string | null;
   required_sections: string[];
   file_permissions: 'restricted' | 'permissive' | 'no_projects';
   workflow_participant: boolean;
   awaits_qa?: boolean;
   qa_passes?: number;
-  multi_instance?: boolean;
-  max_instances?: number;
-  instance_names?: string[];
 }
 
 export interface WorkflowConfig {
@@ -68,28 +64,41 @@ export interface BroadcastGroup {
   members: string[];
 }
 
-// Dynamic agent metadata (populated from team config at runtime)
+// Dynamic agent metadata (populated from agent.json files at runtime)
+// Role comes from agent.json, not team config
 export let AGENT_DESCRIPTIONS: Record<string, string> = {};
-export let AGENT_COLORS: Record<string, string> = {};
-export let AGENT_TEXT_COLORS: Record<string, string> = {};
 
-export function updateAgentDescriptions(team: TeamConfig) {
+// Update descriptions from agent directory info (called after fetching agent metadata)
+export function updateAgentDescriptions(agentInfos: AgentDirectoryInfo[]) {
   AGENT_DESCRIPTIONS = {};
-  for (const agent of team.team.agents) {
-    AGENT_DESCRIPTIONS[agent.name] = agent.role;
+  for (const agent of agentInfos) {
+    if (agent.role) {
+      AGENT_DESCRIPTIONS[agent.name] = agent.role;
+    }
   }
 }
 
-export function updateAgentColors(team: TeamConfig) {
-  const defaultColors = ['#a855f7', '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#71717a'];
-  AGENT_COLORS = {};
-  AGENT_TEXT_COLORS = {};
+// Legacy function for backwards compatibility - no longer uses team config
+export function updateAgentDescriptionsFromTeam(_team: TeamConfig) {
+  // No-op: role is no longer in team config
+  // Descriptions are now populated from agent.json via updateAgentDescriptions
+}
 
-  team.team.agents.forEach((agent, i) => {
-    const color = agent.color || defaultColors[i % defaultColors.length];
-    AGENT_COLORS[agent.name] = `bg-[${color}]`;
-    AGENT_TEXT_COLORS[agent.name] = `text-[${color}]`;
-  });
+// Agent directory management types
+export interface AgentDirectoryInfo {
+  name: string;
+  exists: boolean;
+  has_claude_md: boolean;
+  has_agent_json: boolean;
+  path: string;
+  role: string | null;
+  model: string | null;
+}
+
+// Agent metadata stored in agent.json
+export interface AgentMetadata {
+  role: string;
+  model: string;
 }
 
 // Claude Code model types
@@ -234,6 +243,7 @@ export function getAgentDependencies(team: TeamConfig | null): Record<AgentName,
 
 /**
  * Get agent workflow role from team config
+ * Note: description now comes from AGENT_DESCRIPTIONS (agent.json) or falls back to phase name
  */
 export function getAgentWorkflowRole(team: TeamConfig | null, agentName: string): {
   produces: WorkflowFile | null;
@@ -254,10 +264,11 @@ export function getAgentWorkflowRole(team: TeamConfig | null, agentName: string)
 
   if (!phase) {
     // Agent not in workflow (e.g., ralph)
+    // Use AGENT_DESCRIPTIONS from agent.json or fall back to agent name
     return {
       produces: null,
       requires: [],
-      description: agent.role,
+      description: AGENT_DESCRIPTIONS[agentName] || agentName,
     };
   }
 
@@ -270,7 +281,7 @@ export function getAgentWorkflowRole(team: TeamConfig | null, agentName: string)
   return {
     produces,
     requires,
-    description: agent.role,
+    description: AGENT_DESCRIPTIONS[agentName] || phase.name,
   };
 }
 
@@ -290,40 +301,120 @@ export function getFileToAgent(team: TeamConfig | null): Record<string, string> 
 }
 
 /**
- * Check if a session is a core agent from team config
+ * Workflow step for progress tracking UI
+ * Derived from team config phases
  */
-export function isCoreAgent(sessionName: string, team: TeamConfig | null): boolean {
-  if (!team) return false;
-
-  // Extract agent name from session: agent-{name} or agent-{name}-{id}
-  const match = sessionName.match(/^agent-([a-z]+)(?:-[a-z0-9]+)?$/);
-  if (!match) return false;
-
-  const agentName = match[1];
-  const coreMembers = [
-    team.team.workflow.coordinator,
-    ...team.team.agents.filter(a => a.workflow_participant).map(a => a.name)
-  ];
-
-  return coreMembers.includes(agentName);
+export interface WorkflowStep {
+  key: string;           // File basename without .md (e.g., 'research')
+  label?: string;        // Optional display label (phase name)
+  owner?: string;        // Agent that produces this file
 }
 
 /**
- * Get core team members from team config (coordinator + workflow participants)
+ * Get workflow steps for progress tracking from team config
+ * Returns ordered list of files to track: context → phase outputs → NOTES
  */
-export function getCoreTeamMembers(team: TeamConfig | null): string[] {
-  if (!team) return [];
+export function getWorkflowSteps(team: TeamConfig | null): WorkflowStep[] {
+  if (!team) {
+    // Fallback for when team config isn't loaded yet
+    return [
+      { key: 'context' },
+      { key: 'research' },
+      { key: 'plan' },
+      { key: 'plan-review' },
+      { key: 'progress' },
+      { key: 'NOTES' },
+    ];
+  }
 
-  const members = new Set<string>();
-  members.add(team.team.workflow.coordinator);
+  const steps: WorkflowStep[] = [];
 
-  for (const agent of team.team.agents) {
-    if (agent.workflow_participant) {
-      members.add(agent.name);
+  // Always start with context (prerequisite for first phase)
+  steps.push({ key: 'context', label: 'Context' });
+
+  // Add each phase's output file
+  for (const phase of team.team.workflow.phases) {
+    const fileKey = phase.output.replace(/\.md$/, '');
+    steps.push({
+      key: fileKey,
+      label: phase.name,
+      owner: phase.owner,
+    });
+  }
+
+  // Add coordinator's NOTES file at the end
+  const coordinatorAgent = team.team.agents.find(
+    a => a.name === team.team.workflow.coordinator
+  );
+  if (coordinatorAgent?.output_file) {
+    const notesKey = coordinatorAgent.output_file.replace(/\.md$/, '');
+    // Only add if not already included from phases
+    if (!steps.some(s => s.key === notesKey)) {
+      steps.push({
+        key: notesKey,
+        label: 'Notes',
+        owner: team.team.workflow.coordinator,
+      });
     }
   }
 
-  return Array.from(members);
+  return steps;
+}
+
+/**
+ * Get file order mapping for sorting project files
+ * Derived from workflow steps
+ */
+export function getFileOrder(team: TeamConfig | null): Record<string, number> {
+  const steps = getWorkflowSteps(team);
+  const order: Record<string, number> = {};
+  steps.forEach((step, index) => {
+    order[step.key] = index;
+  });
+  return order;
+}
+
+/**
+ * Check if a session belongs to a team agent
+ * Session formats:
+ * - Team-scoped: agent-{team}-{name} or agent-{team}-{name}-{instance}
+ * - Legacy: agent-{name} (treated as team "default")
+ */
+export function isTeamAgent(sessionName: string, team: TeamConfig | null): boolean {
+  if (!team) return false;
+
+  // Ralph sessions are free agents, not team agents
+  if (sessionName.match(/^agent-ralph-[a-z0-9]+$/)) {
+    return false;
+  }
+
+  // Try team-scoped format: agent-{team}-{name}[-{instance}]
+  const teamMatch = sessionName.match(/^agent-([a-z0-9]+)-([a-z]+)(?:-[a-z0-9]+)?$/);
+  if (teamMatch) {
+    const sessionTeam = teamMatch[1];
+    const agentName = teamMatch[2];
+
+    // Only match if the team matches and agent is in team config
+    if (sessionTeam !== team.team.name) return false;
+    return team.team.agents.some(a => a.name === agentName);
+  }
+
+  // Try legacy format: agent-{name}
+  const legacyMatch = sessionName.match(/^agent-([a-z]+)$/);
+  if (legacyMatch) {
+    const agentName = legacyMatch[1];
+    return team.team.agents.some(a => a.name === agentName);
+  }
+
+  return false;
+}
+
+/**
+ * Get all team members from team config (all agents defined in team)
+ */
+export function getTeamMembers(team: TeamConfig | null): string[] {
+  if (!team) return [];
+  return team.team.agents.map(a => a.name);
 }
 
 // Legacy constants for backward compatibility (will be removed)

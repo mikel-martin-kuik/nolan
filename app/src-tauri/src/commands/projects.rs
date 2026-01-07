@@ -54,6 +54,7 @@ pub struct ProjectInfo {
     pub existing_files: Vec<String>,
     pub missing_files: Vec<String>,
     pub file_completions: Vec<FileCompletion>,
+    pub team: String,  // Team that owns this project (from .team file)
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -275,6 +276,16 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
         // Get workflow file completion status
         let file_completions = get_file_completions(&path);
 
+        // Read team from .team file (defaults to "default" if not present)
+        let team_file = path.join(".team");
+        let team = if team_file.exists() {
+            fs::read_to_string(&team_file)
+                .map(|s| s.trim().to_string())
+                .unwrap_or_else(|_| "default".to_string())
+        } else {
+            "default".to_string()
+        };
+
         projects.push(ProjectInfo {
             name,
             path: path.to_string_lossy().to_string(),
@@ -285,6 +296,7 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
             existing_files,
             missing_files,
             file_completions,
+            team,
         });
     }
 
@@ -522,10 +534,15 @@ pub async fn read_project_file(
     let projects_dir = get_projects_dir()?;
     let full_path = projects_dir.join(&project_name).join(&file_path);
 
+    // Check if file exists first (avoid hanging on canonicalize for non-existent files)
+    if !full_path.exists() {
+        return Err(format!("File not found: {}", file_path));
+    }
+
     // Canonicalize to resolve symlinks and verify
     let canonical_path = full_path
         .canonicalize()
-        .map_err(|e| format!("File not found: {}", e))?;
+        .map_err(|e| format!("Failed to resolve file path: {}", e))?;
 
     // CRITICAL: Ensure canonical path is within projects directory
     let canonical_projects_dir = projects_dir
@@ -629,9 +646,9 @@ pub async fn write_project_file(
     Ok(())
 }
 
-/// Create a new project directory with initial NOTES.md
+/// Create a new project directory with initial NOTES.md and .team file
 #[tauri::command]
-pub async fn create_project(project_name: String) -> Result<String, String> {
+pub async fn create_project(project_name: String, team_name: Option<String>) -> Result<String, String> {
     // Validate project name: only lowercase letters, numbers, and hyphens
     if project_name.is_empty() {
         return Err("Project name cannot be empty".to_string());
@@ -663,6 +680,12 @@ pub async fn create_project(project_name: String) -> Result<String, String> {
     // Create project directory
     fs::create_dir_all(&project_path)
         .map_err(|e| format!("Failed to create project directory: {}", e))?;
+
+    // Create .team file with team assignment (defaults to "default")
+    let team = team_name.unwrap_or_else(|| "default".to_string());
+    let team_file = project_path.join(".team");
+    fs::write(&team_file, &team)
+        .map_err(|e| format!("Failed to create .team file: {}", e))?;
 
     // Create initial NOTES.md with IN_PROGRESS marker
     let now = chrono::Utc::now().format("%Y-%m-%d").to_string();

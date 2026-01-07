@@ -3,6 +3,7 @@ import { Send, Square } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '../../lib/utils';
 import { useToastStore } from '../../store/toastStore';
+import { useTeamStore } from '../../store/teamStore';
 
 interface ChatInputProps {
   session: string;
@@ -19,6 +20,10 @@ export const ChatInput: React.FC<ChatInputProps> = memo(({
   const [sending, setSending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { error: showError } = useToastStore();
+  const { currentTeam } = useTeamStore();
+
+  // Derive target agent from session
+  const targetAgent = session.replace(/^agent-/, '');
 
   // Auto-resize textarea
   useEffect(() => {
@@ -33,14 +38,11 @@ export const ChatInput: React.FC<ChatInputProps> = memo(({
     const trimmed = value.trim();
     if (!trimmed || disabled || sending) return;
 
-    // Derive target from session: "agent-ralph-echo" -> "ralph-echo"
-    // send_message expects target without "agent-" prefix
-    const target = session.replace(/^agent-/, '');
-
     setSending(true);
     try {
       await invoke('send_message', {
-        target,
+        team: currentTeam?.team.name ?? 'default',
+        target: targetAgent,
         message: trimmed,
       });
       setValue('');
@@ -50,12 +52,12 @@ export const ChatInput: React.FC<ChatInputProps> = memo(({
     } finally {
       setSending(false);
     }
-  }, [value, disabled, sending, session, showError]);
+  }, [value, disabled, sending, targetAgent, currentTeam, showError]);
 
   const handleInterrupt = useCallback(async () => {
     try {
       await invoke('send_agent_command', {
-        session,
+        session: session,
         command: 'escape',
       });
     } catch (err) {
@@ -65,8 +67,8 @@ export const ChatInput: React.FC<ChatInputProps> = memo(({
   }, [session, showError]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    // Send on Enter (not Shift+Enter)
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // Send on Ctrl+Enter (or Cmd+Enter on Mac)
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       handleSend();
     }
@@ -121,9 +123,8 @@ export const ChatInput: React.FC<ChatInputProps> = memo(({
         </button>
       </div>
 
-      {/* Hint text */}
       <p className="text-[10px] text-muted-foreground mt-2 px-1">
-        Press Enter to send, Shift+Enter for new line
+        Press Ctrl+Enter to send, Enter for new line
       </p>
     </div>
   );

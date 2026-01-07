@@ -19,6 +19,7 @@ export interface ProjectInfo {
   existing_files: string[];
   missing_files: string[];
   file_completions: FileCompletion[];
+  team: string;  // Team that owns this project (from .team file)
 }
 
 export interface ProjectFile {

@@ -8,20 +8,36 @@ use uuid::Uuid;
 use crate::config::TeamConfig;
 
 // Compile regex patterns once at startup
+// Team-scoped patterns for message routing
+
+/// Core agent target: just the agent name (e.g., "ana", "bill")
 static RE_AGENT_NAME: Lazy<Regex> = Lazy::new(|| {
     Regex::new(r"^([a-z]+)$").expect("Invalid regex pattern for agent name")
 });
 
+/// Spawned agent target: name-instance (e.g., "ana-2", "ralph-ziggy")
 static RE_AGENT_INSTANCE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^([a-z]+)-[a-z0-9]+$").expect("Invalid regex pattern for agent instance")
+    Regex::new(r"^([a-z]+)-([a-z0-9]+)$").expect("Invalid regex pattern for agent instance")
 });
 
-static RE_SESSION_NAME: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^agent-([a-z]+)$").expect("Invalid regex pattern for session name")
+/// Team-scoped core session: agent-{team}-{name}
+static RE_SESSION_CORE: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^agent-([a-z0-9]+)-([a-z]+)$").expect("Invalid regex pattern for team session")
 });
 
-static RE_SESSION_INSTANCE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^agent-([a-z]+)-[a-z0-9]+$").expect("Invalid regex pattern for session instance")
+/// Team-scoped spawned session: agent-{team}-{name}-{instance}
+static RE_SESSION_SPAWNED: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^agent-([a-z0-9]+)-([a-z]+)-([a-z0-9]+)$").expect("Invalid regex pattern for spawned session")
+});
+
+/// Ralph sessions (team-independent): agent-ralph-{id}
+static RE_SESSION_RALPH: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^agent-ralph-([a-z0-9]+)$").expect("Invalid regex pattern for ralph session")
+});
+
+/// Legacy core session (for backwards compat): agent-{name}
+static RE_SESSION_LEGACY: Lazy<Regex> = Lazy::new(|| {
+    Regex::new(r"^agent-([a-z]+)$").expect("Invalid regex pattern for legacy session")
 });
 
 // Message delivery configuration
@@ -107,27 +123,47 @@ fn try_force_submit(session: &str, msg_id: &str) -> Result<bool, String> {
     Ok(false)
 }
 
-/// Check if agent session exists
-fn agent_session_exists(agent: &str) -> bool {
-    let session = format!("agent-{}", agent);
+/// Check if agent session exists (team-scoped)
+fn agent_session_exists(team: &str, agent: &str) -> bool {
+    let session = format!("agent-{}-{}", team, agent);
     crate::tmux::session::session_exists(&session).unwrap_or(false)
+}
+
+/// Build session name from team and target
+/// - For core agents: agent-{team}-{name}
+/// - For spawned instances: agent-{team}-{name}-{instance}
+/// - For ralph: agent-ralph-{id}
+fn build_session_name(team: &str, target: &str) -> String {
+    // Check if this is a ralph target
+    if target == "ralph" || target.starts_with("ralph-") {
+        format!("agent-{}", target)
+    } else if let Some(caps) = RE_AGENT_INSTANCE.captures(target) {
+        // Spawned instance: name-instance -> agent-{team}-{name}-{instance}
+        format!("agent-{}-{}-{}", team, &caps[1], &caps[2])
+    } else {
+        // Core agent: name -> agent-{team}-{name}
+        format!("agent-{}-{}", team, target)
+    }
 }
 
 /// Native verified message delivery with message IDs, retry logic, and delivery confirmation
 /// Returns the message ID on success
+/// - team: The team context for session naming (empty for ralph)
+/// - target: The agent target (e.g., "ana", "ana-2", "ralph-ziggy")
 /// - sender: Who is sending the message (e.g., "USER" for app, or agent name for handoffs)
 fn send_verified_native(
-    agent: &str,
+    team: &str,
+    target: &str,
     message: &str,
     sender: &str,
     timeout_secs: u64,
     retry_count: u32,
 ) -> Result<String, String> {
-    let session = format!("agent-{}", agent);
+    let session = build_session_name(team, target);
 
     // Verify session exists
     if !crate::tmux::session::session_exists(&session)? {
-        return Err(format!("Agent '{}' not found or offline", agent));
+        return Err(format!("Agent '{}' in team '{}' not found or offline (session: {})", target, team, session));
     }
 
     let msg_id = generate_message_id(sender);
@@ -136,7 +172,7 @@ fn send_verified_native(
     for attempt in 0..=retry_count {
         if attempt > 0 {
             // Log retry (visible in Tauri debug logs)
-            eprintln!("Retry {} of {} for {}", attempt, retry_count, agent);
+            eprintln!("Retry {} of {} for {}", attempt, retry_count, target);
         }
 
         // Exit copy-mode if active (prevents messages going to scroll buffer)
@@ -198,61 +234,57 @@ fn send_verified_native(
         }
     }
 
-    Err(format!("Timeout: Failed to deliver to '{}' after {} attempts", agent, retry_count + 1))
+    Err(format!("Timeout: Failed to deliver to '{}' in team '{}' after {} attempts", target, team, retry_count + 1))
 }
 
-/// Send a message to a specific agent
+/// Send a message to a specific agent in a team
 #[tauri::command]
-pub async fn send_message(target: String, message: String) -> Result<String, String> {
-    // Load team config to get valid agent names
-    let team = TeamConfig::load("default")
-        .map_err(|e| format!("Failed to load team config: {}", e))?;
-    let valid_agents: Vec<&str> = team.agent_names();
+pub async fn send_message(team: String, target: String, message: String) -> Result<String, String> {
+    // Validate target format (must be agent name or agent-instance)
+    // Format: [a-z]+ or [a-z]+-[a-z0-9]+
+    // This allows both core agents (ana, bill) and ephemeral agents (ralph-ziggy, ana-2)
 
-    // Validate target is either:
-    // 1. A core agent name (e.g., "ana", "bill")
-    // 2. A spawned session name (e.g., "ana-2", "bill-3")
-
-    let is_valid = if let Some(caps) = RE_AGENT_NAME.captures(&target) {
-        // Core agent name
-        valid_agents.contains(&&caps[1])
-    } else if let Some(caps) = RE_AGENT_INSTANCE.captures(&target) {
-        // Spawned session name
-        valid_agents.contains(&&caps[1])
+    let is_valid_format = if RE_AGENT_NAME.is_match(&target) {
+        // Core agent name (e.g., "ana", "bill", "ralph")
+        true
+    } else if RE_AGENT_INSTANCE.is_match(&target) {
+        // Agent instance (e.g., "ana-2", "ralph-ziggy")
+        true
     } else {
         false
     };
 
-    if !is_valid {
+    if !is_valid_format {
         return Err(format!(
-            "Invalid target: '{}'. Expected agent name or spawned session (e.g., 'ana' or 'ana-2')",
+            "Invalid target format: '{}'. Expected agent name or spawned session (e.g., 'ana' or 'ana-2')",
             target
         ));
     }
 
     // Use native send_verified with default timeout
     // Messages from Nolan app are always from "USER" (the human)
-    send_verified_native(&target, &message, "USER", DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT)
+    // send_verified_native will verify the session actually exists
+    send_verified_native(&team, &target, &message, "USER", DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT)
 }
 
 /// Broadcast a message to the core team (workflow participants from team config)
 #[tauri::command]
-pub async fn broadcast_team(message: String) -> Result<BroadcastResult, String> {
-    // Load team config
-    let team = TeamConfig::load("default")
-        .map_err(|e| format!("Failed to load team config: {}", e))?;
+pub async fn broadcast_team(team_name: String, message: String) -> Result<BroadcastResult, String> {
+    // Load team config for specified team
+    let team = TeamConfig::load(&team_name)
+        .map_err(|e| format!("Failed to load team config '{}': {}", team_name, e))?;
 
     let mut successful = Vec::new();
     let mut failed = Vec::new();
 
     for agent in team.workflow_participants() {
-        // Check if agent session exists before sending
-        if !agent_session_exists(agent) {
+        // Check if agent session exists before sending (team-scoped)
+        if !agent_session_exists(&team_name, agent) {
             continue; // Skip offline agents
         }
 
         // Broadcasts from app are from USER
-        match send_verified_native(agent, &message, "USER", DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT) {
+        match send_verified_native(&team_name, agent, &message, "USER", DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT) {
             Ok(msg_id) => successful.push(format!("{} ({})", agent, msg_id)),
             Err(e) => failed.push(format!("{}: {}", agent, e)),
         }
@@ -267,12 +299,12 @@ pub async fn broadcast_team(message: String) -> Result<BroadcastResult, String> 
     })
 }
 
-/// Broadcast a message to all active agent sessions (core + spawned)
+/// Broadcast a message to all active agent sessions in a team (core + spawned)
 #[tauri::command]
-pub async fn broadcast_all(message: String) -> Result<BroadcastResult, String> {
+pub async fn broadcast_all(team_name: String, message: String) -> Result<BroadcastResult, String> {
     // Load team config to get valid agent names
-    let team = TeamConfig::load("default")
-        .map_err(|e| format!("Failed to load team config: {}", e))?;
+    let team = TeamConfig::load(&team_name)
+        .map_err(|e| format!("Failed to load team config '{}': {}", team_name, e))?;
     let valid_agents: Vec<&str> = team.agent_names();
 
     let sessions = crate::tmux::session::list_sessions()?;
@@ -281,27 +313,48 @@ pub async fn broadcast_all(message: String) -> Result<BroadcastResult, String> {
     let mut failed = Vec::new();
 
     for session in sessions {
-        // Extract agent name from session (agent-{name} or agent-{name}-{N})
-        let agent_name = if let Some(caps) = RE_SESSION_NAME.captures(&session) {
-            caps[1].to_string()
-        } else if RE_SESSION_INSTANCE.is_match(&session) {
-            // For spawned instances, use full identifier (e.g., "ana-2")
-            session.strip_prefix("agent-").unwrap_or(&session).to_string()
-        } else {
-            continue; // Not an agent session
-        };
+        // Parse team-scoped session: agent-{team}-{name}[-{instance}]
+        if let Some(caps) = RE_SESSION_CORE.captures(&session) {
+            let session_team = &caps[1];
+            let agent_name = &caps[2];
 
-        // Validate it's a real agent
-        let base_agent = agent_name.split('-').next().unwrap_or(&agent_name);
-        if !valid_agents.contains(&base_agent) {
-            continue;
-        }
+            // Only include sessions from the specified team
+            if session_team != team_name {
+                continue;
+            }
 
-        // Broadcasts from app are from USER
-        match send_verified_native(&agent_name, &message, "USER", DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT) {
-            Ok(msg_id) => successful.push(format!("{} ({})", agent_name, msg_id)),
-            Err(e) => failed.push(format!("{}: {}", agent_name, e)),
+            // Validate it's a real agent
+            if !valid_agents.contains(&agent_name) {
+                continue;
+            }
+
+            // Broadcasts from app are from USER
+            match send_verified_native(&team_name, agent_name, &message, "USER", DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT) {
+                Ok(msg_id) => successful.push(format!("{} ({})", agent_name, msg_id)),
+                Err(e) => failed.push(format!("{}: {}", agent_name, e)),
+            }
+        } else if let Some(caps) = RE_SESSION_SPAWNED.captures(&session) {
+            let session_team = &caps[1];
+            let agent_name = &caps[2];
+            let instance = &caps[3];
+
+            // Only include sessions from the specified team
+            if session_team != team_name {
+                continue;
+            }
+
+            // Validate it's a real agent
+            if !valid_agents.contains(&agent_name) {
+                continue;
+            }
+
+            let target = format!("{}-{}", agent_name, instance);
+            match send_verified_native(&team_name, &target, &message, "USER", DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT) {
+                Ok(msg_id) => successful.push(format!("{} ({})", target, msg_id)),
+                Err(e) => failed.push(format!("{}: {}", target, e)),
+            }
         }
+        // Note: Ralph sessions are team-independent and not included in team broadcasts
     }
 
     let total = successful.len() + failed.len();
@@ -313,12 +366,12 @@ pub async fn broadcast_all(message: String) -> Result<BroadcastResult, String> {
     })
 }
 
-/// Get list of available message targets (active agent sessions)
+/// Get list of available message targets (active agent sessions) for a team
 #[tauri::command]
-pub async fn get_available_targets() -> Result<TargetList, String> {
+pub async fn get_available_targets(team_name: String) -> Result<TargetList, String> {
     // Load team config to get valid agent names
-    let team = TeamConfig::load("default")
-        .map_err(|e| format!("Failed to load team config: {}", e))?;
+    let team = TeamConfig::load(&team_name)
+        .map_err(|e| format!("Failed to load team config '{}': {}", team_name, e))?;
     let valid_agents: Vec<&str> = team.agent_names();
 
     let sessions = crate::tmux::session::list_sessions()?;
@@ -327,15 +380,40 @@ pub async fn get_available_targets() -> Result<TargetList, String> {
     let mut spawned_sessions = Vec::new();
 
     for session in sessions {
-        if session.starts_with("agent-") {
-            // Check if it's a core agent (agent-{name} without number)
-            if let Some(caps) = RE_SESSION_NAME.captures(&session) {
-                let agent_name = caps[1].to_string();
-                if valid_agents.contains(&agent_name.as_str()) {
-                    core_agents.push(agent_name);
-                }
-            } else if RE_SESSION_INSTANCE.is_match(&session) {
-                spawned_sessions.push(session);
+        if !session.starts_with("agent-") {
+            continue;
+        }
+
+        // Check for team-scoped core agent: agent-{team}-{name}
+        if let Some(caps) = RE_SESSION_CORE.captures(&session) {
+            let session_team = &caps[1];
+            let agent_name = caps[2].to_string();
+
+            if session_team == team_name && valid_agents.contains(&agent_name.as_str()) {
+                core_agents.push(agent_name);
+            }
+        }
+        // Check for team-scoped spawned agent: agent-{team}-{name}-{instance}
+        else if let Some(caps) = RE_SESSION_SPAWNED.captures(&session) {
+            let session_team = &caps[1];
+            let agent_name = &caps[2];
+            let instance = &caps[3];
+
+            if session_team == team_name && valid_agents.contains(&agent_name) {
+                // Return as name-instance format for target routing
+                spawned_sessions.push(format!("{}-{}", agent_name, instance));
+            }
+        }
+        // Check for Ralph sessions (team-independent)
+        else if RE_SESSION_RALPH.is_match(&session) {
+            // Ralph sessions are shown for all teams
+            spawned_sessions.push(session.strip_prefix("agent-").unwrap_or(&session).to_string());
+        }
+        // Check for legacy session: agent-{name} (treated as default team)
+        else if let Some(caps) = RE_SESSION_LEGACY.captures(&session) {
+            let agent_name = caps[1].to_string();
+            if team_name == "default" && valid_agents.contains(&agent_name.as_str()) {
+                core_agents.push(agent_name);
             }
         }
     }

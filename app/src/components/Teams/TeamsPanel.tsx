@@ -1,9 +1,10 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import { useTeamStore } from '../../store/teamStore';
 import { useToastStore } from '../../store/toastStore';
 import { TeamEditor } from './TeamEditor';
 import { Users, Plus, Edit2, Check, FileText } from 'lucide-react';
-import type { TeamConfig } from '@/types';
+import type { TeamConfig, AgentDirectoryInfo } from '@/types';
 
 export const TeamsPanel: React.FC = () => {
   const { availableTeams, loadAvailableTeams, loadTeam } = useTeamStore();
@@ -12,10 +13,25 @@ export const TeamsPanel: React.FC = () => {
   const [teamConfig, setTeamConfig] = useState<TeamConfig | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [agentInfos, setAgentInfos] = useState<AgentDirectoryInfo[]>([]);
+
+  // Fetch agent directories for role/model info
+  const fetchAgentInfos = useCallback(async () => {
+    try {
+      const dirs = await invoke<AgentDirectoryInfo[]>('list_agent_directories');
+      setAgentInfos(dirs);
+    } catch (err) {
+      console.error('Failed to load agent info:', err);
+    }
+  }, []);
+
+  // Get agent info by name
+  const getAgentInfo = (name: string) => agentInfos.find(a => a.name === name);
 
   useEffect(() => {
     loadAvailableTeams();
-  }, [loadAvailableTeams]);
+    fetchAgentInfos();
+  }, [loadAvailableTeams, fetchAgentInfos]);
 
   const handleSelectTeam = async (teamName: string) => {
     setSelectedTeam(teamName);
@@ -155,24 +171,23 @@ export const TeamsPanel: React.FC = () => {
                   Agents
                 </h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {teamConfig.team.agents.map((agent) => (
-                    <div
-                      key={agent.name}
-                      className="p-3 rounded-lg bg-secondary/30 border border-border"
-                    >
-                      <div className="flex items-center gap-2 mb-2">
-                        <div
-                          className="w-3 h-3 rounded-full"
-                          style={{ backgroundColor: agent.color || '#6b7280' }}
-                        />
-                        <span className="font-medium text-foreground capitalize">{agent.name}</span>
+                  {teamConfig.team.agents.map((agent) => {
+                    const info = getAgentInfo(agent.name);
+                    return (
+                      <div
+                        key={agent.name}
+                        className="p-3 rounded-lg bg-secondary/30 border border-border"
+                      >
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="font-medium text-foreground capitalize">{agent.name}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">{info?.role || 'No role'}</p>
+                        <p className="text-xs text-muted-foreground/70 mt-1">
+                          Model: {info?.model || 'unknown'}
+                        </p>
                       </div>
-                      <p className="text-xs text-muted-foreground">{agent.role}</p>
-                      <p className="text-xs text-muted-foreground/70 mt-1">
-                        Model: {agent.model}
-                      </p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 

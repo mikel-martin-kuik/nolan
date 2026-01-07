@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import {
   AlertDialog,
@@ -36,6 +36,7 @@ interface ProjectSelectModalProps {
   onLaunch: (params: LaunchParams) => void;
   projects: ProjectInfo[];
   isLoading?: boolean;
+  teamName?: string;  // Team being launched - filters projects to only show team's projects
 }
 
 type Mode = 'existing' | 'new';
@@ -46,7 +47,14 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
   onLaunch,
   projects,
   isLoading = false,
+  teamName,
 }) => {
+  // Filter projects to only show those belonging to this team
+  // Memoized to prevent unnecessary re-renders and effect triggers
+  const teamProjects = useMemo(
+    () => (teamName ? projects.filter(p => p.team === teamName) : projects),
+    [projects, teamName]
+  );
   const [mode, setMode] = useState<Mode>('existing');
   const [selectedProject, setSelectedProject] = useState<string>('');
   const [newProjectName, setNewProjectName] = useState<string>('');
@@ -87,16 +95,16 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
       setOriginalPrompt('');
       setSavedOriginalPrompt('');
       setFollowupPrompt('');
-      // Select first project by default if available
-      if (projects.length > 0) {
-        const firstProject = projects[0].name;
+      // Select first team project by default if available
+      if (teamProjects.length > 0) {
+        const firstProject = teamProjects[0].name;
         setSelectedProject(firstProject);
         fetchProjectPrompt(firstProject);
       } else {
         setSelectedProject('');
       }
     }
-  }, [open, projects]);
+  }, [open, teamProjects]);
 
   // Update prompt when project selection changes
   const handleProjectChange = (projectName: string) => {
@@ -143,20 +151,19 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
     onOpenChange(false);
   };
 
-  // Group projects by status for display
+  // Group team projects by status for display
   const groupedProjects = {
-    inprogress: projects.filter(p => p.status === 'inprogress'),
-    pending: projects.filter(p => p.status === 'pending'),
-    complete: projects.filter(p => p.status === 'complete'),
+    inprogress: teamProjects.filter(p => p.status === 'inprogress'),
+    pending: teamProjects.filter(p => p.status === 'pending'),
+    complete: teamProjects.filter(p => p.status === 'complete'),
   };
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
       <AlertDialogContent className="max-w-lg">
         <AlertDialogHeader>
-          <AlertDialogTitle className="flex items-center gap-2">
-            <Rocket className="w-5 h-5" />
-            Launch Core Team
+          <AlertDialogTitle>
+            Launch {teamName?.charAt(0).toUpperCase()}{teamName?.slice(1)} Team
           </AlertDialogTitle>
         </AlertDialogHeader>
 
@@ -181,15 +188,13 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
               <Select
                 value={selectedProject}
                 onValueChange={handleProjectChange}
-                disabled={mode !== 'existing' || projects.length === 0}
+                disabled={mode !== 'existing' || teamProjects.length === 0}
               >
                 <SelectTrigger className="w-full bg-secondary/50 border-border">
                   <SelectValue placeholder="Select a project" />
                 </SelectTrigger>
                 <SelectContent>
-                  {projects.length === 0 ? (
-                    <SelectItem value="" disabled>No projects available</SelectItem>
-                  ) : (
+                  {teamProjects.length > 0 && (
                     <>
                       {groupedProjects.inprogress.length > 0 && (
                         <SelectGroup>

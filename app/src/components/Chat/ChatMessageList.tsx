@@ -11,12 +11,15 @@ interface ChatMessageListProps {
   entries: HistoryEntry[];
   isActive: boolean;
   agentName: string;
+  /** Session name for interactive responses (e.g., "agent-ana") */
+  session?: string;
 }
 
 export const ChatMessageList: React.FC<ChatMessageListProps> = memo(({
   entries,
   isActive,
   agentName,
+  session,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -95,6 +98,7 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = memo(({
                 message={msg}
                 isLast={isPrimaryLast}
                 showNeedsResponse={waitingForInput}
+                session={session}
               />
             );
           })

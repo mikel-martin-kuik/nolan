@@ -97,6 +97,72 @@ pub async fn get_project_team(project_name: String) -> Result<String, String> {
     }
 }
 
+/// Rename a team configuration file
+///
+/// This renames both the file and updates the team name inside the YAML content.
+/// Security: Validates both names to prevent path traversal attacks
+#[tauri::command]
+pub async fn rename_team_config(old_name: String, new_name: String) -> Result<(), String> {
+    // Validate old_name doesn't contain path traversal
+    if old_name.contains("..") || old_name.contains("/") || old_name.contains("\\") {
+        return Err("Invalid old team name: path traversal not allowed".to_string());
+    }
+
+    // Validate new_name doesn't contain path traversal
+    if new_name.contains("..") || new_name.contains("/") || new_name.contains("\\") {
+        return Err("Invalid new team name: path traversal not allowed".to_string());
+    }
+
+    // Validate new name format
+    if !new_name.chars().next().map(|c| c.is_ascii_lowercase()).unwrap_or(false) {
+        return Err("Team name must start with a lowercase letter".to_string());
+    }
+
+    if !new_name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+        return Err("Team name must contain only lowercase letters, digits, and hyphens".to_string());
+    }
+
+    // If names are the same, nothing to do
+    if old_name == new_name {
+        return Ok(());
+    }
+
+    let nolan_root = std::env::var("NOLAN_ROOT")
+        .map_err(|_| "NOLAN_ROOT not set".to_string())?;
+    let teams_dir = PathBuf::from(nolan_root).join("teams");
+
+    let old_path = teams_dir.join(format!("{}.yaml", old_name));
+    let new_path = teams_dir.join(format!("{}.yaml", new_name));
+
+    // Check old file exists
+    if !old_path.exists() {
+        return Err(format!("Team '{}' does not exist", old_name));
+    }
+
+    // Check new file doesn't already exist
+    if new_path.exists() {
+        return Err(format!("Team '{}' already exists", new_name));
+    }
+
+    // Load the config, update the name, and save to new location
+    let mut config = TeamConfig::load(&old_name)?;
+    config.team.name = new_name.clone();
+
+    // Serialize to YAML
+    let yaml_content = serde_yaml::to_string(&config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+
+    // Write to new file
+    fs::write(&new_path, yaml_content)
+        .map_err(|e| format!("Failed to write new config file: {}", e))?;
+
+    // Delete old file
+    fs::remove_file(&old_path)
+        .map_err(|e| format!("Failed to remove old config file: {}", e))?;
+
+    Ok(())
+}
+
 /// Set the team for a specific project
 ///
 /// Security: Validates project name to prevent path traversal attacks (B01)

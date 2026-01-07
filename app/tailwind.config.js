@@ -53,22 +53,13 @@ export default {
   				'4': 'hsl(var(--chart-4))',
   				'5': 'hsl(var(--chart-5))'
   			},
-  			// Status colors (functional - for agent online/offline/health)
+  			// Status colors (functional - for online/offline/health indicators)
   			status: {
   				online: 'rgb(34, 197, 94)',      // green-500
   				offline: 'rgb(239, 68, 68)',     // red-500
   				warning: 'rgb(234, 179, 8)',     // yellow-500
   				degraded: 'rgb(249, 115, 22)',   // orange-500
   				unknown: 'rgb(107, 114, 128)',   // gray-500
-  			},
-  			// Agent identity colors (brand - for agent visual identity)
-  			agents: {
-  				ana: 'rgb(168, 85, 247)',        // purple-500
-  				bill: 'rgb(59, 130, 246)',       // blue-500
-  				carl: 'rgb(99, 102, 241)',       // indigo-500
-  				dan: 'rgb(139, 92, 246)',        // violet-500 (CHANGED from amber)
-  				enzo: 'rgb(236, 72, 153)',       // pink-500
-  				ralph: 'rgb(113, 113, 122)',     // zinc-500 (CHANGED from slate)
   			}
   		}
   	}

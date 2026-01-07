@@ -4,9 +4,6 @@ team:
   version: 1.0.0
   agents:
   - name: ana
-    role: Research
-    model: sonnet
-    color: '#a855f7'
     output_file: research.md
     required_sections:
     - '## Problem'
@@ -15,12 +12,7 @@ team:
     file_permissions: restricted
     workflow_participant: true
     awaits_qa: false
-    multi_instance: false
-    instance_names: []
   - name: bill
-    role: Planning
-    model: sonnet
-    color: '#3b82f6'
     output_file: plan.md
     required_sections:
     - '## Overview'
@@ -30,12 +22,7 @@ team:
     workflow_participant: true
     awaits_qa: true
     qa_passes: 1
-    multi_instance: false
-    instance_names: []
   - name: carl
-    role: Implementation
-    model: sonnet
-    color: '#6366f1'
     output_file: progress.md
     required_sections:
     - '## Status'
@@ -44,12 +31,7 @@ team:
     workflow_participant: true
     awaits_qa: true
     qa_passes: 1
-    multi_instance: false
-    instance_names: []
   - name: dan
-    role: Scrum Master
-    model: sonnet
-    color: '#8b5cf6'
     output_file: NOTES.md
     required_sections:
     - '## Current Assignment'
@@ -58,12 +40,7 @@ team:
     file_permissions: permissive
     workflow_participant: false
     awaits_qa: false
-    multi_instance: false
-    instance_names: []
   - name: enzo
-    role: Plan Reviewer
-    model: sonnet
-    color: '#ec4899'
     output_file: plan-review.md
     required_sections:
     - '## Summary'
@@ -72,22 +49,12 @@ team:
     file_permissions: restricted
     workflow_participant: true
     awaits_qa: false
-    multi_instance: false
-    instance_names: []
   - name: frank
-    role: Implementation Auditor
-    model: opus
-    color: '#f43f5e'
     output_file: implementation-audit.md
-    required_sections:
-    - '## Summary'
-    - '## Findings'
-    - '## Recommendation'
+    required_sections: []
     file_permissions: restricted
     workflow_participant: true
     awaits_qa: false
-    multi_instance: false
-    instance_names: []
   workflow:
     coordinator: dan
     phases:

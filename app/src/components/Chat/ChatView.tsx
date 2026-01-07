@@ -77,13 +77,12 @@ export const ChatView: React.FC = () => {
     [teamAgents, freeAgents]
   );
 
-  // Flatten grouped agents in priority order: attention > active > blocked > idle
+  // Flatten grouped agents in priority order: attention > active > blocked (exclude idle/offline)
   const orderedAgents = useMemo(() => {
     return [
       ...grouped.attention,
       ...grouped.active,
       ...grouped.blocked,
-      ...grouped.idle,
     ];
   }, [grouped]);
 
@@ -252,7 +251,6 @@ export const ChatView: React.FC = () => {
             {renderAgentGroup('attention', grouped.attention)}
             {renderAgentGroup('active', grouped.active)}
             {renderAgentGroup('blocked', grouped.blocked)}
-            {renderAgentGroup('idle', grouped.idle)}
           </>
         )}
       </div>

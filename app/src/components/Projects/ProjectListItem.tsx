@@ -2,29 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 import { invoke } from '@tauri-apps/api/core';
 import { ChevronDown, FileText, Circle } from 'lucide-react';
 import { ProjectInfo, ProjectFile } from '@/types/projects';
+import { getWorkflowSteps, getFileOrder } from '@/types';
+import { useTeamStore } from '@/store/teamStore';
 import { cn } from '@/lib/utils';
-
-// All expected files in order
-const WORKFLOW_STEPS = [
-  { key: 'prompt' },
-  { key: 'context' },
-  { key: 'research' },
-  { key: 'plan' },
-  { key: 'qa-review' },
-  { key: 'progress' },
-  { key: 'NOTES' },
-];
-
-// File type display order
-const FILE_ORDER: Record<string, number> = {
-  'prompt': 0,
-  'context': 1,
-  'research': 2,
-  'plan': 3,
-  'qa-review': 4,
-  'progress': 5,
-  'NOTES': 6,
-};
 
 interface ProjectListItemProps {
   project: ProjectInfo;
@@ -43,6 +23,10 @@ export function ProjectListItem({
   onToggle,
   onFileSelect
 }: ProjectListItemProps) {
+  // Get team config for this project's team (not the current active team)
+  const teamConfigs = useTeamStore(state => state.teamConfigs);
+  const projectTeamConfig = teamConfigs.get(project.team) ?? null;
+
   const { data: files } = useQuery({
     queryKey: ['project-files', project.name],
     queryFn: async () => invoke<ProjectFile[]>('list_project_files', {
@@ -52,8 +36,12 @@ export function ProjectListItem({
     refetchInterval: isExpanded ? 10000 : false,
   });
 
+  // Get dynamic workflow steps from the project's team config
+  const workflowSteps = getWorkflowSteps(projectTeamConfig);
+  const fileOrder = getFileOrder(projectTeamConfig);
+
   // Calculate workflow step completion
-  const stepCompletion = WORKFLOW_STEPS.map(step => {
+  const stepCompletion = workflowSteps.map(step => {
     // Special handling for prompt.md: check if it exists AND has a HANDOFF marker
     if (step.key === 'prompt') {
       const promptCompletion = project.file_completions.find(f => f.file.includes('prompt'));
@@ -75,8 +63,8 @@ export function ProjectListItem({
 
   // Sort files by workflow order
   const sortedFiles = files?.slice().sort((a, b) => {
-    const aOrder = FILE_ORDER[a.file_type] ?? 99;
-    const bOrder = FILE_ORDER[b.file_type] ?? 99;
+    const aOrder = fileOrder[a.file_type] ?? 99;
+    const bOrder = fileOrder[b.file_type] ?? 99;
     return aOrder - bOrder;
   });
 
@@ -110,7 +98,7 @@ export function ProjectListItem({
             />
           ))}
           <span className="text-[10px] text-muted-foreground ml-1.5">
-            {completedCount}/{WORKFLOW_STEPS.length}
+            {completedCount}/{workflowSteps.length}
           </span>
         </div>
       </button>

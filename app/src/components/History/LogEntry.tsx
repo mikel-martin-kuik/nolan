@@ -1,5 +1,5 @@
 import React from 'react';
-import { HistoryEntry, AGENT_TEXT_COLORS, AgentName } from '../../types';
+import { HistoryEntry } from '../../types';
 
 interface LogEntryProps {
   entry: HistoryEntry;
@@ -54,13 +54,7 @@ export const LogEntry: React.FC<LogEntryProps> = ({ entry, onSelect, isSelected 
     };
   };
 
-  const { displayName, agentName } = parseAgentName(entry.agent ?? null);
-
-  // Get agent color
-  const getAgentColor = (agentName: AgentName | null) => {
-    if (!agentName) return 'text-muted-foreground';
-    return AGENT_TEXT_COLORS[agentName] || 'text-muted-foreground';
-  };
+  const { displayName } = parseAgentName(entry.agent ?? null);
 
   // Get entry type styling
   const getTypeStyle = (type: string) => {
@@ -107,7 +101,7 @@ export const LogEntry: React.FC<LogEntryProps> = ({ entry, onSelect, isSelected 
       >
         {/* Agent */}
         {displayName && (
-          <span className={`${getAgentColor(agentName)} font-semibold shrink-0 text-[10px] w-12`}>
+          <span className="text-foreground font-semibold shrink-0 text-[10px] w-12">
             {displayName}
           </span>
         )}

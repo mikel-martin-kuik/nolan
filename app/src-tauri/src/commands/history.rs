@@ -509,6 +509,10 @@ fn extract_message_content(json: &serde_json::Value, entry_type: &str) -> String
                             // Get the full input for the popup
                             let input_str = item.get("input")
                                 .map(|i| {
+                                    // For AskUserQuestion, always serialize full JSON for proper rendering
+                                    if name == "AskUserQuestion" {
+                                        return serde_json::to_string_pretty(i).unwrap_or_default();
+                                    }
                                     // For common tools, extract key info
                                     if let Some(cmd) = i.get("command").and_then(|c| c.as_str()) {
                                         cmd.to_string()
@@ -611,7 +615,8 @@ fn truncate_smart(text: &str, max_len: usize) -> String {
 
 /// Extract tool name from JSON
 fn extract_tool_name(json: &serde_json::Value, entry_type: &str) -> Option<String> {
-    if entry_type != "assistant" {
+    // Extract tool name for assistant messages or refined tool_use entries
+    if entry_type != "assistant" && entry_type != "tool_use" {
         return None;
     }
 

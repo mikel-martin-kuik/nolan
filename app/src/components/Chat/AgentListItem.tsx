@@ -2,7 +2,7 @@ import React, { memo, useCallback, useRef, useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Clock, MessageSquareX, Eraser, Terminal } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { AgentStatus, AGENT_DESCRIPTIONS, AgentWorkflowState, AgentName, WORKFLOW_FILES, TeamConfig, isCoreAgent as checkIsCoreAgent } from '../../types';
+import { AgentStatus, AGENT_DESCRIPTIONS, AgentWorkflowState, AgentName, getWorkflowSteps } from '../../types';
 import { getAgentDisplayNameForUI } from '../../lib/agentIdentity';
 import { useLiveOutputStore, AgentLiveOutput } from '../../store/liveOutputStore';
 import { useTerminalStore } from '../../store/terminalStore';
@@ -23,21 +23,28 @@ interface AgentListItemProps {
 }
 
 /**
- * Get display name for an agent, handling spawned instances
+ * Get display name for an agent, handling instances
  * Uses agentIdentity utility for consistent naming (ralph shows as fun name)
  */
-function getAgentDisplayName(agent: AgentStatus, team: TeamConfig | null): string {
+function getAgentDisplayName(agent: AgentStatus): string {
   const session = agent.session;
-  const withoutPrefix = session.replace(/^agent-/, '');
-  const parts = withoutPrefix.split('-');
 
-  // Check if this is a core agent using team config
-  const isCoreAgent = checkIsCoreAgent(session, team);
+  // Check if this is a primary session (agent-{team}-{name}) vs an instance (agent-{team}-{name}-{num})
+  const isPrimarySession = session.match(/^agent-[a-z0-9]+-[a-z]+$/) !== null;
 
-  // Extract instanceId for spawned agents
-  const instanceId = parts.length > 1 ? parts.slice(1).join('-') : undefined;
+  // Extract instanceId for agent instances
+  // For ralph: agent-ralph-{id} -> id
+  // For team agents: agent-{team}-{name}-{id} -> id
+  let instanceId: string | undefined;
+  if (agent.name === 'ralph') {
+    const match = session.match(/^agent-ralph-([a-z0-9]+)$/);
+    instanceId = match ? match[1] : undefined;
+  } else {
+    const match = session.match(/^agent-[a-z0-9]+-[a-z]+-([a-z0-9]+)$/);
+    instanceId = match ? match[1] : undefined;
+  }
 
-  return getAgentDisplayNameForUI(agent.name, instanceId, isCoreAgent);
+  return getAgentDisplayNameForUI(agent.name, instanceId, isPrimarySession);
 }
 
 export const AgentListItem: React.FC<AgentListItemProps> = memo(({
@@ -59,9 +66,12 @@ export const AgentListItem: React.FC<AgentListItemProps> = memo(({
 
   const entries = output?.entries || [];
   const lastEntry = entries[entries.length - 1];
+  // Find the last user prompt (entry_type === 'user')
+  const lastUserPrompt = [...entries].reverse().find(e => e.entry_type === 'user');
   const description = AGENT_DESCRIPTIONS[agent.name as AgentName] || 'Agent';
   const blockerMessage = workflowState ? getBlockerMessage(workflowState) : null;
-  const displayName = getAgentDisplayName(agent, currentTeam);
+  const displayName = getAgentDisplayName(agent);
+  const workflowSteps = getWorkflowSteps(currentTeam);
 
   // Check if a workflow file is completed (has HANDOFF marker)
   const isFileCompleted = (key: string): boolean => {
@@ -212,14 +222,14 @@ export const AgentListItem: React.FC<AgentListItemProps> = memo(({
           {/* Workflow progress dots (only show if agent has a project) */}
           {workflowState && agent.current_project && agent.current_project !== 'VIBING' && (
             <div className="flex items-center gap-1 mb-1.5">
-              {WORKFLOW_FILES.map((file) => (
+              {workflowSteps.map((step) => (
                 <div
-                  key={file}
+                  key={step.key}
                   className={cn(
                     'w-1.5 h-1.5 rounded-full transition-colors',
-                    isFileCompleted(file) ? 'bg-primary' : 'bg-muted-foreground/20'
+                    isFileCompleted(step.key) ? 'bg-primary' : 'bg-muted-foreground/20'
                   )}
-                  title={`${file}.md${isFileCompleted(file) ? ' (completed)' : ''}`}
+                  title={`${step.key}.md${isFileCompleted(step.key) ? ' (completed)' : ''}`}
                 />
               ))}
               <span className="text-[9px] text-muted-foreground ml-1">
@@ -228,16 +238,16 @@ export const AgentListItem: React.FC<AgentListItemProps> = memo(({
             </div>
           )}
 
-          {/* Blocker message or last activity preview */}
+          {/* Blocker message or user's last prompt reminder */}
           <div className="min-h-[16px]">
             {blockerMessage ? (
               <div className="flex items-center gap-1 text-[10px] text-red-400">
                 <Clock className="w-2.5 h-2.5 flex-shrink-0" />
                 <span className="truncate">{blockerMessage}</span>
               </div>
-            ) : lastEntry ? (
+            ) : lastUserPrompt ? (
               <p className="text-[10px] text-muted-foreground/70 truncate">
-                {lastEntry.preview || lastEntry.message?.slice(0, 50) || 'No content'}
+                {lastUserPrompt.preview || lastUserPrompt.message?.slice(0, 50) || 'No content'}
               </p>
             ) : (
               <p className="text-[10px] text-muted-foreground/50">

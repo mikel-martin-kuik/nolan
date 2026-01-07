@@ -6,9 +6,8 @@ import { Tooltip } from '@/components/ui/tooltip';
 import { useAgentStore } from '@/store/agentStore';
 import { useToastStore } from '@/store/toastStore';
 import { useTerminalStore } from '@/store/terminalStore';
-import { useTeamStore } from '@/store/teamStore';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
-import { AGENT_DESCRIPTIONS, isCoreAgent as checkIsCoreAgent } from '@/types';
+import { AGENT_DESCRIPTIONS } from '@/types';
 import { getAgentDisplayNameForUI } from '@/lib/agentIdentity';
 import type { AgentStatus as AgentStatusType } from '@/types';
 
@@ -40,7 +39,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   instanceId,
   hideProject = false,
 }) => {
-  const { spawnAgent, restartCoreAgent, killInstance } = useAgentStore();
+  const { spawnAgent, startAgent, killInstance } = useAgentStore();
   const { error: showError, success: showSuccess } = useToastStore();
   const openTerminalModal = useTerminalStore((state) => state.openModal);
   const [isProcessing, setIsProcessing] = React.useState(false);
@@ -55,14 +54,16 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   const contextMenuRef = React.useRef<HTMLDivElement>(null);
   const messageInputRef = React.useRef<HTMLTextAreaElement>(null);
 
-  // Get team config for core agent detection
-  const { currentTeam } = useTeamStore();
+  // Check if this is a free agent (Ralph) vs team agent
+  // Ralph sessions: agent-ralph-{name}
+  // Team agent sessions: agent-{team}-{name}
+  const isRalphAgent = agent.name === 'ralph' || agent.session.match(/^agent-ralph-[a-z0-9]+$/) !== null;
 
-  // Check if this is a core agent using team config
-  const isCoreAgent = checkIsCoreAgent(agent.session, currentTeam);
+  // Team agents have the format agent-{team}-{name} (no instance suffix since they're single-instance)
+  const isPrimarySession = !isRalphAgent;
 
   // Get visual display name (ralph shows as random fun name, others show normally)
-  const displayName = getAgentDisplayNameForUI(agent.name, instanceId, isCoreAgent);
+  const displayName = getAgentDisplayNameForUI(agent.name, instanceId, isPrimarySession);
 
   // Get agent description from team config (if available)
   const description = AGENT_DESCRIPTIONS[agent.name] || agent.name;
@@ -71,17 +72,18 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   const getPrimaryAction = () => {
     if (!agent.active) {
       return {
-        label: isCoreAgent ? `Restart ${displayName}` : `Launch ${displayName}`,
-        ariaLabel: isCoreAgent ? `Restart ${displayName} agent` : `Launch ${displayName} agent`,
+        label: isRalphAgent ? `Spawn ${displayName}` : `Start ${displayName}`,
+        ariaLabel: isRalphAgent ? `Spawn ${displayName} instance` : `Start ${displayName} agent`,
         icon: Play,
         handler: async () => {
           setIsProcessing(true);
           try {
-            // Use restartCoreAgent for core agents, spawnAgent for instances
-            if (isCoreAgent) {
-              await restartCoreAgent(agent.name);
+            // Ralph (free agent) can spawn multiple instances
+            // Team agents have exactly one session per team
+            if (isRalphAgent) {
+              await spawnAgent(agent.team, agent.name);
             } else {
-              await spawnAgent(agent.name);
+              await startAgent(agent.team, agent.name);
             }
           } catch (error) {
             console.error('Failed to launch agent:', error);
@@ -243,9 +245,14 @@ export const AgentCard: React.FC<AgentCardProps> = ({
 
     setIsSending(true);
     try {
-      // Use agent name for core agents, session name for spawned
-      const target = isCoreAgent ? agent.name : agent.session.replace('agent-', '');
-      await invoke<string>('send_message', { target, message: messageText });
+      // For team agents: use agent name as target (e.g., "carl")
+      // For Ralph: use ralph-{instance} format (e.g., "ralph-ziggy")
+      const target = isRalphAgent
+        ? agent.session.replace('agent-', '')  // ralph-ziggy
+        : agent.name;                           // carl
+      // Team comes from agent's team field (empty for Ralph)
+      const team = agent.team || '';
+      await invoke<string>('send_message', { team, target, message: messageText });
       showSuccess(`Message sent to ${displayName}`);
       setMessageText('');
       setShowMessageDialog(false);

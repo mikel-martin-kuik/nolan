@@ -14,21 +14,106 @@ NOLAN_ROOT="${NOLAN_ROOT:-$HOME/.nolan}"
 NOLAN_MAILBOX="${NOLAN_MAILBOX:-$NOLAN_ROOT/mailbox}"
 NOLAN_MSG_TIMEOUT="${NOLAN_MSG_TIMEOUT:-5}"
 NOLAN_MSG_RETRY="${NOLAN_MSG_RETRY:-2}"
+NOLAN_DEFAULT_TEAM="${NOLAN_DEFAULT_TEAM:-default}"
 
 # Ensure mailbox directory exists
 mkdir -p "$NOLAN_MAILBOX"
 
+# ===== SESSION NAMING PATTERNS =====
+# Team-scoped naming convention:
+# - Core agents: agent-{team}-{name} (e.g., agent-default-ana)
+# - Spawned agents: agent-{team}-{name}-{instance} (e.g., agent-default-ana-2)
+# - Ralph (team-independent): agent-ralph-{id} (e.g., agent-ralph-ziggy)
+
+# Pattern for team-scoped sessions (core + spawned)
+RE_TEAM_SESSION='^agent-([a-z0-9]+)-([a-z]+)(-[a-z0-9]+)?$'
+# Pattern for ralph sessions (team-independent)
+RE_RALPH_SESSION='^agent-ralph-([a-z0-9]+)$'
+# Pattern for legacy sessions (backwards compat)
+RE_LEGACY_SESSION='^agent-([a-z]+)$'
+
 # ===== CORE UTILITIES =====
 
-# List agent sessions (pattern: agent-<name> or agent-<name>-<N>)
+# List agent sessions for a specific team
+# Usage: _get_sessions [team] [include_ralph]
+# - team: team name (default: $NOLAN_DEFAULT_TEAM)
+# - include_ralph: "true" to include ralph sessions (default: false)
 _get_sessions() {
-    local pattern="${1:-^agent-[a-z]+(-[0-9]+)?$}"
-    tmux list-sessions -F '#{session_name}' 2>/dev/null | grep -E "$pattern" | sort
+    local team="${1:-$NOLAN_DEFAULT_TEAM}"
+    local include_ralph="${2:-false}"
+    local sessions=""
+
+    # Get all tmux sessions
+    local all_sessions=$(tmux list-sessions -F '#{session_name}' 2>/dev/null)
+
+    for session in $all_sessions; do
+        # Check team-scoped sessions: agent-{team}-{name}[-{instance}]
+        if [[ "$session" =~ ^agent-([a-z0-9]+)-([a-z]+)(-[a-z0-9]+)?$ ]]; then
+            local session_team="${BASH_REMATCH[1]}"
+            # Only include sessions from the specified team
+            if [ "$session_team" = "$team" ]; then
+                sessions="$sessions $session"
+            fi
+        # Check ralph sessions (team-independent)
+        elif [[ "$session" =~ ^agent-ralph-([a-z0-9]+)$ ]] && [ "$include_ralph" = "true" ]; then
+            sessions="$sessions $session"
+        fi
+    done
+
+    echo $sessions | tr ' ' '\n' | grep -v '^$' | sort
 }
 
-# Check if agent exists
+# Check if agent session exists (team-scoped)
+# Usage: _agent_exists <agent> [team]
 _agent_exists() {
-    tmux has-session -t "agent-$1" 2>/dev/null
+    local agent="$1"
+    local team="${2:-$NOLAN_DEFAULT_TEAM}"
+    local session=$(_build_session_name "$team" "$agent")
+    tmux has-session -t "$session" 2>/dev/null
+}
+
+# Build session name from team and agent target
+# Usage: _build_session_name <team> <target>
+# - For ralph: agent-ralph-{id}
+# - For spawned: agent-{team}-{name}-{instance}
+# - For core: agent-{team}-{name}
+_build_session_name() {
+    local team="$1"
+    local target="$2"
+
+    # Ralph is team-independent
+    if [[ "$target" == "ralph" ]] || [[ "$target" =~ ^ralph-([a-z0-9]+)$ ]]; then
+        echo "agent-$target"
+    # Spawned instance: name-instance -> agent-{team}-{name}-{instance}
+    elif [[ "$target" =~ ^([a-z]+)-([a-z0-9]+)$ ]]; then
+        echo "agent-$team-${BASH_REMATCH[1]}-${BASH_REMATCH[2]}"
+    # Core agent: name -> agent-{team}-{name}
+    else
+        echo "agent-$team-$target"
+    fi
+}
+
+# Extract agent name from session (strips team prefix)
+# Usage: _extract_agent_name <session>
+# Returns: agent name (or name-instance for spawned)
+_extract_agent_name() {
+    local session="$1"
+
+    # Ralph: agent-ralph-{id} (check FIRST - ralph is team-independent)
+    if [[ "$session" =~ ^agent-ralph-([a-z0-9]+)$ ]]; then
+        echo "ralph-${BASH_REMATCH[1]}"
+    # Team-scoped spawned: agent-{team}-{name}-{instance}
+    elif [[ "$session" =~ ^agent-([a-z0-9]+)-([a-z]+)-([a-z0-9]+)$ ]]; then
+        echo "${BASH_REMATCH[2]}-${BASH_REMATCH[3]}"
+    # Team-scoped core: agent-{team}-{name}
+    elif [[ "$session" =~ ^agent-([a-z0-9]+)-([a-z]+)$ ]]; then
+        echo "${BASH_REMATCH[2]}"
+    # Legacy: agent-{name}
+    elif [[ "$session" =~ ^agent-([a-z]+)$ ]]; then
+        echo "${BASH_REMATCH[1]}"
+    else
+        echo "$session"
+    fi
 }
 
 # Get output log path for an agent
@@ -119,13 +204,12 @@ _exit_copy_mode() {
 
 # ===== MESSAGE DELIVERY =====
 
-# Wait for message ID to appear in pane output
+# Wait for message ID to appear in pane output (by session name)
 # Uses capture-pane polling (pipe-pane doesn't work with Claude Code)
-_wait_for_delivery() {
-    local agent="$1"
+_wait_for_delivery_session() {
+    local session="$1"
     local msg_id="$2"
     local timeout="$3"
-    local session="agent-$agent"
     local deadline=$(($(date +%s) + timeout))
 
     # Poll capture-pane for message ID
@@ -137,6 +221,15 @@ _wait_for_delivery() {
     done
 
     return 1
+}
+
+# Legacy wrapper for backwards compatibility
+_wait_for_delivery() {
+    local agent="$1"
+    local msg_id="$2"
+    local timeout="$3"
+    local session=$(_build_session_name "$NOLAN_DEFAULT_TEAM" "$agent")
+    _wait_for_delivery_session "$session" "$msg_id" "$timeout"
 }
 
 # Send message using bracketed paste mode (safer for special characters and multi-line)
@@ -180,19 +273,20 @@ _force_submit() {
 
 # ===== MAIN SEND FUNCTION =====
 
-# Send verified message to agent
-# Usage: send <agent> "message" [timeout] [retries]
+# Send verified message to agent (team-scoped)
+# Usage: send <agent> "message" [team] [timeout] [retries]
 # Returns: 0=delivered, 1=timeout, 2=agent not found
 # NOTE: For reliable delivery, use sequential sends. Parallel sends may concatenate.
 send() {
     local agent="$1"
     local message="$2"
-    local timeout="${3:-$NOLAN_MSG_TIMEOUT}"
-    local retries="${4:-$NOLAN_MSG_RETRY}"
-    local session="agent-$agent"
+    local team="${3:-$NOLAN_DEFAULT_TEAM}"
+    local timeout="${4:-$NOLAN_MSG_TIMEOUT}"
+    local retries="${5:-$NOLAN_MSG_RETRY}"
+    local session=$(_build_session_name "$team" "$agent")
 
-    # Validate agent exists
-    _agent_exists "$agent" || { echo "Agent '$agent' not found"; return 2; }
+    # Validate agent exists (team-scoped)
+    _agent_exists "$agent" "$team" || { echo "Agent '$agent' not found in team '$team'"; return 2; }
 
     # Generate message ID
     local msg_id=$(_msg_id)
@@ -209,8 +303,8 @@ send() {
         _send_plain "$session" "$full_msg"
 
         # Wait for delivery confirmation via capture-pane
-        if _wait_for_delivery "$agent" "$msg_id" "$timeout"; then
-            echo "Delivered to $agent: $msg_id"
+        if _wait_for_delivery_session "$session" "$msg_id" "$timeout"; then
+            echo "✓ Delivered to $agent: $msg_id"
             return 0
         fi
 
@@ -223,7 +317,7 @@ send() {
 
             # Re-check delivery after force submit
             if tmux capture-pane -t "$session" -p -S -100 2>/dev/null | grep -q "$msg_id"; then
-                echo "Delivered to $agent (after force): $msg_id"
+                echo "✓ Delivered to $agent (after force): $msg_id"
                 return 0
             fi
         fi
@@ -231,135 +325,145 @@ send() {
         ((attempt++))
     done
 
-    echo "Failed to deliver to $agent after $((retries + 1)) attempts"
+    echo "✗ Failed to deliver to $agent in team '$team' after $((retries + 1)) attempts"
     return 1
 }
 
-# Alias for backward compatibility
+# Alias for backward compatibility (defaults to default team)
 send_verified() { send "$@"; }
 
 # ===== AGENT FUNCTIONS =====
 
-# List active agents
+# List active agents for a team
+# Usage: list_agents [team]
 list_agents() {
-    local agents=$(_get_sessions)
-    [ -z "$agents" ] && echo "No active agents" && return 1
-    echo "=== Active Agents ==="
-    echo "$agents" | sed 's/^agent-/  /'
-}
-
-# Build dynamic functions (ana "msg", carl "msg", etc.)
-_build_functions() {
-    for session in $(_get_sessions); do
-        local name="${session#agent-}"
-        local func="${name//-/_}"  # ana-2 -> ana_2
-        eval "${func}() { send '$name' \"\$@\"; }"
+    local team="${1:-$NOLAN_DEFAULT_TEAM}"
+    local agents=$(_get_sessions "$team" "true")
+    [ -z "$agents" ] && echo "No active agents in team '$team'" && return 1
+    echo "=== Active Agents (team: $team) ==="
+    for session in $agents; do
+        local agent=$(_extract_agent_name "$session")
+        echo "  $agent ($session)"
     done
 }
 
-# Rebuild aliases (call after new agents start)
+# Build dynamic functions for a team (ana "msg", carl "msg", etc.)
+# Functions are team-scoped: ana() sends to agent in current team
+# Usage: _build_functions [team]
+_build_functions() {
+    local team="${1:-$NOLAN_DEFAULT_TEAM}"
+
+    for session in $(_get_sessions "$team" "true"); do
+        local agent=$(_extract_agent_name "$session")
+        local func="${agent//-/_}"  # ana-2 -> ana_2, ralph-ziggy -> ralph_ziggy
+
+        # Create function that sends to this agent in the specified team
+        eval "${func}() { send '$agent' \"\$1\" '$team' \"\${2:-\$NOLAN_MSG_TIMEOUT}\" \"\${3:-\$NOLAN_MSG_RETRY}\"; }"
+    done
+}
+
+# Rebuild aliases for a team (call after new agents start)
+# Usage: rebuild [team]
 rebuild() {
-    _build_functions
-    echo "Rebuilt aliases"
-    list_agents
+    local team="${1:-$NOLAN_DEFAULT_TEAM}"
+    _build_functions "$team"
+    echo "Rebuilt aliases for team '$team'"
+    list_agents "$team"
 }
 
 # ===== BROADCAST =====
 
-# Internal broadcast helper
-_broadcast() {
-    local pattern="$1" label="$2"; shift 2
-    local message="$*"
-    local agents=$(_get_sessions "$pattern")
+# Broadcast to core agents in a team (team-isolated)
+# Usage: _broadcast_team <team> <message>
+_broadcast_team() {
+    local team="$1"
+    local message="$2"
     local count=0 failed=0
 
-    [ -z "$agents" ] && echo "No agents match pattern" && return 1
+    # Get all sessions for this team
+    local all_sessions=$(tmux list-sessions -F '#{session_name}' 2>/dev/null)
 
-    for session in $agents; do
-        if send "${session#agent-}" "$message"; then
-            ((count++))
-        else
-            ((failed++))
+    for session in $all_sessions; do
+        # Team-scoped core only: agent-{team}-{name}
+        if [[ "$session" =~ ^agent-([a-z0-9]+)-([a-z]+)$ ]]; then
+            local session_team="${BASH_REMATCH[1]}"
+            if [ "$session_team" = "$team" ]; then
+                local agent="${BASH_REMATCH[2]}"
+                if send "$agent" "$message" "$team"; then
+                    ((count++))
+                else
+                    ((failed++))
+                fi
+            fi
         fi
+        # NOTE: Spawned instances and Ralph are NOT included in team broadcasts
     done
 
-    echo "Broadcast to $label: $count delivered, $failed failed"
+    [ $count -eq 0 ] && [ $failed -eq 0 ] && echo "No agents in team '$team'" && return 1
+
+    echo "Broadcast to team '$team': $count delivered, $failed failed"
     [ $failed -eq 0 ]
 }
 
-# Send to core agents only (no spawned instances)
+# Send to core agents only in current team
+# Usage: team "message" [team_name]
 team() {
-    local pattern=$(python3 -c "
-import yaml, os, sys
-try:
-    nolan_root = os.environ.get('NOLAN_ROOT', os.path.expanduser('~/.nolan'))
-    config_path = os.path.join(nolan_root, 'teams', 'default.yaml')
-    config = yaml.safe_load(open(config_path))
-    pattern = [g['pattern'] for g in config['team']['communication']['broadcast_groups'] if g['name'] == 'core'][0]
-    print(pattern)
-except Exception as e:
-    print('^agent-[a-z]+$', file=sys.stderr)  # Fallback
-" 2>/dev/null || echo "^agent-[a-z]+$")
-    _broadcast "$pattern" "core team" "$@"
-}
-
-# Send to all agents (core + spawned)
-all() {
-    local pattern=$(python3 -c "
-import yaml, os, sys
-try:
-    nolan_root = os.environ.get('NOLAN_ROOT', os.path.expanduser('~/.nolan'))
-    config_path = os.path.join(nolan_root, 'teams', 'default.yaml')
-    config = yaml.safe_load(open(config_path))
-    pattern = [g['pattern'] for g in config['team']['communication']['broadcast_groups'] if g['name'] == 'all_agents'][0]
-    print(pattern)
-except Exception as e:
-    print('^agent-[a-z]+(-[0-9]+)?$', file=sys.stderr)  # Fallback
-" 2>/dev/null || echo "^agent-[a-z]+(-[0-9]+)?$")
-    _broadcast "$pattern" "all agents" "$@"
+    local message="$1"
+    local team="${2:-$NOLAN_DEFAULT_TEAM}"
+    _broadcast_team "$team" "$message"
 }
 
 # ===== DEBUGGING =====
 
 # Show agent's recent output (uses capture-pane - most reliable for Claude Code)
+# Usage: show <agent> [lines] [team]
 show() {
     local agent="$1"
     local lines="${2:-30}"
+    local team="${3:-$NOLAN_DEFAULT_TEAM}"
+    local session=$(_build_session_name "$team" "$agent")
 
-    _agent_exists "$agent" || { echo "Agent '$agent' not found"; return 1; }
+    _agent_exists "$agent" "$team" || { echo "Agent '$agent' not found in team '$team'"; return 1; }
 
     echo "=== $agent pane (last $lines lines) ==="
-    tmux capture-pane -t "agent-$agent" -p -S "-$lines"
+    tmux capture-pane -t "$session" -p -S "-$lines"
 }
 
 # Check if message was delivered (uses capture-pane)
+# Usage: check <agent> <msg_id> [team]
 check() {
     local agent="$1"
     local msg_id="$2"
+    local team="${3:-$NOLAN_DEFAULT_TEAM}"
+    local session=$(_build_session_name "$team" "$agent")
 
-    [ -z "$msg_id" ] && echo "Usage: check <agent> <msg_id>" && return 1
-    _agent_exists "$agent" || { echo "Agent '$agent' not found"; return 1; }
+    [ -z "$msg_id" ] && echo "Usage: check <agent> <msg_id> [team]" && return 1
+    _agent_exists "$agent" "$team" || { echo "Agent '$agent' not found in team '$team'"; return 1; }
 
-    if tmux capture-pane -t "agent-$agent" -p -S -200 | grep -q "$msg_id"; then
-        echo "Found: $msg_id"
+    if tmux capture-pane -t "$session" -p -S -200 | grep -q "$msg_id"; then
+        echo "✓ Found: $msg_id"
         return 0
     fi
 
-    echo "Not found: $msg_id"
+    echo "✗ Not found: $msg_id"
     return 1
 }
 
 # Show agent output log path
+# Usage: logpath <agent> [team]
 logpath() {
     local agent="$1"
-    _agent_exists "$agent" || { echo "Agent '$agent' not found"; return 1; }
+    local team="${2:-$NOLAN_DEFAULT_TEAM}"
+    _agent_exists "$agent" "$team" || { echo "Agent '$agent' not found in team '$team'"; return 1; }
     echo $(_outlog "$agent")
 }
 
 # Tail agent output in real-time
+# Usage: tail_agent <agent> [team]
 tail_agent() {
     local agent="$1"
-    _agent_exists "$agent" || { echo "Agent '$agent' not found"; return 1; }
+    local team="${2:-$NOLAN_DEFAULT_TEAM}"
+    _agent_exists "$agent" "$team" || { echo "Agent '$agent' not found in team '$team'"; return 1; }
 
     local outlog=$(_outlog "$agent")
     [ -f "$outlog" ] || { echo "No output log for $agent"; return 1; }
@@ -372,38 +476,46 @@ tail_agent() {
 
 help() {
     cat <<'EOF'
-AGENT COMMUNICATION
+AGENT COMMUNICATION (Team-Scoped)
 
-  list_agents          Show active agents
-  rebuild              Rebuild aliases after new agents start
+  list_agents [team]        Show active agents in team (default: $NOLAN_DEFAULT_TEAM)
+  rebuild [team]            Rebuild aliases for team after new agents start
 
 SEND (with delivery confirmation)
-  send <agent> "msg" [timeout] [retries]
-  <agent> "msg"        Shorthand (e.g., ana "Hello", carl_2 "msg")
+  send <agent> "msg" [team] [timeout] [retries]
+  <agent> "msg"             Shorthand (e.g., ana "Hello", carl_2 "msg")
+                            Uses current team from $NOLAN_DEFAULT_TEAM
 
-BROADCAST
-  team "msg"           Core agents only
-  all "msg"            All agents (core + spawned)
+BROADCAST (team-isolated, core agents only)
+  team "msg" [team]         Broadcast to core agents in specified team
 
 OUTPUT & DEBUGGING
-  show <agent> [lines]     Recent output from log or pane
-  tail_agent <agent>       Real-time output tail
-  check <agent> <msg_id>   Verify delivery
-  logpath <agent>          Show output log path
+  show <agent> [lines] [team]    Recent output from pane
+  tail_agent <agent> [team]      Real-time output tail
+  check <agent> <msg_id> [team]  Verify delivery
+  logpath <agent> [team]         Show output log path
 
 OUTPUT CAPTURE
-  enable_capture <agent>   Start logging agent output
-  disable_capture <agent>  Stop logging
+  enable_capture <agent>    Start logging agent output
+  disable_capture <agent>   Stop logging
 
 CONFIGURATION (environment variables)
+  NOLAN_DEFAULT_TEAM  Active team context (default: default)
   NOLAN_MAILBOX       Output log directory (default: ~/.nolan/mailbox)
   NOLAN_MSG_TIMEOUT   Delivery timeout in seconds (default: 5)
   NOLAN_MSG_RETRY     Retry attempts (default: 2)
 
+SESSION NAMING CONVENTION
+  Core agents:    agent-{team}-{name}           (e.g., agent-default-ana)
+  Spawned:        agent-{team}-{name}-{instance} (e.g., agent-default-ana-2)
+  Ralph:          agent-ralph-{id}              (e.g., agent-ralph-ziggy)
+
 NOTES
+  - Team isolation: Messages are scoped to a team. Use NOLAN_DEFAULT_TEAM to set context.
+  - Ralph is team-independent and can be messaged from any team
+  - Broadcasts only reach core agents (spawned instances excluded)
   - Use single quotes for messages with special chars: send ana 'path is $HOME'
   - Functions are exported for subshell use (parallel with &)
-  - Install inotify-tools for faster delivery confirmation
 EOF
 }
 
@@ -416,25 +528,27 @@ rebuild_aliases() { rebuild; }
 # ===== EXPORT FUNCTIONS FOR SUBSHELLS =====
 # Required for parallel execution with & or xargs
 export -f _get_sessions _agent_exists _outlog _msg_id
-export -f _exit_copy_mode _wait_for_delivery _send_plain _force_submit
-export -f send send_verified list_agents
+export -f _build_session_name _extract_agent_name
+export -f _exit_copy_mode _wait_for_delivery _wait_for_delivery_session _send_plain _force_submit
+export -f send send_verified list_agents rebuild
 export -f enable_capture disable_capture
 export -f show check logpath tail_agent
-export -f team all _broadcast
+export -f team _broadcast_team
 
 # Export config vars
-export NOLAN_ROOT NOLAN_MAILBOX NOLAN_MSG_TIMEOUT NOLAN_MSG_RETRY
+export NOLAN_ROOT NOLAN_MAILBOX NOLAN_MSG_TIMEOUT NOLAN_MSG_RETRY NOLAN_DEFAULT_TEAM
 
 # ===== INITIALIZATION =====
 # Note: pipe-pane capture removed - incompatible with Claude Code sessions
-_build_functions
+_build_functions "$NOLAN_DEFAULT_TEAM"
 
 # Export dynamic agent functions after building
 _export_agent_functions() {
-    for session in $(_get_sessions); do
-        local func="${session#agent-}"
-        func="${func//-/_}"
+    local team="${1:-$NOLAN_DEFAULT_TEAM}"
+    for session in $(_get_sessions "$team" "true"); do
+        local agent=$(_extract_agent_name "$session")
+        local func="${agent//-/_}"
         export -f "$func" 2>/dev/null || true
     done
 }
-_export_agent_functions
+_export_agent_functions "$NOLAN_DEFAULT_TEAM"

@@ -10,6 +10,7 @@ interface TeamState {
   loadTeam: (name: string) => Promise<void>;
   loadAvailableTeams: () => Promise<void>;
   loadAllTeams: () => Promise<void>;
+  deleteTeam: (name: string) => Promise<void>;
 }
 
 export const useTeamStore = create<TeamState>((set, get) => ({
@@ -49,5 +50,9 @@ export const useTeamStore = create<TeamState>((set, get) => ({
     }
 
     set({ teamConfigs: configs });
+  },
+
+  deleteTeam: async (name: string) => {
+    await invoke('delete_team', { teamName: name });
   },
 }));

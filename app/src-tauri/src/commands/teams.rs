@@ -192,3 +192,37 @@ pub async fn set_project_team(project_name: String, team_name: String) -> Result
 
     Ok(())
 }
+
+/// Delete a team configuration file
+///
+/// Security: Validates team name to prevent path traversal attacks
+/// Prevents deletion of the "default" team
+#[tauri::command]
+pub async fn delete_team(team_name: String) -> Result<(), String> {
+    // Prevent deletion of the default team
+    if team_name == "default" {
+        return Err("Cannot delete the default team".to_string());
+    }
+
+    // Validate team_name doesn't contain path traversal
+    if team_name.contains("..") || team_name.contains("/") || team_name.contains("\\") {
+        return Err("Invalid team name: path traversal not allowed".to_string());
+    }
+
+    let nolan_root = std::env::var("NOLAN_ROOT")
+        .map_err(|_| "NOLAN_ROOT not set".to_string())?;
+    let teams_dir = PathBuf::from(nolan_root).join("teams");
+
+    let config_path = teams_dir.join(format!("{}.yaml", team_name));
+
+    // Check file exists
+    if !config_path.exists() {
+        return Err(format!("Team '{}' does not exist", team_name));
+    }
+
+    // Delete the file
+    fs::remove_file(&config_path)
+        .map_err(|e| format!("Failed to delete team config file: {}", e))?;
+
+    Ok(())
+}

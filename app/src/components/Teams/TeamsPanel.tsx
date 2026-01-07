@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTeamStore } from '../../store/teamStore';
 import { useToastStore } from '../../store/toastStore';
 import { TeamEditor } from './TeamEditor';
-import { Users, Plus, Edit2, Check, FileText } from 'lucide-react';
+import { Users, Plus, Edit2, Check, FileText, Trash2 } from 'lucide-react';
 import type { TeamConfig, AgentDirectoryInfo } from '@/types';
 
 export const TeamsPanel: React.FC = () => {
@@ -14,6 +14,8 @@ export const TeamsPanel: React.FC = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [agentInfos, setAgentInfos] = useState<AgentDirectoryInfo[]>([]);
+  const [contextMenuTeam, setContextMenuTeam] = useState<string | null>(null);
+  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
 
   // Fetch agent directories for role/model info
   const fetchAgentInfos = useCallback(async () => {
@@ -74,6 +76,49 @@ export const TeamsPanel: React.FC = () => {
     }
   };
 
+  const handleContextMenu = (e: React.MouseEvent, teamName: string) => {
+    e.preventDefault();
+    setContextMenuTeam(teamName);
+    setContextMenuPos({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleDeleteTeam = async (teamName: string) => {
+    if (teamName === 'default') {
+      showError('Cannot delete the default team');
+      setContextMenuTeam(null);
+      setContextMenuPos(null);
+      return;
+    }
+
+    try {
+      await invoke('delete_team', { teamName });
+      if (selectedTeam === teamName) {
+        setSelectedTeam(null);
+        setTeamConfig(null);
+      }
+      await loadAvailableTeams();
+      success(`Team '${teamName}' deleted successfully`);
+    } catch (err) {
+      showError(`Failed to delete team: ${err}`);
+    } finally {
+      setContextMenuTeam(null);
+      setContextMenuPos(null);
+    }
+  };
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setContextMenuTeam(null);
+      setContextMenuPos(null);
+    };
+
+    if (contextMenuPos) {
+      document.addEventListener('click', handleClickOutside);
+      return () => document.removeEventListener('click', handleClickOutside);
+    }
+  }, [contextMenuPos]);
+
   if (isEditing) {
     return (
       <TeamEditor
@@ -88,14 +133,9 @@ export const TeamsPanel: React.FC = () => {
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500/20 to-purple-500/20 flex items-center justify-center">
-            <Users className="w-5 h-5 text-violet-400" />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold text-foreground">Team Configurations</h1>
-            <p className="text-sm text-muted-foreground">Manage agent teams and workflows</p>
-          </div>
+        <div>
+          <h1 className="text-xl font-semibold text-foreground">Team Configurations</h1>
+          <p className="text-sm text-muted-foreground">Manage agent teams and workflows</p>
         </div>
         <button
           onClick={handleCreateTeam}
@@ -107,9 +147,9 @@ export const TeamsPanel: React.FC = () => {
       </div>
 
       {/* Team List and Details */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-6 min-h-0">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-4 gap-6 min-h-0">
         {/* Team List */}
-        <div className="lg:col-span-1 bg-card/50 backdrop-blur-sm rounded-xl border border-border p-4 overflow-auto">
+        <div className="lg:col-span-1 bg-card/50 backdrop-blur-sm rounded-xl border border-border p-4 overflow-auto relative">
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-4">
             Available Teams ({availableTeams.length})
           </h2>
@@ -118,6 +158,7 @@ export const TeamsPanel: React.FC = () => {
               <button
                 key={teamName}
                 onClick={() => handleSelectTeam(teamName)}
+                onContextMenu={(e) => handleContextMenu(e, teamName)}
                 className={`w-full text-left p-3 rounded-lg transition-colors flex items-center gap-3 ${
                   selectedTeam === teamName
                     ? 'bg-primary/10 border border-primary/30 text-foreground'
@@ -125,14 +166,14 @@ export const TeamsPanel: React.FC = () => {
                 }`}
               >
                 <FileText className="w-4 h-4 text-muted-foreground" />
-                <span className="font-medium">{teamName}</span>
+                <span className="font-medium truncate">{teamName}</span>
                 {teamName === 'default' && (
-                  <span className="ml-auto text-xs px-2 py-0.5 rounded bg-primary/20 text-primary">
+                  <span className="ml-auto text-xs px-2 py-0.5 rounded bg-primary/20 text-primary flex-shrink-0">
                     Default
                   </span>
                 )}
                 {selectedTeam === teamName && (
-                  <Check className="w-4 h-4 text-primary ml-auto" />
+                  <Check className="w-4 h-4 text-primary ml-auto flex-shrink-0" />
                 )}
               </button>
             ))}
@@ -142,10 +183,30 @@ export const TeamsPanel: React.FC = () => {
               </p>
             )}
           </div>
+
+          {/* Context Menu */}
+          {contextMenuTeam && contextMenuPos && (
+            <div
+              className="fixed bg-card border border-border rounded-lg shadow-lg p-1 z-50"
+              style={{
+                left: `${contextMenuPos.x}px`,
+                top: `${contextMenuPos.y}px`,
+              }}
+            >
+              <button
+                onClick={() => handleDeleteTeam(contextMenuTeam)}
+                disabled={contextMenuTeam === 'default'}
+                className="w-full text-left px-4 py-2 rounded-md text-sm text-destructive hover:bg-destructive/10 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                Delete Team
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Team Details */}
-        <div className="lg:col-span-2 bg-card/50 backdrop-blur-sm rounded-xl border border-border p-6 overflow-auto">
+        <div className="lg:col-span-3 bg-card/50 backdrop-blur-sm rounded-xl border border-border p-6 overflow-auto">
           {teamConfig ? (
             <div>
               {/* Team Header */}

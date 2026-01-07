@@ -1,5 +1,5 @@
 import React from 'react';
-import { HistoryEntry, AGENT_TEXT_COLORS, AgentName, isValidAgentName } from '../../types';
+import { HistoryEntry, AGENT_TEXT_COLORS, AgentName } from '../../types';
 
 interface LogEntryProps {
   entry: HistoryEntry;
@@ -42,7 +42,7 @@ export const LogEntry: React.FC<LogEntryProps> = ({ entry, onSelect, isSelected 
       const instanceNumber = sessionMatch[2];
       return {
         displayName: `${agentName.toUpperCase()}${instanceNumber}`,
-        agentName: isValidAgentName(agentName) ? agentName : null
+        agentName: agentName
       };
     }
 
@@ -50,7 +50,7 @@ export const LogEntry: React.FC<LogEntryProps> = ({ entry, onSelect, isSelected 
     const normalizedName = agent.toLowerCase();
     return {
       displayName: agent.toUpperCase(),
-      agentName: isValidAgentName(normalizedName) ? normalizedName : null
+      agentName: normalizedName
     };
   };
 

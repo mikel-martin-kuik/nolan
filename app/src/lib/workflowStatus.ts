@@ -26,14 +26,17 @@ import type {
   WorkflowFile,
   AgentWorkflowState,
   TurnCategory,
+  TeamConfig,
 } from '../types';
+import type { FileCompletion } from '../types/projects';
 import {
   AGENT_WORKFLOW_ROLE,
   WORKFLOW_PHASES,
   AGENT_DEPENDENCIES,
 } from '../types';
 
-// Map workflow files to the agent that produces them
+// Legacy constant for backward compatibility (will be removed after migration)
+// TODO: Replace with dynamic mapping from team.team.workflow.phases
 const FILE_TO_AGENT: Record<WorkflowFile, AgentName> = {
   'context': 'dan',
   'research': 'ana',
@@ -58,62 +61,69 @@ const STATUS_CONFIG: Record<WorkflowStatus, { label: string; color: string }> = 
 // =============================================================================
 
 /**
- * Check if a workflow file exists in the project
+ * Check if a workflow file is completed (has HANDOFF marker)
+ * Falls back to checking existence if FileCompletion[] is not provided
  */
-function hasFile(existingFiles: string[], fileKey: WorkflowFile): boolean {
+function hasFile(files: string[] | FileCompletion[], fileKey: WorkflowFile): boolean {
+  if (files.length === 0) return false;
+
+  // Check if it's FileCompletion[] (has 'completed' property)
+  if (typeof files[0] === 'object' && 'completed' in files[0]) {
+    const completions = files as FileCompletion[];
+    const fileCompletion = completions.find(f => f.file.includes(fileKey));
+    return fileCompletion?.completed ?? false;
+  }
+
+  // Fallback: string[] - just check existence (backwards compatibility)
+  const existingFiles = files as string[];
   return existingFiles.some(f => f.includes(fileKey));
 }
 
 /**
- * Determine the current workflow phase based on existing files.
- *
- * Phase progression:
- *   0: No files (need context.md)
- *   1: context exists (need research.md)
- *   2: research exists (need plan.md)
- *   3: plan exists (need qa-review.md for plan)
- *   4: qa-review exists (need progress.md)
- *   5: progress exists (need final qa-review.md)
- *   6: Complete (all files exist, final QA done)
- *
- * Note: We detect QA pass by checking if progress.md exists alongside qa-review.md
+ * Check if a workflow file exists (regardless of completion status)
  */
-function getCurrentPhase(existingFiles: string[]): number {
-  const hasContext = hasFile(existingFiles, 'context');
-  const hasResearch = hasFile(existingFiles, 'research');
-  const hasPlan = hasFile(existingFiles, 'plan');
-  const hasQaReview = hasFile(existingFiles, 'qa-review');
-  const hasProgress = hasFile(existingFiles, 'progress');
+function hasFileExists(files: string[] | FileCompletion[], fileKey: WorkflowFile): boolean {
+  if (files.length === 0) return false;
 
-  // Work backwards from completion
-  if (hasProgress && hasQaReview) {
-    // Both progress and qa-review exist - could be phase 5 or 6
-    // Phase 6 means QA reviewed progress (we'd need timestamp checking for precision)
-    // For now, if progress exists with qa-review, assume QA pass 2 is needed/done
-    return 5;
+  // Check if it's FileCompletion[]
+  if (typeof files[0] === 'object' && 'exists' in files[0]) {
+    const completions = files as FileCompletion[];
+    const fileCompletion = completions.find(f => f.file.includes(fileKey));
+    return fileCompletion?.exists ?? false;
   }
-  if (hasProgress) {
-    // Progress exists but no qa-review for it yet
-    return 5;
-  }
-  if (hasQaReview) {
-    // QA review exists (for plan), Carl can now implement
-    return 4;
-  }
-  if (hasPlan) {
-    // Plan exists, needs QA review
-    return 3;
-  }
-  if (hasResearch) {
-    // Research exists, Bill can plan
-    return 2;
-  }
-  if (hasContext) {
-    // Context exists, Ana can research
-    return 1;
-  }
-  // No files yet
-  return 0;
+
+  // Fallback: string[] - just check existence
+  const existingFiles = files as string[];
+  return existingFiles.some(f => f.includes(fileKey));
+}
+
+/**
+ * Determine the current workflow phase based on completed files (HANDOFF markers).
+ *
+ * Phase progression (5 phases, matching 5 workflow files):
+ *   0: No files completed (need context.md)
+ *   1: context completed (need research.md)
+ *   2: research completed (need plan.md)
+ *   3: plan completed (need qa-review.md)
+ *   4: qa-review completed (need progress.md)
+ *   5: All complete (progress.md completed)
+ *
+ * Note: Completion is determined by HANDOFF markers, not just file existence.
+ */
+function getCurrentPhase(files: string[] | FileCompletion[]): number {
+  const hasContext = hasFile(files, 'context');
+  const hasResearch = hasFile(files, 'research');
+  const hasPlan = hasFile(files, 'plan');
+  const hasQaReview = hasFile(files, 'qa-review');
+  const hasProgress = hasFile(files, 'progress');
+
+  // Count completed phases
+  if (hasProgress) return 5;  // All complete
+  if (hasQaReview) return 4;  // QA review done, need progress
+  if (hasPlan) return 3;      // Plan done, need QA review
+  if (hasResearch) return 2;  // Research done, need plan
+  if (hasContext) return 1;   // Context done, need research
+  return 0;                   // No files completed yet
 }
 
 /**
@@ -137,8 +147,8 @@ function getPhaseInfo(phase: number): { owner: AgentName | null; name: string } 
  *   - Pass 1 (phase 3): Review plan.md
  *   - Pass 2 (phase 5): Review progress.md
  */
-function getEnzoRequiredFile(existingFiles: string[]): WorkflowFile {
-  const hasProgress = hasFile(existingFiles, 'progress');
+function getEnzoRequiredFile(files: string[] | FileCompletion[]): WorkflowFile {
+  const hasProgress = hasFileExists(files, 'progress');
 
   // If progress exists, Enzo needs to review it (pass 2)
   if (hasProgress) {
@@ -151,10 +161,10 @@ function getEnzoRequiredFile(existingFiles: string[]): WorkflowFile {
 /**
  * Determine which QA pass Enzo is on
  */
-function getEnzoQAPass(existingFiles: string[]): 1 | 2 | null {
-  const hasPlan = hasFile(existingFiles, 'plan');
-  const hasProgress = hasFile(existingFiles, 'progress');
-  const hasQaReview = hasFile(existingFiles, 'qa-review');
+function getEnzoQAPass(files: string[] | FileCompletion[]): 1 | 2 | null {
+  const hasPlan = hasFileExists(files, 'plan');
+  const hasProgress = hasFileExists(files, 'progress');
+  const hasQaReview = hasFileExists(files, 'qa-review');
 
   if (hasProgress) {
     return 2; // Reviewing or done reviewing progress
@@ -173,12 +183,12 @@ function getEnzoQAPass(existingFiles: string[]): 1 | 2 | null {
  */
 function findMissingDependency(
   agentName: AgentName,
-  existingFiles: string[]
+  files: string[] | FileCompletion[]
 ): { file: WorkflowFile; agent: AgentName } | null {
   // Special handling for Enzo (dual-phase QA)
   if (agentName === 'enzo') {
-    const requiredFile = getEnzoRequiredFile(existingFiles);
-    if (!hasFile(existingFiles, requiredFile)) {
+    const requiredFile = getEnzoRequiredFile(files);
+    if (!hasFile(files, requiredFile)) {
       return {
         file: requiredFile,
         agent: FILE_TO_AGENT[requiredFile],
@@ -191,7 +201,7 @@ function findMissingDependency(
   const role = AGENT_WORKFLOW_ROLE[agentName];
 
   for (const requiredFile of role.requires) {
-    if (!hasFile(existingFiles, requiredFile)) {
+    if (!hasFile(files, requiredFile)) {
       return {
         file: requiredFile,
         agent: FILE_TO_AGENT[requiredFile],
@@ -221,14 +231,14 @@ function determinePhaseOwner(phase: number): AgentName | null {
  */
 function getWaitingOnMe(
   agentName: AgentName,
-  existingFiles: string[]
+  files: string[] | FileCompletion[]
 ): AgentName[] {
   const waiting: AgentName[] = [];
   const downstream = AGENT_DEPENDENCIES[agentName].downstream;
 
   for (const dependentAgent of downstream) {
     // Check if this dependent agent is actually blocked by us
-    const missingDep = findMissingDependency(dependentAgent, existingFiles);
+    const missingDep = findMissingDependency(dependentAgent, files);
     if (missingDep && missingDep.agent === agentName) {
       waiting.push(dependentAgent);
     }
@@ -244,15 +254,17 @@ function determineTurnCategory(
   agentName: AgentName,
   status: WorkflowStatus,
   isNextUp: boolean,
-  waitingOnMe: AgentName[]
+  waitingOnMe: AgentName[],
+  team: TeamConfig
 ): TurnCategory {
-  // Free agents and coordinator
-  if (agentName === 'ralph') {
+  // Check if agent is a workflow participant
+  const agentConfig = team.team.agents.find(a => a.name === agentName);
+  if (!agentConfig?.workflow_participant) {
     return 'not_involved';
   }
 
-  // Dan is coordinator, always available but not "next up" in workflow sense
-  if (agentName === 'dan') {
+  // Check if agent is the coordinator (not in workflow but manages it)
+  if (agentName === team.team.workflow.coordinator) {
     return 'not_involved';
   }
 
@@ -295,13 +307,14 @@ function determineTurnCategory(
  */
 export function computeWorkflowState(
   agent: AgentStatus,
-  existingFiles: string[],
+  files: string[] | FileCompletion[],
   isStreaming: boolean,
-  hasMessages: boolean
+  hasMessages: boolean,
+  team: TeamConfig
 ): AgentWorkflowState {
   const agentName = agent.name as AgentName;
   const role = AGENT_WORKFLOW_ROLE[agentName];
-  const currentPhase = getCurrentPhase(existingFiles);
+  const currentPhase = getCurrentPhase(files);
   const phaseInfo = getPhaseInfo(currentPhase);
   const phaseOwner = determinePhaseOwner(currentPhase);
 
@@ -332,7 +345,7 @@ export function computeWorkflowState(
   }
   // 4. Check for blocked state (missing dependencies)
   else {
-    const missingDep = findMissingDependency(agentName, existingFiles);
+    const missingDep = findMissingDependency(agentName, files);
 
     if (missingDep) {
       status = 'blocked';
@@ -341,36 +354,35 @@ export function computeWorkflowState(
       canStart = false;
     }
     // 5. Check if agent's output already exists (they're done or in QA)
-    else if (role.produces && hasFile(existingFiles, role.produces)) {
-      // Special case for Enzo - check which QA pass we're on
-      if (agentName === 'enzo') {
-        const pass = getEnzoQAPass(existingFiles);
+    else if (role.produces && hasFile(files, role.produces)) {
+      // Check if this agent has multi-pass QA (e.g., Enzo)
+      const currentAgentConfig = team.team.agents.find(a => a.name === agentName);
+      if (currentAgentConfig?.qa_passes && currentAgentConfig.qa_passes > 1) {
+        const pass = getEnzoQAPass(files);
         qaPass = pass;
-        // Enzo is "complete" when progress has been reviewed
-        if (pass === 2 && hasFile(existingFiles, 'qa-review')) {
+        // Complete when final pass is done
+        if (pass !== null && pass === currentAgentConfig.qa_passes && hasFile(files, 'qa-review')) {
           status = 'complete';
-        } else if (pass === 1 && hasFile(existingFiles, 'qa-review')) {
-          // Pass 1 done, waiting for Carl
+        } else if (pass !== null && pass > 0 && hasFile(files, 'qa-review')) {
+          // Intermediate pass done, waiting for next phase
           status = 'complete';
         } else {
           status = 'ready';
         }
       }
-      // Check if output is awaiting QA (for Bill and Carl)
-      else if (role.produces === 'plan') {
-        // Bill's plan needs QA - blocked by Enzo
-        if (!hasFile(existingFiles, 'qa-review')) {
+      // Check if output is awaiting QA (agents with awaits_qa: true)
+      else if (currentAgentConfig?.awaits_qa) {
+        // Find QA agent in team config
+        const qaAgent = team.team.agents.find(a => a.qa_passes && a.qa_passes > 0);
+        const qaAgentName = qaAgent?.name || 'enzo'; // Fallback to 'enzo' for backward compat
+
+        if (!hasFile(files, 'qa-review')) {
           status = 'blocked';
           awaitingQA = true;
-          blockedBy = 'enzo';
+          blockedBy = qaAgentName as AgentName;
         } else {
           status = 'complete';
         }
-      } else if (role.produces === 'progress') {
-        // Carl's progress needs final QA - blocked by Enzo
-        status = 'blocked';
-        awaitingQA = true;
-        blockedBy = 'enzo';
       } else {
         status = 'complete';
       }
@@ -384,8 +396,8 @@ export function computeWorkflowState(
     }
   }
 
-  // Special case: Dan is the coordinator
-  if (agentName === 'dan') {
+  // Special case: Coordinator agent (e.g., Dan)
+  if (agentName === team.team.workflow.coordinator) {
     if (agent.active && agent.current_project && agent.current_project !== 'VIBING') {
       status = isStreaming ? 'working' : (hasMessages ? 'waiting_input' : 'ready');
     }
@@ -393,8 +405,11 @@ export function computeWorkflowState(
     blockedByFile = null;
   }
 
-  // Special case: Ralph is a free agent
-  if (agentName === 'ralph') {
+  // Get agent config for special case handling
+  const agentConfigForSpecialCases = team.team.agents.find(a => a.name === agentName);
+
+  // Special case: Non-workflow participants (free agents like Ralph)
+  if (!agentConfigForSpecialCases?.workflow_participant) {
     if (agent.active) {
       status = isStreaming ? 'working' : (hasMessages ? 'waiting_input' : 'idle');
     }
@@ -403,19 +418,20 @@ export function computeWorkflowState(
   }
 
   // Calculate who is waiting on this agent
-  const waitingOnMe = getWaitingOnMe(agentName, existingFiles);
+  const waitingOnMe = getWaitingOnMe(agentName, files);
 
   // Determine turn category
   const turnCategory = determineTurnCategory(
     agentName,
     status,
     isNextUp,
-    waitingOnMe
+    waitingOnMe,
+    team
   );
 
-  // Get Enzo's QA pass if applicable
-  if (agentName === 'enzo') {
-    qaPass = getEnzoQAPass(existingFiles);
+  // Get QA pass for agents with multi-pass QA (e.g., Enzo)
+  if (agentConfigForSpecialCases?.qa_passes && agentConfigForSpecialCases.qa_passes > 1) {
+    qaPass = getEnzoQAPass(files);  // TODO: Generalize this for any multi-pass QA agent
   }
 
   const config = STATUS_CONFIG[status];
@@ -435,7 +451,7 @@ export function computeWorkflowState(
 
     // Phase tracking
     currentPhase,
-    totalPhases: 6,
+    totalPhases: 5,  // 5 workflow files: context, research, plan, qa-review, progress
     phaseOwner,
     phaseName: phaseInfo.name,
 
@@ -573,6 +589,7 @@ export function getTurnGroup(turnCategory: TurnCategory, status: WorkflowStatus)
 
 export {
   hasFile,
+  hasFileExists,
   getCurrentPhase,
   getPhaseInfo,
   getEnzoRequiredFile,

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Home, FolderOpen, Activity, DollarSign } from 'lucide-react';
+import { Home, FolderOpen, DollarSign, MessageCircle, Users } from 'lucide-react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
@@ -8,25 +8,43 @@ import { ThemeProvider } from './lib/theme';
 import { AppErrorBoundary } from './components/shared/AppErrorBoundary';
 import { StatusPanel } from './components/Status/StatusPanel';
 import { ProjectsPanel } from './components/Projects/ProjectsPanel';
-import { LivePanel } from './components/Live/LivePanel';
 import { UsagePanel } from './components/Usage/UsagePanel';
+import { TeamsPanel } from './components/Teams';
+import { ChatView } from './components/Chat';
 import { ToastContainer } from './components/shared/Toast';
+import { TerminalModal } from './components/Terminal/TerminalModal';
 import { BrandHeader } from './components/shared/BrandHeader';
 import { ThemeToggle } from './components/shared/ThemeToggle';
 import { useToastStore } from './store/toastStore';
 import { useLiveOutputStore } from './store/liveOutputStore';
+import { useTeamStore } from './store/teamStore';
 import { Tooltip } from './components/ui/tooltip';
 import { cn } from './lib/utils';
 import { HistoryEntry } from './types';
 import './App.css';
 
-type Tab = 'status' | 'projects' | 'live' | 'usage';
+type Tab = 'status' | 'chat' | 'projects' | 'teams' | 'usage';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('status');
   const { toasts, removeToast } = useToastStore();
 
   const addEntry = useLiveOutputStore((state) => state.addEntry);
+  const loadTeam = useTeamStore((state) => state.loadTeam);
+
+  // Load default team configuration on mount
+  useEffect(() => {
+    loadTeam('default').catch((err) => {
+      console.error('Failed to load default team:', err);
+    });
+  }, [loadTeam]);
+
+  // Listen for navigate-to-chat events from other components
+  useEffect(() => {
+    const handleNavigateToChat = () => setActiveTab('chat');
+    window.addEventListener('navigate-to-chat', handleNavigateToChat);
+    return () => window.removeEventListener('navigate-to-chat', handleNavigateToChat);
+  }, []);
 
   // Setup live output streaming
   useEffect(() => {
@@ -36,6 +54,7 @@ function App() {
       // Listen for history entries and route to live output store
       unlisten = await listen<HistoryEntry>('history-entry', (event) => {
         const entry = event.payload;
+        console.log('[App] history-entry received:', { tmux_session: entry.tmux_session, entry_type: entry.entry_type, hasMessage: !!entry.message });
         // Only add entries that have a tmux_session (active agent)
         if (entry.tmux_session) {
           addEntry(entry);
@@ -51,16 +70,18 @@ function App() {
       // Small delay to let agent status populate first
       setTimeout(async () => {
         try {
-          const status = await invoke<{ core_agents: { session: string }[]; spawned_sessions: { session: string }[] }>('get_agent_status');
+          const status = await invoke<{ core: { session: string }[]; spawned: { session: string }[] }>('get_agent_status');
           const sessions = [
-            ...status.core_agents.map(a => a.session),
-            ...status.spawned_sessions.map(a => a.session),
+            ...status.core.map(a => a.session),
+            ...status.spawned.map(a => a.session),
           ];
+          console.log('[App] Loading history for sessions:', sessions);
           if (sessions.length > 0) {
             await invoke('load_history_for_active_sessions', {
               activeSessions: sessions,
               hours: 1,
             });
+            console.log('[App] History load complete');
           }
         } catch (err) {
           console.error('Failed to load history for active sessions:', err);
@@ -77,9 +98,10 @@ function App() {
 
   const tabs = [
     { id: 'status' as Tab, label: 'Dashboard', tooltip: 'Dashboard', icon: Home },
-    { id: 'live' as Tab, label: 'Live', tooltip: 'Live Output', icon: Activity },
+    { id: 'chat' as Tab, label: 'Chat', tooltip: 'Agents', icon: MessageCircle },
     { id: 'projects' as Tab, label: 'Projects', tooltip: 'Projects', icon: FolderOpen },
-    { id: 'usage' as Tab, label: 'Usage', tooltip: 'Usage & Costs', icon: DollarSign },
+    { id: 'teams' as Tab, label: 'Teams', tooltip: 'Teams', icon: Users },
+    { id: 'usage' as Tab, label: 'Usage', tooltip: 'Usage', icon: DollarSign },
   ];
 
   return (
@@ -126,10 +148,14 @@ function App() {
               </aside>
 
               {/* Main content */}
-              <main className="flex-1 overflow-auto p-6">
+              <main className={cn(
+                "flex-1 overflow-hidden",
+                activeTab !== 'chat' && 'overflow-auto pt-0 px-6 pb-6'
+              )}>
                 {activeTab === 'status' && <StatusPanel />}
-                {activeTab === 'live' && <LivePanel />}
+                {activeTab === 'chat' && <ChatView />}
                 {activeTab === 'projects' && <ProjectsPanel />}
+                {activeTab === 'teams' && <TeamsPanel />}
                 {activeTab === 'usage' && <UsagePanel />}
               </main>
             </div>
@@ -137,6 +163,9 @@ function App() {
 
           {/* Toast notifications */}
           <ToastContainer toasts={toasts.map(toast => ({ ...toast, onClose: removeToast }))} />
+
+          {/* Terminal modal */}
+          <TerminalModal />
         </div>
         </QueryClientProvider>
       </ThemeProvider>

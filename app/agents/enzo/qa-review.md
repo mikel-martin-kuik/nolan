@@ -25,7 +25,7 @@ All critical and high-severity issues from the initial QA review have been succe
 **Verified:**
 - ✅ Config parameters added (lines 7-11): timeout, poll interval, retry count
 - ✅ `send_verified()` completely implemented (lines 46-103)
-  - Message ID generation: `MSG_$(date +%s%N | sha256sum | cut -c1-8)`
+  - Message ID generation: `MSG_${SENDER}_$(date +%s%N | sha256sum | cut -c1-8)`
   - Retry loop with configurable attempts (default: 2 retries + initial attempt)
   - Timeout tracking with elapsed time calculation
   - Stuck detection: `grep -qE "^>|^${msg_id}"` (lines 86-95)

@@ -36,9 +36,16 @@ _outlog() {
     echo "$NOLAN_MAILBOX/$1.out"
 }
 
-# Generate unique message ID
+# Generate unique message ID with sender identity
+# Format: MSG_<SENDER>_<8-hex-chars>
+# Usage: _msg_id [sender]
+# If AGENT_NAME env is set and sender not provided, uses AGENT_NAME
+# Otherwise defaults to "USER" for messages from nolan app/cli
 _msg_id() {
-    echo "MSG_$(date +%s%N | sha256sum | cut -c1-8)"
+    local sender="${1:-${AGENT_NAME:-USER}}"
+    # Uppercase the sender name
+    sender=$(echo "$sender" | tr '[:lower:]' '[:upper:]')
+    echo "MSG_${sender}_$(date +%s%N | sha256sum | cut -c1-8)"
 }
 
 # ===== OUTPUT CAPTURE =====
@@ -281,10 +288,36 @@ _broadcast() {
 }
 
 # Send to core agents only (no spawned instances)
-team() { _broadcast '^agent-[a-z]+$' "core team" "$@"; }
+team() {
+    local pattern=$(python3 -c "
+import yaml, os, sys
+try:
+    nolan_root = os.environ.get('NOLAN_ROOT', os.path.expanduser('~/.nolan'))
+    config_path = os.path.join(nolan_root, 'teams', 'default.yaml')
+    config = yaml.safe_load(open(config_path))
+    pattern = [g['pattern'] for g in config['team']['communication']['broadcast_groups'] if g['name'] == 'core'][0]
+    print(pattern)
+except Exception as e:
+    print('^agent-[a-z]+$', file=sys.stderr)  # Fallback
+" 2>/dev/null || echo "^agent-[a-z]+$")
+    _broadcast "$pattern" "core team" "$@"
+}
 
 # Send to all agents (core + spawned)
-all() { _broadcast '^agent-[a-z]+(-[0-9]+)?$' "all agents" "$@"; }
+all() {
+    local pattern=$(python3 -c "
+import yaml, os, sys
+try:
+    nolan_root = os.environ.get('NOLAN_ROOT', os.path.expanduser('~/.nolan'))
+    config_path = os.path.join(nolan_root, 'teams', 'default.yaml')
+    config = yaml.safe_load(open(config_path))
+    pattern = [g['pattern'] for g in config['team']['communication']['broadcast_groups'] if g['name'] == 'all_agents'][0]
+    print(pattern)
+except Exception as e:
+    print('^agent-[a-z]+(-[0-9]+)?$', file=sys.stderr)  # Fallback
+" 2>/dev/null || echo "^agent-[a-z]+(-[0-9]+)?$")
+    _broadcast "$pattern" "all agents" "$@"
+}
 
 # ===== DEBUGGING =====
 

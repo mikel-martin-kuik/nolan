@@ -53,10 +53,23 @@ export function ProjectListItem({
   });
 
   // Calculate workflow step completion
-  const stepCompletion = WORKFLOW_STEPS.map(step => ({
-    ...step,
-    complete: project.existing_files.some(f => f.includes(step.key)),
-  }));
+  const stepCompletion = WORKFLOW_STEPS.map(step => {
+    // Special handling for prompt.md: check if it exists AND has a HANDOFF marker
+    if (step.key === 'prompt') {
+      const promptCompletion = project.file_completions.find(f => f.file.includes('prompt'));
+      // Green only if exists AND completed (has marker)
+      return {
+        ...step,
+        complete: promptCompletion ? (promptCompletion.exists && promptCompletion.completed) : false,
+      };
+    }
+
+    // For other files, use existing_files check
+    return {
+      ...step,
+      complete: project.existing_files.some(f => f.includes(step.key)),
+    };
+  });
 
   const completedCount = stepCompletion.filter(s => s.complete).length;
 

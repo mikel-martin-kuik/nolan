@@ -2,10 +2,12 @@
 #
 # PreToolUse hook: Blocks MSG_IDs from being written to project files.
 #
-# Message IDs (MSG_xxx) are ONLY for delivery tracking, not project documentation.
+# Message IDs (MSG_<SENDER>_<ID>) are ONLY for delivery tracking, not project documentation.
+# Format: MSG_USER_abc12345, MSG_DAN_abc12345, MSG_ANA_abc12345, etc.
 #
 # Allowed locations:
-#   - Handoff Log table in NOTES.md (the | Assigned (MSG_xxx) | column only)
+#   - Handoff Log table in NOTES.md (the | Assigned (MSG_DAN_xxx) | column only)
+#   - Current Assignment section: **Assigned**: YYYY-MM-DD (MSG_DAN_xxx)
 #
 # Blocked locations:
 #   - All other content in NOTES.md (log entries, status, blockers, etc.)
@@ -54,8 +56,9 @@ if [[ -z "$content" ]]; then
     exit 0
 fi
 
-# Check for MSG_ pattern
-if ! echo "$content" | grep -q 'MSG_[a-f0-9]\{8\}'; then
+# Check for MSG_ pattern (new format: MSG_<SENDER>_<8-hex-chars>)
+# Pattern matches: MSG_USER_abc12345, MSG_DAN_abc12345, etc.
+if ! echo "$content" | grep -qE 'MSG_[A-Z]+_[a-f0-9]{8}'; then
     # No MSG_ pattern found - allow
     exit 0
 fi
@@ -64,21 +67,30 @@ fi
 filename=$(basename "$file_path")
 
 if [[ "$filename" == "NOTES.md" ]]; then
-    # For NOTES.md, allow MSG_IDs only in the Handoff Log table format:
-    # | Date | From | To | Phase | Output | Status (MSG_xxx) |
+    # For NOTES.md, allow MSG_IDs in two contexts:
+    # 1. Handoff Log table format: | Date | From | To | Phase | Output | Status (MSG_DAN_xxx) |
+    # 2. Current Assignment section: **Assigned**: YYYY-MM-DD (MSG_DAN_xxx)
 
-    # Check if the MSG_ID appears in the table cell format: " | Assigned (MSG_xxx) |" or similar
-    if echo "$content" | grep -E '\| (Assigned|Complete|Notified) \(MSG_[a-f0-9]{8}\) \|' >/dev/null; then
+    # Check if the MSG_ID appears in the table cell format
+    if echo "$content" | grep -E '\| (Assigned|Complete|Notified) \(MSG_[A-Z]+_[a-f0-9]{8}\) \|' >/dev/null; then
         # MSG_ID is in proper table format - allow
         exit 0
     fi
 
-    # MSG_ID found but NOT in table format - block
-    echo "BLOCKED: MSG_IDs can only appear in Handoff Log table in NOTES.md" >&2
-    echo "  Found MSG_ pattern outside table format in: $content" >&2
+    # Check if the MSG_ID appears in the Current Assignment section format
+    if echo "$content" | grep -E '\*\*Assigned\*\*: [0-9]{4}-[0-9]{2}-[0-9]{2} \(MSG_[A-Z]+_[a-f0-9]{8}\)' >/dev/null; then
+        # MSG_ID is in Current Assignment format - allow
+        exit 0
+    fi
+
+    # MSG_ID found but NOT in allowed formats - block
+    echo "BLOCKED: MSG_IDs can only appear in specific formats in NOTES.md" >&2
+    echo "  Found MSG_ pattern outside allowed formats in: $content" >&2
     echo "" >&2
-    echo "  Correct format: | Assigned (MSG_12345678) |" >&2
-    echo "  WRONG: 'Assignment Marker: MSG_xxx' or MSG_IDs in log entries" >&2
+    echo "  Allowed formats:" >&2
+    echo "    - Handoff Log table: | Assigned (MSG_DAN_12345678) |" >&2
+    echo "    - Current Assignment: **Assigned**: YYYY-MM-DD (MSG_DAN_12345678)" >&2
+    echo "  WRONG: 'Assignment Marker: MSG_xxx' or MSG_IDs in other locations" >&2
     exit 2
 fi
 

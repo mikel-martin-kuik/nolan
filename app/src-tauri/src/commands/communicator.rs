@@ -5,12 +5,8 @@ use std::time::{Duration, Instant};
 use std::thread;
 use once_cell::sync::Lazy;
 use uuid::Uuid;
-
-// Valid agent names
-const VALID_AGENTS: &[&str] = &["ana", "bill", "carl", "dan", "enzo", "ralph"];
-
-// Core agents (not ralph)
-const CORE_AGENTS: &[&str] = &["ana", "bill", "carl", "dan", "enzo"];
+use crate::config::TeamConfig;
+use crate::constants::VALID_AGENTS;
 
 // Compile regex patterns once at startup
 static RE_AGENT_NAME: Lazy<Regex> = Lazy::new(|| {
@@ -18,7 +14,7 @@ static RE_AGENT_NAME: Lazy<Regex> = Lazy::new(|| {
 });
 
 static RE_AGENT_INSTANCE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^([a-z]+)-[0-9]+$").expect("Invalid regex pattern for agent instance")
+    Regex::new(r"^([a-z]+)-[a-z0-9]+$").expect("Invalid regex pattern for agent instance")
 });
 
 static RE_SESSION_NAME: Lazy<Regex> = Lazy::new(|| {
@@ -26,7 +22,7 @@ static RE_SESSION_NAME: Lazy<Regex> = Lazy::new(|| {
 });
 
 static RE_SESSION_INSTANCE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^agent-([a-z]+)-[0-9]+$").expect("Invalid regex pattern for session instance")
+    Regex::new(r"^agent-([a-z]+)-[a-z0-9]+$").expect("Invalid regex pattern for session instance")
 });
 
 // Message delivery configuration
@@ -34,11 +30,14 @@ const DEFAULT_TIMEOUT_SECS: u64 = 5;
 const DEFAULT_RETRY_COUNT: u32 = 2;
 const POLL_INTERVAL_MS: u64 = 200;
 
-/// Generate a unique message ID (MSG_XXXXXXXX format)
-fn generate_message_id() -> String {
+/// Generate a unique message ID with sender identity
+/// Format: MSG_<SENDER>_<8-hex-chars>
+/// - sender: The agent name or "USER" for messages from Nolan app
+fn generate_message_id(sender: &str) -> String {
     let uuid = Uuid::new_v4();
     // Take first 8 hex characters from UUID
-    format!("MSG_{}", &uuid.simple().to_string()[..8])
+    let sender_upper = sender.to_uppercase();
+    format!("MSG_{}_{}", sender_upper, &uuid.simple().to_string()[..8])
 }
 
 /// Check if tmux pane is in copy-mode and exit it
@@ -117,9 +116,11 @@ fn agent_session_exists(agent: &str) -> bool {
 
 /// Native verified message delivery with message IDs, retry logic, and delivery confirmation
 /// Returns the message ID on success
+/// - sender: Who is sending the message (e.g., "USER" for app, or agent name for handoffs)
 fn send_verified_native(
     agent: &str,
     message: &str,
+    sender: &str,
     timeout_secs: u64,
     retry_count: u32,
 ) -> Result<String, String> {
@@ -130,7 +131,7 @@ fn send_verified_native(
         return Err(format!("Agent '{}' not found or offline", agent));
     }
 
-    let msg_id = generate_message_id();
+    let msg_id = generate_message_id(sender);
     let prefixed_msg = format!("{}: {}", msg_id, message);
 
     for attempt in 0..=retry_count {
@@ -226,22 +227,28 @@ pub async fn send_message(target: String, message: String) -> Result<String, Str
     }
 
     // Use native send_verified with default timeout
-    send_verified_native(&target, &message, DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT)
+    // Messages from Nolan app are always from "USER" (the human)
+    send_verified_native(&target, &message, "USER", DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT)
 }
 
-/// Broadcast a message to the core team (Ana, Bill, Carl, Dan, Enzo)
+/// Broadcast a message to the core team (workflow participants from team config)
 #[tauri::command]
 pub async fn broadcast_team(message: String) -> Result<BroadcastResult, String> {
+    // Load team config
+    let team = TeamConfig::load("default")
+        .map_err(|e| format!("Failed to load team config: {}", e))?;
+
     let mut successful = Vec::new();
     let mut failed = Vec::new();
 
-    for &agent in CORE_AGENTS {
+    for agent in team.workflow_participants() {
         // Check if agent session exists before sending
         if !agent_session_exists(agent) {
             continue; // Skip offline agents
         }
 
-        match send_verified_native(agent, &message, DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT) {
+        // Broadcasts from app are from USER
+        match send_verified_native(agent, &message, "USER", DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT) {
             Ok(msg_id) => successful.push(format!("{} ({})", agent, msg_id)),
             Err(e) => failed.push(format!("{}: {}", agent, e)),
         }
@@ -281,7 +288,8 @@ pub async fn broadcast_all(message: String) -> Result<BroadcastResult, String> {
             continue;
         }
 
-        match send_verified_native(&agent_name, &message, DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT) {
+        // Broadcasts from app are from USER
+        match send_verified_native(&agent_name, &message, "USER", DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT) {
             Ok(msg_id) => successful.push(format!("{} ({})", agent_name, msg_id)),
             Err(e) => failed.push(format!("{}: {}", agent_name, e)),
         }

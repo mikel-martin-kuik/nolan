@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 use serde::Serialize;
+use regex::Regex;
 use crate::utils::paths::get_projects_dir;
 
 /// Project status derived from NOTES.md
@@ -23,6 +24,25 @@ const EXPECTED_FILES: &[&str] = &[
     "NOTES.md",
 ];
 
+/// Workflow files that track completion via HANDOFF markers
+const WORKFLOW_FILES: &[&str] = &[
+    "context.md",
+    "research.md",
+    "plan.md",
+    "qa-review.md",
+    "progress.md",
+];
+
+/// Completion status for a workflow file
+#[derive(Debug, Clone, Serialize)]
+pub struct FileCompletion {
+    pub file: String,
+    pub exists: bool,
+    pub completed: bool,
+    pub completed_by: Option<String>,
+    pub completed_at: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ProjectInfo {
     pub name: String,
@@ -33,6 +53,7 @@ pub struct ProjectInfo {
     pub status_detail: Option<String>,
     pub existing_files: Vec<String>,
     pub missing_files: Vec<String>,
+    pub file_completions: Vec<FileCompletion>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -80,6 +101,89 @@ fn parse_project_status(notes_content: &str) -> (ProjectStatus, Option<String>) 
 
     // No marker = pending (explicit marking required)
     (ProjectStatus::Pending, None)
+}
+
+/// Parse HANDOFF marker from file content
+/// Format: <!-- HANDOFF:YYYY-MM-DD HH:MM:agent:COMPLETE -->
+fn parse_handoff_marker(content: &str) -> Option<(String, String)> {
+    // Match the most recent HANDOFF marker (last one in file)
+    let re = Regex::new(r"<!-- HANDOFF:(\d{4}-\d{2}-\d{2} \d{2}:\d{2}):(\w+):COMPLETE -->")
+        .ok()?;
+
+    // Find all matches and take the last one (most recent)
+    let mut last_match: Option<(String, String)> = None;
+    for cap in re.captures_iter(content) {
+        if let (Some(timestamp), Some(agent)) = (cap.get(1), cap.get(2)) {
+            last_match = Some((timestamp.as_str().to_string(), agent.as_str().to_string()));
+        }
+    }
+
+    last_match
+}
+
+/// Get completion status for workflow files (and prompt.md)
+fn get_file_completions(project_path: &PathBuf) -> Vec<FileCompletion> {
+    let mut completions = Vec::new();
+
+    // Check workflow files first
+    for file in WORKFLOW_FILES {
+        let file_path = project_path.join(file);
+        let exists = file_path.exists();
+
+        let (completed, completed_by, completed_at) = if exists {
+            // Read file and check for HANDOFF marker
+            match fs::read_to_string(&file_path) {
+                Ok(content) => {
+                    if let Some((timestamp, agent)) = parse_handoff_marker(&content) {
+                        (true, Some(agent), Some(timestamp))
+                    } else {
+                        (false, None, None)
+                    }
+                }
+                Err(_) => (false, None, None),
+            }
+        } else {
+            (false, None, None)
+        };
+
+        completions.push(FileCompletion {
+            file: file.to_string(),
+            exists,
+            completed,
+            completed_by,
+            completed_at,
+        });
+    }
+
+    // Check prompt.md separately (special file with different requirements)
+    let prompt_path = project_path.join("prompt.md");
+    let prompt_exists = prompt_path.exists();
+
+    let (prompt_completed, prompt_completed_by, prompt_completed_at) = if prompt_exists {
+        // Read file and check for HANDOFF marker
+        match fs::read_to_string(&prompt_path) {
+            Ok(content) => {
+                if let Some((timestamp, agent)) = parse_handoff_marker(&content) {
+                    (true, Some(agent), Some(timestamp))
+                } else {
+                    (false, None, None)
+                }
+            }
+            Err(_) => (false, None, None),
+        }
+    } else {
+        (false, None, None)
+    };
+
+    completions.push(FileCompletion {
+        file: "prompt.md".to_string(),
+        exists: prompt_exists,
+        completed: prompt_completed,
+        completed_by: prompt_completed_by,
+        completed_at: prompt_completed_at,
+    });
+
+    completions
 }
 
 /// Determine which expected files exist and which are missing
@@ -168,6 +272,9 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
         // Get file scaffolding info
         let (existing_files, missing_files) = get_file_scaffolding(&path);
 
+        // Get workflow file completion status
+        let file_completions = get_file_completions(&path);
+
         projects.push(ProjectInfo {
             name,
             path: path.to_string_lossy().to_string(),
@@ -177,6 +284,7 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
             status_detail,
             existing_files,
             missing_files,
+            file_completions,
         });
     }
 

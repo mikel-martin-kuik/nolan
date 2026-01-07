@@ -2,12 +2,12 @@ import React, { useCallback, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Terminal, Play, Trash2, MessageSquare, Send, X, FileEdit, Save } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Tooltip } from '@/components/ui/tooltip';
 import { useAgentStore } from '@/store/agentStore';
 import { useToastStore } from '@/store/toastStore';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
-import { AGENT_DESCRIPTIONS, isValidAgentName } from '@/types';
+import { AGENT_DESCRIPTIONS } from '@/types';
+import { getAgentDisplayNameForUI } from '@/lib/agentIdentity';
 import type { AgentStatus as AgentStatusType } from '@/types';
 
 interface AgentCardProps {
@@ -23,8 +23,8 @@ interface AgentCardProps {
   /** Disabled state */
   disabled?: boolean;
 
-  /** Instance number for spawned agents (e.g., 2 for agent-ana-2) */
-  instanceNumber?: number;
+  /** Instance identifier for spawned agents (e.g., "2" for agent-ana-2, "ziggy" for agent-ralph-ziggy) */
+  instanceId?: string;
 
   /** Hide project label (used when inside TeamCard) */
   hideProject?: boolean;
@@ -35,7 +35,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   variant = 'lifecycle',
   showActions = true,
   disabled = false,
-  instanceNumber,
+  instanceId,
   hideProject = false,
 }) => {
   const { spawnAgent, restartCoreAgent, killInstance } = useAgentStore();
@@ -55,25 +55,26 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   // Check if this is a core agent (session name matches agent-{name} exactly, no number)
   const isCoreAgent = /^agent-(ana|bill|carl|dan|enzo|ralph)$/.test(agent.session);
 
-  // Get agent description with runtime validation
-  const description = isValidAgentName(agent.name)
-    ? AGENT_DESCRIPTIONS[agent.name]
-    : agent.name;
+  // Get visual display name (ralph shows as random fun name, others show normally)
+  const displayName = getAgentDisplayNameForUI(agent.name, instanceId, isCoreAgent);
+
+  // Get agent description from team config (if available)
+  const description = AGENT_DESCRIPTIONS[agent.name] || agent.name;
 
   // Determine primary action based on agent state
   const getPrimaryAction = () => {
     if (!agent.active) {
       return {
-        label: isCoreAgent ? `Restart ${agent.name}` : `Launch ${agent.name}`,
-        ariaLabel: isCoreAgent ? `Restart ${agent.name} agent` : `Launch ${agent.name} agent`,
+        label: isCoreAgent ? `Restart ${displayName}` : `Launch ${displayName}`,
+        ariaLabel: isCoreAgent ? `Restart ${displayName} agent` : `Launch ${displayName} agent`,
         icon: Play,
         handler: async () => {
           setIsProcessing(true);
           try {
             // Use restartCoreAgent for core agents, spawnAgent for instances
-            if (isCoreAgent && isValidAgentName(agent.name)) {
+            if (isCoreAgent) {
               await restartCoreAgent(agent.name);
-            } else if (isValidAgentName(agent.name)) {
+            } else {
               await spawnAgent(agent.name);
             }
           } catch (error) {
@@ -86,7 +87,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
     } else {
       return {
         label: `Send message`,
-        ariaLabel: `Send message to ${agent.name}`,
+        ariaLabel: `Send message to ${displayName}`,
         icon: MessageSquare,
         handler: () => {
           setShowMessageDialog(true);
@@ -188,19 +189,6 @@ export const AgentCard: React.FC<AgentCardProps> = ({
     setShowKillDialog(true);
   };
 
-  // Handle open terminal from context menu
-  const handleOpenTerminal = async () => {
-    setContextMenu(null);
-    setIsProcessing(true);
-    try {
-      await invoke('open_agent_terminal', { session: agent.session });
-    } catch (error) {
-      showError(`Failed to open terminal: ${error}`);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   // Handle edit CLAUDE.md from context menu
   const handleEditClaudeMd = async () => {
     setContextMenu(null);
@@ -218,7 +206,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
     setIsSavingClaudeMd(true);
     try {
       await invoke('write_agent_claude_md', { agent: agent.name, content: claudeMdContent });
-      showSuccess(`Saved CLAUDE.md for ${agent.name}`);
+      showSuccess(`Saved CLAUDE.md for ${displayName}`);
       setShowClaudeMdDialog(false);
     } catch (error) {
       showError(`Failed to save CLAUDE.md: ${error}`);
@@ -246,7 +234,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
       // Use agent name for core agents, session name for spawned
       const target = isCoreAgent ? agent.name : agent.session.replace('agent-', '');
       await invoke<string>('send_message', { target, message: messageText });
-      showSuccess(`Message sent to ${agent.name}`);
+      showSuccess(`Message sent to ${displayName}`);
       setMessageText('');
       setShowMessageDialog(false);
     } catch (error) {
@@ -273,7 +261,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
       <Card
         className={`
           glass-card transition-all duration-200 rounded-xl
-          ${isClickable ? 'cursor-pointer active:scale-[0.98]' : ''}
+          ${isClickable ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.98] active:translate-y-0' : ''}
           ${isProcessing ? 'opacity-50' : ''}
           ${disabled ? 'cursor-not-allowed opacity-60' : ''}
           ${agent.active ? 'glass-active' : 'opacity-80 hover:opacity-100'}
@@ -289,42 +277,18 @@ export const AgentCard: React.FC<AgentCardProps> = ({
       <CardHeader className="p-2 sm:p-3 pb-1 sm:pb-2">
         <div className="flex items-center justify-between gap-1 flex-wrap">
           <CardTitle className="flex items-center gap-1 text-xs sm:text-sm">
-            {/* Status indicator dot */}
-            <div
-              className={`w-1.5 sm:w-2 h-1.5 sm:h-2 rounded-full flex-shrink-0 ${
-                agent.active
-                  ? 'bg-green-500 shadow-lg shadow-green-500/50 animate-pulse'
-                  : 'bg-muted-foreground/40 border border-muted-foreground/60'
-              }`}
-              title={agent.active ? 'Online' : 'Offline'}
-              aria-label={agent.active ? 'Online' : 'Offline'}
-            />
-
-            {/* Agent name */}
-            <span className={`capitalize truncate ${agent.active ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
-              {agent.name}
+            {/* Agent name - uses visual display name (ralph shows as fun name) */}
+            <span className={`truncate ${agent.active ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+              {displayName}
             </span>
-
-            {/* Instance number badge for spawned agents */}
-            {instanceNumber !== undefined && (
-              <Badge variant="outline" className="text-[10px] px-1 py-0">
-                {instanceNumber}
-              </Badge>
-            )}
           </CardTitle>
 
-          {/* Project bubble - right corner (max 6 chars) - hidden when inside TeamCard */}
-          {!hideProject && agent.active && (() => {
-            const projectName = agent.current_project || 'VIBING';
+          {/* Project bubble - right corner (max 6 chars) - only shown when there's a project */}
+          {!hideProject && agent.active && agent.current_project && (() => {
+            const projectName = agent.current_project;
             const isShortened = projectName.length > 6;
             const bubble = (
-              <span
-                className={`inline-flex items-center px-1 py-0 rounded-full text-[9px] sm:text-[10px] font-medium whitespace-nowrap ${
-                  agent.current_project
-                    ? 'bg-primary/10 text-primary border border-primary/20'
-                    : 'bg-muted text-muted-foreground'
-                }`}
-              >
+              <span className="inline-flex items-center px-1 py-0 rounded-full text-[9px] sm:text-[10px] font-medium whitespace-nowrap bg-primary/10 text-primary border border-primary/20">
                 {projectName.slice(0, 6)}
               </span>
             );
@@ -340,16 +304,17 @@ export const AgentCard: React.FC<AgentCardProps> = ({
       </CardHeader>
 
       <CardContent className="p-2 sm:p-3 pt-0 text-[10px] sm:text-xs">
-        {/* Session info */}
-        <div className="text-muted-foreground">
+        <div className="flex items-center justify-between text-muted-foreground">
           {/* Additional info for lifecycle variant */}
-          {variant === 'lifecycle' && agent.active && (
+          {variant === 'lifecycle' && agent.active ? (
             <div className="flex items-center gap-1.5 text-[10px]">
               <Terminal className="w-2.5 h-2.5 text-muted-foreground" aria-hidden="true" />
               <span className="text-muted-foreground">
                 {agent.attached ? 'Attached' : 'Detached'}
               </span>
             </div>
+          ) : (
+            <div />
           )}
         </div>
       </CardContent>
@@ -359,7 +324,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
         open={showKillDialog}
         onOpenChange={setShowKillDialog}
         title="Kill Agent Session"
-        description={`Are you sure you want to kill ${agent.name} agent session? This will terminate the agent immediately.`}
+        description={`Are you sure you want to kill ${displayName} agent session? This will terminate the agent immediately.`}
         confirmLabel="Kill"
         cancelLabel="Cancel"
         onConfirm={handleConfirmKill}
@@ -378,15 +343,6 @@ export const AgentCard: React.FC<AgentCardProps> = ({
             top: `${contextMenu.y}px`,
           }}
         >
-          {agent.active && (
-            <button
-              onClick={handleOpenTerminal}
-              className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
-            >
-              <Terminal className="w-4 h-4" />
-              Open Terminal
-            </button>
-          )}
           <button
             onClick={handleEditClaudeMd}
             className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
@@ -420,7 +376,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold flex items-center gap-2">
                 <MessageSquare className="w-4 h-4 text-primary" />
-                Message {agent.name}
+                Message {displayName}
               </h3>
               <button
                 onClick={() => {
@@ -470,7 +426,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-semibold flex items-center gap-2">
                 <FileEdit className="w-4 h-4 text-primary" />
-                Edit CLAUDE.md - {agent.name}
+                Edit CLAUDE.md - {displayName}
               </h3>
               <button
                 onClick={() => setShowClaudeMdDialog(false)}

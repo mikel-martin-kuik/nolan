@@ -1,5 +1,6 @@
 // Module declarations
 pub mod commands;
+pub mod config;
 pub mod constants;
 pub mod error;
 pub mod services;
@@ -56,6 +57,13 @@ pub fn run() {
         }
     };
 
+    // Cleanup orphaned terminal streams from previous crashes
+    let runtime = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
+    if let Err(e) = runtime.block_on(tmux::terminal_stream::cleanup_orphaned_streams()) {
+        eprintln!("Warning: Failed to cleanup orphaned terminal streams: {}", e);
+        // Non-fatal - continue startup
+    }
+
     tauri::Builder::default()
         .manage(Arc::new(Mutex::new(python_service)))
         .plugin(tauri_plugin_opener::init())
@@ -86,6 +94,11 @@ pub fn run() {
             read_agent_claude_md,
             write_agent_claude_md,
             send_agent_command,
+            // Terminal streaming commands
+            start_terminal_stream,
+            stop_terminal_stream,
+            send_terminal_input,
+            send_terminal_key,
             // Communicator commands
             send_message,
             broadcast_team,
@@ -110,6 +123,12 @@ pub fn run() {
             write_project_file,
             read_roadmap,
             create_project,
+            // Teams commands
+            commands::teams::get_team_config,
+            commands::teams::save_team_config,
+            commands::teams::list_teams,
+            commands::teams::get_project_team,
+            commands::teams::set_project_team,
             // Usage commands
             get_usage_stats,
             get_usage_by_date_range,

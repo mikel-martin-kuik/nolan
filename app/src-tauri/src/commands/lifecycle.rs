@@ -1,6 +1,8 @@
+use chrono;
 use regex::Regex;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
+use crate::config::TeamConfig;
 use crate::constants::{
     VALID_AGENTS,
     CORE_AGENTS,
@@ -65,18 +67,86 @@ fn validate_agent_name(agent: &str) -> Result<(), String> {
 /// Maximum spawned instances per agent
 const MAX_INSTANCES: u32 = 5;
 
-/// Default models for each agent
-fn get_default_model(agent: &str) -> &'static str {
-    match agent {
-        "ralph" => "haiku",
-        _ => "sonnet", // ana, bill, carl, dan, enzo all use sonnet
-    }
+/// Get team-namespaced state directory
+/// Creates the directory if it doesn't exist
+fn get_team_state_dir(team_name: &str) -> Result<std::path::PathBuf, String> {
+    use std::fs;
+    use std::path::PathBuf;
+
+    let nolan_root = std::env::var("NOLAN_ROOT")
+        .map_err(|_| "NOLAN_ROOT not set".to_string())?;
+
+    let state_dir = PathBuf::from(nolan_root)
+        .join(".state")
+        .join(team_name);
+
+    // Create directory if it doesn't exist
+    fs::create_dir_all(&state_dir)
+        .map_err(|e| format!("Failed to create state directory: {}", e))?;
+
+    Ok(state_dir)
 }
 
-/// Count actual running spawned instances for an agent (agent-{name}-N sessions)
+/// Get path to team's active project state file
+fn get_team_active_project_file(team_name: &str) -> Result<std::path::PathBuf, String> {
+    Ok(get_team_state_dir(team_name)?.join("active-project.txt"))
+}
+
+/// Get path to agent's active project state file
+fn get_agent_state_file(agent: &str, team_name: &str) -> Result<std::path::PathBuf, String> {
+    Ok(get_team_state_dir(team_name)?.join(format!("active-{}.txt", agent)))
+}
+
+/// Register a session in the session registry for history lookup
+fn register_session(tmux_session: &str, agent: &str, agent_dir: &str) -> Result<(), String> {
+    use std::fs::{OpenOptions, create_dir_all};
+    use std::io::Write;
+
+    let home = std::env::var("HOME").map_err(|_| "HOME not set")?;
+    let registry_dir = std::path::PathBuf::from(&home).join(".nolan");
+    let registry_path = registry_dir.join("session-registry.jsonl");
+
+    // Ensure directory exists
+    create_dir_all(&registry_dir)
+        .map_err(|e| format!("Failed to create .nolan directory: {}", e))?;
+
+    // Create registry entry
+    let entry = serde_json::json!({
+        "tmux_session": tmux_session,
+        "agent": agent,
+        "agent_dir": agent_dir,
+        "start_time": chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
+    });
+
+    // Append to registry file
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&registry_path)
+        .map_err(|e| format!("Failed to open session registry: {}", e))?;
+
+    writeln!(file, "{}", entry)
+        .map_err(|e| format!("Failed to write to session registry: {}", e))?;
+
+    // Also update the in-memory index used by history streaming
+    crate::commands::history::update_session_index(tmux_session, agent, agent_dir);
+
+    Ok(())
+}
+
+/// Default models for each agent (loaded from team config)
+fn get_default_model(agent: &str, team: &TeamConfig) -> String {
+    team.get_agent(agent)
+        .map(|a| a.model.clone())
+        .unwrap_or_else(|| "sonnet".to_string())
+}
+
+/// Count actual running spawned instances for an agent
+/// Ralph uses agent-ralph-{name} format, others use agent-{name}-{number}
 fn count_running_instances(agent: &str) -> Result<usize, String> {
     let sessions = crate::tmux::session::list_sessions()?;
-    let pattern = format!(r"^agent-{}-[0-9]+$", agent);
+    // Match both numbered and named instances (agent-{name}-{alphanumeric})
+    let pattern = format!(r"^agent-{}-[a-z0-9]+$", agent);
     let re = Regex::new(&pattern)
         .map_err(|e| format!("Invalid regex pattern: {}", e))?;
     Ok(sessions.iter().filter(|s| re.is_match(s)).count())
@@ -113,6 +183,30 @@ fn find_next_available_instance(agent: &str) -> Result<u32, String> {
     Ok(running_nums.last().map(|n| n + 1).unwrap_or(start))
 }
 
+/// Find next available Ralph instance name from RALPH_NAMES
+/// Returns the first name not currently in use
+fn find_next_available_ralph_name() -> Result<String, String> {
+    use crate::constants::RALPH_NAMES;
+
+    let sessions = crate::tmux::session::list_sessions()?;
+
+    // Extract names currently in use (from agent-ralph-{name} sessions)
+    let used_names: std::collections::HashSet<&str> = sessions.iter()
+        .filter_map(|s| s.strip_prefix("agent-ralph-"))
+        .collect();
+
+    // Find first available name
+    for name in RALPH_NAMES {
+        if !used_names.contains(name) {
+            return Ok(name.to_string());
+        }
+    }
+
+    // All names in use - fall back to numbered instance
+    let next_num = find_next_available_instance("ralph")?;
+    Ok(next_num.to_string())
+}
+
 /// Get the active project DOCS_PATH from team context
 /// Tries state file first, then falls back to reading project from running team member's statusline
 fn get_docs_path_from_team_context() -> Result<String, String> {
@@ -121,8 +215,9 @@ fn get_docs_path_from_team_context() -> Result<String, String> {
 
     let projects_dir = crate::utils::paths::get_projects_dir()?;
 
-    // Try to read state file first
-    let state_file = projects_dir.join(".state").join("active-project.txt");
+    // Try to read team-namespaced state file first (default team)
+    // Note: We use "default" team here as this is for global context detection
+    let state_file = get_team_active_project_file("default")?;
     if state_file.exists() {
         if let Ok(docs_path) = fs::read_to_string(&state_file) {
             let trimmed = docs_path.trim().to_string();
@@ -135,8 +230,13 @@ fn get_docs_path_from_team_context() -> Result<String, String> {
     // Fallback: Find running team member and extract project from their statusline
     let sessions = crate::tmux::session::list_sessions()?;
 
-    // Priority order: Dan first (Scrum Master has best context), then others
-    let agent_priority = ["dan", "ana", "bill", "carl", "enzo"];
+    // Load team config to get workflow participants
+    let team = TeamConfig::load("default")
+        .map_err(|e| format!("Failed to load team config: {}", e))?;
+
+    // Priority order: coordinator first (best context), then others
+    let mut agent_priority: Vec<&str> = vec![team.coordinator()];
+    agent_priority.extend(team.workflow_participants().iter().filter(|&&a| a != team.coordinator()));
 
     for &agent_name in &agent_priority {
         let session = format!("agent-{}", agent_name);
@@ -177,14 +277,25 @@ fn get_docs_path_from_team_context() -> Result<String, String> {
 }
 
 /// Launch core team agents (dan, ana, bill, carl, enzo) with project context
+///
+/// Parameters:
+/// - `initial_prompt`: For new projects - written to prompt.md and sent to Dan
+/// - `updated_original_prompt`: For existing projects - only written to prompt.md if provided (meaning it was modified)
+/// - `followup_prompt`: For existing projects - sent to Dan to resume work
 #[tauri::command]
 pub async fn launch_core(
     app_handle: AppHandle,
     project_name: String,
     initial_prompt: Option<String>,
+    updated_original_prompt: Option<String>,
+    followup_prompt: Option<String>,
 ) -> Result<String, String> {
     use std::process::Command;
     use std::fs;
+
+    // Load team config
+    let team = TeamConfig::load("default")
+        .map_err(|e| format!("Failed to load team config: {}", e))?;
 
     // Get paths using utility functions
     let nolan_root = crate::utils::paths::get_nolan_root()?;
@@ -200,10 +311,8 @@ pub async fn launch_core(
     }
 
     // Write team state: store the active project for restart_core_agent to inherit
-    let state_dir = projects_dir.join(".state");
-    fs::create_dir_all(&state_dir)
-        .map_err(|e| format!("Failed to create state directory: {}", e))?;
-    let state_file = state_dir.join("active-project.txt");
+    // Use team-namespaced state file
+    let state_file = get_team_active_project_file(&team.team.name)?;
     fs::write(&state_file, docs_path.to_string_lossy().to_string())
         .map_err(|e| format!("Failed to write team state: {}", e))?;
 
@@ -211,26 +320,37 @@ pub async fn launch_core(
     let projects_dir_str = projects_dir.to_string_lossy();
     let docs_path_str = docs_path.to_string_lossy();
 
-    // Determine effective prompt: read from file if exists, otherwise use initial_prompt
-    // This preserves any updates made during project iterations
+    // Handle prompt.md writing and determine what to send to Dan
     let prompt_file = docs_path.join("prompt.md");
-    let effective_prompt: Option<String> = if prompt_file.exists() {
-        // Read existing prompt.md (iteration case - preserves manual edits)
-        fs::read_to_string(&prompt_file).ok().filter(|s| !s.trim().is_empty())
-    } else if let Some(ref prompt) = initial_prompt {
-        // First launch: write initial prompt to file
-        fs::write(&prompt_file, prompt)
+    let effective_prompt: Option<String> = if let Some(ref prompt) = initial_prompt {
+        // New project: write initial prompt to file and send to Dan
+        // Add HANDOFF marker to indicate prompt has been initialized
+        let now = chrono::Local::now();
+        let timestamp = now.format("%Y-%m-%d %H:%M").to_string();
+        let content = format!("{}\n\n<!-- HANDOFF:{}:user:COMPLETE -->", prompt, timestamp);
+        fs::write(&prompt_file, &content)
             .map_err(|e| format!("Failed to write prompt.md: {}", e))?;
         Some(prompt.clone())
     } else {
-        None
+        // Existing project case
+        // If original prompt was modified, update the file
+        if let Some(ref updated_prompt) = updated_original_prompt {
+            // Add HANDOFF marker when updating existing prompt
+            let now = chrono::Local::now();
+            let timestamp = now.format("%Y-%m-%d %H:%M").to_string();
+            let content = format!("{}\n\n<!-- HANDOFF:{}:user:COMPLETE -->", updated_prompt, timestamp);
+            fs::write(&prompt_file, &content)
+                .map_err(|e| format!("Failed to update prompt.md: {}", e))?;
+        }
+        // Send followup prompt to Dan (the action prompt)
+        followup_prompt.clone()
     };
 
     let mut launched = Vec::new();
     let mut already_running = Vec::new();
     let mut errors = Vec::new();
 
-    for &agent in CORE_AGENTS {
+    for agent in team.workflow_participants() {
         let session = format!("agent-{}", agent);
         let agent_dir = agents_base.join(agent);
         let agent_dir_str = agent_dir.to_string_lossy();
@@ -247,8 +367,8 @@ pub async fn launch_core(
             continue;
         }
 
-        // All core agents use sonnet model
-        let model = "sonnet";
+        // Get agent's model from team config
+        let model = get_default_model(agent, &team);
 
         // Create tmux session with Claude - now includes DOCS_PATH
         let cmd = format!(
@@ -261,7 +381,21 @@ pub async fn launch_core(
             .output();
 
         match output {
-            Ok(o) if o.status.success() => launched.push(agent.to_string()),
+            Ok(o) if o.status.success() => {
+                launched.push(agent.to_string());
+
+                // Register session in the registry for history lookup (non-fatal)
+                if let Err(e) = register_session(&session, agent, agent_dir_str.as_ref()) {
+                    eprintln!("Warning: Failed to register session {}: {}", session, e);
+                }
+
+                // Auto-start terminal stream for new session (non-fatal)
+                let manager = STREAM_MANAGER.read().await;
+                if let Err(e) = manager.start_session_stream(app_handle.clone(), &session).await {
+                    eprintln!("Warning: Failed to start terminal stream for {}: {}", session, e);
+                    // Non-fatal - agent still works, embedded terminal just won't stream
+                }
+            }
             Ok(o) => errors.push(format!("{}: {}", agent, String::from_utf8_lossy(&o.stderr))),
             Err(e) => errors.push(format!("{}: {}", agent, e)),
         }
@@ -346,11 +480,15 @@ pub async fn launch_core(
 /// Native implementation - no longer delegates to kill-core.sh
 #[tauri::command]
 pub async fn kill_core(app_handle: AppHandle) -> Result<String, String> {
+    // Load team config
+    let team = TeamConfig::load("default")
+        .map_err(|e| format!("Failed to load team config: {}", e))?;
+
     let mut killed = Vec::new();
     let mut not_running = Vec::new();
     let mut errors = Vec::new();
 
-    for &agent in CORE_AGENTS {
+    for agent in team.workflow_participants() {
         let session = format!("agent-{}", agent);
 
         match crate::tmux::session::session_exists(&session) {
@@ -402,6 +540,10 @@ pub async fn kill_core(app_handle: AppHandle) -> Result<String, String> {
 pub async fn spawn_agent(app_handle: AppHandle, agent: String, force: bool, model: Option<String>) -> Result<String, String> {
     use std::process::Command;
 
+    // Load team config
+    let team = TeamConfig::load("default")
+        .map_err(|e| format!("Failed to load team config: {}", e))?;
+
     // Validate agent name
     validate_agent_name(&agent)?;
 
@@ -426,9 +568,14 @@ pub async fn spawn_agent(app_handle: AppHandle, agent: String, force: bool, mode
         ));
     }
 
-    // Find next available instance number (with gap reuse)
-    let instance_num = find_next_available_instance(&agent)?;
-    let session = format!("agent-{}-{}", agent, instance_num);
+    // Find next available instance identifier
+    // Ralph uses fun names (ziggy, nova, etc.), other agents use numbers
+    let instance_id = if agent == "ralph" {
+        find_next_available_ralph_name()?
+    } else {
+        find_next_available_instance(&agent)?.to_string()
+    };
+    let session = format!("agent-{}-{}", agent, instance_id);
 
     // Check if this session already exists (shouldn't happen, but safety check)
     if crate::tmux::session::session_exists(&session)? {
@@ -451,7 +598,7 @@ pub async fn spawn_agent(app_handle: AppHandle, agent: String, force: bool, mode
     let agent_dir_str = agent_dir.to_string_lossy();
 
     // Use provided model or default for agent
-    let model_str = model.as_deref().unwrap_or_else(|| get_default_model(&agent));
+    let model_str = model.unwrap_or_else(|| get_default_model(&agent, &team));
 
     // Create tmux session (same pattern as launch_core)
     let cmd = format!(
@@ -469,6 +616,18 @@ pub async fn spawn_agent(app_handle: AppHandle, agent: String, force: bool, mode
             "Failed to spawn agent session: {}",
             String::from_utf8_lossy(&output.stderr)
         ));
+    }
+
+    // Register session in the registry for history lookup (non-fatal)
+    if let Err(e) = register_session(&session, &agent, agent_dir_str.as_ref()) {
+        eprintln!("Warning: Failed to register session {}: {}", session, e);
+    }
+
+    // Auto-start terminal stream for new session (non-fatal)
+    let manager = STREAM_MANAGER.read().await;
+    if let Err(e) = manager.start_session_stream(app_handle.clone(), &session).await {
+        eprintln!("Warning: Failed to start terminal stream for {}: {}", session, e);
+        // Non-fatal - agent still works, embedded terminal just won't stream
     }
 
     // Emit status change event after successful spawn
@@ -540,6 +699,18 @@ pub async fn restart_core_agent(app_handle: AppHandle, agent: String) -> Result<
             "Failed to start core agent session: {}",
             String::from_utf8_lossy(&output.stderr)
         ));
+    }
+
+    // Register session in the registry for history lookup (non-fatal)
+    if let Err(e) = register_session(&session, &agent, agent_dir_str.as_ref()) {
+        eprintln!("Warning: Failed to register session {}: {}", session, e);
+    }
+
+    // Auto-start terminal stream for restarted session (non-fatal)
+    let manager = STREAM_MANAGER.read().await;
+    if let Err(e) = manager.start_session_stream(app_handle.clone(), &session).await {
+        eprintln!("Warning: Failed to start terminal stream for {}: {}", session, e);
+        // Non-fatal - agent still works, embedded terminal just won't stream
     }
 
     // Emit status change event after successful restart
@@ -704,6 +875,7 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
                             attached: info.attached,
                             context_usage: statusline.context_usage,
                             current_project: statusline.current_project,
+                            created_at: Some(info.created_at * 1000),  // Convert to milliseconds
                         });
                     }
                 }
@@ -722,6 +894,7 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
                             attached: info.attached,
                             context_usage: statusline.context_usage,
                             current_project: statusline.current_project,
+                            created_at: Some(info.created_at * 1000),  // Convert to milliseconds
                         });
                     }
                 }
@@ -729,8 +902,12 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
         }
     }
 
-    // Add inactive core agents (only core team, not ralph)
-    for &agent in CORE_AGENTS {
+    // Load team config to get workflow participants
+    let team = TeamConfig::load("default")
+        .map_err(|e| format!("Failed to load team config: {}", e))?;
+
+    // Add inactive core agents (only workflow participants)
+    for agent in team.workflow_participants() {
         let session_name = format!("agent-{}", agent);
         if !core_agents.iter().any(|a| a.name == agent) {
             core_agents.push(AgentStatus {
@@ -740,6 +917,7 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
                 attached: false,
                 context_usage: None,
                 current_project: None,
+                created_at: None,
             });
         }
     }
@@ -777,6 +955,8 @@ pub struct AgentStatus {
     pub attached: bool,
     pub context_usage: Option<u8>,  // Context window usage percentage (0-100)
     pub current_project: Option<String>,  // Current project from statusline (None if VIBING)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<u64>,  // Unix timestamp in milliseconds (for spawned agents)
 }
 
 /// Launch a terminal window attached to an agent session
@@ -1026,4 +1206,84 @@ pub async fn send_agent_command(session: String, command: String) -> Result<Stri
     }
 
     Ok(format!("Sent '{}' to {}", command, session))
+}
+
+// Terminal streaming commands
+
+/// Global terminal stream manager
+static STREAM_MANAGER: once_cell::sync::Lazy<tokio::sync::RwLock<crate::tmux::terminal_stream::TerminalStreamManager>> =
+    once_cell::sync::Lazy::new(|| {
+        tokio::sync::RwLock::new(crate::tmux::terminal_stream::TerminalStreamManager::new())
+    });
+
+/// Start terminal output streaming for a session
+/// Creates a named pipe (FIFO) and begins streaming output to frontend
+#[tauri::command]
+pub async fn start_terminal_stream(
+    app_handle: AppHandle,
+    session: String,
+) -> Result<String, String> {
+    // Validate session name
+    validate_agent_session(&session)?;
+
+    // Verify session exists
+    if !crate::tmux::session::session_exists(&session)? {
+        return Err(format!("Session '{}' does not exist", session));
+    }
+
+    // Start stream
+    let manager = STREAM_MANAGER.read().await;
+    manager.start_session_stream(app_handle, &session).await?;
+
+    Ok(format!("Started terminal stream for {}", session))
+}
+
+/// Stop terminal output streaming for a session
+/// Cleans up the named pipe and stops the streaming task
+#[tauri::command]
+pub async fn stop_terminal_stream(session: String) -> Result<String, String> {
+    // Validate session name
+    validate_agent_session(&session)?;
+
+    // Stop stream
+    let manager = STREAM_MANAGER.read().await;
+    manager.stop_session_stream(&session).await?;
+
+    Ok(format!("Stopped terminal stream for {}", session))
+}
+
+/// Send text input to a terminal session
+/// Sends literal text without interpretation
+#[tauri::command]
+pub async fn send_terminal_input(session: String, data: String) -> Result<String, String> {
+    // Validate session name
+    validate_agent_session(&session)?;
+
+    // Verify session exists
+    if !crate::tmux::session::session_exists(&session)? {
+        return Err(format!("Session '{}' does not exist", session));
+    }
+
+    // Send input
+    crate::tmux::terminal_input::send_terminal_input(&session, &data)?;
+
+    Ok(format!("Sent input to {}", session))
+}
+
+/// Send a special key to a terminal session
+/// Supports keys like Enter, Backspace, ArrowUp, etc.
+#[tauri::command]
+pub async fn send_terminal_key(session: String, key: String) -> Result<String, String> {
+    // Validate session name
+    validate_agent_session(&session)?;
+
+    // Verify session exists
+    if !crate::tmux::session::session_exists(&session)? {
+        return Err(format!("Session '{}' does not exist", session));
+    }
+
+    // Send key
+    crate::tmux::terminal_input::send_terminal_key(&session, &key)?;
+
+    Ok(format!("Sent key '{}' to {}", key, session))
 }

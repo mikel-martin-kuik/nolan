@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { invoke } from '@tauri-apps/api/core';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -16,12 +17,23 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ProjectInfo } from '@/types/projects';
-import { FolderOpen, Plus, Rocket } from 'lucide-react';
+import { FolderOpen, Plus, Rocket, FileText, MessageSquare } from 'lucide-react';
+
+export interface LaunchParams {
+  projectName: string;
+  isNew: boolean;
+  // For new projects: the initial prompt (written to prompt.md)
+  initialPrompt?: string;
+  // For existing projects: updated original prompt (only if modified)
+  updatedOriginalPrompt?: string;
+  // For existing projects: followup prompt to send to Dan
+  followupPrompt?: string;
+}
 
 interface ProjectSelectModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onLaunch: (projectName: string, initialPrompt: string, isNew: boolean) => void;
+  onLaunch: (params: LaunchParams) => void;
   projects: ProjectInfo[];
   isLoading?: boolean;
 }
@@ -38,21 +50,50 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
   const [mode, setMode] = useState<Mode>('existing');
   const [selectedProject, setSelectedProject] = useState<string>('');
   const [newProjectName, setNewProjectName] = useState<string>('');
-  const [prompt, setPrompt] = useState<string>('');
+  // For new projects: the initial prompt
+  const [newProjectPrompt, setNewProjectPrompt] = useState<string>('');
+  // For existing projects: original prompt from prompt.md
+  const [originalPrompt, setOriginalPrompt] = useState<string>('');
+  const [savedOriginalPrompt, setSavedOriginalPrompt] = useState<string>(''); // Track original for diff
+  const [loadingPrompt, setLoadingPrompt] = useState<boolean>(false);
+  // For existing projects: followup prompt to send to Dan
+  const [followupPrompt, setFollowupPrompt] = useState<string>('');
+
+  // Fetch prompt.md content when project is selected
+  const fetchProjectPrompt = async (projectName: string) => {
+    setLoadingPrompt(true);
+    try {
+      const content = await invoke<string>('read_project_file', {
+        projectName,
+        filePath: 'prompt.md',
+      });
+      setOriginalPrompt(content);
+      setSavedOriginalPrompt(content);
+    } catch {
+      // No prompt.md exists yet - that's fine
+      setOriginalPrompt('');
+      setSavedOriginalPrompt('');
+    } finally {
+      setLoadingPrompt(false);
+    }
+  };
 
   // Reset state when modal opens
   useEffect(() => {
     if (open) {
       setMode('existing');
       setNewProjectName('');
+      setNewProjectPrompt('');
+      setOriginalPrompt('');
+      setSavedOriginalPrompt('');
+      setFollowupPrompt('');
       // Select first project by default if available
       if (projects.length > 0) {
         const firstProject = projects[0].name;
         setSelectedProject(firstProject);
-        setPrompt(`Continue with ${firstProject}`);
+        fetchProjectPrompt(firstProject);
       } else {
         setSelectedProject('');
-        setPrompt('');
       }
     }
   }, [open, projects]);
@@ -60,30 +101,45 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
   // Update prompt when project selection changes
   const handleProjectChange = (projectName: string) => {
     setSelectedProject(projectName);
-    setPrompt(`Continue with ${projectName}`);
+    setFollowupPrompt(''); // Reset followup on project change
+    fetchProjectPrompt(projectName);
   };
 
   // Handle mode change
   const handleModeChange = (newMode: Mode) => {
     setMode(newMode);
     if (newMode === 'new') {
-      setPrompt('');
+      setNewProjectPrompt('');
     } else if (selectedProject) {
-      setPrompt(`Continue with ${selectedProject}`);
+      fetchProjectPrompt(selectedProject);
     }
   };
 
   // Validation
   const isValid = mode === 'existing'
-    ? selectedProject !== ''
-    : newProjectName.trim() !== '' && prompt.trim() !== '';
+    ? selectedProject !== '' && followupPrompt.trim() !== ''
+    : newProjectName.trim() !== '' && newProjectPrompt.trim() !== '';
 
   // Handle launch
   const handleLaunch = () => {
     if (!isValid) return;
 
-    const projectName = mode === 'existing' ? selectedProject : newProjectName.trim();
-    onLaunch(projectName, prompt, mode === 'new');
+    if (mode === 'new') {
+      onLaunch({
+        projectName: newProjectName.trim(),
+        isNew: true,
+        initialPrompt: newProjectPrompt.trim(),
+      });
+    } else {
+      // Check if original prompt was modified
+      const promptWasModified = originalPrompt.trim() !== savedOriginalPrompt.trim();
+      onLaunch({
+        projectName: selectedProject,
+        isNew: false,
+        updatedOriginalPrompt: promptWasModified ? originalPrompt.trim() : undefined,
+        followupPrompt: followupPrompt.trim(),
+      });
+    }
     onOpenChange(false);
   };
 
@@ -96,7 +152,7 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
 
   return (
     <AlertDialog open={open} onOpenChange={onOpenChange}>
-      <AlertDialogContent className="max-w-md">
+      <AlertDialogContent className="max-w-lg">
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <Rocket className="w-5 h-5" />
@@ -193,21 +249,73 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
             </div>
           </div>
 
-          {/* Prompt Textarea */}
-          <div className="flex flex-col gap-2">
-            <label className="text-sm text-muted-foreground">
-              Initial prompt for Dan:
-            </label>
-            <textarea
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              placeholder={mode === 'new' ? 'Describe the project and initial task...' : ''}
-              rows={3}
-              className="w-full bg-secondary/50 border border-border rounded-lg px-3 py-2
-                text-foreground text-sm placeholder-muted-foreground focus:outline-none focus:ring-2
-                focus:ring-primary/50 resize-none"
-            />
-          </div>
+          {/* New Project: Single prompt textarea */}
+          {mode === 'new' && (
+            <div className="flex flex-col gap-2">
+              <label className="text-sm text-muted-foreground flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                Project prompt:
+              </label>
+              <textarea
+                value={newProjectPrompt}
+                onChange={(e) => setNewProjectPrompt(e.target.value)}
+                placeholder="Describe the project objectives and initial task..."
+                rows={4}
+                className="w-full bg-secondary/50 border border-border rounded-lg px-3 py-2
+                  text-foreground text-sm placeholder-muted-foreground focus:outline-none focus:ring-2
+                  focus:ring-primary/50 resize-none"
+              />
+            </div>
+          )}
+
+          {/* Existing Project: Two boxes */}
+          {mode === 'existing' && selectedProject && (
+            <>
+              {/* Original Prompt (from prompt.md) */}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm text-muted-foreground flex items-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  Original prompt:
+                  {originalPrompt !== savedOriginalPrompt && (
+                    <span className="text-xs text-amber-400">(modified)</span>
+                  )}
+                </label>
+                {loadingPrompt ? (
+                  <div className="w-full bg-secondary/30 border border-border rounded-lg px-3 py-2
+                    text-muted-foreground text-sm h-20 flex items-center justify-center">
+                    Loading...
+                  </div>
+                ) : (
+                  <textarea
+                    value={originalPrompt}
+                    onChange={(e) => setOriginalPrompt(e.target.value)}
+                    placeholder="No original prompt found for this project"
+                    rows={3}
+                    className="w-full bg-secondary/30 border border-border rounded-lg px-3 py-2
+                      text-foreground text-sm placeholder-muted-foreground focus:outline-none focus:ring-2
+                      focus:ring-primary/50 resize-none"
+                  />
+                )}
+              </div>
+
+              {/* Followup Prompt (to send to Dan) */}
+              <div className="flex flex-col gap-2">
+                <label className="text-sm text-muted-foreground flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4" />
+                  Followup prompt for Dan:
+                </label>
+                <textarea
+                  value={followupPrompt}
+                  onChange={(e) => setFollowupPrompt(e.target.value)}
+                  placeholder="Enter instructions to resume work on this project..."
+                  rows={3}
+                  className="w-full bg-secondary/50 border border-border rounded-lg px-3 py-2
+                    text-foreground text-sm placeholder-muted-foreground focus:outline-none focus:ring-2
+                    focus:ring-primary/50 resize-none"
+                />
+              </div>
+            </>
+          )}
         </div>
 
         <AlertDialogFooter>

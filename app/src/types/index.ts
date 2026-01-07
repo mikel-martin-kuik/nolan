@@ -7,6 +7,7 @@ export interface AgentStatus {
   attached: boolean;
   context_usage?: number;  // Context window usage percentage (0-100)
   current_project?: string;  // Current project from statusline (undefined if VIBING)
+  created_at?: number;  // Unix timestamp in milliseconds (for spawned agents)
 }
 
 export interface AgentStatusList {
@@ -14,41 +15,80 @@ export interface AgentStatusList {
   spawned: AgentStatus[];  // Changed from string[] to AgentStatus[]
 }
 
-export type AgentName = 'ana' | 'bill' | 'carl' | 'dan' | 'enzo' | 'ralph';
+// Team configuration types matching Rust backend
+export type AgentName = string;
 
-export const VALID_AGENTS: AgentName[] = ['ana', 'bill', 'carl', 'dan', 'enzo', 'ralph'];
+export interface TeamConfig {
+  team: {
+    name: string;
+    agents: AgentConfig[];
+    workflow: WorkflowConfig;
+    communication: CommunicationConfig;
+  };
+}
 
-// Type guard for validating agent names at runtime
-export const isValidAgentName = (name: string): name is AgentName => {
-  return VALID_AGENTS.includes(name as AgentName);
-};
+export interface AgentConfig {
+  name: string;
+  role: string;
+  model: string;
+  color?: string;
+  output_file: string | null;
+  required_sections: string[];
+  file_permissions: 'restricted' | 'permissive' | 'no_projects';
+  workflow_participant: boolean;
+  awaits_qa?: boolean;
+  qa_passes?: number;
+  multi_instance?: boolean;
+  max_instances?: number;
+  instance_names?: string[];
+}
 
-export const AGENT_DESCRIPTIONS: Record<AgentName, string> = {
-  ana: 'Researcher',
-  bill: 'TechLead',
-  carl: 'Developer',
-  dan: 'Project Manager',
-  enzo: 'QA',
-  ralph: 'Free Agent',
-};
+export interface WorkflowConfig {
+  coordinator: string;
+  phases: PhaseConfig[];
+}
 
-export const AGENT_COLORS: Record<AgentName, string> = {
-  ana: 'bg-agents-ana',    // Using semantic color system
-  bill: 'bg-agents-bill',  // Using semantic color system
-  carl: 'bg-agents-carl',  // Using semantic color system
-  dan: 'bg-agents-dan',    // Using semantic color system (violet)
-  enzo: 'bg-agents-enzo',  // Using semantic color system
-  ralph: 'bg-agents-ralph', // Using semantic color system (zinc)
-};
+export interface PhaseConfig {
+  name: string;
+  owner: string;
+  output: string;
+  requires: string[];
+  template?: string;
+}
 
-export const AGENT_TEXT_COLORS: Record<AgentName, string> = {
-  ana: 'text-agents-ana',
-  bill: 'text-agents-bill',
-  carl: 'text-agents-carl',
-  dan: 'text-agents-dan',
-  enzo: 'text-agents-enzo',
-  ralph: 'text-agents-ralph',
-};
+export interface CommunicationConfig {
+  broadcast_groups: BroadcastGroup[];
+}
+
+export interface BroadcastGroup {
+  name: string;
+  pattern: string;
+  members: string[];
+}
+
+// Dynamic agent metadata (populated from team config at runtime)
+export let AGENT_DESCRIPTIONS: Record<string, string> = {};
+export let AGENT_COLORS: Record<string, string> = {};
+export let AGENT_TEXT_COLORS: Record<string, string> = {};
+
+export function updateAgentDescriptions(team: TeamConfig) {
+  AGENT_DESCRIPTIONS = {};
+  for (const agent of team.team.agents) {
+    AGENT_DESCRIPTIONS[agent.name] = agent.role;
+  }
+}
+
+export function updateAgentColors(team: TeamConfig) {
+  const defaultColors = ['#a855f7', '#3b82f6', '#6366f1', '#8b5cf6', '#ec4899', '#71717a'];
+  AGENT_COLORS = {};
+  AGENT_TEXT_COLORS = {};
+
+  team.team.agents.forEach((agent, i) => {
+    const color = agent.color || defaultColors[i % defaultColors.length];
+    AGENT_COLORS[agent.name] = `bg-[${color}]`;
+    AGENT_TEXT_COLORS[agent.name] = `text-[${color}]`;
+  });
+}
 
 // Claude Code model types
 export type ClaudeModel = 'opus' | 'sonnet' | 'haiku';
@@ -234,8 +274,8 @@ export interface AgentWorkflowState {
   turnCategory: TurnCategory;     // UI grouping category
 
   // Phase tracking
-  currentPhase: number;           // 0-5 based on workflow progress
-  totalPhases: number;            // Always 6
+  currentPhase: number;           // 0-5 based on completed files (HANDOFF markers)
+  totalPhases: number;            // 5 workflow files: context, research, plan, qa-review, progress
   phaseOwner: AgentName | null;   // Who should be working this phase
   phaseName: string;              // Human-readable phase name
 

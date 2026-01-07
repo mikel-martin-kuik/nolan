@@ -15,7 +15,12 @@ interface AgentStore {
 
   // Actions
   updateStatus: () => Promise<void>;
-  launchCore: (projectName: string, initialPrompt?: string) => Promise<void>;
+  launchCore: (
+    projectName: string,
+    initialPrompt?: string,
+    updatedOriginalPrompt?: string,
+    followupPrompt?: string
+  ) => Promise<void>;
   killCore: () => Promise<void>;
   spawnAgent: (agent: AgentName, force?: boolean, model?: ClaudeModel) => Promise<void>;
   restartCoreAgent: (agent: AgentName) => Promise<void>;
@@ -55,11 +60,21 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   },
 
   // Launch core team with project context
-  launchCore: async (projectName: string, initialPrompt?: string) => {
+  launchCore: async (
+    projectName: string,
+    initialPrompt?: string,
+    updatedOriginalPrompt?: string,
+    followupPrompt?: string
+  ) => {
     try {
       set({ loading: true, error: null });
 
-      await invoke<string>('launch_core', { projectName, initialPrompt });
+      await invoke<string>('launch_core', {
+        projectName,
+        initialPrompt,
+        updatedOriginalPrompt,
+        followupPrompt,
+      });
 
       // Status will update via 'agent-status-changed' event
       set({ loading: false });

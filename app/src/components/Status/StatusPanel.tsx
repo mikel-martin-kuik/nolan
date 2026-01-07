@@ -4,11 +4,12 @@ import { useToastStore } from '../../store/toastStore';
 import { AgentCard } from '../shared/AgentCard';
 import { TeamCard } from '../shared/TeamCard';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
-import { ProjectSelectModal } from '../shared/ProjectSelectModal';
+import { ProjectSelectModal, LaunchParams } from '../shared/ProjectSelectModal';
 import { Tooltip } from '../ui/tooltip';
 import { Users, Plus, XCircle, LayoutGrid } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import type { AgentName, ClaudeModel } from '@/types';
+import { getRalphDisplayName } from '@/lib/agentIdentity';
 import type { ProjectInfo } from '@/types/projects';
 import { ModelSelectDialog } from '../shared/ModelSelectDialog';
 
@@ -36,6 +37,9 @@ export const StatusPanel: React.FC = () => {
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
 
+  // Get visual display name for ralph (persisted fun name)
+  const ralphDisplayName = getRalphDisplayName();
+
   // Setup event listeners and auto-refresh status
   useEffect(() => {
     updateStatus();
@@ -53,11 +57,18 @@ export const StatusPanel: React.FC = () => {
   }, []); // Empty deps - run once on mount
 
 
-  // Extract instance numbers from spawned sessions for display
+  // Extract instance identifiers from spawned sessions for display
+  // Ralph uses names (ziggy, nova), others use numbers (2, 3)
   const spawnedWithInstances = spawnedSessions.map(agent => {
-    const match = agent.session.match(/^agent-[a-z]+-([0-9]+)$/);
-    const instanceNumber = match ? parseInt(match[1], 10) : undefined;
-    return { ...agent, instanceNumber };
+    const match = agent.session.match(/^agent-([a-z]+)-([a-z0-9]+)$/);
+    const instanceId = match ? match[2] : undefined;
+    return { ...agent, instanceId };
+  }).sort((a, b) => {
+    // Sort by creation timestamp to maintain order (oldest first)
+    if (a.created_at && b.created_at) {
+      return a.created_at - b.created_at;
+    }
+    return 0;
   });
 
 
@@ -77,15 +88,19 @@ export const StatusPanel: React.FC = () => {
     setShowProjectSelectModal(true);
   };
 
-  const handleProjectLaunch = async (projectName: string, initialPrompt: string, isNew: boolean) => {
+  const handleProjectLaunch = async (params: LaunchParams) => {
     try {
+      const { projectName, isNew, initialPrompt, updatedOriginalPrompt, followupPrompt } = params;
+
       // If it's a new project, create it first
       if (isNew) {
         await invoke('create_project', { projectName });
       }
 
       // Launch core team with project context
-      await launchCore(projectName, initialPrompt);
+      // For new projects: pass initialPrompt (written to prompt.md and sent to Dan)
+      // For existing projects: pass updatedOriginalPrompt (only written if modified) and followupPrompt (sent to Dan)
+      await launchCore(projectName, initialPrompt, updatedOriginalPrompt, followupPrompt);
 
       // Open team terminals after successful launch
       try {
@@ -194,8 +209,8 @@ export const StatusPanel: React.FC = () => {
     try {
       await killAllInstances('ralph');
     } catch (error) {
-      console.error('Failed to kill Ralph instances:', error);
-      showError(`Failed to kill Ralph instances: ${error}`);
+      console.error(`Failed to kill ${ralphDisplayName} instances:`, error);
+      showError(`Failed to kill ${ralphDisplayName} instances: ${error}`);
     }
   };
 
@@ -209,11 +224,11 @@ export const StatusPanel: React.FC = () => {
       ];
 
       if (ralphSessions.length === 0) {
-        showError('No Ralph agents are running');
+        showError(`No ${ralphDisplayName} agents are running`);
         return;
       }
 
-      // Open terminal for each Ralph session
+      // Open terminal for each session
       for (const session of ralphSessions) {
         try {
           await invoke('open_agent_terminal', { session });
@@ -222,24 +237,14 @@ export const StatusPanel: React.FC = () => {
         }
       }
     } catch (error) {
-      console.error('Failed to open Ralph terminals:', error);
-      showError(`Failed to open Ralph terminals: ${error}`);
+      console.error(`Failed to open ${ralphDisplayName} terminals:`, error);
+      showError(`Failed to open ${ralphDisplayName} terminals: ${error}`);
     }
   };
 
   return (
     <div className="h-full">
       <div className="w-full h-full flex flex-col">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-lg font-semibold text-foreground flex items-center gap-3">
-            Organization
-          </h1>
-          <p className="text-muted-foreground text-xs mt-1">
-            Monitor all your available agents
-          </p>
-        </div>
-
         {/* Core Team Card */}
         <div className="mb-6">
         <TeamCard
@@ -321,7 +326,7 @@ export const StatusPanel: React.FC = () => {
                       agent={agent}
                       variant="dashboard"
                       showActions={true}
-                      instanceNumber={agent.instanceNumber}
+                      instanceId={agent.instanceId}
                     />
                   </div>
                 ))}
@@ -337,7 +342,7 @@ export const StatusPanel: React.FC = () => {
                     hover:bg-card/80 hover:border-purple-400/40
                     disabled:opacity-30 disabled:cursor-not-allowed
                     flex items-center justify-center"
-                  aria-label="Spawn new Ralph instance"
+                  aria-label={`Spawn new ${ralphDisplayName} instance`}
                 >
                   <Plus className="w-6 h-6 text-foreground/50" />
                 </button>
@@ -362,7 +367,7 @@ export const StatusPanel: React.FC = () => {
         open={showKillDialog}
         onOpenChange={setShowKillDialog}
         title="Kill All Core Agents"
-        description="This will terminate all running core agents (Ana, Bill, Carl, Dan, Enzo, Ralph). Spawned instances will not be affected. Are you sure?"
+        description={`This will terminate all running core agents (Ana, Bill, Carl, Dan, Enzo, ${ralphDisplayName}). Spawned instances will not be affected. Are you sure?`}
         confirmLabel="Kill All"
         cancelLabel="Cancel"
         onConfirm={handleConfirmKill}
@@ -374,7 +379,7 @@ export const StatusPanel: React.FC = () => {
         open={showKillRalphDialog}
         onOpenChange={setShowKillRalphDialog}
         title="Kill All Free Agents"
-        description="This will terminate all Ralph instances (core and spawned). Are you sure?"
+        description={`This will terminate all ${ralphDisplayName} instances (core and spawned). Are you sure?`}
         confirmLabel="Kill All"
         cancelLabel="Cancel"
         onConfirm={handleConfirmKillRalph}

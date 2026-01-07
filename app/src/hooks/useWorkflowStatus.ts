@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query';
 import { invoke } from '@tauri-apps/api/core';
 import { useAgentStore } from '../store/agentStore';
 import { useLiveOutputStore } from '../store/liveOutputStore';
+import { useTeamStore } from '../store/teamStore';
 import {
   computeWorkflowState,
   getWorkflowGroup,
@@ -25,7 +26,7 @@ import {
   type TurnGroup,
 } from '../lib/workflowStatus';
 import type { AgentStatus, AgentWorkflowState, AgentName } from '../types';
-import type { ProjectInfo } from '../types/projects';
+import type { ProjectInfo, FileCompletion } from '../types/projects';
 
 export interface AgentWithWorkflow {
   agent: AgentStatus;
@@ -55,7 +56,7 @@ export interface WorkflowStatusResult {
   phaseOwner: AgentName | null;
 
   // Project context
-  projectFiles: string[];
+  projectFiles: FileCompletion[];
   currentProject: string | null;
   isLoading: boolean;
 }
@@ -66,6 +67,7 @@ export interface WorkflowStatusResult {
 export function useWorkflowStatus(): WorkflowStatusResult {
   const { coreAgents, spawnedSessions } = useAgentStore();
   const { agentOutputs } = useLiveOutputStore();
+  const { currentTeam } = useTeamStore();
 
   // Find the current active project (from any active agent)
   const currentProject = useMemo(() => {
@@ -83,11 +85,12 @@ export function useWorkflowStatus(): WorkflowStatusResult {
     refetchInterval: 10000, // Refresh every 10s for workflow updates
   });
 
-  // Get the current project's files
+  // Get the current project's file completions (with HANDOFF marker status)
   const projectFiles = useMemo(() => {
     if (!currentProject || !projects) return [];
     const project = projects.find(p => p.name === currentProject);
-    return project?.existing_files || [];
+    // Prefer file_completions for accurate completion tracking
+    return project?.file_completions || [];
   }, [currentProject, projects]);
 
   // Compute workflow state for each agent
@@ -104,14 +107,42 @@ export function useWorkflowStatus(): WorkflowStatusResult {
         ? agent.current_project
         : currentProject;
 
-      // Get files for this agent's project
+      // Get file completions for this agent's project
       let files = projectFiles;
       if (agentProject && agentProject !== currentProject && projects) {
         const proj = projects.find(p => p.name === agentProject);
-        files = proj?.existing_files || [];
+        files = proj?.file_completions || [];
       }
 
-      const state = computeWorkflowState(agent, files, isStreaming, hasMessages);
+      // Skip if no team config loaded yet
+      if (!currentTeam) {
+        return {
+          agent,
+          state: {
+            status: 'offline',
+            blockedBy: null,
+            blockedByFile: null,
+            isNextUp: false,
+            waitingOnMe: [],
+            turnCategory: 'not_involved',
+            currentPhase: 0,
+            totalPhases: 5,
+            phaseOwner: null,
+            phaseName: 'CONTEXT',
+            awaitingQA: false,
+            qaPass: null,
+            canStart: false,
+            statusLabel: 'Offline',
+            statusColor: 'bg-muted-foreground/40',
+          },
+          group: 'idle',
+          turnGroup: 'inactive',
+          hasMessages,
+          isStreaming,
+        } as AgentWithWorkflow;
+      }
+
+      const state = computeWorkflowState(agent, files, isStreaming, hasMessages, currentTeam);
       const group = getWorkflowGroup(state.status);
       const turnGroup = getTurnGroup(state.turnCategory, state.status);
 
@@ -128,7 +159,11 @@ export function useWorkflowStatus(): WorkflowStatusResult {
     // === POST-PROCESSING: Validate blockedBy based on actual agent activity ===
     // Rule: You can only be "blocked by X" if X is active AND streaming (actually working)
 
-    const danTeam = ['ana', 'bill', 'carl', 'enzo'];
+    // Get workflow participants from team config (if loaded)
+    const workflowParticipants = currentTeam
+      ? currentTeam.team.agents.filter(a => a.workflow_participant).map(a => a.name)
+      : [];
+    const coordinator = currentTeam?.team.workflow.coordinator || 'dan';
 
     // Helper: Check if an agent is actively working (streaming)
     const isActivelyWorking = (name: string) => {
@@ -146,29 +181,29 @@ export function useWorkflowStatus(): WorkflowStatusResult {
       }
     }
 
-    // Special handling for Dan: blocked by any actively working team member
-    const danAgent = computed.find(a => a.agent.name === 'dan');
-    if (danAgent && danAgent.agent.active && danAgent.state.status === 'waiting_input') {
+    // Special handling for coordinator: blocked by any actively working team member
+    const coordinatorAgent = computed.find(a => a.agent.name === coordinator);
+    if (coordinatorAgent && coordinatorAgent.agent.active && coordinatorAgent.state.status === 'waiting_input') {
       const workingTeamMember = computed.find(
-        a => danTeam.includes(a.agent.name) && a.agent.active && a.isStreaming
+        a => workflowParticipants.includes(a.agent.name) && a.agent.active && a.isStreaming
       );
 
       if (workingTeamMember) {
-        danAgent.state = {
-          ...danAgent.state,
+        coordinatorAgent.state = {
+          ...coordinatorAgent.state,
           status: 'blocked',
           statusLabel: 'Blocked',
           statusColor: 'bg-red-500',
           blockedBy: workingTeamMember.agent.name as AgentName,
         };
-        danAgent.group = getWorkflowGroup('blocked');
-        danAgent.turnGroup = getTurnGroup(danAgent.state.turnCategory, 'blocked');
+        coordinatorAgent.group = getWorkflowGroup('blocked');
+        coordinatorAgent.turnGroup = getTurnGroup(coordinatorAgent.state.turnCategory, 'blocked');
       }
     }
 
     // Sort by workflow priority
     return computed.sort(sortByWorkflowPriority);
-  }, [coreAgents, spawnedSessions, agentOutputs, projectFiles, currentProject, projects]);
+  }, [coreAgents, spawnedSessions, agentOutputs, projectFiles, currentProject, projects, currentTeam]);
 
   // Group agents by workflow status
   const grouped = useMemo(() => {

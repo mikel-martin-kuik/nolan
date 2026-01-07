@@ -43,14 +43,15 @@ pub fn kill_session(session: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Get session info (for checking if attached)
+/// Get session info (for checking if attached and creation time)
 pub struct SessionInfo {
     pub attached: bool,
+    pub created_at: u64,  // Unix timestamp in seconds
 }
 
 pub fn get_session_info(session: &str) -> Result<SessionInfo, String> {
     let output = Command::new("tmux")
-        .args(&["list-sessions", "-F", "#{session_name} #{session_attached}"])
+        .args(&["list-sessions", "-F", "#{session_name} #{session_attached} #{session_created}"])
         .output()
         .map_err(|e| format!("Failed to get session info: {}", e))?;
 
@@ -61,9 +62,14 @@ pub fn get_session_info(session: &str) -> Result<SessionInfo, String> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     for line in stdout.lines() {
         let parts: Vec<&str> = line.split_whitespace().collect();
-        if parts.len() >= 2 && parts[0] == session {
+        if parts.len() >= 3 && parts[0] == session {
             let attached = parts[1] == "1";
-            return Ok(SessionInfo { attached });
+            let created_at = parts[2].parse::<u64>()
+                .unwrap_or_else(|_| std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0));
+            return Ok(SessionInfo { attached, created_at });
         }
     }
 

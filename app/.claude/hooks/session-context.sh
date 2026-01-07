@@ -37,8 +37,20 @@ if [[ -f "$HANDOFFS_QUEUE" ]] && [[ -s "$HANDOFFS_QUEUE" ]]; then
     done < "$HANDOFFS_QUEUE"
     echo ""
 
-    # If this is Dan, offer to clear the queue
-    if [[ "${AGENT_NAME:-}" == "dan" ]]; then
+    # If this is the coordinator, offer to clear the queue
+    # Load coordinator from team config with fallback (B05)
+    COORDINATOR=$(python3 -c "
+import yaml, os, sys
+try:
+    nolan_root = os.environ.get('NOLAN_ROOT', os.path.expanduser('~/nolan'))
+    config_path = os.path.join(nolan_root, 'teams', 'default.yaml')
+    config = yaml.safe_load(open(config_path))
+    print(config['team']['workflow']['coordinator'])
+except Exception as e:
+    print('dan', file=sys.stderr)  # Fallback to dan
+" 2>/dev/null || echo "dan")
+
+    if [[ "${AGENT_NAME:-}" == "$COORDINATOR" ]]; then
         echo "**Action Required:** Review these handoffs. Clear queue with:"
         echo "\`\`\`bash"
         echo "rm \"$HANDOFFS_QUEUE\""
@@ -102,10 +114,20 @@ for dir in "$PROJECTS_BASE"/*/; do
             ;;
         inprogress)
             ((active_count++)) || true
+            echo "### $project"
+
+            # Show Current Assignment section (if exists)
+            if grep -q "## Current Assignment" "$notes" 2>/dev/null; then
+                assignment=$(sed -n '/## Current Assignment/,/^---$/p' "$notes" | sed '$d')
+                if [[ -n "$assignment" ]]; then
+                    echo "$assignment"
+                    echo ""
+                fi
+            fi
+
             # Show status section
             status=$(grep -A3 "## Current Status" "$notes" 2>/dev/null | head -4)
             [[ -z "$status" ]] && status=$(grep -A3 "^## Status" "$notes" 2>/dev/null | head -4)
-            echo "### $project"
             if [[ -n "$status" ]]; then
                 echo "$status"
             else

@@ -206,16 +206,6 @@ export const UsagePanel: React.FC = () => {
       <div className="w-full space-y-6 h-full flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-foreground flex items-center gap-3">
-              <DollarSign className="w-6 h-6" />
-              Usage Dashboard
-            </h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              Track your Claude Code usage and costs
-            </p>
-          </div>
-
           {/* Date Range Filter */}
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-muted-foreground" />

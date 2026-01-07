@@ -174,20 +174,7 @@ function getEntryTextColor(_type: string): string {
 }
 
 function formatEntryType(type: string): string {
-  switch (type.toLowerCase()) {
-    case 'user':
-      return 'User';
-    case 'assistant':
-      return 'Assistant';
-    case 'tool_use':
-      return 'Tool';
-    case 'tool_result':
-      return 'Result';
-    case 'system':
-      return 'System';
-    default:
-      return type;
-  }
+  return type.toUpperCase();
 }
 
 function truncateMessage(message: string | undefined | null, maxLength: number): string {

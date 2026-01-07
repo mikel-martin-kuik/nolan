@@ -1,18 +1,24 @@
 import React, { useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { MessageSquareX, Eraser, Clock } from 'lucide-react';
+import { MessageSquareX, Eraser, Clock, Terminal, MessageCircle } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { AgentStatus, AGENT_DESCRIPTIONS, AgentWorkflowState, WORKFLOW_FILES } from '../../types';
+import { getAgentVisualName } from '../../lib/agentIdentity';
+import type { FileCompletion } from '../../types/projects';
 import { useLiveOutputStore, AgentLiveOutput } from '../../store/liveOutputStore';
+import { useTerminalStore } from '../../store/terminalStore';
 import { useToastStore } from '../../store/toastStore';
+import { useChatViewStore } from '../../store/chatViewStore';
 import { getBlockerMessage } from '../../lib/workflowStatus';
 import { cn } from '../../lib/utils';
+import { TerminalView } from '../Terminal/TerminalView';
+import { FEATURES } from '../../lib/features';
 
 interface AgentLiveCardProps {
   agent: AgentStatus;
   output?: AgentLiveOutput;
   workflowState?: AgentWorkflowState;
-  projectFiles?: string[];
+  projectFiles?: FileCompletion[] | string[];
 }
 
 const getEntryTypeColor = (_type: string): string => {
@@ -25,10 +31,12 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = ({
   workflowState,
   projectFiles = [],
 }) => {
-  const openModal = useLiveOutputStore((state) => state.openModal);
   const clearSession = useLiveOutputStore((state) => state.clearSession);
+  const openTerminalModal = useTerminalStore((state) => state.openModal);
+  const setActiveChat = useChatViewStore((state) => state.setActiveChat);
   const { error: showError } = useToastStore();
   const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number } | null>(null);
+  const [showTerminal, setShowTerminal] = React.useState(false);
   const contextMenuRef = React.useRef<HTMLDivElement>(null);
   const menuId = React.useRef(`live-card-menu-${agent.session}`);
 
@@ -37,16 +45,32 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = ({
   const lastEntry = entries[entries.length - 1];
 
   const handleCardClick = () => {
-    openModal(agent.session);
+    // Navigate to chat with this agent
+    setActiveChat(agent.session);
+    window.dispatchEvent(new CustomEvent('navigate-to-chat'));
   };
 
   const description = AGENT_DESCRIPTIONS[agent.name as keyof typeof AGENT_DESCRIPTIONS] || 'Agent';
+  const displayName = getAgentVisualName(agent.name);
 
   // Get blocker message if blocked
   const blockerMessage = workflowState ? getBlockerMessage(workflowState) : null;
 
-  // Check which workflow files exist
-  const hasFile = (key: string) => projectFiles.some(f => f.includes(key));
+  // Check if a workflow file is completed (has HANDOFF marker)
+  const isFileCompleted = (key: string): boolean => {
+    if (projectFiles.length === 0) return false;
+
+    // Check if it's FileCompletion[] (has 'completed' property)
+    if (typeof projectFiles[0] === 'object' && 'completed' in projectFiles[0]) {
+      const completions = projectFiles as FileCompletion[];
+      const fileCompletion = completions.find(f => f.file.includes(key));
+      return fileCompletion?.completed ?? false;
+    }
+
+    // Fallback: string[] - just check existence
+    const existingFiles = projectFiles as string[];
+    return existingFiles.some(f => f.includes(key));
+  };
 
   // Handle right-click context menu
   const handleContextMenu = (e: React.MouseEvent) => {
@@ -120,7 +144,7 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = ({
       onContextMenu={handleContextMenu}
       tabIndex={0}
       role="button"
-      aria-label={`View ${agent.name} live output`}
+      aria-label={`View ${displayName} live output`}
     >
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
@@ -146,17 +170,45 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = ({
                         : 'bg-muted-foreground/40 border border-muted-foreground/60'
                     )
               )}
-              title={workflowState?.statusLabel || (isActive ? 'Streaming' : agent.active && entries.length === 0 ? 'Idle' : agent.active ? 'Online' : 'Offline')}
             />
-            <span className={cn('capitalize', agent.active ? 'text-foreground' : 'text-muted-foreground')}>
-              {agent.name}
+            <span className={cn(agent.active ? 'text-foreground' : 'text-muted-foreground')}>
+              {displayName}
             </span>
           </CardTitle>
-
-          {/* Message count */}
-          <span className="text-xs text-muted-foreground font-mono">
-            {entries.length}
-          </span>
+          <div className="flex items-center gap-1">
+            {/* Respond button - show when waiting for input */}
+            {workflowState?.status === 'waiting_input' && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveChat(agent.session);
+                  // Navigate to chat tab
+                  window.dispatchEvent(new CustomEvent('navigate-to-chat'));
+                }}
+                className="px-2 py-1 rounded-lg text-xs font-medium bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 transition-colors flex items-center gap-1"
+                title="Respond to agent"
+              >
+                <MessageCircle className="w-3 h-3" />
+                Respond
+              </button>
+            )}
+            {/* Terminal button - only show for active agents */}
+            {FEATURES.EMBEDDED_TERMINAL && agent.active && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowTerminal(!showTerminal);
+                }}
+                className={cn(
+                  'p-1.5 rounded transition-colors',
+                  showTerminal ? 'bg-primary/20 text-primary' : 'hover:bg-secondary'
+                )}
+                title={showTerminal ? 'Hide terminal' : 'Show terminal'}
+              >
+                <Terminal className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         <CardDescription className={cn(
@@ -226,9 +278,9 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = ({
                 key={file}
                 className={cn(
                   'w-1.5 h-1.5 rounded-full transition-colors',
-                  hasFile(file) ? 'bg-primary' : 'bg-muted-foreground/20'
+                  isFileCompleted(file) ? 'bg-primary' : 'bg-muted-foreground/20'
                 )}
-                title={`${file}.md`}
+                title={`${file}.md${isFileCompleted(file) ? ' (completed)' : ''}`}
               />
             ))}
             <span className="text-[10px] text-muted-foreground ml-1">
@@ -237,23 +289,9 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = ({
           </div>
         )}
 
-        {/* Last message preview */}
-        {lastEntry ? (
-          <div className="text-xs font-mono truncate text-muted-foreground">
-            <span className={getEntryTypeColor(lastEntry.entry_type)}>
-              [{lastEntry.entry_type}]
-            </span>{' '}
-            {lastEntry.preview || (lastEntry.message?.slice(0, 80) ?? 'No content')}
-          </div>
-        ) : (
-          <div className="text-xs text-muted-foreground/50">
-            {workflowState?.status === 'blocked' ? 'Waiting for dependencies...' : 'No messages yet'}
-          </div>
-        )}
-
-        {/* Context usage bar at bottom (only when active and available) */}
+        {/* Context usage bar in middle (only when active and available) */}
         {agent.active && agent.context_usage !== undefined && (
-          <div className="mt-auto space-y-1 pt-2">
+          <div className="space-y-1 mb-2">
             <div className="flex items-center justify-end text-xs">
               <span className="text-foreground font-mono">{agent.context_usage}%</span>
             </div>
@@ -268,6 +306,33 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = ({
                 style={{ width: `${agent.context_usage}%` }}
               />
             </div>
+          </div>
+        )}
+
+        {/* Last message preview at bottom */}
+        <div className="flex-1 flex items-center mt-4">
+          {lastEntry ? (
+            <div className="text-xs font-mono truncate text-muted-foreground w-full">
+              <span className={getEntryTypeColor(lastEntry.entry_type)}>
+                {lastEntry.entry_type.toUpperCase()}
+              </span>{' '}
+              {lastEntry.preview || (lastEntry.message?.slice(0, 80) ?? 'No content')}
+            </div>
+          ) : (
+            <div className="text-xs text-muted-foreground/50 w-full">
+              {workflowState?.status === 'blocked' ? 'Waiting for dependencies...' : 'No messages yet'}
+            </div>
+          )}
+        </div>
+
+        {/* Inline terminal view - conditionally rendered */}
+        {FEATURES.EMBEDDED_TERMINAL && showTerminal && agent.active && (
+          <div className="mt-4 h-80 rounded-lg overflow-hidden border border-border">
+            <TerminalView
+              session={agent.session}
+              agentName={agent.name}
+              onClose={() => setShowTerminal(false)}
+            />
           </div>
         )}
       </CardContent>
@@ -299,6 +364,18 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = ({
           >
             <Eraser className="w-4 h-4" />
             Clear Context
+          </button>
+        )}
+        {FEATURES.EMBEDDED_TERMINAL && agent.active && (
+          <button
+            onClick={() => {
+              setContextMenu(null);
+              openTerminalModal(agent.session, agent.name);
+            }}
+            className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
+          >
+            <Terminal className="w-4 h-4" />
+            Open Terminal Modal
           </button>
         )}
       </div>

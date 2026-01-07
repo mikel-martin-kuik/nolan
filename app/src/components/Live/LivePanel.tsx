@@ -5,7 +5,6 @@ import { useLiveOutputStore } from '../../store/liveOutputStore';
 import { useAgentStore } from '../../store/agentStore';
 import { useWorkflowStatus, type AgentWithWorkflow } from '../../hooks/useWorkflowStatus';
 import { AgentLiveCard } from './AgentLiveCard';
-import { LiveStreamModal } from './LiveStreamModal';
 import { cn } from '../../lib/utils';
 
 // Group configuration with icons and colors
@@ -41,7 +40,6 @@ export const LivePanel: React.FC = () => {
 
   const {
     agentOutputs,
-    selectedSession,
     clearAll,
     getActiveSessions,
   } = useLiveOutputStore();
@@ -49,7 +47,7 @@ export const LivePanel: React.FC = () => {
   const { coreAgents, spawnedSessions } = useAgentStore();
 
   // Use the workflow status hook for dependency-aware grouping
-  const { grouped, projectFiles, currentProject } = useWorkflowStatus();
+  const { grouped, projectFiles } = useWorkflowStatus();
 
   // Combine all agents for display - memoized to avoid re-creating on every render
   const allAgents = useMemo(
@@ -73,13 +71,6 @@ export const LivePanel: React.FC = () => {
     [allAgents, sessionsWithOutput]
   );
 
-  // Count active (received message in last 5s) sessions - memoized
-  const activeCount = useMemo(
-    () =>
-      Object.values(agentOutputs).filter((output) => output.isActive).length,
-    [agentOutputs]
-  );
-
   // Total message count - memoized
   const totalMessages = useMemo(
     () =>
@@ -88,15 +79,6 @@ export const LivePanel: React.FC = () => {
         0
       ),
     [agentOutputs]
-  );
-
-  // Find the agent for the modal - memoized
-  const selectedAgent = useMemo(
-    () =>
-      selectedSession
-        ? allAgents.find((a) => a.session === selectedSession)
-        : undefined,
-    [selectedSession, allAgents]
   );
 
   // Helper to render a group of agents
@@ -148,33 +130,11 @@ export const LivePanel: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-            <h1 className="text-xl font-semibold flex items-center gap-2">
-              Live Output
-              {currentProject && (
-                <span className="text-sm font-normal px-2 py-0.5 rounded bg-primary/10 text-primary">
-                  {currentProject}
-                </span>
-              )}
+            <h1 className="text-lg font-semibold">
+              Live
             </h1>
-            <p className="text-sm text-muted-foreground">
-              {activeCount > 0 && (
-                <>
-                  <span className="text-green-500">{activeCount} streaming</span>
-                  {' '}
-                </>
-              )}
-              {grouped.blocked.length > 0 && (
-                <>
-                  <span className="text-red-400">{grouped.blocked.length} blocked</span>
-                  {' '}
-                </>
-              )}
-              {totalMessages > 0 && (
-                <span>{totalMessages} messages</span>
-              )}
-              {activeCount === 0 && totalMessages === 0 && (
-                <span>Real-time agent activity</span>
-              )}
+            <p className="text-xs text-muted-foreground">
+              Real-time agent activity
             </p>
         </div>
 
@@ -221,9 +181,6 @@ export const LivePanel: React.FC = () => {
           {renderAgentGroup('idle', grouped.idle)}
         </div>
       )}
-
-      {/* Modal for viewing full stream */}
-      <LiveStreamModal agent={selectedAgent} />
     </div>
   );
 };

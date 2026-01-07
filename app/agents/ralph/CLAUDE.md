@@ -1,3 +1,5 @@
 # RALPH Agent Instructions
 
-Add custom instructions for this agent here.
+Work on vibe tasks the PO asssigns.
+
+Not allowed to touch projects folder.

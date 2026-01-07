@@ -13,6 +13,7 @@ import json
 import sys
 import os
 import re
+import yaml
 from pathlib import Path
 from datetime import datetime
 
@@ -29,6 +30,48 @@ def get_projects_base():
     return None
 
 
+def load_team_config(project_path: Path) -> dict:
+    """Load team configuration for a project.
+
+    Security: Includes DoS protection (file size limit, depth limit).
+    Error handling: Falls back to default team on failure (B05).
+    """
+    team_file = project_path / '.team'
+    team_name = team_file.read_text().strip() if team_file.exists() else 'default'
+
+    nolan_root = Path(os.environ['NOLAN_ROOT'])
+    config_path = nolan_root / 'teams' / f'{team_name}.yaml'
+
+    # DoS protection: Check file size (1MB max)
+    if config_path.stat().st_size > 1_048_576:
+        raise ValueError(f"Team config too large: {config_path.stat().st_size} bytes (max 1MB)")
+
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+
+    # DoS protection: Check depth (10 levels max)
+    def get_depth(obj, current=0):
+        if not isinstance(obj, (dict, list)):
+            return current
+        if isinstance(obj, dict):
+            return max((get_depth(v, current + 1) for v in obj.values()), default=current)
+        return max((get_depth(item, current + 1) for item in obj), default=current)
+
+    depth = get_depth(config)
+    if depth > 10:
+        raise ValueError(f"Team config too deeply nested: {depth} levels (max 10)")
+
+    return config
+
+
+def get_agent_config(team: dict, agent_name: str) -> dict:
+    """Get agent configuration from team config."""
+    for agent in team['team']['agents']:
+        if agent['name'] == agent_name:
+            return agent
+    return None
+
+
 def get_docs_path():
     """Get active project docs path with explicit tracking."""
     # 1. Check for DOCS_PATH environment variable first (most explicit)
@@ -40,18 +83,23 @@ def get_docs_path():
         return None
 
     # 2. Check for active project state file (explicit tracking)
+    # Try team-namespaced state files (default team first, then agent-specific)
     agent = os.environ.get('AGENT_NAME', '').lower()
     if agent:
-        state_file = projects_base / '.state' / f'active-{agent}.txt'
-        if state_file.exists():
-            try:
-                project_name = state_file.read_text().strip()
-                if project_name:
-                    project_path = projects_base / project_name
-                    if project_path.exists():
-                        return project_path
-            except Exception:
-                pass
+        # Try default team's state files
+        for state_file in [
+            projects_base / '.state' / 'default' / f'active-{agent}.txt',
+            projects_base / '.state' / f'active-{agent}.txt'  # Legacy fallback
+        ]:
+            if state_file.exists():
+                try:
+                    project_name = state_file.read_text().strip()
+                    if project_name:
+                        project_path = projects_base / project_name
+                        if project_path.exists():
+                            return project_path
+                except Exception:
+                    pass
 
     # 3. Fallback: Find most recently modified NOTES.md (heuristic)
     notes_files = list(projects_base.glob("*/NOTES.md"))
@@ -62,28 +110,40 @@ def get_docs_path():
     return None
 
 def check_agent_output(docs_path, agent):
-    """Check if agent's output file has required sections."""
-    requirements = {
-        'ana': ('research.md', ['## Problem', '## Findings', '## Recommendations']),
-        'bill': ('plan.md', ['## Overview', '## Tasks', '## Risks']),
-        'carl': ('progress.md', ['## Status', '## Changes']),
-        'enzo': ('qa-review.md', ['## Summary', '## Findings', '## Recommendation'])
-    }
+    """Check if agent's output file has required sections.
 
-    if agent not in requirements:
-        return None  # Unknown agent, allow stop
+    Loads requirements from team config with error handling and fallback (B05).
+    """
+    try:
+        team = load_team_config(docs_path)
+    except Exception as e:
+        print(f"Warning: Failed to load team config: {e}", file=sys.stderr)
+        print(f"Falling back to default team", file=sys.stderr)
+        try:
+            # Fallback to default team
+            team_file = docs_path / '.team'
+            team_file.write_text('default')
+            team = load_team_config(docs_path)
+        except Exception as e2:
+            return f"FATAL: Cannot load team config: {e2}"
 
-    filename, required_sections = requirements[agent]
-    filepath = docs_path / filename
+    agent_config = get_agent_config(team, agent)
+
+    if not agent_config or not agent_config.get('output_file'):
+        return None  # Agent doesn't require output file
+
+    output_file = agent_config['output_file']
+    filepath = docs_path / output_file
 
     if not filepath.exists():
-        return f"Output file {filename} not found. Complete your work before stopping."
+        return f"Output file {output_file} not found. Complete your work before stopping."
 
     content = filepath.read_text()
+    required_sections = agent_config.get('required_sections', [])
     missing = [s for s in required_sections if s not in content]
 
     if missing:
-        return f"Missing sections in {filename}: {', '.join(missing)}"
+        return f"Missing sections in {output_file}: {', '.join(missing)}"
 
     return None  # All checks passed
 
@@ -145,48 +205,54 @@ def trigger_handoff(docs_path, agent, output_file):
                 return False
 
         # Clear active project state file on successful handoff
+        # Try team-namespaced state file (default team)
         projects_base = get_projects_base()
         if projects_base and agent:
-            state_file = projects_base / '.state' / f'active-{agent}.txt'
-            try:
-                if state_file.exists():
-                    state_file.unlink()
-            except Exception:
-                pass  # Non-critical, don't fail handoff
+            for state_file in [
+                projects_base / '.state' / 'default' / f'active-{agent}.txt',
+                projects_base / '.state' / f'active-{agent}.txt'  # Legacy fallback
+            ]:
+                try:
+                    if state_file.exists():
+                        state_file.unlink()
+                except Exception:
+                    pass  # Non-critical, don't fail handoff
 
         return True
     except Exception as e:
         return False
 
 def check_handoff_done(docs_path, agent):
-    """Auto-trigger handoff if output file has required sections and marker missing or stale."""
-    output_files = {
-        'ana': 'research.md',
-        'bill': 'plan.md',
-        'carl': 'progress.md',
-        'enzo': 'qa-review.md'
-    }
+    """Auto-trigger handoff if output file has required sections and marker missing or stale.
 
-    if agent not in output_files:
-        return None  # Unknown agent, allow stop
+    Loads file requirements from team config with error handling (B05).
+    """
+    try:
+        team = load_team_config(docs_path)
+    except Exception as e:
+        print(f"Warning: Failed to load team config: {e}", file=sys.stderr)
+        print(f"Falling back to default team", file=sys.stderr)
+        try:
+            team_file = docs_path / '.team'
+            team_file.write_text('default')
+            team = load_team_config(docs_path)
+        except Exception as e2:
+            return None  # Cannot validate, allow stop
 
-    filepath = docs_path / output_files[agent]
+    agent_config = get_agent_config(team, agent)
+
+    if not agent_config or not agent_config.get('output_file'):
+        return None  # Agent doesn't require output file
+
+    filepath = docs_path / agent_config['output_file']
 
     if not filepath.exists():
         return None  # No file, other check will catch this
 
     content = filepath.read_text()
 
-    # Check if required sections are present (same as check_agent_output)
-    # If sections are there, work is complete - no need for magic status words
-    requirements = {
-        'ana': ['## Problem', '## Findings', '## Recommendations'],
-        'bill': ['## Overview', '## Tasks', '## Risks'],
-        'carl': ['## Status', '## Changes'],
-        'enzo': ['## Summary', '## Findings', '## Recommendation']
-    }
-
-    required_sections = requirements.get(agent, [])
+    # Check if required sections are present (loaded from team config)
+    required_sections = agent_config.get('required_sections', [])
     missing = [s for s in required_sections if s not in content]
 
     if missing:
@@ -218,7 +284,7 @@ def check_handoff_done(docs_path, agent):
 
     if needs_handoff:
         # Auto-trigger handoff
-        if trigger_handoff(docs_path, agent, output_files[agent]):
+        if trigger_handoff(docs_path, agent, agent_config['output_file']):
             return None  # Handoff triggered successfully, allow stop
         else:
             return f"Work complete but handoff automation failed. Please run: /handoff {agent} dan"

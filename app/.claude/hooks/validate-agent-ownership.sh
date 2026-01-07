@@ -55,49 +55,82 @@ get_agent_name() {
 agent=$(get_agent_name)
 filename=$(basename "$file_path")
 
-# Ownership validation for restricted agents
-case "$agent" in
-    ana)
-        if [[ "$filename" != "research.md" ]]; then
-            echo "BLOCKED: Ana can only write to research.md, not $filename" >&2
-            exit 2
-        fi
-        ;;
-    bill)
-        if [[ "$filename" != "plan.md" ]]; then
-            echo "BLOCKED: Bill can only write to plan.md, not $filename" >&2
-            exit 2
-        fi
-        ;;
-    enzo)
-        if [[ "$filename" != "qa-review.md" ]]; then
-            echo "BLOCKED: Enzo can only write to qa-review.md, not $filename" >&2
-            exit 2
-        fi
-        ;;
-    carl|dan)
-        # Permissive - allow all writes for implementation/coordination agents
-        ;;
-    ralph)
-        # Ralph: utility agent with restrictions
-        # Cannot write to projects directory (where workflow outputs live)
-        projects_dir="${PROJECTS_DIR:-$HOME/nolan/projects}"
-        if [[ "$file_path" == "$projects_dir"* ]]; then
-            echo "BLOCKED: Ralph cannot write to projects directory: $file_path" >&2
-            exit 2
-        fi
-        # Allow other writes (app code, scripts, commands, etc.)
-        ;;
-    "")
-        # Unknown agent - block writes to protected files
-        case "$filename" in
-            research.md|plan.md|progress.md|qa-review.md|NOTES.md)
-                echo "BLOCKED: Unknown agent cannot write to $filename. Set AGENT_NAME environment variable." >&2
-                exit 2
-                ;;
-        esac
-        # Allow writes to other files (non-protected)
-        ;;
-esac
+# Python-based ownership validation with team config and error handling (B05)
+python3 <<'EOF'
+import sys, yaml, os
+from pathlib import Path
+
+try:
+    agent = '''${agent}'''
+    filename = '''${filename}'''
+    file_path = Path('''${file_path}''')
+
+    # Handle unknown agent - block writes to any output files
+    if not agent:
+        # Block writes to common output files if agent is unknown
+        protected = ['research.md', 'plan.md', 'progress.md', 'qa-review.md', 'NOTES.md']
+        if filename in protected:
+            print(f"BLOCKED: Unknown agent cannot write to {filename}. Set AGENT_NAME environment variable.", file=sys.stderr)
+            sys.exit(2)
+        sys.exit(0)  # Allow other files
+
+    # Determine if this is a project file
+    projects_dir = os.environ.get('PROJECTS_DIR', os.path.join(os.environ.get('HOME', ''), 'nolan', 'projects'))
+
+    # If not in projects directory, allow (app code, scripts, etc.)
+    if str(file_path).startswith(projects_dir):
+        # Extract project path from file path
+        relative = Path(str(file_path)[len(projects_dir):].lstrip('/'))
+        project_name = relative.parts[0] if relative.parts else None
+
+        if project_name:
+            project_path = Path(projects_dir) / project_name
+        else:
+            # Edge case: writing directly to projects dir
+            sys.exit(0)
+
+        # Load team config with fallback (B05)
+        team_file = project_path / '.team'
+        team_name = team_file.read_text().strip() if team_file.exists() else 'default'
+
+        nolan_root = Path(os.environ['NOLAN_ROOT'])
+        config_path = nolan_root / 'teams' / f'{team_name}.yaml'
+
+        try:
+            config = yaml.safe_load(config_path.read_text())
+        except Exception as e:
+            print(f"Warning: Failed to load team config '{team_name}': {e}", file=sys.stderr)
+            print("Falling back to default team", file=sys.stderr)
+            config = yaml.safe_load((nolan_root / 'teams' / 'default.yaml').read_text())
+
+        # Find agent configuration
+        agent_config = next((a for a in config['team']['agents'] if a['name'] == agent), None)
+
+        if not agent_config:
+            print(f"BLOCKED: Unknown agent '{agent}' not in team config", file=sys.stderr)
+            sys.exit(2)
+
+        # Enforce file permissions
+        perms = agent_config.get('file_permissions')
+
+        if perms == 'no_projects':
+            print(f"BLOCKED: {agent} cannot write to projects directory: {file_path}", file=sys.stderr)
+            sys.exit(2)
+
+        if perms == 'restricted':
+            allowed_file = agent_config.get('output_file')
+            if filename != allowed_file:
+                print(f"BLOCKED: {agent} can only write to {allowed_file}, not {filename}", file=sys.stderr)
+                sys.exit(2)
+
+        # perms == 'permissive' allows all writes
+
+    # All checks passed
+    sys.exit(0)
+
+except Exception as e:
+    print(f"FATAL: Hook error: {e}", file=sys.stderr)
+    sys.exit(2)
+EOF
 
 exit 0

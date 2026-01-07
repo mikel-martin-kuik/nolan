@@ -391,6 +391,23 @@ async fn load_session_index() -> Result<(), String> {
 /// Core agent names for fallback matching
 const CORE_AGENT_NAMES: &[&str] = &["dan", "ana", "bill", "carl", "enzo", "ralph"];
 
+/// Update the session index with a new session entry
+/// Called by lifecycle when a new session is spawned
+pub fn update_session_index(tmux_session: &str, agent: &str, agent_dir: &str) {
+    let entry = SessionRegistryEntry {
+        tmux_session: tmux_session.to_string(),
+        agent: agent.to_string(),
+        agent_dir: agent_dir.to_string(),
+        start_time: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+    };
+
+    // Update the in-memory index
+    SESSION_INDEX
+        .entry(agent_dir.to_string())
+        .or_insert_with(Vec::new)
+        .insert(0, entry); // Insert at front (newest first)
+}
+
 /// Find session by agent name directly (for fallback when cwd lookup fails)
 fn find_session_by_agent_name(agent_name: &str) -> Option<String> {
     use crate::tmux::session::session_exists;

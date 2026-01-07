@@ -3,6 +3,7 @@ pub mod communicator;
 pub mod history;
 pub mod sessions;
 pub mod projects;
+pub mod teams;
 pub mod usage;
 
 // Whitelist of allowed scripts that Tauri can execute

@@ -1,5 +1,14 @@
 export type ProjectStatus = 'complete' | 'inprogress' | 'pending';
 
+/** Completion status for a workflow file based on HANDOFF markers */
+export interface FileCompletion {
+  file: string;
+  exists: boolean;
+  completed: boolean;
+  completed_by: string | null;
+  completed_at: string | null;
+}
+
 export interface ProjectInfo {
   name: string;
   path: string;
@@ -9,6 +18,7 @@ export interface ProjectInfo {
   status_detail: string | null;
   existing_files: string[];
   missing_files: string[];
+  file_completions: FileCompletion[];
 }
 
 export interface ProjectFile {

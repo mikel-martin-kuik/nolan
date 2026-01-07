@@ -76,16 +76,18 @@ if [ -d "$NOLAN_APP_ROOT/.claude" ]; then
                 agent_name=$(basename "$agent_dir")
                 agent_claude_link="$agent_dir/.claude"
 
-                # Remove existing symlink or directory if it exists
+                # Remove existing symlink if it exists
                 if [ -L "$agent_claude_link" ]; then
                     rm "$agent_claude_link"
-                    echo "  ✓ Updated symlink: $agent_name/.claude"
-                elif [ -d "$agent_claude_link" ]; then
+                fi
+
+                # Skip if there's a directory instead
+                if [ -d "$agent_claude_link" ]; then
                     echo "  ⚠ Skipping $agent_name: .claude directory exists (not a symlink)"
                 else
                     # Create the symlink
                     ln -s "$NOLAN_APP_ROOT/.claude" "$agent_claude_link"
-                    echo "  ✓ Created symlink: $agent_name/.claude"
+                    echo "  ✓ Created/updated symlink: $agent_name/.claude"
                 fi
             fi
         done

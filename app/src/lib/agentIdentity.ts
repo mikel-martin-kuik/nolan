@@ -15,8 +15,8 @@
 // - Team agents: agent-{team}-{name} (e.g., agent-default-ana, agent-sprint-bill)
 // - Ralph (free agent): agent-ralph-{name} (e.g., agent-ralph-ziggy)
 
-/** Matches team agent sessions: agent-{team}-{name} */
-export const RE_TEAM_SESSION = /^agent-([a-z0-9]+)-([a-z]+)$/;
+/** Matches team agent sessions: agent-{team}-{name} (team names can contain hyphens) */
+export const RE_TEAM_SESSION = /^agent-([a-z][a-z0-9-]*[a-z0-9]|[a-z])-([a-z]+)$/;
 
 /** Matches Ralph sessions: agent-ralph-{name} */
 export const RE_RALPH_SESSION = /^agent-ralph-([a-z0-9]+)$/;

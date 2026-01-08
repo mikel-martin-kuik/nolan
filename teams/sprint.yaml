@@ -39,6 +39,11 @@ team:
     awaits_qa: false
   workflow:
     coordinator: dan
+    # Timeout settings for handoff protocol - shorter for sprint teams
+    timeouts:
+      ack_timeout_seconds: 30      # How long agents wait for coordinator ACK
+      ack_poll_interval: 5         # Poll interval when waiting for ACK
+      coordinator_wait_minutes: 30 # Max time coordinator waits for project completion
     phases:
     - name: Planning
       owner: bill
@@ -61,13 +66,13 @@ team:
   communication:
     broadcast_groups:
     - name: core
-      pattern: ^agent-[a-z]+$
+      pattern: ^agent-([a-z][a-z0-9-]*[a-z0-9]|[a-z])-[a-z]+$
       members:
       - bill
       - carl
       - frank
     - name: all_agents
-      pattern: ^agent-[a-z]+(-[0-9]+)?$
+      pattern: ^agent-(ralph-)?([a-z][a-z0-9-]*[a-z0-9]|[a-z])-[a-z]+$
       members:
       - bill
       - carl

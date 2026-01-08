@@ -1,0 +1,22 @@
+name: cron-git
+description: commit changes
+model: haiku
+timeout: 300
+enabled: true
+schedule:
+  cron: 0 */4 * * *
+  timezone: null
+guardrails:
+  allowed_tools:
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  forbidden_paths:
+  - '**/.env'
+  - '**/secrets/**'
+  - '**/*.key'
+  max_file_edits: 10
+context:
+  working_directory: null

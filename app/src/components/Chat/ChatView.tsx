@@ -1,6 +1,5 @@
 import React, { useMemo, useCallback, useState } from 'react';
-import { MessageCircle, RefreshCw, Trash2, Activity, AlertCircle, Zap, Clock, Moon, ChevronLeft, CheckCircle } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
+import { MessageCircle, Trash2, Activity, AlertCircle, Zap, Clock, Moon, ChevronLeft, CheckCircle } from 'lucide-react';
 import { useLiveOutputStore } from '../../store/liveOutputStore';
 import { useAgentStore } from '../../store/agentStore';
 import { useChatViewStore } from '../../store/chatViewStore';
@@ -54,10 +53,9 @@ function getAgentDisplayName(agent: AgentStatus): string {
 
 export const ChatView: React.FC = () => {
   const { activeSession, setActiveChat } = useChatViewStore();
-  const { agentOutputs, clearAll, clearSession } = useLiveOutputStore();
+  const { agentOutputs, clearSession } = useLiveOutputStore();
   const { teamAgents, freeAgents } = useAgentStore();
   const { grouped, projectFiles } = useWorkflowStatus();
-  const [isRestarting, setIsRestarting] = React.useState(false);
 
   // Mobile: track whether to show chat panel (vs agent list)
   const [showMobileChat, setShowMobileChat] = useState(false);
@@ -111,41 +109,6 @@ export const ChatView: React.FC = () => {
     }
   }, [activeSession, orderedAgents, setActiveChat]);
 
-  // Track restart timeout to ensure cleanup on unmount
-  const restartTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleRestartFeed = useCallback(async () => {
-    if (restartTimeoutRef.current) {
-      clearTimeout(restartTimeoutRef.current);
-    }
-
-    setIsRestarting(true);
-    try {
-      await invoke('start_history_stream');
-    } catch (err) {
-      console.error('Failed to restart history stream:', err);
-    } finally {
-      restartTimeoutRef.current = setTimeout(() => setIsRestarting(false), 1000);
-    }
-  }, []);
-
-  // Cleanup timeout on unmount
-  React.useEffect(() => {
-    return () => {
-      if (restartTimeoutRef.current) {
-        clearTimeout(restartTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  const totalMessages = useMemo(
-    () => Object.values(agentOutputs).reduce(
-      (sum, output) => sum + (output?.entries?.length || 0),
-      0
-    ),
-    [agentOutputs]
-  );
-
   // Handle agent selection (also opens chat on mobile)
   const handleSelectAgent = useCallback((session: string) => {
     setActiveChat(session);
@@ -156,9 +119,6 @@ export const ChatView: React.FC = () => {
   const handleBackToList = useCallback(() => {
     setShowMobileChat(false);
   }, []);
-
-  // Count agents needing attention
-  const attentionCount = grouped.attention.length;
 
   // Helper to render a group of agents with header
   const renderAgentGroup = (
@@ -171,14 +131,14 @@ export const ChatView: React.FC = () => {
     const Icon = config.icon;
 
     return (
-      <div key={groupKey} className="mb-3">
-        <h3 className="text-[10px] font-medium text-muted-foreground mb-1.5 px-1 flex items-center gap-1.5 uppercase tracking-wider">
+      <div key={groupKey} className="mb-4">
+        <h3 className="text-[10px] font-medium text-muted-foreground mb-2 px-1 flex items-center gap-1.5 uppercase tracking-wider">
           <div className={cn('w-1.5 h-1.5 rounded-full', config.dotColor)} />
           <Icon className="w-3 h-3" />
           <span>{config.label}</span>
           <span className="opacity-60">({agents.length})</span>
         </h3>
-        <div className="space-y-1">
+        <div className="space-y-2.5">
           {agents.map(({ agent, state }) => (
             <AgentListItem
               key={agent.session}
@@ -198,39 +158,6 @@ export const ChatView: React.FC = () => {
   // Render agent list sidebar content
   const renderAgentList = () => (
     <>
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-border">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-sm font-medium">Agents</h2>
-            {attentionCount > 0 && (
-              <p className="text-[10px] text-yellow-400">
-                {attentionCount} {attentionCount === 1 ? 'needs' : 'need'} response
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={handleRestartFeed}
-              disabled={isRestarting}
-              className="p-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
-              title="Restart live feed"
-            >
-              <RefreshCw className={cn('w-4 h-4', isRestarting && 'animate-spin')} />
-            </button>
-            {totalMessages > 0 && (
-              <button
-                onClick={clearAll}
-                className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                title="Clear all messages"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* Agent list by category */}
       <div className="flex-1 overflow-y-auto p-2">
         {orderedAgents.length === 0 ? (

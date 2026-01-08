@@ -4,7 +4,6 @@ import { invoke } from '@tauri-apps/api/core';
 import { useToastStore } from '../../store/toastStore';
 import { useTeamStore } from '../../store/teamStore';
 import { Textarea } from '@/components/ui/textarea';
-import { Button } from '@/components/ui/button';
 
 interface ChatInputProps {
   session: string;
@@ -89,25 +88,31 @@ export const ChatInput: React.FC<ChatInputProps> = memo(({
           rows={1}
         />
 
-        {/* Send button */}
-        <Button
+        {/* Send button - styled like team launch button */}
+        <button
           onClick={handleSend}
           disabled={disabled || sending || !value.trim()}
           title="Send message"
-          className="h-11 px-4 rounded-xl"
+          className="w-11 h-11 rounded-xl flex items-center justify-center
+            bg-emerald-500/15 border border-emerald-400/30 text-emerald-500
+            hover:bg-emerald-500/25 hover:border-emerald-400/50
+            active:scale-95 transition-all duration-200
+            disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-emerald-500/15 disabled:hover:border-emerald-400/30"
         >
           <Send className="w-4 h-4" />
-        </Button>
+        </button>
 
-        {/* Interrupt button */}
-        <Button
-          variant="outline"
+        {/* Interrupt button - styled like team kill button */}
+        <button
           onClick={handleInterrupt}
           title="Interrupt agent"
-          className="h-11 px-4 rounded-xl bg-destructive/20 text-destructive border-destructive/30 hover:bg-destructive/30 hover:text-destructive"
+          className="w-11 h-11 rounded-xl flex items-center justify-center
+            bg-secondary/50 border border-border text-muted-foreground
+            hover:bg-red-500/10 hover:border-red-400/20 hover:text-red-500
+            active:scale-95 transition-all duration-200"
         >
           <Square className="w-4 h-4" />
-        </Button>
+        </button>
       </div>
 
       <p className="text-[10px] text-muted-foreground mt-2 px-1">

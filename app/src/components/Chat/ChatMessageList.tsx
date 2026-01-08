@@ -1,4 +1,4 @@
-import React, { memo, useRef, useEffect, useState } from 'react';
+import React, { memo, useRef, useEffect, useState, useCallback } from 'react';
 import { ArrowDown } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { HistoryEntry } from '../../types';
@@ -6,6 +6,18 @@ import { useMessageClassifier, isWaitingForInput } from './useMessageClassifier'
 import { ChatMessage } from './ChatMessage';
 import { CollapsedActivity } from './CollapsedActivity';
 import { ChatActivityIndicator } from './ChatActivityIndicator';
+
+// Debounce helper for scroll handling
+function debounce<T extends (...args: Parameters<T>) => void>(
+  fn: T,
+  delay: number
+): (...args: Parameters<T>) => void {
+  let timeoutId: ReturnType<typeof setTimeout>;
+  return (...args: Parameters<T>) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => fn(...args), delay);
+  };
+}
 
 interface ChatMessageListProps {
   entries: HistoryEntry[];
@@ -35,17 +47,21 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = memo(({
   const lastToolEntry = [...entries].reverse().find(e => e.entry_type === 'tool_use');
   const lastToolName = lastToolEntry?.tool_name;
 
-  // Handle scroll position
-  const handleScroll = () => {
-    const container = containerRef.current;
-    if (!container) return;
+  // Handle scroll position (debounced to reduce state updates)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handleScroll = useCallback(
+    debounce(() => {
+      const container = containerRef.current;
+      if (!container) return;
 
-    const { scrollTop, scrollHeight, clientHeight } = container;
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
 
-    setAutoScroll(isNearBottom);
-    setShowScrollButton(!isNearBottom);
-  };
+      setAutoScroll(isNearBottom);
+      setShowScrollButton(!isNearBottom);
+    }, 100),
+    []
+  );
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {

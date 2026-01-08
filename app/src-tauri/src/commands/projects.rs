@@ -2,8 +2,14 @@ use std::fs;
 use std::path::PathBuf;
 use serde::Serialize;
 use regex::Regex;
+use once_cell::sync::Lazy;
 use crate::config::{TeamConfig, load_project_team};
 use crate::utils::paths::get_projects_dir;
+
+// Cached regex pattern for HANDOFF markers (compiled once at startup)
+static RE_HANDOFF: Lazy<Option<Regex>> = Lazy::new(|| {
+    Regex::new(r"<!-- HANDOFF:(\d{4}-\d{2}-\d{2} \d{2}:\d{2}):(\w+):COMPLETE -->").ok()
+});
 
 /// Project status derived from coordinator's output file
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -89,7 +95,7 @@ pub struct ProjectFile {
     pub is_recent: bool,
 }
 
-/// Parse project status from NOTES.md content
+/// Parse project status from coordinator's output file content
 /// MARKER-ONLY: Single source of truth via structured markers
 /// No heuristics, no legacy pattern matching
 ///
@@ -99,8 +105,8 @@ pub struct ProjectFile {
 /// - `<!-- PROJECT:STATUS:ARCHIVED:date -->` → Complete
 /// - `<!-- PROJECT:STATUS:INPROGRESS:date -->` → InProgress
 /// - No marker → Pending
-fn parse_project_status(notes_content: &str) -> (ProjectStatus, Option<String>) {
-    for line in notes_content.lines() {
+fn parse_project_status(coordinator_content: &str) -> (ProjectStatus, Option<String>) {
+    for line in coordinator_content.lines() {
         let trimmed = line.trim();
 
         // Complete markers
@@ -127,9 +133,8 @@ fn parse_project_status(notes_content: &str) -> (ProjectStatus, Option<String>) 
 /// Parse HANDOFF marker from file content
 /// Format: <!-- HANDOFF:YYYY-MM-DD HH:MM:agent:COMPLETE -->
 fn parse_handoff_marker(content: &str) -> Option<(String, String)> {
-    // Match the most recent HANDOFF marker (last one in file)
-    let re = Regex::new(r"<!-- HANDOFF:(\d{4}-\d{2}-\d{2} \d{2}:\d{2}):(\w+):COMPLETE -->")
-        .ok()?;
+    // Use cached regex pattern (compiled once at startup)
+    let re = RE_HANDOFF.as_ref()?;
 
     // Find all matches and take the last one (most recent)
     let mut last_match: Option<(String, String)> = None;

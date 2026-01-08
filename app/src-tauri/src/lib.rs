@@ -2,6 +2,7 @@
 pub mod commands;
 pub mod config;
 pub mod constants;
+pub mod cronos;
 pub mod error;
 pub mod shell;
 pub mod tmux;
@@ -23,6 +24,12 @@ pub fn run() {
     if let Err(e) = runtime.block_on(tmux::terminal_stream::cleanup_orphaned_streams()) {
         eprintln!("Warning: Failed to cleanup orphaned terminal streams: {}", e);
         // Non-fatal - continue startup
+    }
+
+    // Initialize Cronos scheduler
+    if let Err(e) = runtime.block_on(cronos::commands::init_cronos()) {
+        eprintln!("Warning: Failed to initialize Cronos scheduler: {}", e);
+        // Non-fatal - cronos features will be unavailable
     }
 
     tauri::Builder::default()
@@ -97,6 +104,19 @@ pub fn run() {
             get_usage_stats,
             get_usage_by_date_range,
             get_session_stats,
+            // Cronos commands
+            cronos::commands::list_cron_agents,
+            cronos::commands::get_cron_agent,
+            cronos::commands::create_cron_agent,
+            cronos::commands::update_cron_agent,
+            cronos::commands::delete_cron_agent,
+            cronos::commands::toggle_cron_agent,
+            cronos::commands::test_cron_agent,
+            cronos::commands::trigger_cron_agent,
+            cronos::commands::get_cron_run_history,
+            cronos::commands::get_cron_run_log,
+            cronos::commands::read_cron_agent_claude_md,
+            cronos::commands::write_cron_agent_claude_md,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

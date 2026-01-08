@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { invoke } from '@tauri-apps/api/core';
 import { ChevronDown, FileText, Circle } from 'lucide-react';
@@ -15,7 +16,7 @@ interface ProjectListItemProps {
   onFileSelect: (file: string) => void;
 }
 
-export function ProjectListItem({
+export const ProjectListItem = memo(function ProjectListItem({
   project,
   isExpanded,
   isSelected,
@@ -33,17 +34,18 @@ export function ProjectListItem({
       projectName: project.name
     }),
     enabled: isExpanded,
-    refetchInterval: isExpanded ? 10000 : false,
+    // Increased refetch interval from 10s to 30s for better performance
+    refetchInterval: isExpanded ? 30000 : false,
   });
 
   // Get dynamic workflow steps from the project's team config
   const workflowSteps = getWorkflowSteps(projectTeamConfig);
   const fileOrder = getFileOrder(projectTeamConfig);
 
-  // Calculate workflow step completion
+  // Calculate workflow step completion (memoized)
   // Uses file_completions from backend which checks for HANDOFF markers
   // Special case: "close" step checks project status instead of file
-  const stepCompletion = workflowSteps.map(step => {
+  const stepCompletion = useMemo(() => workflowSteps.map(step => {
     // Special handling for "close" step - check project status
     if (step.key === 'close') {
       return { ...step, complete: project.status === 'complete' };
@@ -73,16 +75,19 @@ export function ProjectListItem({
     );
 
     return { ...step, complete: exactMatch };
-  });
+  }), [workflowSteps, project.status, project.file_completions, project.existing_files]);
 
   const completedCount = stepCompletion.filter(s => s.complete).length;
 
-  // Sort files by workflow order
-  const sortedFiles = files?.slice().sort((a, b) => {
-    const aOrder = fileOrder[a.file_type] ?? 99;
-    const bOrder = fileOrder[b.file_type] ?? 99;
-    return aOrder - bOrder;
-  });
+  // Sort files by workflow order (memoized to prevent recalculation on every render)
+  const sortedFiles = useMemo(() => {
+    if (!files) return undefined;
+    return files.slice().sort((a, b) => {
+      const aOrder = fileOrder[a.file_type] ?? 99;
+      const bOrder = fileOrder[b.file_type] ?? 99;
+      return aOrder - bOrder;
+    });
+  }, [files, fileOrder]);
 
   return (
     <div className="mb-1">
@@ -169,4 +174,6 @@ export function ProjectListItem({
       )}
     </div>
   );
-}
+});
+
+ProjectListItem.displayName = 'ProjectListItem';

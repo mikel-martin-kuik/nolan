@@ -6,6 +6,7 @@ use std::thread;
 use once_cell::sync::Lazy;
 use uuid::Uuid;
 use crate::config::TeamConfig;
+use crate::constants::parse_ralph_session;
 
 // Compile regex patterns once at startup
 // Team-scoped patterns for message routing
@@ -21,24 +22,18 @@ static RE_AGENT_INSTANCE: Lazy<Regex> = Lazy::new(|| {
 });
 
 /// Team-scoped core session: agent-{team}-{name}
+/// Team names can contain hyphens (e.g., bug-bounty)
 static RE_SESSION_CORE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^agent-([a-z0-9]+)-([a-z]+)$").expect("Invalid regex pattern for team session")
+    Regex::new(r"^agent-([a-z][a-z0-9-]*[a-z0-9]|[a-z])-([a-z]+)$").expect("Invalid regex pattern for team session")
 });
 
 /// Team-scoped spawned session: agent-{team}-{name}-{instance}
+/// Team names can contain hyphens (e.g., bug-bounty)
 static RE_SESSION_SPAWNED: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^agent-([a-z0-9]+)-([a-z]+)-([a-z0-9]+)$").expect("Invalid regex pattern for spawned session")
+    Regex::new(r"^agent-([a-z][a-z0-9-]*[a-z0-9]|[a-z])-([a-z]+)-([a-z0-9]+)$").expect("Invalid regex pattern for spawned session")
 });
 
-/// Ralph sessions (team-independent): agent-ralph-{id}
-static RE_SESSION_RALPH: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^agent-ralph-([a-z0-9]+)$").expect("Invalid regex pattern for ralph session")
-});
-
-/// Legacy core session (for backwards compat): agent-{name}
-static RE_SESSION_LEGACY: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^agent-([a-z]+)$").expect("Invalid regex pattern for legacy session")
-});
+// Ralph sessions use RE_RALPH_SESSION from crate::constants
 
 // Message delivery configuration
 const DEFAULT_TIMEOUT_SECS: u64 = 5;
@@ -405,16 +400,10 @@ pub async fn get_available_targets(team_name: String) -> Result<TargetList, Stri
             }
         }
         // Check for Ralph sessions (team-independent)
-        else if RE_SESSION_RALPH.is_match(&session) {
-            // Ralph sessions are shown for all teams
-            spawned_sessions.push(session.strip_prefix("agent-").unwrap_or(&session).to_string());
-        }
-        // Check for legacy session: agent-{name} (treated as default team)
-        else if let Some(caps) = RE_SESSION_LEGACY.captures(&session) {
-            let agent_name = caps[1].to_string();
-            if team_name == "default" && valid_agents.contains(&agent_name.as_str()) {
-                core_agents.push(agent_name);
-            }
+        // Uses centralized parse_ralph_session for consistent validation
+        else if let Some(ralph_name) = parse_ralph_session(&session) {
+            // Ralph sessions are shown for all teams as "ralph-{name}" target format
+            spawned_sessions.push(format!("ralph-{}", ralph_name));
         }
     }
 

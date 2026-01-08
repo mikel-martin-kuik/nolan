@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useAgentStore } from '../../store/agentStore';
 import { useToastStore } from '../../store/toastStore';
 import { useTeamStore } from '../../store/teamStore';
+import { useCollapsedTeamsStore } from '../../store/collapsedTeamsStore';
 import { AgentCard } from '../shared/AgentCard';
 import { TeamCard } from '../shared/TeamCard';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
@@ -12,7 +13,7 @@ import { Badge } from '../ui/badge';
 import { Users, Plus, XCircle, LayoutGrid } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import type { AgentName, ClaudeModel, TeamConfig } from '@/types';
-import { getRalphDisplayName } from '@/lib/agentIdentity';
+import { getRalphDisplayName, parseRalphSession } from '@/lib/agentIdentity';
 import { getTeamMembers } from '@/types';
 import type { ProjectInfo } from '@/types/projects';
 import { ModelSelectDialog } from '../shared/ModelSelectDialog';
@@ -31,10 +32,6 @@ export const StatusPanel: React.FC = () => {
   } = useAgentStore();
   const { error: showError } = useToastStore();
   const { currentTeam, availableTeams, teamConfigs, loadAvailableTeams, loadAllTeams } = useTeamStore();
-
-  // Track collapsed state per team (all collapsed by default)
-  const [collapsedTeams, setCollapsedTeams] = useState<Set<string>>(new Set());
-  const [teamsInitialized, setTeamsInitialized] = useState(false);
 
   // Get team member names from team config for dialog display
   const teamMemberNames = useMemo(() => {
@@ -55,6 +52,15 @@ export const StatusPanel: React.FC = () => {
   // Projects for the launch modal
   const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
+
+  // Track collapsed state for each team (persisted)
+  const { collapsedTeams, toggleCollapsed } = useCollapsedTeamsStore();
+  const collapsedTeamsSet = useMemo(() => new Set(collapsedTeams), [collapsedTeams]);
+
+  // Sort teams alphabetically
+  const sortedTeams = useMemo(() => {
+    return [...availableTeams].sort((a, b) => a.localeCompare(b));
+  }, [availableTeams]);
 
   // Get visual display name for ralph (persisted fun name)
   const ralphDisplayName = getRalphDisplayName();
@@ -79,30 +85,9 @@ export const StatusPanel: React.FC = () => {
     const initTeams = async () => {
       await loadAvailableTeams();
       await loadAllTeams();
-      setTeamsInitialized(true);
     };
     initTeams();
   }, [loadAvailableTeams, loadAllTeams]);
-
-  // Initialize all teams as collapsed when teams are loaded
-  useEffect(() => {
-    if (teamsInitialized && availableTeams.length > 0) {
-      setCollapsedTeams(new Set(availableTeams));
-    }
-  }, [teamsInitialized, availableTeams]);
-
-  // Toggle collapse state for a team
-  const toggleTeamCollapse = useCallback((teamName: string) => {
-    setCollapsedTeams(prev => {
-      const next = new Set(prev);
-      if (next.has(teamName)) {
-        next.delete(teamName);
-      } else {
-        next.add(teamName);
-      }
-      return next;
-    });
-  }, []);
 
   // Get agents for a specific team
   const getAgentsForTeam = useCallback((teamConfig: TeamConfig) => {
@@ -113,23 +98,24 @@ export const StatusPanel: React.FC = () => {
   }, [teamAgents]);
 
 
-  // Extract ralph names from free agents for display
+  // Extract ralph names from free agents for display (memoized)
   // Ralph sessions are agent-ralph-{name} (e.g., agent-ralph-ziggy)
-  const freeAgentsWithNames = freeAgents.map(agent => {
-    const match = agent.session.match(/^agent-ralph-([a-z0-9]+)$/);
-    const ralphName = match ? match[1] : undefined;
-    return { ...agent, ralphName };
-  }).sort((a, b) => {
-    // Sort by creation timestamp to maintain order (oldest first)
-    if (a.created_at && b.created_at) {
-      return a.created_at - b.created_at;
-    }
-    return 0;
-  });
+  const freeAgentsWithNames = useMemo(() => {
+    return freeAgents.map(agent => {
+      const ralphName = parseRalphSession(agent.session);
+      return { ...agent, ralphName };
+    }).sort((a, b) => {
+      // Sort by creation timestamp to maintain order (oldest first)
+      if (a.created_at && b.created_at) {
+        return a.created_at - b.created_at;
+      }
+      return 0;
+    });
+  }, [freeAgents]);
 
 
-  // Handler functions
-  const handleLaunchTeamClick = async (teamName: string) => {
+  // Handler functions (wrapped with useCallback to prevent re-creation on every render)
+  const handleLaunchTeamClick = useCallback(async (teamName: string) => {
     // Store the target team for the launch operation
     setTargetTeam(teamName);
 
@@ -145,9 +131,9 @@ export const StatusPanel: React.FC = () => {
       setProjectsLoading(false);
     }
     setShowProjectSelectModal(true);
-  };
+  }, []);
 
-  const handleProjectLaunch = async (params: LaunchParams) => {
+  const handleProjectLaunch = useCallback(async (params: LaunchParams) => {
     try {
       const { projectName, isNew, initialPrompt, updatedOriginalPrompt, followupPrompt } = params;
 
@@ -172,30 +158,30 @@ export const StatusPanel: React.FC = () => {
       console.error('Failed to launch team:', error);
       showError(`Failed to launch team: ${error}`);
     }
-  };
+  }, [targetTeam, launchTeam, showError]);
 
-  const handleKillTeamClick = (teamName: string) => {
+  const handleKillTeamClick = useCallback((teamName: string) => {
     setTargetTeam(teamName);
     setShowKillDialog(true);
-  };
+  }, []);
 
-  const handleConfirmKill = async () => {
+  const handleConfirmKill = useCallback(async () => {
     try {
       await killTeam(targetTeam);
     } catch (error) {
       console.error('Failed to kill team:', error);
       showError(`Failed to kill team: ${error}`);
     }
-  };
+  }, [targetTeam, killTeam, showError]);
 
-  const handleShowTerminals = async (teamName: string) => {
+  const handleShowTerminals = useCallback(async (teamName: string) => {
     try {
       await invoke('open_team_terminals', { teamName });
     } catch (error) {
       console.error('Failed to open team terminals:', error);
       showError(`Failed to open terminals: ${error}`);
     }
-  };
+  }, [showError]);
 
   // Handler for spawning any agent type (team-scoped)
   const handleSpawnAgent = async (teamName: string, agentName: AgentName, model?: ClaudeModel) => {
@@ -315,107 +301,106 @@ export const StatusPanel: React.FC = () => {
   return (
     <div className="h-full">
       <div className="w-full h-full flex flex-col">
-        {/* Teams Grid */}
-        <div className="mb-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {availableTeams.map(teamName => {
-            const teamConfig = teamConfigs.get(teamName);
-            if (!teamConfig) return null;
+        {/* Teams List (scrollable area) */}
+        <div className="flex-1 min-h-0 overflow-auto">
+          {/* Team List - Alphabetically sorted */}
+          <div className="space-y-3">
+            {sortedTeams.map(teamName => {
+              const teamConfig = teamConfigs.get(teamName);
+              if (!teamConfig) return null;
 
-            const teamAgents = getAgentsForTeam(teamConfig);
-            const isCollapsed = collapsedTeams.has(teamName);
+              const teamAgentsList = getAgentsForTeam(teamConfig);
 
-            return (
-              <TeamCard
-                key={teamName}
-                teamName={teamConfig.team.name || teamName}
-                teamConfig={teamConfig}
-                agents={teamAgents}
-                collapsed={isCollapsed}
-                onToggleCollapse={() => toggleTeamCollapse(teamName)}
-                showActions={true}
-                loading={loading}
-                onLaunch={() => handleLaunchTeamClick(teamName)}
-                onKill={() => handleKillTeamClick(teamName)}
-                onShowTerminals={() => handleShowTerminals(teamName)}
-              />
-            );
-          })}
+              return (
+                <div key={teamName}>
+                  <TeamCard
+                    teamName={teamConfig.team.name || teamName}
+                    teamConfig={teamConfig}
+                    agents={teamAgentsList}
+                    collapsed={collapsedTeamsSet.has(teamName)}
+                    onToggleCollapse={() => toggleCollapsed(teamName)}
+                    showActions={true}
+                    loading={loading}
+                    onLaunch={() => handleLaunchTeamClick(teamName)}
+                    onKill={() => handleKillTeamClick(teamName)}
+                    onShowTerminals={() => handleShowTerminals(teamName)}
+                  />
+                </div>
+              );
+            })}
+          </div>
         </div>
 
-        {/* Ralph - Free Agent */}
-        <div className="mt-auto pt-8">
-            <div className="text-xs text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-3">
-              <div className="h-px flex-1 bg-border/50" />
-              <span className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/30 border border-border/40">
-                <Users className="w-3.5 h-3.5" />
-                <span>Free Agents</span>
-                {freeAgents.filter(a => a.active).length > 0 && (
-                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
-                    {freeAgents.filter(a => a.active).length}
-                  </Badge>
-                )}
-              </span>
-              <div className="h-px flex-1 bg-border/50" />
+        {/* Ralph - Free Agent (fixed at bottom) */}
+        <div className="flex-shrink-0 pt-4 border-t border-border/30">
+          {/* Header with controls */}
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/30 border border-border/40">
+              <Users className="w-3.5 h-3.5 text-muted-foreground" />
+              <span className="text-xs text-muted-foreground uppercase tracking-wider">Free Agents</span>
+              {freeAgents.filter(a => a.active).length > 0 && (
+                <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                  {freeAgents.filter(a => a.active).length}
+                </Badge>
+              )}
             </div>
 
-            {/* Free Agent Cards with absolute buttons */}
-            <div className="relative">
-              {/* Free Agent Control Buttons - positioned left */}
-              <div className="absolute left-0 top-0 flex gap-1.5">
-                <Tooltip content="Kill All" side="bottom">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handleKillAllRalph}
-                    disabled={loading || freeAgents.filter(a => a.active).length === 0}
-                    className="w-9 h-9 rounded-xl hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"
-                  >
-                    <XCircle className="w-4 h-4" />
-                  </Button>
-                </Tooltip>
-                <Tooltip content="Terminals" side="bottom">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={handleOpenAllRalphTerminals}
-                    disabled={loading || freeAgents.filter(a => a.active).length === 0}
-                    className="w-9 h-9 rounded-xl"
-                  >
-                    <LayoutGrid className="w-4 h-4" />
-                  </Button>
-                </Tooltip>
-              </div>
-
-              <div className="flex flex-wrap justify-center gap-2 lg:gap-4">
-              {/* Free Agent instances (Ralph) */}
-              {freeAgentsWithNames
-                .filter(agent => agent.active)
-                .map((agent) => (
-                  <div key={agent.session} className="w-[clamp(120px,calc(70vw/2),160px)]">
-                    <AgentCard
-                      agent={agent}
-                      variant="dashboard"
-                      showActions={true}
-                      ralphName={agent.ralphName}
-                    />
-                  </div>
-                ))}
-
-              {/* Spawn Ralph Button */}
-              <div className="w-[clamp(120px,calc(70vw/2),160px)]">
+            {/* Control buttons inline */}
+            <div className="flex gap-1.5">
+              <Tooltip content="Kill All" side="bottom">
                 <Button
                   variant="outline"
-                  onClick={handleSpawnRalphClick}
-                  disabled={loading}
-                  className="w-full h-full py-4 rounded-xl border-dashed hover:border-purple-400/40"
-                  aria-label={`Spawn new ${ralphDisplayName} instance`}
+                  size="icon"
+                  onClick={handleKillAllRalph}
+                  disabled={loading || freeAgents.filter(a => a.active).length === 0}
+                  className="w-8 h-8 rounded-lg hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"
                 >
-                  <Plus className="w-6 h-6 text-foreground/50" />
+                  <XCircle className="w-3.5 h-3.5" />
                 </Button>
-              </div>
-              </div>
+              </Tooltip>
+              <Tooltip content="Terminals" side="bottom">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleOpenAllRalphTerminals}
+                  disabled={loading || freeAgents.filter(a => a.active).length === 0}
+                  className="w-8 h-8 rounded-lg"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                </Button>
+              </Tooltip>
             </div>
           </div>
+
+          {/* Free Agent Cards */}
+          <div className="flex flex-wrap gap-2 lg:gap-3">
+            {freeAgentsWithNames
+              .filter(agent => agent.active)
+              .map((agent) => (
+                <div key={agent.session} className="w-[clamp(120px,calc(70vw/2),160px)]">
+                  <AgentCard
+                    agent={agent}
+                    variant="dashboard"
+                    showActions={true}
+                    ralphName={agent.ralphName}
+                  />
+                </div>
+              ))}
+
+            {/* Spawn Ralph Button */}
+            <div className="w-[clamp(120px,calc(70vw/2),160px)]">
+              <Button
+                variant="outline"
+                onClick={handleSpawnRalphClick}
+                disabled={loading}
+                className="w-full h-full py-4 rounded-xl border-dashed hover:border-purple-400/40"
+                aria-label={`Spawn new ${ralphDisplayName} instance`}
+              >
+                <Plus className="w-6 h-6 text-foreground/50" />
+              </Button>
+            </div>
+          </div>
+        </div>
 
       </div>
 

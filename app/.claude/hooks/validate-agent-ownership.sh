@@ -1,14 +1,6 @@
 #!/bin/bash
 #
-# PreToolUse hook: Enforces agent file ownership and restrictions.
-#
-# Ownership rules:
-#   ana   → research.md only (in projects dir)
-#   bill  → plan.md only (in projects dir)
-#   enzo  → qa-review.md only (in projects dir)
-#   carl  → permissive (implementation files)
-#   dan   → permissive (coordination files)
-#   ralph → RESTRICTED: no projects dir, no protected files
+# PreToolUse hook: Enforces agent file ownership restrictions.
 #
 # Exit codes:
 #   0 - Allow write
@@ -16,30 +8,38 @@
 
 set -euo pipefail
 
-# Read JSON input
-data=$(cat)
+# Read JSON input (may be empty)
+data=$(cat) || true
 
-# Extract file path
-file_path=$(echo "$data" | jq -r '.tool_input.file_path // empty')
+# Exit early if no input
+if [[ -z "$data" ]]; then
+    exit 0
+fi
+
+# Extract file path (use explicit empty string if missing)
+file_path=$(echo "$data" | jq -r '.tool_input.file_path // ""') || true
 
 # Skip if no file path
 if [[ -z "$file_path" ]]; then
     exit 0
 fi
 
-# Detect agent from tmux session name
+# Get agent identity
 get_agent_name() {
-    # Try tmux session name first
     if [[ -n "${TMUX:-}" ]]; then
         local session
         session=$(tmux display-message -p '#S' 2>/dev/null || echo "")
-        # Extract agent name: agent-ana, agent-bill-2, etc.
-        if [[ "$session" =~ ^agent-([a-z]+)(-[0-9]+)?$ ]]; then
-            echo "${BASH_REMATCH[1]}"
+        if [[ "$session" =~ ^agent-([a-z]([a-z0-9-]*[a-z0-9])?)-([a-z]+)$ ]]; then
+            local team="${BASH_REMATCH[1]}"
+            local agent="${BASH_REMATCH[3]}"
+            if [[ "$team" == "ralph" ]]; then
+                echo "ralph"
+            else
+                echo "$agent"
+            fi
             return
         fi
     fi
-    # Fallback: check AGENT_NAME (team standard) or CLAUDE_AGENT env var
     if [[ -n "${AGENT_NAME:-}" ]]; then
         echo "$AGENT_NAME"
         return
@@ -48,7 +48,6 @@ get_agent_name() {
         echo "$CLAUDE_AGENT"
         return
     fi
-    # Unknown agent - return empty to trigger validation
     echo ""
 }
 
@@ -56,14 +55,25 @@ agent=$(get_agent_name)
 filename=$(basename "$file_path")
 
 # Python-based ownership validation with team config and error handling (B05)
-python3 <<'EOF'
+# Pass variables via environment to avoid heredoc quoting issues
+export HOOK_AGENT="$agent"
+export HOOK_FILENAME="$filename"
+export HOOK_FILE_PATH="$file_path"
+
+python3 <<'PYTHON_EOF'
 import sys, yaml, os
 from pathlib import Path
 
 try:
-    agent = '''${agent}'''
-    filename = '''${filename}'''
-    file_path = Path('''${file_path}''')
+    # Read from environment (avoids shell quoting issues)
+    agent = os.environ.get('HOOK_AGENT', '')
+    filename = os.environ.get('HOOK_FILENAME', '')
+    file_path_str = os.environ.get('HOOK_FILE_PATH', '')
+
+    if not file_path_str:
+        sys.exit(0)
+
+    file_path = Path(file_path_str)
 
     # Handle unknown agent - block writes to any output files
     if not agent:
@@ -77,14 +87,16 @@ try:
                 team_file = project_path / '.team'
                 if team_file.exists():
                     team_name = team_file.read_text().strip()
-                    nolan_root = Path(os.environ['NOLAN_ROOT'])
-                    config_path = nolan_root / 'teams' / f'{team_name}.yaml'
-                    config = yaml.safe_load(config_path.read_text())
-                    # Build protected files list from agent output_files
-                    protected = [a['output_file'] for a in config['team']['agents'] if a.get('output_file')]
-                    if filename in protected:
-                        print(f"BLOCKED: Unknown agent cannot write to {filename}. Set AGENT_NAME environment variable.", file=sys.stderr)
-                        sys.exit(2)
+                    nolan_root = Path(os.environ.get('NOLAN_ROOT', ''))
+                    if nolan_root:
+                        config_path = Path(nolan_root) / 'teams' / f'{team_name}.yaml'
+                        if config_path.exists():
+                            config = yaml.safe_load(config_path.read_text())
+                            # Build protected files list from agent output_files
+                            protected = [a['output_file'] for a in config['team']['agents'] if a.get('output_file')]
+                            if filename in protected:
+                                print(f"BLOCKED: Unknown agent cannot write to {filename}. Set AGENT_NAME environment variable.", file=sys.stderr)
+                                sys.exit(2)
         sys.exit(0)  # Allow other files
 
     # Determine if this is a project file
@@ -108,8 +120,14 @@ try:
             sys.exit(0)  # Skip projects without .team file
 
         team_name = team_file.read_text().strip()
-        nolan_root = Path(os.environ['NOLAN_ROOT'])
+        nolan_root = Path(os.environ.get('NOLAN_ROOT', ''))
+        if not nolan_root:
+            sys.exit(0)  # Can't validate without NOLAN_ROOT
+
         config_path = nolan_root / 'teams' / f'{team_name}.yaml'
+        if not config_path.exists():
+            sys.exit(0)  # Team config not found
+
         config = yaml.safe_load(config_path.read_text())
 
         # Find agent configuration
@@ -140,6 +158,6 @@ try:
 except Exception as e:
     print(f"FATAL: Hook error: {e}", file=sys.stderr)
     sys.exit(2)
-EOF
+PYTHON_EOF
 
 exit 0

@@ -21,14 +21,19 @@
 set -euo pipefail
 
 # Source shared helpers
-source "$(dirname "$0")/_lib.sh"
+source "$(dirname "$0")/_lib.sh" || true
 
-# Read JSON input
-data=$(cat)
+# Read JSON input (may be empty)
+data=$(cat) || true
 
-# Extract tool name and parameters
-tool_name=$(echo "$data" | jq -r '.tool_name // empty')
-file_path=$(echo "$data" | jq -r '.tool_input.file_path // empty')
+# Exit early if no input
+if [[ -z "$data" ]]; then
+    exit 0
+fi
+
+# Extract tool name and parameters (use explicit empty string if missing)
+tool_name=$(echo "$data" | jq -r '.tool_name // ""') || true
+file_path=$(echo "$data" | jq -r '.tool_input.file_path // ""') || true
 
 # Only check Write and Edit tools
 if [[ "$tool_name" != "Write" && "$tool_name" != "Edit" ]]; then
@@ -40,8 +45,11 @@ if [[ -z "$file_path" ]]; then
     exit 0
 fi
 
-# Only check files in projects directory
-projects_dir="${PROJECTS_DIR:-$HOME/Proyectos/nolan/projects}"
+# Only check files in projects directory (PROJECTS_DIR required)
+if [[ -z "${PROJECTS_DIR:-}" ]]; then
+    exit 0  # Can't validate without PROJECTS_DIR
+fi
+projects_dir="$PROJECTS_DIR"
 if [[ "$file_path" != "$projects_dir"* ]]; then
     exit 0
 fi

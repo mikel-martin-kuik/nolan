@@ -148,49 +148,15 @@ export const AgentListItem: React.FC<AgentListItemProps> = memo(({
         role="button"
         aria-label={`Select ${displayName}`}
         className={cn(
-          'glass-card transition-all duration-200 cursor-pointer relative',
-          'hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.98] active:translate-y-0',
+          'glass-card transition-all duration-200 rounded-xl',
+          'cursor-pointer hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-0',
           agent.active ? 'glass-active' : 'opacity-80 hover:opacity-100',
-          isSelected && 'ring-2 ring-primary/50 shadow-lg shadow-primary/10'
+          isSelected && 'ring-2 ring-primary/60 ring-offset-2 ring-offset-background'
         )}
       >
-        {/* Context usage circular progress (top right) */}
-        {agent.active && agent.context_usage !== undefined && (
-          <div className="absolute top-1.5 right-1.5 w-5 h-5">
-            <svg className="w-5 h-5 transform -rotate-90" viewBox="0 0 24 24">
-              {/* Background circle */}
-              <circle
-                cx="12"
-                cy="12"
-                r="6"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                className="text-muted-foreground/20"
-              />
-              {/* Progress circle */}
-              <circle
-                cx="12"
-                cy="12"
-                r="6"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeDasharray={`${(agent.context_usage / 100) * 37.7} 37.7`}
-                className={cn(
-                  'transition-all duration-300',
-                  agent.context_usage >= 60 ? 'text-red-500' :
-                  agent.context_usage >= 40 ? 'text-yellow-500' :
-                  'text-green-500'
-                )}
-                strokeLinecap="round"
-              />
-            </svg>
-          </div>
-        )}
-        <CardHeader className="p-2.5 pb-1">
-          <div className="flex items-center justify-between gap-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
+        <CardHeader className="p-2 sm:p-3 pb-1 sm:pb-2">
+          <div className="flex items-center justify-between gap-1 flex-wrap">
+            <CardTitle className="flex items-center gap-1 text-xs sm:text-sm">
               <span className={cn(
                 'truncate',
                 agent.active ? 'text-foreground font-medium' : 'text-muted-foreground'
@@ -201,14 +167,34 @@ export const AgentListItem: React.FC<AgentListItemProps> = memo(({
           </div>
 
           <CardDescription className={cn(
-            'text-[10px] line-clamp-1',
+            'text-[10px] sm:text-xs line-clamp-1',
             agent.active ? 'text-muted-foreground' : 'text-muted-foreground/60'
           )}>
             {description}
           </CardDescription>
         </CardHeader>
 
-        <CardContent className="p-2.5 pt-0">
+        <CardContent className="p-2 sm:p-3 pt-0 text-[10px] sm:text-xs">
+          {/* Context usage bar (when active) */}
+          {agent.active && agent.context_usage !== undefined && (
+            <div className="flex items-center gap-2 mb-1.5">
+              <div className="flex-1 bg-muted-foreground/20 rounded-full h-1">
+                <div
+                  className={cn(
+                    'h-1 rounded-full transition-all',
+                    agent.context_usage >= 60 ? 'bg-red-500' :
+                    agent.context_usage >= 40 ? 'bg-yellow-500' :
+                    'bg-green-500'
+                  )}
+                  style={{ width: `${agent.context_usage}%` }}
+                />
+              </div>
+              <span className="text-[9px] text-muted-foreground font-mono">
+                {agent.context_usage}%
+              </span>
+            </div>
+          )}
+
           {/* Workflow progress dots (only show if agent has a project) */}
           {workflowState && agent.current_project && agent.current_project !== 'VIBING' && (
             <div className="flex items-center gap-1 mb-1.5">
@@ -245,7 +231,6 @@ export const AgentListItem: React.FC<AgentListItemProps> = memo(({
               </p>
             )}
           </div>
-
         </CardContent>
       </Card>
 

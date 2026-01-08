@@ -3,23 +3,63 @@ import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
 import { useTeamStore } from '../../store/teamStore';
 import { useToastStore } from '../../store/toastStore';
-import { TeamEditor } from './TeamEditor';
-import { Users, Plus, Edit2, Check, FileText, Trash2 } from 'lucide-react';
+import { Users, Plus, Edit2, Check, FileText, Trash2, Settings2, X, Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import type { TeamConfig, AgentDirectoryInfo } from '@/types';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import type { TeamConfig, AgentConfig, PhaseConfig, AgentDirectoryInfo } from '@/types';
+
+// Context menu types
+type ContextMenuType = 'team' | 'agent' | 'phase';
+interface ContextMenuState {
+  type: ContextMenuType;
+  x: number;
+  y: number;
+  data: string | number; // team name, agent name, or phase index
+}
 
 export const TeamsPanel: React.FC = () => {
   const { availableTeams, loadAvailableTeams, loadTeam } = useTeamStore();
   const { success, error: showError } = useToastStore();
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [teamConfig, setTeamConfig] = useState<TeamConfig | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
   const [agentInfos, setAgentInfos] = useState<AgentDirectoryInfo[]>([]);
-  const [contextMenuTeam, setContextMenuTeam] = useState<string | null>(null);
-  const [contextMenuPos, setContextMenuPos] = useState<{ x: number; y: number } | null>(null);
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+
+  // Modal states
+  const [agentConfigModal, setAgentConfigModal] = useState<{ agent: AgentConfig; index: number } | null>(null);
+  const [phaseModal, setPhaseModal] = useState<{ phase: PhaseConfig; index: number } | null>(null);
+  const [coordinatorModal, setCoordinatorModal] = useState(false);
+  const [addAgentModal, setAddAgentModal] = useState(false);
+  const [addPhaseModal, setAddPhaseModal] = useState(false);
+  const [teamSettingsModal, setTeamSettingsModal] = useState(false);
+  const [createTeamModal, setCreateTeamModal] = useState(false);
+
+  // Edited values for modals
+  const [editedAgent, setEditedAgent] = useState<AgentConfig | null>(null);
+  const [editedPhase, setEditedPhase] = useState<PhaseConfig | null>(null);
+  const [editedCoordinator, setEditedCoordinator] = useState('');
+  const [newAgentName, setNewAgentName] = useState('');
+  const [newPhase, setNewPhase] = useState<PhaseConfig>({ name: '', owner: '', output: '', requires: [], template: '' });
+  const [editedTeamName, setEditedTeamName] = useState('');
+  const [editedTeamDescription, setEditedTeamDescription] = useState('');
+  const [newTeamName, setNewTeamName] = useState('');
+  const [newTeamDescription, setNewTeamDescription] = useState('');
+  const [newTeamFirstAgent, setNewTeamFirstAgent] = useState('');
+
+  // Saving state
+  const [saving, setSaving] = useState(false);
 
   // Fetch agent directories for role/model info
   const fetchAgentInfos = useCallback(async () => {
@@ -33,6 +73,13 @@ export const TeamsPanel: React.FC = () => {
 
   // Get agent info by name
   const getAgentInfo = (name: string) => agentInfos.find(a => a.name === name);
+
+  // Get available agents (not already in team)
+  const getAvailableAgentsForAdd = () => {
+    if (!teamConfig) return agentInfos.filter(a => !a.name.startsWith('agent-') && a.role && a.model);
+    const usedNames = teamConfig.team.agents.map(a => a.name);
+    return agentInfos.filter(a => !usedNames.includes(a.name) && !a.name.startsWith('agent-') && a.role && a.model);
+  };
 
   useEffect(() => {
     loadAvailableTeams();
@@ -49,58 +96,97 @@ export const TeamsPanel: React.FC = () => {
     }
   };
 
-  const handleEditTeam = () => {
-    if (selectedTeam) {
-      setIsEditing(true);
+  const openCreateTeamModal = () => {
+    setNewTeamName('');
+    setNewTeamDescription('');
+    setNewTeamFirstAgent('');
+    setCreateTeamModal(true);
+  };
+
+  const createNewTeam = async () => {
+    if (!newTeamName) {
+      showError('Team name is required');
+      return;
+    }
+    if (!/^[a-z][a-z0-9-]*$/.test(newTeamName)) {
+      showError('Team name must start with lowercase letter, contain only lowercase letters, numbers, and hyphens');
+      return;
+    }
+    if (!newTeamFirstAgent) {
+      showError('At least one agent is required');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const firstAgent: AgentConfig = {
+        name: newTeamFirstAgent,
+        output_file: null,
+        required_sections: [],
+        file_permissions: 'restricted',
+        workflow_participant: true,
+      };
+
+      const newConfig: TeamConfig = {
+        team: {
+          name: newTeamName,
+          description: newTeamDescription || undefined,
+          version: '1.0.0',
+          agents: [firstAgent],
+          workflow: {
+            coordinator: newTeamFirstAgent,
+            phases: [{
+              name: 'Initial Phase',
+              owner: newTeamFirstAgent,
+              output: 'output.md',
+              requires: ['context.md'],
+              template: '',
+            }],
+          },
+          communication: {
+            broadcast_groups: [
+              // Pattern supports team-scoped sessions: agent-{team}-{name}
+              // Team pattern: [a-z]([a-z0-9-]*[a-z0-9])? supports multi-word teams like bug-bounty
+              { name: 'core', pattern: '^agent-[a-z]([a-z0-9-]*[a-z0-9])?-[a-z]+$', members: [newTeamFirstAgent] },
+              { name: 'all_agents', pattern: '^agent-[a-z]([a-z0-9-]*[a-z0-9])?-[a-z]+(-[0-9]+)?$', members: [newTeamFirstAgent] },
+            ],
+          },
+        },
+      };
+
+      await invoke('save_team_config', { teamName: newTeamName, config: newConfig });
+      await loadAvailableTeams();
+      await handleSelectTeam(newTeamName);
+      setCreateTeamModal(false);
+      success(`Team '${newTeamName}' created. Add more agents and configure phases below.`);
+    } catch (err) {
+      showError(`Failed to create team: ${err}`);
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleCreateTeam = () => {
-    setIsCreating(true);
-    setIsEditing(true);
-    setSelectedTeam(null);
-    setTeamConfig(null);
-  };
-
-  const handleSaveComplete = async (savedTeamName: string) => {
-    setIsEditing(false);
-    setIsCreating(false);
-    await loadAvailableTeams();
-    setSelectedTeam(savedTeamName);
-    await handleSelectTeam(savedTeamName);
-    success(`Team '${savedTeamName}' saved successfully`);
-  };
-
-  const handleCancel = () => {
-    setIsEditing(false);
-    setIsCreating(false);
-    if (isCreating) {
-      setSelectedTeam(null);
-      setTeamConfig(null);
-    }
-  };
-
-  const handleContextMenu = (e: React.MouseEvent, teamName: string) => {
+  // Generic context menu handler
+  const openContextMenu = (e: React.MouseEvent, type: ContextMenuType, data: string | number) => {
     e.preventDefault();
+    e.stopPropagation();
 
-    // Estimate menu height (2 items * ~40px each + padding)
-    const menuHeight = 100;
+    const menuHeight = type === 'team' ? 100 : 50;
     const viewportHeight = window.innerHeight;
-
-    // If menu would overflow bottom, position it above cursor
     const y = e.clientY + menuHeight > viewportHeight
       ? e.clientY - menuHeight
       : e.clientY;
 
-    setContextMenuTeam(teamName);
-    setContextMenuPos({ x: e.clientX, y: Math.max(8, y) });
+    setContextMenu({ type, x: e.clientX, y: Math.max(8, y), data });
   };
 
+  const closeContextMenu = () => setContextMenu(null);
+
+  // Team actions
   const handleDeleteTeam = async (teamName: string) => {
     if (teamName === 'default') {
       showError('Cannot delete the default team');
-      setContextMenuTeam(null);
-      setContextMenuPos(null);
+      closeContextMenu();
       return;
     }
 
@@ -115,35 +201,254 @@ export const TeamsPanel: React.FC = () => {
     } catch (err) {
       showError(`Failed to delete team: ${err}`);
     } finally {
-      setContextMenuTeam(null);
-      setContextMenuPos(null);
+      closeContextMenu();
     }
+  };
+
+  // Save team config helper
+  const saveTeamConfig = async (config: TeamConfig, teamName?: string) => {
+    setSaving(true);
+    try {
+      const name = teamName || config.team.name;
+
+      // Handle rename if needed
+      if (teamName && teamName !== config.team.name) {
+        await invoke('rename_team_config', { oldName: config.team.name, newName: teamName });
+        config = { ...config, team: { ...config.team, name: teamName } };
+      }
+
+      await invoke('save_team_config', { teamName: name, config });
+      await loadAvailableTeams();
+      await handleSelectTeam(name);
+      success('Team saved successfully');
+    } catch (err) {
+      showError(`Failed to save: ${err}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Agent config modal handlers
+  const openAgentConfigModal = (agent: AgentConfig, index: number) => {
+    setAgentConfigModal({ agent, index });
+    setEditedAgent({ ...agent });
+  };
+
+  const saveAgentConfig = async () => {
+    if (!teamConfig || !editedAgent || agentConfigModal === null) return;
+
+    const newAgents = [...teamConfig.team.agents];
+    newAgents[agentConfigModal.index] = editedAgent;
+
+    const newConfig: TeamConfig = {
+      ...teamConfig,
+      team: { ...teamConfig.team, agents: newAgents }
+    };
+
+    await saveTeamConfig(newConfig);
+    setAgentConfigModal(null);
+    setEditedAgent(null);
+  };
+
+  const removeAgentFromTeam = async (agentName: string) => {
+    if (!teamConfig) return;
+    closeContextMenu();
+
+    const newAgents = teamConfig.team.agents.filter(a => a.name !== agentName);
+    if (newAgents.length === 0) {
+      showError('Team must have at least one agent');
+      return;
+    }
+
+    // Update coordinator if removed
+    let newCoordinator = teamConfig.team.workflow.coordinator;
+    if (newCoordinator === agentName) {
+      newCoordinator = newAgents[0].name;
+    }
+
+    // Update phase owners if removed
+    const newPhases = teamConfig.team.workflow.phases.map(p =>
+      p.owner === agentName ? { ...p, owner: newAgents[0].name } : p
+    );
+
+    const newConfig: TeamConfig = {
+      ...teamConfig,
+      team: {
+        ...teamConfig.team,
+        agents: newAgents,
+        workflow: { ...teamConfig.team.workflow, coordinator: newCoordinator, phases: newPhases }
+      }
+    };
+
+    await saveTeamConfig(newConfig);
+  };
+
+  // Add agent handlers
+  const openAddAgentModal = () => {
+    setNewAgentName('');
+    setAddAgentModal(true);
+  };
+
+  const addAgentToTeam = async () => {
+    if (!teamConfig || !newAgentName) return;
+
+    const newAgent: AgentConfig = {
+      name: newAgentName,
+      output_file: null,
+      required_sections: [],
+      file_permissions: 'restricted',
+      workflow_participant: true,
+    };
+
+    const newConfig: TeamConfig = {
+      ...teamConfig,
+      team: {
+        ...teamConfig.team,
+        agents: [...teamConfig.team.agents, newAgent]
+      }
+    };
+
+    await saveTeamConfig(newConfig);
+    setAddAgentModal(false);
+    setNewAgentName('');
+  };
+
+  // Phase modal handlers
+  const openPhaseModal = (phase: PhaseConfig, index: number) => {
+    setPhaseModal({ phase, index });
+    setEditedPhase({ ...phase });
+  };
+
+  const savePhaseConfig = async () => {
+    if (!teamConfig || !editedPhase || phaseModal === null) return;
+
+    const newPhases = [...teamConfig.team.workflow.phases];
+    newPhases[phaseModal.index] = editedPhase;
+
+    const newConfig: TeamConfig = {
+      ...teamConfig,
+      team: {
+        ...teamConfig.team,
+        workflow: { ...teamConfig.team.workflow, phases: newPhases }
+      }
+    };
+
+    await saveTeamConfig(newConfig);
+    setPhaseModal(null);
+    setEditedPhase(null);
+  };
+
+  const removePhase = async (index: number) => {
+    if (!teamConfig) return;
+    closeContextMenu();
+
+    const newPhases = teamConfig.team.workflow.phases.filter((_, i) => i !== index);
+    if (newPhases.length === 0) {
+      showError('Team must have at least one phase');
+      return;
+    }
+
+    const newConfig: TeamConfig = {
+      ...teamConfig,
+      team: {
+        ...teamConfig.team,
+        workflow: { ...teamConfig.team.workflow, phases: newPhases }
+      }
+    };
+
+    await saveTeamConfig(newConfig);
+  };
+
+  // Add phase handlers
+  const openAddPhaseModal = () => {
+    setNewPhase({ name: '', owner: teamConfig?.team.agents[0]?.name || '', output: '', requires: [], template: '' });
+    setAddPhaseModal(true);
+  };
+
+  const addPhaseToTeam = async () => {
+    if (!teamConfig || !newPhase.name || !newPhase.owner || !newPhase.output) {
+      showError('Phase name, owner, and output are required');
+      return;
+    }
+
+    const newConfig: TeamConfig = {
+      ...teamConfig,
+      team: {
+        ...teamConfig.team,
+        workflow: {
+          ...teamConfig.team.workflow,
+          phases: [...teamConfig.team.workflow.phases, newPhase]
+        }
+      }
+    };
+
+    await saveTeamConfig(newConfig);
+    setAddPhaseModal(false);
+  };
+
+  // Coordinator modal handlers
+  const openCoordinatorModal = () => {
+    if (!teamConfig) return;
+    setEditedCoordinator(teamConfig.team.workflow.coordinator);
+    setCoordinatorModal(true);
+  };
+
+  const saveCoordinator = async () => {
+    if (!teamConfig || !editedCoordinator) return;
+
+    const newConfig: TeamConfig = {
+      ...teamConfig,
+      team: {
+        ...teamConfig.team,
+        workflow: { ...teamConfig.team.workflow, coordinator: editedCoordinator }
+      }
+    };
+
+    await saveTeamConfig(newConfig);
+    setCoordinatorModal(false);
+  };
+
+  // Team settings modal handlers
+  const openTeamSettingsModal = () => {
+    if (!teamConfig) return;
+    setEditedTeamName(teamConfig.team.name);
+    setEditedTeamDescription(teamConfig.team.description || '');
+    setTeamSettingsModal(true);
+  };
+
+  const saveTeamSettings = async () => {
+    if (!teamConfig || !editedTeamName) return;
+
+    if (!/^[a-z][a-z0-9-]*$/.test(editedTeamName)) {
+      showError('Team name must start with lowercase letter, contain only lowercase letters, numbers, and hyphens');
+      return;
+    }
+
+    const newConfig: TeamConfig = {
+      ...teamConfig,
+      team: {
+        ...teamConfig.team,
+        name: editedTeamName,
+        description: editedTeamDescription || undefined
+      }
+    };
+
+    await saveTeamConfig(newConfig, editedTeamName);
+    setTeamSettingsModal(false);
   };
 
   // Close context menu when clicking outside
   const handleClickOutside = useCallback((e: MouseEvent) => {
     if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
-      setContextMenuTeam(null);
-      setContextMenuPos(null);
+      closeContextMenu();
     }
   }, []);
 
   useEffect(() => {
-    if (!contextMenuPos) return;
-
+    if (!contextMenu) return;
     document.addEventListener('click', handleClickOutside);
     return () => document.removeEventListener('click', handleClickOutside);
-  }, [contextMenuPos, handleClickOutside]);
-
-  if (isEditing) {
-    return (
-      <TeamEditor
-        teamConfig={isCreating ? null : teamConfig}
-        onSave={handleSaveComplete}
-        onCancel={handleCancel}
-      />
-    );
-  }
+  }, [contextMenu, handleClickOutside]);
 
   return (
     <div className="h-full flex flex-col">
@@ -153,7 +458,7 @@ export const TeamsPanel: React.FC = () => {
           <h1 className="text-xl font-semibold text-foreground">Team Configurations</h1>
           <p className="text-sm text-muted-foreground">Manage agent teams and workflows</p>
         </div>
-        <Button onClick={handleCreateTeam}>
+        <Button onClick={openCreateTeamModal}>
           <Plus />
           New Team
         </Button>
@@ -171,7 +476,7 @@ export const TeamsPanel: React.FC = () => {
               <button
                 key={teamName}
                 onClick={() => handleSelectTeam(teamName)}
-                onContextMenu={(e) => handleContextMenu(e, teamName)}
+                onContextMenu={(e) => openContextMenu(e, 'team', teamName)}
                 className={`w-full text-left p-2.5 rounded-lg transition-colors flex items-center gap-2 ${
                   selectedTeam === teamName
                     ? 'bg-primary/10 border border-primary/30 text-foreground'
@@ -196,25 +501,26 @@ export const TeamsPanel: React.FC = () => {
               </p>
             )}
           </div>
-
         </div>
 
         {/* Team Details - Flexible */}
         <div className="flex-1 bg-card/50 backdrop-blur-sm rounded-xl border border-border p-6 overflow-auto">
           {teamConfig ? (
             <div>
-              {/* Team Header */}
-              <div className="flex items-center justify-between mb-6 pb-4 border-b border-border">
+              {/* Team Header - Clickable */}
+              <div
+                className="flex items-center justify-between mb-6 pb-4 border-b border-border cursor-pointer group"
+                onClick={openTeamSettingsModal}
+              >
                 <div>
-                  <h2 className="text-lg font-semibold text-foreground">{teamConfig.team.name}</h2>
+                  <h2 className="text-lg font-semibold text-foreground group-hover:text-primary transition-colors">
+                    {teamConfig.team.name}
+                    <Edit2 className="w-3.5 h-3.5 inline ml-2 opacity-0 group-hover:opacity-50 transition-opacity" />
+                  </h2>
                   <p className="text-sm text-muted-foreground">
-                    {teamConfig.team.agents.length} agents configured
+                    {teamConfig.team.description || `${teamConfig.team.agents.length} agents configured`}
                   </p>
                 </div>
-                <Button variant="secondary" onClick={handleEditTeam}>
-                  <Edit2 />
-                  Edit
-                </Button>
               </div>
 
               {/* Agents Grid */}
@@ -223,15 +529,20 @@ export const TeamsPanel: React.FC = () => {
                   Agents
                 </h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                  {teamConfig.team.agents.map((agent) => {
+                  {teamConfig.team.agents.map((agent, index) => {
                     const info = getAgentInfo(agent.name);
                     return (
                       <div
                         key={agent.name}
-                        className="p-3 rounded-lg bg-secondary/30 border border-border"
+                        onClick={() => openAgentConfigModal(agent, index)}
+                        onContextMenu={(e) => openContextMenu(e, 'agent', agent.name)}
+                        className="p-3 rounded-lg bg-secondary/30 border border-border cursor-pointer hover:border-primary/50 hover:bg-secondary/50 transition-all group"
                       >
                         <div className="flex items-center gap-2 mb-2">
-                          <span className="font-medium text-foreground capitalize">{agent.name}</span>
+                          <span className="font-medium text-foreground capitalize group-hover:text-primary transition-colors">
+                            {agent.name}
+                          </span>
+                          <Settings2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity ml-auto" />
                         </div>
                         <p className="text-xs text-muted-foreground">{info?.role || 'No role'}</p>
                         <p className="text-xs text-muted-foreground/70 mt-1">
@@ -240,46 +551,69 @@ export const TeamsPanel: React.FC = () => {
                       </div>
                     );
                   })}
+                  {/* Add Agent Card */}
+                  <div
+                    onClick={openAddAgentModal}
+                    className="p-3 rounded-lg border border-dashed border-border cursor-pointer hover:border-primary/50 hover:bg-secondary/20 transition-all flex items-center justify-center min-h-[80px]"
+                  >
+                    <div className="text-center text-muted-foreground hover:text-primary transition-colors">
+                      <Plus className="w-5 h-5 mx-auto mb-1" />
+                      <span className="text-xs">Add Agent</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
               {/* Workflow */}
               <div className="mb-6">
-                <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
-                  Workflow Phases
-                </h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+                    Workflow Phases
+                  </h3>
+                  <Button variant="ghost" size="sm" onClick={openAddPhaseModal} className="h-7 px-2 text-xs">
+                    <Plus className="w-3 h-3 mr-1" />
+                    Add Phase
+                  </Button>
+                </div>
                 <div className="space-y-2">
                   {teamConfig.team.workflow.phases.map((phase, index) => (
                     <div
                       key={index}
-                      className="flex items-center gap-3 p-3 rounded-lg bg-secondary/20 border border-border/50"
+                      onClick={() => openPhaseModal(phase, index)}
+                      onContextMenu={(e) => openContextMenu(e, 'phase', index)}
+                      className="flex items-center gap-3 p-3 rounded-lg bg-secondary/20 border border-border/50 cursor-pointer hover:border-primary/50 hover:bg-secondary/30 transition-all group"
                     >
                       <span className="w-6 h-6 rounded-full bg-primary/20 text-primary text-xs flex items-center justify-center font-medium">
                         {index + 1}
                       </span>
                       <div className="flex-1">
-                        <span className="font-medium text-foreground">{phase.name}</span>
+                        <span className="font-medium text-foreground group-hover:text-primary transition-colors">{phase.name}</span>
                         <span className="text-muted-foreground mx-2">-</span>
                         <span className="text-sm text-muted-foreground capitalize">{phase.owner}</span>
                       </div>
                       <span className="text-xs text-muted-foreground font-mono">{phase.output}</span>
+                      <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Coordinator */}
+              {/* Coordinator - Clickable */}
               <div>
                 <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
                   Coordinator
                 </h3>
-                <div className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/20">
-                  <span className="font-medium text-foreground capitalize">
+                <div
+                  onClick={openCoordinatorModal}
+                  className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/20 cursor-pointer hover:border-violet-500/40 hover:bg-violet-500/15 transition-all group"
+                >
+                  <span className="font-medium text-foreground capitalize group-hover:text-violet-400 transition-colors">
                     {teamConfig.team.workflow.coordinator}
                   </span>
                   <span className="text-sm text-muted-foreground ml-2">
                     manages workflow and assignments
                   </span>
+                  <Edit2 className="w-3 h-3 inline ml-2 opacity-0 group-hover:opacity-50 transition-opacity" />
                 </div>
               </div>
             </div>
@@ -294,38 +628,513 @@ export const TeamsPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Context Menu - Rendered via portal to bypass CSS containment issues */}
-      {contextMenuTeam && contextMenuPos && createPortal(
+      {/* Context Menu - Rendered via portal */}
+      {contextMenu && createPortal(
         <div
           ref={contextMenuRef}
           className="fixed z-50 bg-popover border border-border rounded-md shadow-lg py-1 min-w-[180px]"
-          style={{
-            left: `${contextMenuPos.x}px`,
-            top: `${contextMenuPos.y}px`,
-          }}
+          style={{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }}
         >
-          <Button
-            variant="ghost"
-            className="w-full justify-start rounded-none"
-            onClick={() => {
-              handleSelectTeam(contextMenuTeam);
-              setIsEditing(true);
-              setContextMenuTeam(null);
-              setContextMenuPos(null);
-            }}
-          >
-            <Edit2 />
-            Edit Team
-          </Button>
-          <Button
-            variant="ghost"
-            className="w-full justify-start rounded-none text-destructive hover:text-destructive"
-            onClick={() => handleDeleteTeam(contextMenuTeam)}
-            disabled={contextMenuTeam === 'default'}
-          >
-            <Trash2 />
-            Delete Team
-          </Button>
+          {contextMenu.type === 'team' && (
+            <>
+              <Button
+                variant="ghost"
+                className="w-full justify-start rounded-none text-destructive hover:text-destructive"
+                onClick={() => handleDeleteTeam(contextMenu.data as string)}
+                disabled={contextMenu.data === 'default'}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Delete Team
+              </Button>
+            </>
+          )}
+          {contextMenu.type === 'agent' && (
+            <Button
+              variant="ghost"
+              className="w-full justify-start rounded-none text-destructive hover:text-destructive"
+              onClick={() => removeAgentFromTeam(contextMenu.data as string)}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Remove from Team
+            </Button>
+          )}
+          {contextMenu.type === 'phase' && (
+            <Button
+              variant="ghost"
+              className="w-full justify-start rounded-none text-destructive hover:text-destructive"
+              onClick={() => removePhase(contextMenu.data as number)}
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Delete Phase
+            </Button>
+          )}
+        </div>,
+        document.body
+      )}
+
+      {/* Agent Config Modal */}
+      {agentConfigModal && editedAgent && createPortal(
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center" onClick={() => setAgentConfigModal(null)}>
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-foreground capitalize">{editedAgent.name} Settings</h3>
+              <Button variant="ghost" size="icon" onClick={() => setAgentConfigModal(null)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Output File</label>
+                <Input
+                  value={editedAgent.output_file || ''}
+                  onChange={(e) => setEditedAgent({ ...editedAgent, output_file: e.target.value || null })}
+                  placeholder="output.md"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">File Permissions</label>
+                <Select
+                  value={editedAgent.file_permissions}
+                  onValueChange={(value) => setEditedAgent({ ...editedAgent, file_permissions: value as AgentConfig['file_permissions'] })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="restricted">Restricted</SelectItem>
+                    <SelectItem value="permissive">Permissive</SelectItem>
+                    <SelectItem value="no_projects">No Projects</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <Checkbox
+                    checked={editedAgent.workflow_participant}
+                    onCheckedChange={(checked) => setEditedAgent({ ...editedAgent, workflow_participant: !!checked })}
+                  />
+                  <span>Workflow Participant</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm cursor-pointer">
+                  <Checkbox
+                    checked={editedAgent.awaits_qa || false}
+                    onCheckedChange={(checked) => setEditedAgent({ ...editedAgent, awaits_qa: !!checked })}
+                  />
+                  <span>Awaits QA</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <Button variant="secondary" onClick={() => setAgentConfigModal(null)}>Cancel</Button>
+              <Button onClick={saveAgentConfig} disabled={saving}>
+                <Save className="w-4 h-4 mr-1" />
+                {saving ? 'Saving...' : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Phase Edit Modal */}
+      {phaseModal && editedPhase && createPortal(
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center" onClick={() => setPhaseModal(null)}>
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-foreground">Edit Phase</h3>
+              <Button variant="ghost" size="icon" onClick={() => setPhaseModal(null)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Phase Name</label>
+                <Input
+                  value={editedPhase.name}
+                  onChange={(e) => setEditedPhase({ ...editedPhase, name: e.target.value })}
+                  placeholder="Research"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Owner</label>
+                <Select
+                  value={editedPhase.owner}
+                  onValueChange={(value) => setEditedPhase({ ...editedPhase, owner: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select owner..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teamConfig?.team.agents.map((agent) => (
+                      <SelectItem key={agent.name} value={agent.name}>
+                        {agent.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Output File</label>
+                <Input
+                  value={editedPhase.output}
+                  onChange={(e) => setEditedPhase({ ...editedPhase, output: e.target.value })}
+                  placeholder="output.md"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Requires</label>
+                <p className="text-xs text-muted-foreground mb-2">Select outputs from earlier phases</p>
+                <div className="space-y-2 p-3 rounded-lg bg-secondary/20 border border-border/50 max-h-32 overflow-auto">
+                  {/* context.md is always available */}
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <Checkbox
+                      checked={(editedPhase.requires || []).includes('context.md')}
+                      onCheckedChange={(checked) => {
+                        const requires = editedPhase.requires || [];
+                        setEditedPhase({
+                          ...editedPhase,
+                          requires: checked
+                            ? [...requires, 'context.md']
+                            : requires.filter(r => r !== 'context.md')
+                        });
+                      }}
+                    />
+                    <span className="text-muted-foreground font-mono text-xs">context.md</span>
+                  </label>
+                  {/* Output files from EARLIER phases only (prevents circular deps) */}
+                  {teamConfig?.team.workflow.phases
+                    .filter((_, i) => phaseModal && i < phaseModal.index)
+                    .map((p, i) => (
+                      <label key={p.output} className="flex items-center gap-2 text-sm cursor-pointer">
+                        <Checkbox
+                          checked={(editedPhase.requires || []).includes(p.output)}
+                          onCheckedChange={(checked) => {
+                            const requires = editedPhase.requires || [];
+                            setEditedPhase({
+                              ...editedPhase,
+                              requires: checked
+                                ? [...requires, p.output]
+                                : requires.filter(r => r !== p.output)
+                            });
+                          }}
+                        />
+                        <span className="text-muted-foreground font-mono text-xs">{p.output}</span>
+                        <span className="text-muted-foreground/50 text-xs">(Phase {i + 1}: {p.name})</span>
+                      </label>
+                    ))}
+                  {phaseModal && phaseModal.index === 0 && (
+                    <p className="text-xs text-muted-foreground/50 italic">First phase - only context.md available</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <Button variant="secondary" onClick={() => setPhaseModal(null)}>Cancel</Button>
+              <Button onClick={savePhaseConfig} disabled={saving}>
+                <Save className="w-4 h-4 mr-1" />
+                {saving ? 'Saving...' : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Coordinator Modal */}
+      {coordinatorModal && createPortal(
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center" onClick={() => setCoordinatorModal(false)}>
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-foreground">Select Coordinator</h3>
+              <Button variant="ghost" size="icon" onClick={() => setCoordinatorModal(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <Select value={editedCoordinator} onValueChange={setEditedCoordinator}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select coordinator..." />
+              </SelectTrigger>
+              <SelectContent>
+                {teamConfig?.team.agents.map((agent) => (
+                  <SelectItem key={agent.name} value={agent.name}>
+                    {agent.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <Button variant="secondary" onClick={() => setCoordinatorModal(false)}>Cancel</Button>
+              <Button onClick={saveCoordinator} disabled={saving}>
+                <Save className="w-4 h-4 mr-1" />
+                {saving ? 'Saving...' : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Add Agent Modal */}
+      {addAgentModal && createPortal(
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center" onClick={() => setAddAgentModal(false)}>
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-foreground">Add Agent to Team</h3>
+              <Button variant="ghost" size="icon" onClick={() => setAddAgentModal(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <Select value={newAgentName} onValueChange={setNewAgentName}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select agent..." />
+              </SelectTrigger>
+              <SelectContent>
+                {getAvailableAgentsForAdd().map((agent) => (
+                  <SelectItem key={agent.name} value={agent.name}>
+                    {agent.name} ({agent.role})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {getAvailableAgentsForAdd().length === 0 && (
+              <p className="text-sm text-muted-foreground mt-2">No available agents. Create agents in the Agents page first.</p>
+            )}
+
+            <div className="flex justify-end gap-2 mt-6">
+              <Button variant="secondary" onClick={() => setAddAgentModal(false)}>Cancel</Button>
+              <Button onClick={addAgentToTeam} disabled={saving || !newAgentName}>
+                <Plus className="w-4 h-4 mr-1" />
+                {saving ? 'Adding...' : 'Add'}
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Add Phase Modal */}
+      {addPhaseModal && createPortal(
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center" onClick={() => setAddPhaseModal(false)}>
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-foreground">Add Workflow Phase</h3>
+              <Button variant="ghost" size="icon" onClick={() => setAddPhaseModal(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Phase Name</label>
+                <Input
+                  value={newPhase.name}
+                  onChange={(e) => setNewPhase({ ...newPhase, name: e.target.value })}
+                  placeholder="Research"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Owner</label>
+                <Select
+                  value={newPhase.owner}
+                  onValueChange={(value) => setNewPhase({ ...newPhase, owner: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select owner..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teamConfig?.team.agents.map((agent) => (
+                      <SelectItem key={agent.name} value={agent.name}>
+                        {agent.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Output File</label>
+                <Input
+                  value={newPhase.output}
+                  onChange={(e) => setNewPhase({ ...newPhase, output: e.target.value })}
+                  placeholder="output.md"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Requires</label>
+                <p className="text-xs text-muted-foreground mb-2">Select outputs from earlier phases</p>
+                <div className="space-y-2 p-3 rounded-lg bg-secondary/20 border border-border/50 max-h-32 overflow-auto">
+                  {/* context.md is always available */}
+                  <label className="flex items-center gap-2 text-sm cursor-pointer">
+                    <Checkbox
+                      checked={(newPhase.requires || []).includes('context.md')}
+                      onCheckedChange={(checked) => {
+                        const requires = newPhase.requires || [];
+                        setNewPhase({
+                          ...newPhase,
+                          requires: checked
+                            ? [...requires, 'context.md']
+                            : requires.filter(r => r !== 'context.md')
+                        });
+                      }}
+                    />
+                    <span className="text-muted-foreground font-mono text-xs">context.md</span>
+                  </label>
+                  {/* Output files from all existing phases (new phase goes at end) */}
+                  {teamConfig?.team.workflow.phases.map((p, i) => (
+                    <label key={p.output} className="flex items-center gap-2 text-sm cursor-pointer">
+                      <Checkbox
+                        checked={(newPhase.requires || []).includes(p.output)}
+                        onCheckedChange={(checked) => {
+                          const requires = newPhase.requires || [];
+                          setNewPhase({
+                            ...newPhase,
+                            requires: checked
+                              ? [...requires, p.output]
+                              : requires.filter(r => r !== p.output)
+                          });
+                        }}
+                      />
+                      <span className="text-muted-foreground font-mono text-xs">{p.output}</span>
+                      <span className="text-muted-foreground/50 text-xs">(Phase {i + 1}: {p.name})</span>
+                    </label>
+                  ))}
+                  {(!teamConfig?.team.workflow.phases || teamConfig.team.workflow.phases.length === 0) && (
+                    <p className="text-xs text-muted-foreground/50 italic">First phase - only context.md available</p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <Button variant="secondary" onClick={() => setAddPhaseModal(false)}>Cancel</Button>
+              <Button onClick={addPhaseToTeam} disabled={saving || !newPhase.name || !newPhase.owner || !newPhase.output}>
+                <Plus className="w-4 h-4 mr-1" />
+                {saving ? 'Adding...' : 'Add Phase'}
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Team Settings Modal */}
+      {teamSettingsModal && createPortal(
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center" onClick={() => setTeamSettingsModal(false)}>
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-foreground">Team Settings</h3>
+              <Button variant="ghost" size="icon" onClick={() => setTeamSettingsModal(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Team Name</label>
+                <Input
+                  value={editedTeamName}
+                  onChange={(e) => setEditedTeamName(e.target.value.toLowerCase())}
+                  placeholder="my-team"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Lowercase letters, numbers, and hyphens only</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Description</label>
+                <Input
+                  value={editedTeamDescription}
+                  onChange={(e) => setEditedTeamDescription(e.target.value)}
+                  placeholder="Team description..."
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <Button variant="secondary" onClick={() => setTeamSettingsModal(false)}>Cancel</Button>
+              <Button onClick={saveTeamSettings} disabled={saving || !editedTeamName}>
+                <Save className="w-4 h-4 mr-1" />
+                {saving ? 'Saving...' : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Create Team Modal */}
+      {createTeamModal && createPortal(
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center" onClick={() => setCreateTeamModal(false)}>
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-foreground">Create New Team</h3>
+              <Button variant="ghost" size="icon" onClick={() => setCreateTeamModal(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Team Name</label>
+                <Input
+                  value={newTeamName}
+                  onChange={(e) => setNewTeamName(e.target.value.toLowerCase())}
+                  placeholder="my-team"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Lowercase letters, numbers, and hyphens only</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Description</label>
+                <Input
+                  value={newTeamDescription}
+                  onChange={(e) => setNewTeamDescription(e.target.value)}
+                  placeholder="Team description..."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">First Agent</label>
+                <Select value={newTeamFirstAgent} onValueChange={setNewTeamFirstAgent}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select an agent..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {agentInfos
+                      .filter(a => !a.name.startsWith('agent-') && a.role && a.model)
+                      .map((agent) => (
+                        <SelectItem key={agent.name} value={agent.name}>
+                          {agent.name} ({agent.role})
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">You can add more agents after creation</p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <Button variant="secondary" onClick={() => setCreateTeamModal(false)}>Cancel</Button>
+              <Button onClick={createNewTeam} disabled={saving || !newTeamName || !newTeamFirstAgent}>
+                <Plus className="w-4 h-4 mr-1" />
+                {saving ? 'Creating...' : 'Create Team'}
+              </Button>
+            </div>
+          </div>
         </div>,
         document.body
       )}

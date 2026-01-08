@@ -7,11 +7,20 @@
 #
 # Output (stdout): Critical state to preserve
 
-# Source shared helpers
-source "$(dirname "$0")/_lib.sh"
+# Source shared helpers (non-fatal if missing)
+source "$(dirname "$0")/_lib.sh" 2>/dev/null || true
 
-# Use PROJECTS_DIR from environment (set by launch scripts)
-PROJECTS_BASE="${PROJECTS_DIR:-$HOME/nolan/projects}"
+# Use PROJECTS_DIR from environment (REQUIRED - set by launch scripts)
+if [[ -z "${PROJECTS_DIR:-}" ]]; then
+    echo "## Preserved State (Pre-Compact)"
+    echo ""
+    echo "ERROR: PROJECTS_DIR environment variable is not set."
+    exit 0
+fi
+PROJECTS_BASE="$PROJECTS_DIR"
+
+# Get current team context
+CURRENT_TEAM="${TEAM_NAME:-}"
 
 echo "## Preserved State (Pre-Compact)"
 echo ""
@@ -26,6 +35,17 @@ for dir in "$PROJECTS_BASE"/*/; do
     project=$(basename "$dir")
     [[ "$project" == _* ]] && continue  # Skip template directories
     [[ "$project" == .* ]] && continue  # Skip hidden directories
+
+    # Filter by team if TEAM_NAME is set
+    if [[ -n "$CURRENT_TEAM" ]]; then
+        team_file="$dir/.team"
+        if [[ -f "$team_file" ]]; then
+            project_team=$(cat "$team_file" 2>/dev/null)
+            [[ "$project_team" != "$CURRENT_TEAM" ]] && continue
+        else
+            continue  # Skip projects without .team file
+        fi
+    fi
 
     # Get coordinator file from team config
     coordinator_file=$(get_coordinator_file "$dir" 2>/dev/null) || continue

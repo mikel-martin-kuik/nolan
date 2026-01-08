@@ -41,3 +41,11 @@ Includes capabilities for:
 - Git workflow and commits
 
 **IMPORTANT:** Full read/write access. Execute all implementation tasks.
+
+## Completion
+
+When your work is done:
+1. Update `$DOCS_PATH/$OUTPUT_FILE` with all required sections
+2. Stop - the system automatically handles handoff to the coordinator
+3. Do NOT run `/handoff` - that command is coordinator-only
+4. Do NOT try to update NOTES.md - you only have write access to your output file and application code

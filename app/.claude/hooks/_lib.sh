@@ -8,7 +8,12 @@ get_coordinator_file() {
     local project_path="$1"
     local team_file="$project_path/.team"
     local team_name
-    local nolan_root="${NOLAN_ROOT:-$HOME/nolan}"
+
+    # NOLAN_ROOT is required
+    if [[ -z "${NOLAN_ROOT:-}" ]]; then
+        echo "Error: NOLAN_ROOT environment variable is not set" >&2
+        return 1
+    fi
 
     # Read team name from .team file (required)
     if [[ ! -f "$team_file" ]]; then
@@ -18,18 +23,22 @@ get_coordinator_file() {
     team_name=$(cat "$team_file")
 
     # Query team config for coordinator's output file
-    python3 -c "
-import yaml
+    # Use environment variables to avoid shell injection
+    HOOK_NOLAN_ROOT="$NOLAN_ROOT" HOOK_TEAM_NAME="$team_name" python3 -c '
+import yaml, os
 from pathlib import Path
 
-config_path = Path('$nolan_root') / 'teams' / '${team_name}.yaml'
+nolan_root = os.environ["HOOK_NOLAN_ROOT"]
+team_name = os.environ["HOOK_TEAM_NAME"]
+
+config_path = Path(nolan_root) / "teams" / f"{team_name}.yaml"
 config = yaml.safe_load(config_path.read_text())
-coordinator = config['team']['workflow']['coordinator']
-for agent in config['team']['agents']:
-    if agent['name'] == coordinator:
-        print(agent['output_file'])
+coordinator = config["team"]["workflow"]["coordinator"]
+for agent in config["team"]["agents"]:
+    if agent["name"] == coordinator:
+        print(agent["output_file"])
         break
-"
+'
 }
 
 # Get coordinator name from team config
@@ -38,7 +47,12 @@ get_coordinator_name() {
     local project_path="$1"
     local team_file="$project_path/.team"
     local team_name
-    local nolan_root="${NOLAN_ROOT:-$HOME/nolan}"
+
+    # NOLAN_ROOT is required
+    if [[ -z "${NOLAN_ROOT:-}" ]]; then
+        echo "Error: NOLAN_ROOT environment variable is not set" >&2
+        return 1
+    fi
 
     # Read team name from .team file (required)
     if [[ ! -f "$team_file" ]]; then
@@ -48,14 +62,18 @@ get_coordinator_name() {
     team_name=$(cat "$team_file")
 
     # Query team config for coordinator name
-    python3 -c "
-import yaml
+    # Use environment variables to avoid shell injection
+    HOOK_NOLAN_ROOT="$NOLAN_ROOT" HOOK_TEAM_NAME="$team_name" python3 -c '
+import yaml, os
 from pathlib import Path
 
-config_path = Path('$nolan_root') / 'teams' / '${team_name}.yaml'
+nolan_root = os.environ["HOOK_NOLAN_ROOT"]
+team_name = os.environ["HOOK_TEAM_NAME"]
+
+config_path = Path(nolan_root) / "teams" / f"{team_name}.yaml"
 config = yaml.safe_load(config_path.read_text())
-print(config['team']['workflow']['coordinator'])
-"
+print(config["team"]["workflow"]["coordinator"])
+'
 }
 
 # Get team name from project path

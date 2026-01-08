@@ -1,5 +1,6 @@
 import React from 'react';
 import { HistoryEntry } from '../../types';
+import { RE_TEAM_SESSION, parseRalphSession } from '@/lib/agentIdentity';
 
 interface LogEntryProps {
   entry: HistoryEntry;
@@ -32,21 +33,42 @@ export const LogEntry: React.FC<LogEntryProps> = ({ entry, onSelect, isSelected 
   };
 
   // Parse agent name and instance number from session name
+  // Uses centralized patterns from agentIdentity.ts
   const parseAgentName = (agent: string | null) => {
     if (!agent) return { displayName: null, agentName: null };
 
-    // Check if it's a session name like "agent-bill-3"
-    const sessionMatch = agent.match(/^agent-([a-z]+)-(\d+)$/);
-    if (sessionMatch) {
-      const agentName = sessionMatch[1];
-      const instanceNumber = sessionMatch[2];
+    // Check for Ralph session first: agent-ralph-{name}
+    const ralphName = parseRalphSession(agent);
+    if (ralphName) {
+      return {
+        displayName: `RALPH-${ralphName.toUpperCase()}`,
+        agentName: 'ralph'
+      };
+    }
+
+    // Team-scoped spawned: agent-{team}-{name}-{instance} (e.g., agent-bug-bounty-ana-2)
+    // Extend RE_TEAM_SESSION pattern to include instance suffix
+    const teamSpawnedMatch = agent.match(/^agent-([a-z][a-z0-9-]*[a-z0-9]|[a-z])-([a-z]+)-(\d+)$/);
+    if (teamSpawnedMatch) {
+      const agentName = teamSpawnedMatch[2];
+      const instanceNumber = teamSpawnedMatch[3];
       return {
         displayName: `${agentName.toUpperCase()}${instanceNumber}`,
         agentName: agentName
       };
     }
 
-    // Otherwise just use the agent name as-is
+    // Team-scoped core: agent-{team}-{name} (e.g., agent-default-ana, agent-bug-bounty-carl)
+    const teamCoreMatch = agent.match(RE_TEAM_SESSION);
+    if (teamCoreMatch) {
+      const agentName = teamCoreMatch[2];
+      return {
+        displayName: agentName.toUpperCase(),
+        agentName: agentName
+      };
+    }
+
+    // Fallback: use agent name as-is
     const normalizedName = agent.toLowerCase();
     return {
       displayName: agent.toUpperCase(),

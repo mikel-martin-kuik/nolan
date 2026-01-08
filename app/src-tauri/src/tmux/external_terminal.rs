@@ -6,7 +6,7 @@
 //! shell commands to prevent command injection.
 
 use std::process::Command;
-use regex::Regex;
+use crate::constants::{RE_CORE_AGENT, RE_RALPH_SESSION};
 
 /// Terminal emulator types supported by the platform
 #[derive(Debug, Clone, Copy)]
@@ -68,23 +68,23 @@ fn escape_applescript_string(s: &str) -> String {
 
 /// 🔒 SECURITY: Validate session name format (defense-in-depth)
 ///
-/// Session names must match the pattern: agent-{name} or agent-{name}-{number}
-/// This revalidates even though the caller should have already validated.
+/// Session names must match one of:
+/// - Team sessions: agent-{team}-{name} (team names can contain hyphens)
+/// - Ralph sessions: agent-ralph-{name}
 ///
+/// This revalidates even though the caller should have already validated.
 /// This is a security boundary to prevent command injection in shell commands.
+/// Uses centralized patterns from constants.rs.
 fn validate_session_format(session: &str) -> Result<(), String> {
-    // Session must match: agent-{name} or agent-{name}-{number}
-    let re = Regex::new(r"^agent-[a-z]+(-\d+)?$")
-        .map_err(|e| format!("Regex error: {}", e))?;
-
-    if !re.is_match(session) {
-        return Err(format!(
-            "Invalid session name format: '{}'. Expected: agent-{{name}}[-{{number}}]",
-            session
-        ));
+    // Use centralized patterns from constants.rs
+    if RE_CORE_AGENT.is_match(session) || RE_RALPH_SESSION.is_match(session) {
+        return Ok(());
     }
 
-    Ok(())
+    Err(format!(
+        "Invalid session name format: '{}'. Expected: agent-{{team}}-{{name}} or agent-ralph-{{name}}",
+        session
+    ))
 }
 
 /// Launch external terminal for a tmux session

@@ -192,18 +192,14 @@ export const TeamCard: React.FC<TeamCardProps> = ({
 
   return (
     <Card className={cn(
-      "bg-transparent border-2 border-dashed border-border/60 rounded-2xl relative shadow-none",
-      collapsed ? "p-0" : "p-4 sm:p-6",
-      !collapsed && "w-fit mx-auto"
+      "bg-transparent border-2 border-dashed border-border/60 rounded-2xl relative shadow-none h-full",
+      !collapsed && "w-fit pb-4 sm:pb-6",
+      collapsed && anyActive && "border-l-emerald-500 border-l-solid border-l-4"
     )}>
-      {/* Collapsible Header */}
+      {/* Collapsible Header - always visible */}
       <button
         onClick={onToggleCollapse}
-        className={cn(
-          "w-full flex items-center justify-between gap-3 text-left",
-          "hover:bg-accent/30 transition-colors rounded-xl",
-          collapsed ? "p-3 sm:p-4" : "absolute top-0 left-0 right-0 p-2 sm:p-3 -translate-y-full opacity-0 pointer-events-none"
-        )}
+        className="flex items-center gap-3 text-left hover:bg-accent/30 transition-colors rounded-xl w-full p-3 sm:p-4"
       >
         <div className="flex items-center gap-2">
           {collapsed ? (
@@ -229,17 +225,8 @@ export const TeamCard: React.FC<TeamCardProps> = ({
       {/* Expanded Content */}
       {!collapsed && (
         <>
-          {/* Collapse toggle in top-left corner when expanded */}
-          <button
-            onClick={onToggleCollapse}
-            className="absolute top-2 left-2 sm:top-3 sm:left-3 p-1 hover:bg-accent/50 rounded-lg transition-colors z-10"
-            title="Collapse team"
-          >
-            <ChevronDown className="w-4 h-4 text-muted-foreground" />
-          </button>
-
-          {/* Team Control Buttons - Absolute positioned */}
-          <div className="absolute top-2 left-10 sm:top-6 sm:left-12 flex gap-1.5">
+          {/* Team Control Buttons */}
+          <div className="flex gap-1.5 px-3 sm:px-4 mb-4">
             <Tooltip content="Launch" side="bottom">
               <button
                 onClick={onLaunch}
@@ -282,42 +269,39 @@ export const TeamCard: React.FC<TeamCardProps> = ({
                 <LayoutGrid className="w-4 h-4" />
               </button>
             </Tooltip>
+
+            {/* Project info inline with buttons */}
+            {anyActive && (
+              <div className="flex items-center gap-3 ml-auto">
+                <span className="text-xs text-muted-foreground">
+                  {teamProject || 'VIBING'}
+                </span>
+                {teamProject && currentProjectInfo && (
+                  <div className="flex items-center gap-2">
+                    {/* Segmented progress bar */}
+                    <div className="flex h-1.5 rounded-full overflow-hidden bg-muted-foreground/10">
+                      {stepCompletion.map((step, index) => (
+                        <Tooltip key={step.key} content={`${step.key}.md`} side="bottom">
+                          <div
+                            className={cn(
+                              "h-full w-6 transition-colors",
+                              step.complete ? "bg-primary" : "bg-muted-foreground/20",
+                              index > 0 && "border-l border-background/50"
+                            )}
+                          />
+                        </Tooltip>
+                      ))}
+                    </div>
+                    <span className="text-[10px] text-muted-foreground tabular-nums">
+                      {completedCount}/{workflowSteps.length}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Team Project Label - Absolute positioned */}
-          {anyActive && (
-            <div className="absolute top-2 right-4 sm:top-6 sm:right-6 flex flex-col items-end gap-0.5">
-              {/* Project Name - simple subtitle style */}
-              <span className="text-xs text-muted-foreground">
-                {teamProject || 'VIBING'}
-              </span>
-              {/* Progress Dots - below project name */}
-              {teamProject && currentProjectInfo && (
-                <div className="flex items-center gap-0.5">
-                  {stepCompletion.map((step) => (
-                    <div
-                      key={step.key}
-                      className={cn(
-                        "w-1.5 h-1.5 rounded-full transition-colors",
-                        step.complete ? "bg-primary" : "bg-muted-foreground/20"
-                      )}
-                      title={`${step.key}.md`}
-                    />
-                  ))}
-                  <span className="text-[10px] text-muted-foreground ml-1">
-                    {completedCount}/{workflowSteps.length}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Team name when expanded - centered above coordinator */}
-          <div className="text-center mb-2 mt-6">
-            <span className="text-sm font-medium text-muted-foreground">{teamName}</span>
-          </div>
-
-          {/* Coordinator (Scrum Master) - Centered at top */}
+          {/* Coordinator */}
           {coordinator && (
             <div className="flex justify-center">
               <div className="w-[clamp(140px,70vw,180px)]">

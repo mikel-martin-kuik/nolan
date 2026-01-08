@@ -1,1 +1,1 @@
-/home/mmartin/Proyectos/nolan/projects/team-structure-redesign
+/home/mmartin/Proyectos/nolan/projects/cron-type-bots

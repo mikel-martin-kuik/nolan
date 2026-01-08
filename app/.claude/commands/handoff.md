@@ -1,32 +1,31 @@
 ---
 description: Initiate agent handoff with validation checklist
 argument-hint: <from-agent> <to-agent>
-allowed-tools: Read, Bash(cat:*), Bash(grep:*), Bash(python3:*)
+allowed-tools: Read, Bash(cat:*), Bash(grep:*), Bash(python3:*), Bash(handoff-ack:*), Bash(coordinator-heartbeat:*)
 ---
-# Handoff: $1 → $2
+# Handoff Management
 
-## Project Context
-!`if [ -n "$DOCS_PATH" ] && [ -f "$DOCS_PATH/context.md" ]; then head -30 "$DOCS_PATH/context.md"; else echo "No context.md found. Set DOCS_PATH or navigate to project."; fi`
+!`agent="${AGENT_NAME:-}"; if [[ "$agent" == "ralph" ]] || [[ "$agent" =~ ^ralph- ]]; then exit 0; fi; coord=$(python3 -c "import yaml, os; c=yaml.safe_load(open(os.environ['NOLAN_ROOT']+'/teams/'+os.environ.get('TEAM_NAME','default')+'.yaml')); print(c['team']['workflow']['coordinator'])" 2>/dev/null || echo "dan"); if [ "$agent" != "$coord" ]; then echo "ERROR: This command is restricted."; exit 1; fi`
 
-## Current Status
-!`if [ -n "$DOCS_PATH" ]; then coord_file=$(python3 -c "import yaml; from pathlib import Path; import os; t=(Path('$DOCS_PATH')/ '.team').read_text().strip(); c=yaml.safe_load((Path(os.environ['NOLAN_ROOT'])/'teams'/f'{t}.yaml').read_text()); n=c['team']['workflow']['coordinator']; a=next((x for x in c['team']['agents'] if x['name']==n),None); print(a['output_file'])" 2>/dev/null); if [ -f "$DOCS_PATH/$coord_file" ]; then grep -A10 "## Current Status" "$DOCS_PATH/$coord_file" 2>/dev/null || grep -A10 "## Status" "$DOCS_PATH/$coord_file" 2>/dev/null || echo "No status section found"; else echo "No coordinator file found"; fi; else echo "DOCS_PATH not set"; fi`
+## Pending Handoffs
+!`"${NOLAN_ROOT}/app/scripts/handoff-ack.sh" list 2>/dev/null || echo "No pending handoffs"`
 
-## Output File Check
-!`case "$1" in ana|Ana) file="research.md";; bill|Bill) file="plan.md";; carl|Carl) file="progress.md";; enzo|Enzo) file="qa-review.md";; *) file="unknown";; esac; if [ -n "$DOCS_PATH" ] && [ -f "$DOCS_PATH/$file" ]; then echo "✓ $file exists ($(wc -l < "$DOCS_PATH/$file") lines)"; else echo "✗ $file not found at $DOCS_PATH"; fi`
+## System Status
+!`"${NOLAN_ROOT}/app/scripts/handoff-ack.sh" status 2>/dev/null || echo "Status unavailable"`
 
-## Pre-Handoff Checklist
+## Actions
 
-Before handing off to $2, verify:
+**ACK all pending handoffs:**
+```bash
+handoff-ack.sh ack-all
+```
 
-- [ ] Output file is complete with all required sections
-- [ ] No placeholder text or TODOs remain
-- [ ] Blockers documented if any
+**ACK specific handoff:**
+```bash
+handoff-ack.sh ack <id>
+```
 
-### Required Sections by Agent
-
-| From | File | Required Sections |
-|------|------|-------------------|
-| Ana | research.md | Problem, Findings, Recommendations |
-| Bill | plan.md | Overview, Tasks, Risks |
-| Carl | progress.md | Status, Changes |
-| Enzo | qa-review.md | Summary, Findings, Recommendation |
+**Recover stuck handoffs:**
+```bash
+handoff-ack.sh recover
+```

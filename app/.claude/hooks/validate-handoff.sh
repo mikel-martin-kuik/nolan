@@ -11,14 +11,29 @@
 
 set -euo pipefail
 
-# Read JSON input
-data=$(cat)
+# Read JSON input (may be empty)
+data=$(cat) || true
 
-# Extract file path and content
-file_path=$(echo "$data" | jq -r '.tool_input.file_path // empty')
-content=$(echo "$data" | jq -r '.tool_input.content // empty')
+# Exit early if no input
+if [[ -z "$data" ]]; then
+    exit 0
+fi
 
-# Skip if not a handoff document
+# Extract tool name, file path and content
+tool_name=$(echo "$data" | jq -r '.tool_name // ""') || true
+file_path=$(echo "$data" | jq -r '.tool_input.file_path // ""') || true
+
+# Get content based on tool type
+if [[ "$tool_name" == "Write" ]]; then
+    content=$(echo "$data" | jq -r '.tool_input.content // ""') || true
+elif [[ "$tool_name" == "Edit" ]]; then
+    # For Edit tool, validate the new content being written
+    content=$(echo "$data" | jq -r '.tool_input.new_string // ""') || true
+else
+    exit 0  # Unknown tool, skip validation
+fi
+
+# Skip if no file path or no content
 if [[ -z "$file_path" ]] || [[ -z "$content" ]]; then
     exit 0
 fi
@@ -45,12 +60,23 @@ check_sections() {
 }
 
 # Python-based section validation with team config (B05)
-python3 <<'EOF'
+# Pass variables via environment to avoid heredoc quoting issues
+export HOOK_FILE_PATH="$file_path"
+export HOOK_CONTENT="$content"
+
+python3 <<'PYTHON_EOF'
 import sys, yaml, os
 from pathlib import Path
 
 try:
-    file_path = Path('''${file_path}''')
+    # Read from environment (avoids shell quoting issues)
+    file_path_str = os.environ.get('HOOK_FILE_PATH', '')
+    content = os.environ.get('HOOK_CONTENT', '')
+
+    if not file_path_str:
+        sys.exit(0)
+
+    file_path = Path(file_path_str)
     filename = file_path.name
 
     # Load team config (required)
@@ -60,8 +86,14 @@ try:
         sys.exit(0)  # Skip projects without .team file
 
     team_name = team_file.read_text().strip()
-    nolan_root = Path(os.environ['NOLAN_ROOT'])
+    nolan_root = Path(os.environ.get('NOLAN_ROOT', ''))
+    if not nolan_root:
+        sys.exit(0)  # Can't validate without NOLAN_ROOT
+
     config_path = nolan_root / 'teams' / f'{team_name}.yaml'
+    if not config_path.exists():
+        sys.exit(0)  # Team config not found
+
     config = yaml.safe_load(config_path.read_text())
 
     # Get coordinator's output file from config
@@ -71,8 +103,6 @@ try:
 
     # Special handling for coordinator's output file
     if coordinator_file and filename == coordinator_file:
-        content = '''${content}'''
-
         # Accept either "## Log" or "## Handoff Log"
         if not ('## Handoff Log' in content or '## Log' in content):
             print("Missing required sections:", file=sys.stderr)
@@ -90,7 +120,7 @@ try:
         if re.search(r'\*\*(Status|Phase)\*?\*?:.*\b(COMPLETE|CLOSED|DEPLOYED|PRODUCTION.READY)\b', content, re.IGNORECASE):
             if '<!-- PROJECT:STATUS:' not in content:
                 print("SUGGESTION: Project appears complete but lacks structured marker.", file=sys.stderr)
-                print(f"  Add: <!-- PROJECT:STATUS:COMPLETE:$(date +%Y-%m-%d) -->", file=sys.stderr)
+                print("  Add: <!-- PROJECT:STATUS:COMPLETE:YYYY-MM-DD -->", file=sys.stderr)
                 print("  This improves status detection reliability.", file=sys.stderr)
 
         sys.exit(0)
@@ -102,7 +132,6 @@ try:
         sys.exit(0)  # Not a tracked output file
 
     # Validate required sections
-    content = '''${content}'''
     missing = [s for s in agent_config.get('required_sections', []) if s not in content]
 
     if missing:
@@ -114,7 +143,7 @@ try:
 except Exception as e:
     print(f"FATAL: Hook error: {e}", file=sys.stderr)
     sys.exit(2)
-EOF
+PYTHON_EOF
 
 # All checks passed
 exit 0

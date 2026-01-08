@@ -2,14 +2,29 @@ use chrono;
 use regex::Regex;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
+use once_cell::sync::Lazy;
 use crate::config::TeamConfig;
 use crate::constants::{
     PROTECTED_SESSIONS,
     RE_AGENT_SESSION,
     RE_CORE_AGENT,
-    RE_LEGACY_AGENT,
     RE_RALPH_SESSION,
+    parse_ralph_session,
 };
+
+// Cached regex patterns for statusline parsing (compiled once at startup)
+static RE_STATUSLINE_NEW: Lazy<Option<Regex>> = Lazy::new(|| {
+    Regex::new(r"^\s+[^|]+\|[^|]+\|\s*(\d+)%\s*\|[^|]+\|\s*(\S+)\s*$").ok()
+});
+
+static RE_STATUSLINE_OLD: Lazy<Option<Regex>> = Lazy::new(|| {
+    Regex::new(r"^\s+\w+\s+\|\s+[\w\s.]+\s+\|\s+(\d+)%").ok()
+});
+
+// Cached regex pattern for extracting project name from statusline
+static RE_PROJECT_NAME: Lazy<Option<Regex>> = Lazy::new(|| {
+    Regex::new(r"\|\s+(\S+)\s*$").ok()
+});
 
 /// Helper function to emit agent status change event
 async fn emit_status_change(app_handle: &AppHandle) {
@@ -25,7 +40,6 @@ async fn emit_status_change(app_handle: &AppHandle) {
 /// Supports:
 /// - Team-scoped sessions: agent-{team}-{name} or agent-{team}-{name}-{instance}
 /// - Ralph sessions: agent-ralph-{id} (team-independent)
-/// - Legacy sessions: agent-{name} (treated as team "default")
 fn validate_agent_session(session: &str) -> Result<(String, String), String> {
     // Prevent killing protected infrastructure
     if PROTECTED_SESSIONS.iter().any(|p| session.contains(p)) {
@@ -61,45 +75,34 @@ fn validate_agent_session(session: &str) -> Result<(String, String), String> {
         return Ok((team_name, agent_name));
     }
 
-    // Try legacy pattern: agent-{name} (treated as team "default")
-    if let Some(caps) = RE_LEGACY_AGENT.captures(session) {
-        let agent_name = caps[1].to_string();
-
-        // Ralph legacy format
-        if agent_name == "ralph" {
-            return Ok(("".to_string(), "ralph".to_string()));
-        }
-
-        // Validate against default team
-        let team = TeamConfig::load("default")
-            .map_err(|e| format!("Failed to load default team config: {}", e))?;
-        let valid_agents = team.agent_names();
-
-        if !valid_agents.contains(&agent_name.as_str()) {
-            return Err(format!(
-                "Invalid agent name: '{}'. Valid agents: {:?}, ralph",
-                agent_name, valid_agents
-            ));
-        }
-
-        return Ok(("default".to_string(), agent_name));
-    }
-
     Err(format!(
-        "Invalid session name format: '{}'. Expected: agent-{{team}}-{{name}}[-{{instance}}]",
+        "Invalid session name format: '{}'. Expected: agent-{{team}}-{{name}} or agent-ralph-{{name}}",
         session
     ))
 }
 
-/// Validates agent name format (lowercase letters only)
-/// Used for operations on shared agent directories
+/// Validates agent name format (lowercase letters, digits, and hyphens)
+/// Must start with a lowercase letter.
+/// Used for operations on shared agent directories.
 fn validate_agent_name_format(agent: &str) -> Result<(), String> {
-    if !agent.chars().all(|c| c.is_ascii_lowercase()) || agent.is_empty() {
+    if agent.is_empty() {
+        return Err("Agent name cannot be empty".to_string());
+    }
+
+    if !agent.chars().next().map(|c| c.is_ascii_lowercase()).unwrap_or(false) {
         return Err(format!(
-            "Invalid agent name '{}'. Must be lowercase letters only.",
+            "Invalid agent name '{}'. Must start with a lowercase letter.",
             agent
         ));
     }
+
+    if !agent.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+        return Err(format!(
+            "Invalid agent name '{}'. Must contain only lowercase letters, digits, and hyphens.",
+            agent
+        ));
+    }
+
     Ok(())
 }
 
@@ -199,6 +202,7 @@ fn get_default_model(agent: &str) -> String {
 /// Returns Some(Vec<agent_names>) for existing projects based on incomplete phases
 fn determine_needed_agents(docs_path: &std::path::Path, team: &TeamConfig) -> Option<Vec<String>> {
     use std::fs;
+    use std::collections::HashSet;
 
     let coordinator_file = team.coordinator_output_file();
     let coordinator_path = docs_path.join(&coordinator_file);
@@ -212,29 +216,45 @@ fn determine_needed_agents(docs_path: &std::path::Path, team: &TeamConfig) -> Op
 
     // Parse Phase Status table to find incomplete phases
     // Format: | Phase | Status | Assigned | Output |
-    let mut needed_agents: Vec<String> = vec![coordinator.clone()]; // Coordinator always needed
+    // Use HashSet for O(1) contains checks instead of Vec O(n)
+    let mut needed_agents_set: HashSet<String> = HashSet::new();
+    needed_agents_set.insert(coordinator.clone()); // Coordinator always needed
 
     // Build phase-to-agent mapping from team config workflow phases
-    let mut phase_to_agent: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    // We store exact phase names separately to prioritize exact matches
+    let mut exact_phase_to_agent: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut keyword_to_agent: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+
     for phase in &team.team.workflow.phases {
-        // Add multiple variations of phase name for matching
         let phase_lower = phase.name.to_lowercase();
-        phase_to_agent.insert(phase_lower.clone(), phase.owner.clone());
-        // Also add common abbreviations
-        if phase_lower.contains("research") {
-            phase_to_agent.insert("research".to_string(), phase.owner.clone());
+        // Always add exact phase name (highest priority)
+        exact_phase_to_agent.insert(phase_lower.clone(), phase.owner.clone());
+
+        // Add keyword abbreviations only if they won't conflict with exact names
+        // These are used as fallbacks when exact match fails
+        if phase_lower.contains("research") && !exact_phase_to_agent.contains_key("research") {
+            keyword_to_agent.insert("research".to_string(), phase.owner.clone());
         }
         if phase_lower.contains("plan") && !phase_lower.contains("review") {
-            phase_to_agent.insert("planning".to_string(), phase.owner.clone());
-            phase_to_agent.insert("plan".to_string(), phase.owner.clone());
+            if !exact_phase_to_agent.contains_key("planning") {
+                keyword_to_agent.insert("planning".to_string(), phase.owner.clone());
+            }
+            if !exact_phase_to_agent.contains_key("plan") {
+                keyword_to_agent.insert("plan".to_string(), phase.owner.clone());
+            }
         }
         if phase_lower.contains("implement") {
-            phase_to_agent.insert("implementation".to_string(), phase.owner.clone());
-            phase_to_agent.insert("implement".to_string(), phase.owner.clone());
+            // Don't add "implement" keyword - it causes conflicts between
+            // "Implementation" (carl) and "Implementation Audit" (frank)
+            // Exact phase name matching handles this correctly
         }
         if phase_lower.contains("review") || phase_lower.contains("qa") {
-            phase_to_agent.insert("qa".to_string(), phase.owner.clone());
-            phase_to_agent.insert("qa review".to_string(), phase.owner.clone());
+            if !exact_phase_to_agent.contains_key("qa") {
+                keyword_to_agent.insert("qa".to_string(), phase.owner.clone());
+            }
+            if !exact_phase_to_agent.contains_key("qa review") {
+                keyword_to_agent.insert("qa review".to_string(), phase.owner.clone());
+            }
         }
     }
 
@@ -275,12 +295,16 @@ fn determine_needed_agents(docs_path: &std::path::Path, team: &TeamConfig) -> Op
                 if !is_complete {
                     has_incomplete_phases = true;
                     // Find which agent owns this phase
-                    for (phase_keyword, agent) in &phase_to_agent {
-                        if phase.contains(phase_keyword) {
-                            if !needed_agents.contains(agent) {
-                                needed_agents.push(agent.clone());
+                    // First try exact match (handles "Implementation" vs "Implementation Audit")
+                    if let Some(agent) = exact_phase_to_agent.get(&phase) {
+                        needed_agents_set.insert(agent.clone());
+                    } else {
+                        // Fallback to keyword matching for flexibility
+                        for (keyword, agent) in &keyword_to_agent {
+                            if phase.contains(keyword) {
+                                needed_agents_set.insert(agent.clone());
+                                break;
                             }
-                            break;
                         }
                     }
                 }
@@ -290,7 +314,7 @@ fn determine_needed_agents(docs_path: &std::path::Path, team: &TeamConfig) -> Op
 
     // If no incomplete phases found but project not marked complete,
     // launch all agents (could be starting new work)
-    if !has_incomplete_phases && needed_agents.len() == 1 {
+    if !has_incomplete_phases && needed_agents_set.len() == 1 {
         return None; // Launch all
     }
 
@@ -302,12 +326,13 @@ fn determine_needed_agents(docs_path: &std::path::Path, team: &TeamConfig) -> Op
         .find(|p| p.name.to_lowercase().contains("review") && !p.name.to_lowercase().contains("audit"));
 
     if let (Some(impl_p), Some(review_p)) = (impl_phase, review_phase) {
-        if needed_agents.contains(&impl_p.owner) && !needed_agents.contains(&review_p.owner) {
-            needed_agents.push(review_p.owner.clone());
+        if needed_agents_set.contains(&impl_p.owner) && !needed_agents_set.contains(&review_p.owner) {
+            needed_agents_set.insert(review_p.owner.clone());
         }
     }
 
-    Some(needed_agents)
+    // Convert HashSet to Vec for return type
+    Some(needed_agents_set.into_iter().collect())
 }
 
 /// Count actual running spawned instances for an agent
@@ -318,14 +343,8 @@ fn count_running_instances(team: &str, agent: &str) -> Result<usize, String> {
 
     if agent == "ralph" {
         // For Ralph, count ephemeral instances: agent-ralph-{name} (team-independent)
-        // Names can be from RALPH_NAMES (variable length) or random alphanumeric (5 chars)
-        Ok(sessions.iter().filter(|s| {
-            if let Some(instance_id) = s.strip_prefix("agent-ralph-") {
-                !instance_id.is_empty() && instance_id.chars().all(|c| c.is_alphanumeric())
-            } else {
-                false
-            }
-        }).count())
+        // Uses centralized parse_ralph_session for consistent validation
+        Ok(sessions.iter().filter(|s| parse_ralph_session(s).is_some()).count())
     } else {
         // For other agents, count team-scoped numbered instances: agent-{team}-{name}-{number}
         let pattern = format!(r"^agent-{}-{}-[0-9]+$", team, agent);
@@ -344,8 +363,9 @@ fn find_available_ralph_name() -> Result<String, String> {
     let sessions = crate::tmux::session::list_sessions()?;
 
     // Extract names currently in use from agent-ralph-{name} sessions
+    // Uses centralized parse_ralph_session for consistent validation
     let used_names: std::collections::HashSet<&str> = sessions.iter()
-        .filter_map(|s| s.strip_prefix("agent-ralph-"))
+        .filter_map(|s| parse_ralph_session(s))
         .collect();
 
     // Find first available name from the pool
@@ -361,6 +381,7 @@ fn find_available_ralph_name() -> Result<String, String> {
 
 /// Generate a random 5-letter alphanumeric name
 /// Used as fallback when all RALPH_NAMES are exhausted
+/// Returns a name that matches RE_RALPH_SESSION pattern (lowercase + digits only)
 fn generate_random_name() -> String {
     use std::collections::hash_map::RandomState;
     use std::hash::{BuildHasher, Hash, Hasher};
@@ -375,6 +396,7 @@ fn generate_random_name() -> String {
     now.hash(&mut hasher);
     let hash_value = hasher.finish();
 
+    // Only lowercase letters and digits to match RE_RALPH_SESSION pattern [a-z0-9]+
     const CHARS: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
     let mut name = String::with_capacity(5);
     let mut val = hash_value;
@@ -382,6 +404,13 @@ fn generate_random_name() -> String {
         name.push(CHARS[(val % 36) as usize] as char);
         val /= 36;
     }
+
+    // Defense-in-depth: verify generated name matches expected pattern
+    debug_assert!(
+        name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()),
+        "Generated name '{}' contains invalid characters", name
+    );
+
     name
 }
 
@@ -431,17 +460,17 @@ fn get_docs_path_from_team_context(team_name: &str) -> Result<String, String> {
             let content = String::from_utf8_lossy(&o.stdout);
 
             // Look for statusline with project: "agent | model | XX% | $Y | project"
+            // Use cached regex pattern for performance
             for line in content.lines().rev() {
                 // Match pattern like: "  dan | sonnet | 42% | $0.12 | my-project"
-                if let Some(caps) = regex::Regex::new(r"\|\s+(\S+)\s*$")
-                    .ok()
-                    .and_then(|re| re.captures(line))
-                {
-                    let project_name = caps[1].trim().to_string();
-                    if !project_name.is_empty() && project_name != "VIBING" {
-                        let docs_path = projects_dir.join(&project_name);
-                        if docs_path.exists() {
-                            return Ok(docs_path.to_string_lossy().to_string());
+                if let Some(ref re) = *RE_PROJECT_NAME {
+                    if let Some(caps) = re.captures(line) {
+                        let project_name = caps[1].trim().to_string();
+                        if !project_name.is_empty() && project_name != "VIBING" {
+                            let docs_path = projects_dir.join(&project_name);
+                            if docs_path.exists() {
+                                return Ok(docs_path.to_string_lossy().to_string());
+                            }
                         }
                     }
                 }
@@ -532,7 +561,7 @@ pub async fn launch_team(
         // New project - launch all team agents
         team.agent_names().iter().map(|s| s.to_string()).collect()
     } else {
-        // Existing project - determine needed agents from NOTES.md phase status
+        // Existing project - determine needed agents from coordinator's output file phase status
         determine_needed_agents(&docs_path, &team)
             .unwrap_or_else(|| team.agent_names().iter().map(|s| s.to_string()).collect())
     };
@@ -783,6 +812,10 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
         ));
     }
 
+    // Acquire lock to prevent race conditions in name selection and session creation
+    // This ensures atomic operation from name selection to tmux session creation
+    let _spawn_guard = RALPH_SPAWN_LOCK.lock().await;
+
     // Find available name from RALPH_NAMES pool (ziggy, nova, etc.)
     let instance_id = find_available_ralph_name()?;
 
@@ -793,7 +826,7 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
     // Session naming: agent-ralph-{name}
     let session = format!("agent-ralph-{}", instance_id);
 
-    // Check if this session already exists (shouldn't happen, but safety check)
+    // Check if this session already exists (shouldn't happen with lock, but safety check)
     if crate::tmux::session::session_exists(&session)? {
         return Err(format!("Session '{}' already exists", session));
     }
@@ -872,6 +905,7 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
             String::from_utf8_lossy(&output.stderr)
         ));
     }
+    // Lock is automatically released here when _spawn_guard goes out of scope
 
     // Register session in the registry for history lookup (non-fatal)
     if let Err(e) = register_session(&session, &agent, agent_dir_str.as_ref(), "") {
@@ -1007,19 +1041,16 @@ pub async fn kill_instance(app_handle: AppHandle, session: String) -> Result<Str
     crate::tmux::session::kill_session(&session)?;
 
     // For ephemeral Ralph agents, delete the agent directory (agent-ralph-{name})
-    // Directory naming now matches session naming for consistency
-    // Names are from RALPH_NAMES pool (ziggy, nova, etc.) or random alphanumeric fallback
-    if let Some(instance_id) = session.strip_prefix("agent-ralph-") {
-        if !instance_id.is_empty() && instance_id.chars().all(|c| c.is_alphanumeric()) {
-            // This is an ephemeral agent, delete its directory
-            let agents_dir = crate::utils::paths::get_agents_dir()
-                .unwrap_or_else(|_| std::path::PathBuf::new());
-            let agent_path = agents_dir.join(format!("agent-ralph-{}", instance_id));
+    // Uses centralized parse_ralph_session for consistent validation
+    if let Some(instance_id) = parse_ralph_session(&session) {
+        // This is an ephemeral agent, delete its directory
+        let agents_dir = crate::utils::paths::get_agents_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::new());
+        let agent_path = agents_dir.join(format!("agent-ralph-{}", instance_id));
 
-            if agent_path.exists() {
-                if let Err(e) = fs::remove_dir_all(&agent_path) {
-                    eprintln!("Warning: Failed to delete ephemeral agent directory: {}", e);
-                }
+        if agent_path.exists() {
+            if let Err(e) = fs::remove_dir_all(&agent_path) {
+                eprintln!("Warning: Failed to delete ephemeral agent directory: {}", e);
             }
         }
     }
@@ -1051,20 +1082,18 @@ pub async fn kill_all_instances(app_handle: AppHandle, _team_name: String, agent
     let mut killed: Vec<String> = Vec::new();
 
     // Find all Ralph instances: agent-ralph-{name}
-    // Names are from RALPH_NAMES pool (ziggy, nova, etc.) or random alphanumeric fallback
+    // Uses centralized parse_ralph_session for consistent validation
     for session in &sessions {
-        if let Some(instance_id) = session.strip_prefix("agent-ralph-") {
-            if !instance_id.is_empty() && instance_id.chars().all(|c| c.is_alphanumeric()) {
-                if crate::tmux::session::kill_session(session).is_ok() {
-                    // Delete the ephemeral agent directory (agent-ralph-{name})
-                    let agents_dir = crate::utils::paths::get_agents_dir()
-                        .unwrap_or_else(|_| std::path::PathBuf::new());
-                    let agent_path = agents_dir.join(format!("agent-ralph-{}", instance_id));
-                    if agent_path.exists() {
-                        let _ = fs::remove_dir_all(&agent_path);
-                    }
-                    killed.push(session.to_string());
+        if let Some(instance_id) = parse_ralph_session(session) {
+            if crate::tmux::session::kill_session(session).is_ok() {
+                // Delete the ephemeral agent directory (agent-ralph-{name})
+                let agents_dir = crate::utils::paths::get_agents_dir()
+                    .unwrap_or_else(|_| std::path::PathBuf::new());
+                let agent_path = agents_dir.join(format!("agent-ralph-{}", instance_id));
+                if agent_path.exists() {
+                    let _ = fs::remove_dir_all(&agent_path);
                 }
+                killed.push(session.to_string());
             }
         }
     }
@@ -1115,16 +1144,10 @@ fn parse_statusline(session: &str) -> StatusLineData {
 
     let content = String::from_utf8_lossy(&output.stdout);
 
-    // Try new format first: "  agent | model | XX% | $Y.YY | project"
-    // Use lenient matching with [^|]+ for fields between pipes
-    let re_new = Regex::new(r"^\s+[^|]+\|[^|]+\|\s*(\d+)%\s*\|[^|]+\|\s*(\S+)\s*$").ok();
-
-    // Fallback to old format: "  agent | model | XX% | $Y.YY"
-    let re_old = Regex::new(r"^\s+\w+\s+\|\s+[\w\s.]+\s+\|\s+(\d+)%").ok();
-
+    // Use cached regex patterns (compiled once at startup)
     for line in content.lines().rev() {
         // Try new format with project
-        if let Some(ref re) = re_new {
+        if let Some(ref re) = *RE_STATUSLINE_NEW {
             if let Some(caps) = re.captures(line) {
                 if let Ok(percentage) = caps[1].parse::<u8>() {
                     data.context_usage = Some(percentage);
@@ -1138,7 +1161,7 @@ fn parse_statusline(session: &str) -> StatusLineData {
         }
 
         // Fallback to old format (no project)
-        if let Some(ref re) = re_old {
+        if let Some(ref re) = *RE_STATUSLINE_OLD {
             if let Some(caps) = re.captures(line) {
                 if let Ok(percentage) = caps[1].parse::<u8>() {
                     data.context_usage = Some(percentage);
@@ -1218,48 +1241,6 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
                 }
             }
             continue;
-        }
-
-        // Check for legacy sessions: agent-{name} (treated as team "default")
-        if let Some(caps) = RE_LEGACY_AGENT.captures(session) {
-            let agent_name = caps[1].to_string();
-
-            // Ralph legacy format - free agent
-            if agent_name == "ralph" {
-                if let Ok(info) = crate::tmux::session::get_session_info(session) {
-                    let statusline = parse_statusline(session);
-                    free_agents.push(AgentStatus {
-                        name: "ralph".to_string(),
-                        team: "".to_string(),
-                        active: true,
-                        session: session.clone(),
-                        attached: info.attached,
-                        context_usage: statusline.context_usage,
-                        current_project: statusline.current_project,
-                        created_at: Some(info.created_at * 1000),
-                    });
-                }
-                continue;
-            }
-
-            // Legacy agent - treat as team "default"
-            if let Some(team_config) = team_configs.get("default") {
-                if team_config.agent_names().contains(&agent_name.as_str()) {
-                    if let Ok(info) = crate::tmux::session::get_session_info(session) {
-                        let statusline = parse_statusline(session);
-                        team_agents.push(AgentStatus {
-                            name: agent_name,
-                            team: "default".to_string(),
-                            active: true,
-                            session: session.clone(),
-                            attached: info.attached,
-                            context_usage: statusline.context_usage,
-                            current_project: statusline.current_project,
-                            created_at: Some(info.created_at * 1000),
-                        });
-                    }
-                }
-            }
         }
     }
 
@@ -1630,6 +1611,11 @@ static STREAM_MANAGER: once_cell::sync::Lazy<tokio::sync::RwLock<crate::tmux::te
     once_cell::sync::Lazy::new(|| {
         tokio::sync::RwLock::new(crate::tmux::terminal_stream::TerminalStreamManager::new())
     });
+
+/// Mutex to prevent race conditions when spawning Ralph agents
+/// Ensures atomic name selection and session creation
+static RALPH_SPAWN_LOCK: once_cell::sync::Lazy<tokio::sync::Mutex<()>> =
+    once_cell::sync::Lazy::new(|| tokio::sync::Mutex::new(()));
 
 /// Start terminal output streaming for a session
 /// Creates a named pipe (FIFO) and begins streaming output to frontend

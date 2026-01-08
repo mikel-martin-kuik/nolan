@@ -1,1 +1,0 @@
-/home/mmartin/Proyectos/nolan/app/agents/ralph/CLAUDE.md

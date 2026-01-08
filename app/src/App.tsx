@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Home, FolderOpen, DollarSign, MessageCircle, Users, FileUser } from 'lucide-react';
+import { Home, FolderOpen, DollarSign, MessageCircle, Users, FileUser, Clock } from 'lucide-react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
@@ -12,6 +12,7 @@ import { UsagePanel } from './components/Usage/UsagePanel';
 import { TeamsPanel } from './components/Teams';
 import { ChatView } from './components/Chat';
 import { AgentManager } from './components/Agents';
+import { CronosPanel } from './components/Cronos';
 import { ToastContainer } from './components/shared/Toast';
 import { TerminalModal } from './components/Terminal/TerminalModal';
 import { BrandHeader } from './components/shared/BrandHeader';
@@ -24,7 +25,7 @@ import { cn } from './lib/utils';
 import { HistoryEntry } from './types';
 import './App.css';
 
-type Tab = 'status' | 'chat' | 'projects' | 'teams' | 'agents' | 'usage';
+type Tab = 'status' | 'chat' | 'projects' | 'teams' | 'agents' | 'cronos' | 'usage';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('status');
@@ -102,6 +103,7 @@ function App() {
     { id: 'projects' as Tab, label: 'Projects', tooltip: 'Projects', icon: FolderOpen },
     { id: 'teams' as Tab, label: 'Teams', tooltip: 'Teams', icon: Users },
     { id: 'agents' as Tab, label: 'Agents', tooltip: 'Agents', icon: FileUser },
+    { id: 'cronos' as Tab, label: 'Cronos', tooltip: 'Cron Agents', icon: Clock },
     { id: 'usage' as Tab, label: 'Usage', tooltip: 'Usage', icon: DollarSign },
   ];
 
@@ -155,6 +157,7 @@ function App() {
                 {activeTab === 'projects' && <ProjectsPanel />}
                 {activeTab === 'teams' && <TeamsPanel />}
                 {activeTab === 'agents' && <AgentManager />}
+                {activeTab === 'cronos' && <CronosPanel />}
                 {activeTab === 'usage' && <UsagePanel />}
               </main>
             </div>

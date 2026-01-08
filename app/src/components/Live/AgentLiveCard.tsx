@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo, memo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { MessageSquareX, Eraser, Clock, Terminal, MessageCircle } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -26,7 +26,7 @@ const getEntryTypeColor = (_type: string): string => {
   return 'text-muted-foreground';
 };
 
-export const AgentLiveCard: React.FC<AgentLiveCardProps> = ({
+export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
   agent,
   output,
   workflowState,
@@ -58,6 +58,37 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = ({
 
   // Get blocker message if blocked
   const blockerMessage = workflowState ? getBlockerMessage(workflowState) : null;
+
+  // Memoize badge computation to avoid recalculating on every render
+  const badgeInfo = useMemo(() => {
+    if (!workflowState || !agent.current_project || agent.current_project === 'VIBING') {
+      return null;
+    }
+
+    // Determine badge text
+    const badgeText = workflowState.status === 'blocked' && workflowState.blockedBy
+      ? workflowState.blockedBy
+      : workflowState.statusLabel;
+
+    // Don't show badge if it's redundant with the group label
+    // Groups: attention="Needs Attention", active="Active", blocked="Blocked", idle="Idle"
+    const redundantLabels: Record<string, string[]> = {
+      blocked: ['Blocked'],
+      idle: ['Idle'],
+      attention: ['Needs Input'],
+      active: ['Working'],
+    };
+
+    const isRedundant = redundantLabels[workflowState.status]?.includes(badgeText) ||
+      (workflowState.status === 'blocked' && badgeText === 'Blocked') ||
+      (workflowState.status === 'idle' && badgeText === 'Idle') ||
+      (workflowState.status === 'waiting_input' && badgeText === 'Needs Input') ||
+      (workflowState.status === 'working' && badgeText === 'Working');
+
+    if (isRedundant) return null;
+
+    return { text: badgeText, status: workflowState.status };
+  }, [workflowState, agent.current_project]);
 
   // Check if a workflow file is completed (has HANDOFF marker)
   const isFileCompleted = (key: string): boolean => {
@@ -116,7 +147,7 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = ({
       document.removeEventListener('click', handleClickOutside);
       window.removeEventListener('live-card-menu-open', handleOtherMenuOpen);
     };
-  }, [contextMenu]);
+  }, [contextMenu, handleClickOutside, handleOtherMenuOpen]);
 
   const handleClearMessagesFromMenu = () => {
     setContextMenu(null);
@@ -220,47 +251,19 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = ({
         )}>
           <span>{description}</span>
           {/* Workflow status badge - only show if it adds information beyond the group */}
-          {(() => {
-            if (!workflowState || !agent.current_project || agent.current_project === 'VIBING') {
-              return null;
-            }
-
-            // Determine badge text
-            const badgeText = workflowState.status === 'blocked' && workflowState.blockedBy
-              ? workflowState.blockedBy
-              : workflowState.statusLabel;
-
-            // Don't show badge if it's redundant with the group label
-            // Groups: attention="Needs Attention", active="Active", blocked="Blocked", idle="Idle"
-            const redundantLabels: Record<string, string[]> = {
-              blocked: ['Blocked'],
-              idle: ['Idle'],
-              attention: ['Needs Input'],
-              active: ['Working'],
-            };
-
-            const isRedundant = redundantLabels[workflowState.status]?.includes(badgeText) ||
-              (workflowState.status === 'blocked' && badgeText === 'Blocked') ||
-              (workflowState.status === 'idle' && badgeText === 'Idle') ||
-              (workflowState.status === 'waiting_input' && badgeText === 'Needs Input') ||
-              (workflowState.status === 'working' && badgeText === 'Working');
-
-            if (isRedundant) return null;
-
-            return (
-              <span className={cn(
-                'text-[10px] px-1.5 py-0.5 rounded font-medium capitalize',
-                workflowState.status === 'working' && 'bg-green-500/20 text-green-400',
-                workflowState.status === 'blocked' && 'bg-red-500/20 text-red-400',
-                workflowState.status === 'ready' && 'bg-blue-500/20 text-blue-400',
-                workflowState.status === 'waiting_input' && 'bg-yellow-500/20 text-yellow-400',
-                workflowState.status === 'complete' && 'bg-teal-500/20 text-teal-400',
-                workflowState.status === 'idle' && 'bg-zinc-500/20 text-zinc-400',
-              )}>
-                {badgeText}
-              </span>
-            );
-          })()}
+          {badgeInfo && (
+            <span className={cn(
+              'text-[10px] px-1.5 py-0.5 rounded font-medium capitalize',
+              badgeInfo.status === 'working' && 'bg-green-500/20 text-green-400',
+              badgeInfo.status === 'blocked' && 'bg-red-500/20 text-red-400',
+              badgeInfo.status === 'ready' && 'bg-blue-500/20 text-blue-400',
+              badgeInfo.status === 'waiting_input' && 'bg-yellow-500/20 text-yellow-400',
+              badgeInfo.status === 'complete' && 'bg-teal-500/20 text-teal-400',
+              badgeInfo.status === 'idle' && 'bg-zinc-500/20 text-zinc-400',
+            )}>
+              {badgeInfo.text}
+            </span>
+          )}
         </CardDescription>
       </CardHeader>
 
@@ -385,4 +388,6 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = ({
     )}
     </>
   );
-};
+});
+
+AgentLiveCard.displayName = 'AgentLiveCard';

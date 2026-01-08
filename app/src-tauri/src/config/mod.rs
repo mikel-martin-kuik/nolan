@@ -109,15 +109,45 @@ impl TeamConfig {
 
     /// Validate team configuration constraints
     pub fn validate(&self) -> Result<(), String> {
+        use std::collections::HashSet;
+
         const VALID_PERMISSIONS: &[&str] = &["restricted", "permissive", "no_projects"];
 
+        // Collect agent names and check for duplicates
+        let mut seen_names: HashSet<&str> = HashSet::new();
         for agent in &self.team.agents {
+            if !seen_names.insert(&agent.name) {
+                return Err(format!(
+                    "Duplicate agent name '{}' in team '{}'",
+                    agent.name, self.team.name
+                ));
+            }
+
             if !VALID_PERMISSIONS.contains(&agent.file_permissions.as_str()) {
                 return Err(format!(
                     "Invalid file_permissions for agent '{}': '{}'. Must be one of: {}",
                     agent.name,
                     agent.file_permissions,
                     VALID_PERMISSIONS.join(", ")
+                ));
+            }
+        }
+
+        // Validate coordinator exists in agents list
+        let coordinator = &self.team.workflow.coordinator;
+        if !seen_names.contains(coordinator.as_str()) {
+            return Err(format!(
+                "Coordinator '{}' not found in agents list for team '{}'",
+                coordinator, self.team.name
+            ));
+        }
+
+        // Validate all phase owners exist in agents list
+        for phase in &self.team.workflow.phases {
+            if !seen_names.contains(phase.owner.as_str()) {
+                return Err(format!(
+                    "Phase '{}' owner '{}' not found in agents list for team '{}'",
+                    phase.name, phase.owner, self.team.name
                 ));
             }
         }

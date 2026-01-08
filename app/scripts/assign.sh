@@ -81,11 +81,11 @@ for agent in config['team']['agents']:
 
 COORDINATOR=$(get_coordinator "$PROJECT_DIR")
 COORDINATOR_FILE=$(get_coordinator_file "$PROJECT_DIR")
-NOTES_FILE="$PROJECT_DIR/$COORDINATOR_FILE"
+COORDINATOR_PATH="$PROJECT_DIR/$COORDINATOR_FILE"
 
 # Validate coordinator file exists
-if [[ ! -f "$NOTES_FILE" ]]; then
-    echo "Error: Coordinator file not found: $NOTES_FILE" >&2
+if [[ ! -f "$COORDINATOR_PATH" ]]; then
+    echo "Error: Coordinator file not found: $COORDINATOR_PATH" >&2
     exit 1
 fi
 
@@ -209,43 +209,92 @@ ASSIGNMENT_SECTION+=$'\n'"Update \`$OUTPUT_FILE\` with all required sections."
 ASSIGNMENT_SECTION+=$'\n'
 ASSIGNMENT_SECTION+=$'\n'"---"
 
-# Update NOTES.md
+# Update coordinator's output file using Python (safer for special characters)
 # 1. Remove old Current Assignment section if exists
 # 2. Insert new assignment after status marker
 # 3. Update Current Status section
 # 4. Add Handoff Log entry
 
-TEMP_FILE=$(mktemp)
+python3 - "$COORDINATOR_PATH" "$PHASE" "$AGENT" "$TASK" "$OUTPUT_FILE" "$MSG_ID" "$TIMESTAMP_FULL" "$COORDINATOR" <<'PYTHON_SCRIPT'
+import sys
+import re
+from pathlib import Path
 
-# Check if Current Assignment section exists
-if grep -q "## Current Assignment" "$NOTES_FILE"; then
-    # Remove old assignment section (from ## Current Assignment to ---)
-    sed '/## Current Assignment/,/^---$/d' "$NOTES_FILE" > "$TEMP_FILE"
-else
-    cp "$NOTES_FILE" "$TEMP_FILE"
-fi
+coord_path = Path(sys.argv[1])
+phase = sys.argv[2]
+agent = sys.argv[3]
+task = sys.argv[4]
+output_file = sys.argv[5]
+msg_id = sys.argv[6]
+timestamp_full = sys.argv[7]
+coordinator = sys.argv[8]
+timestamp_date = timestamp_full.split()[0]
 
-# Insert new assignment after the status marker line
-sed -i "/^<!-- PROJECT:STATUS:/a\\
-$ASSIGNMENT_SECTION" "$TEMP_FILE"
+content = coord_path.read_text()
 
-# Update Current Status section
-sed -i "/^\*\*Phase\*\*:/c\\**Phase**: $PHASE" "$TEMP_FILE"
-sed -i "/^\*\*Assigned\*\*:/c\\**Assigned**: ${AGENT^}" "$TEMP_FILE"
+# 1. Remove old Current Assignment section if exists
+content = re.sub(r'## Current Assignment.*?^---\n', '', content, flags=re.MULTILINE | re.DOTALL)
 
-# Add Handoff Log entry (find the table and add row after header)
-if grep -q "## Handoff Log" "$TEMP_FILE"; then
-    # Find the handoff log table and add entry
-    HANDOFF_ENTRY="| $TIMESTAMP_FULL | ${COORDINATOR^} | ${AGENT^} | $TASK | $OUTPUT_FILE | Assigned ($MSG_ID) |"
+# 2. Build new assignment section
+assignment_section = f'''## Current Assignment
 
-    # Add after the header separator line in Handoff Log table
-    sed -i "/## Handoff Log/,/^$/s/|-----------|------|----|----|------|--------|/|-----------|------|----|----|------|--------|\n$HANDOFF_ENTRY/" "$TEMP_FILE"
-fi
+**Agent**: {agent.capitalize()}
+**Task**: {task}
+**Phase**: {phase}
+**Assigned**: {timestamp_date} ({msg_id})
 
-# Move temp file to original
-mv "$TEMP_FILE" "$NOTES_FILE"
+### Instructions
 
-echo "✅ Updated $NOTES_FILE"
+Complete assigned work following project requirements.
+
+### Files to Review
+
+- context.md - Project overview and objectives
+- research.md - Research findings (if applicable)
+
+### Focus Areas
+
+- Review all relevant files and documentation
+- Follow established patterns and conventions
+- Complete all required sections in output file
+
+### Expected Output
+
+Update `{output_file}` with all required sections.
+
+---
+'''
+
+# Insert after status marker
+status_pattern = r'(<!-- PROJECT:STATUS:[^\n]+\n)'
+if re.search(status_pattern, content):
+    content = re.sub(status_pattern, r'\1\n' + assignment_section, content)
+else:
+    # No status marker, insert at beginning after title
+    content = re.sub(r'(^# [^\n]+\n)', r'\1\n' + assignment_section, content)
+
+# 3. Update Current Status section
+content = re.sub(r'\*\*Phase\*\*: [^\n]+', f'**Phase**: {phase}', content)
+content = re.sub(r'\*\*Assigned\*\*: [^\n]+', f'**Assigned**: {agent.capitalize()}', content)
+
+# 4. Add Handoff Log entry
+handoff_entry = f'| {timestamp_full} | {coordinator.capitalize()} | {agent.capitalize()} | {task} | {output_file} | Assigned ({msg_id}) |'
+
+# Find the header separator and add entry after it
+def add_handoff_entry(match):
+    return match.group(0) + '\n' + handoff_entry
+
+content = re.sub(
+    r'\|[-]+\|[-]+\|[-]+\|[-]+\|[-]+\|[-]+\|',
+    add_handoff_entry,
+    content,
+    count=1
+)
+
+coord_path.write_text(content)
+PYTHON_SCRIPT
+
+echo "✅ Updated $COORDINATOR_PATH"
 echo "   Agent: ${AGENT^}"
 echo "   Phase: $PHASE"
 echo "   Task: $TASK"

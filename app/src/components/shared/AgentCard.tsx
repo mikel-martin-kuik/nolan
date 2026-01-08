@@ -162,9 +162,18 @@ export const AgentCard: React.FC<AgentCardProps> = ({
     // Broadcast event to close all other agent card menus
     window.dispatchEvent(new CustomEvent('agent-card-menu-open', { detail: menuId.current }));
 
+    // Estimate menu height (3 items * ~40px each + padding)
+    const menuHeight = 140;
+    const viewportHeight = window.innerHeight;
+
+    // If menu would overflow bottom, position it above cursor
+    const y = e.clientY + menuHeight > viewportHeight
+      ? e.clientY - menuHeight
+      : e.clientY;
+
     setContextMenu({
       x: e.clientX,
-      y: e.clientY
+      y: Math.max(8, y) // Ensure at least 8px from top
     });
   };
 

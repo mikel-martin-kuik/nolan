@@ -19,28 +19,78 @@ NOLAN_DEFAULT_TEAM="${NOLAN_DEFAULT_TEAM:-default}"
 # Ensure mailbox directory exists
 mkdir -p "$NOLAN_MAILBOX"
 
+# ===== TEAM-INDEPENDENT AGENTS =====
+# Load team-independent agents from agent.json files
+# These agents don't get team-scoped session names
+_load_team_independent_agents() {
+    local agents_dir="${NOLAN_ROOT}/app/agents"
+    local independent=""
+
+    # Check each agent directory for agent.json with team_independent: true
+    for agent_dir in "$agents_dir"/*/; do
+        [[ -d "$agent_dir" ]] || continue
+        local agent_json="$agent_dir/agent.json"
+        if [[ -f "$agent_json" ]]; then
+            local is_independent=$(python3 -c "
+import json, sys
+try:
+    with open('$agent_json') as f:
+        data = json.load(f)
+    print('true' if data.get('team_independent', False) else 'false')
+except:
+    print('false')
+" 2>/dev/null)
+            if [[ "$is_independent" == "true" ]]; then
+                local name=$(basename "$agent_dir")
+                independent="$independent $name"
+            fi
+        fi
+    done
+
+    echo $independent
+}
+
+# Cache team-independent agents at source time
+TEAM_INDEPENDENT_AGENTS=$(_load_team_independent_agents)
+
+# Check if an agent is team-independent
+# Usage: _is_team_independent <agent_name>
+_is_team_independent() {
+    local agent="$1"
+    # Extract base name (strip instance suffix like ralph-ziggy -> ralph)
+    local base_name="${agent%%-*}"
+
+    for independent in $TEAM_INDEPENDENT_AGENTS; do
+        if [[ "$base_name" == "$independent" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 # ===== SESSION NAMING PATTERNS =====
 # Team-scoped naming convention:
 # - Core agents: agent-{team}-{name} (e.g., agent-default-ana)
 # - Spawned agents: agent-{team}-{name}-{instance} (e.g., agent-default-ana-2)
-# - Ralph (team-independent): agent-ralph-{id} (e.g., agent-ralph-ziggy)
+# - Team-independent agents: agent-{name}-{id} (e.g., agent-ralph-ziggy)
+#   (determined by team_independent: true in agent.json)
 
 # Pattern for team-scoped sessions (core + spawned)
 RE_TEAM_SESSION='^agent-([a-z0-9]+)-([a-z]+)(-[a-z0-9]+)?$'
-# Pattern for ralph sessions (team-independent)
-RE_RALPH_SESSION='^agent-ralph-([a-z0-9]+)$'
+# Pattern for team-independent sessions (loaded from config)
+RE_INDEPENDENT_SESSION='^agent-([a-z]+)-([a-z0-9]+)$'
 # Pattern for legacy sessions (backwards compat)
 RE_LEGACY_SESSION='^agent-([a-z]+)$'
 
 # ===== CORE UTILITIES =====
 
 # List agent sessions for a specific team
-# Usage: _get_sessions [team] [include_ralph]
+# Usage: _get_sessions [team] [include_independent]
 # - team: team name (default: $NOLAN_DEFAULT_TEAM)
-# - include_ralph: "true" to include ralph sessions (default: false)
+# - include_independent: "true" to include team-independent agent sessions (default: false)
 _get_sessions() {
     local team="${1:-$NOLAN_DEFAULT_TEAM}"
-    local include_ralph="${2:-false}"
+    local include_independent="${2:-false}"
     local sessions=""
 
     # Get all tmux sessions
@@ -54,9 +104,12 @@ _get_sessions() {
             if [ "$session_team" = "$team" ]; then
                 sessions="$sessions $session"
             fi
-        # Check ralph sessions (team-independent)
-        elif [[ "$session" =~ ^agent-ralph-([a-z0-9]+)$ ]] && [ "$include_ralph" = "true" ]; then
-            sessions="$sessions $session"
+        # Check team-independent sessions (from config)
+        elif [[ "$session" =~ ^agent-([a-z]+)-([a-z0-9]+)$ ]] && [ "$include_independent" = "true" ]; then
+            local agent_name="${BASH_REMATCH[1]}"
+            if _is_team_independent "$agent_name"; then
+                sessions="$sessions $session"
+            fi
         fi
     done
 
@@ -74,19 +127,26 @@ _agent_exists() {
 
 # Build session name from team and agent target
 # Usage: _build_session_name <team> <target>
-# - For ralph: agent-ralph-{id}
+# - For team-independent: agent-{name}[-{id}]
 # - For spawned: agent-{team}-{name}-{instance}
 # - For core: agent-{team}-{name}
 _build_session_name() {
     local team="$1"
     local target="$2"
 
-    # Ralph is team-independent
-    if [[ "$target" == "ralph" ]] || [[ "$target" =~ ^ralph-([a-z0-9]+)$ ]]; then
+    # Check if agent is team-independent (from config)
+    if _is_team_independent "$target"; then
         echo "agent-$target"
     # Spawned instance: name-instance -> agent-{team}-{name}-{instance}
     elif [[ "$target" =~ ^([a-z]+)-([a-z0-9]+)$ ]]; then
-        echo "agent-$team-${BASH_REMATCH[1]}-${BASH_REMATCH[2]}"
+        local base="${BASH_REMATCH[1]}"
+        local instance="${BASH_REMATCH[2]}"
+        # Check if base agent is team-independent
+        if _is_team_independent "$base"; then
+            echo "agent-$target"
+        else
+            echo "agent-$team-$base-$instance"
+        fi
     # Core agent: name -> agent-{team}-{name}
     else
         echo "agent-$team-$target"
@@ -95,15 +155,22 @@ _build_session_name() {
 
 # Extract agent name from session (strips team prefix)
 # Usage: _extract_agent_name <session>
-# Returns: agent name (or name-instance for spawned)
+# Returns: agent name (or name-instance for spawned/team-independent)
 _extract_agent_name() {
     local session="$1"
 
-    # Ralph: agent-ralph-{id} (check FIRST - ralph is team-independent)
-    if [[ "$session" =~ ^agent-ralph-([a-z0-9]+)$ ]]; then
-        echo "ralph-${BASH_REMATCH[1]}"
+    # Team-independent: agent-{name}-{id} (check FIRST)
+    if [[ "$session" =~ ^agent-([a-z]+)-([a-z0-9]+)$ ]]; then
+        local name="${BASH_REMATCH[1]}"
+        local suffix="${BASH_REMATCH[2]}"
+        if _is_team_independent "$name"; then
+            echo "$name-$suffix"
+            return
+        fi
+    fi
+
     # Team-scoped spawned: agent-{team}-{name}-{instance}
-    elif [[ "$session" =~ ^agent-([a-z0-9]+)-([a-z]+)-([a-z0-9]+)$ ]]; then
+    if [[ "$session" =~ ^agent-([a-z0-9]+)-([a-z]+)-([a-z0-9]+)$ ]]; then
         echo "${BASH_REMATCH[2]}-${BASH_REMATCH[3]}"
     # Team-scoped core: agent-{team}-{name}
     elif [[ "$session" =~ ^agent-([a-z0-9]+)-([a-z]+)$ ]]; then

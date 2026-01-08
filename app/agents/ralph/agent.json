@@ -1,4 +1,5 @@
 {
   "role": "Support",
-  "model": "opus"
+  "model": "opus",
+  "team_independent": true
 }

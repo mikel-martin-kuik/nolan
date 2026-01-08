@@ -34,21 +34,12 @@ pub static RE_CORE_AGENT: Lazy<Regex> = Lazy::new(|| {
         .expect("Invalid regex pattern for team agent primary session")
 });
 
-/// DEPRECATED: Matches legacy numbered team agent sessions: agent-{team}-{name}-{instance}
-/// Team agents now have exactly one session per team. This pattern exists only for
-/// backward compatibility to handle orphaned sessions from the old multi-instance model.
-/// Captures: group 1 = team, group 2 = agent name, group 3 = instance id
-/// Examples: agent-default-ana-2, agent-alpha-bill-3 (orphaned)
-pub static RE_SPAWNED_AGENT: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^agent-([a-z0-9]+)-([a-z]+)-([a-z0-9]+)$")
-        .expect("Invalid regex pattern for legacy numbered team agent")
-});
-
-/// Matches any team agent session (includes deprecated numbered instances for compatibility)
-/// Captures: group 1 = team, group 2 = agent name, group 3 = optional legacy instance
+/// Matches team agent sessions: agent-{team}-{name}
+/// Team agents have exactly one session per team.
+/// Captures: group 1 = team, group 2 = agent name
 /// Examples: agent-default-ana, agent-sprint-bill
 pub static RE_AGENT_SESSION: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^agent-([a-z0-9]+)-([a-z]+)(-[a-z0-9]+)?$")
+    Regex::new(r"^agent-([a-z0-9]+)-([a-z]+)$")
         .expect("Invalid regex pattern for agent session")
 });
 
@@ -77,19 +68,11 @@ pub static RE_CORE_TARGET: Lazy<Regex> = Lazy::new(|| {
         .expect("Invalid regex pattern for core target")
 });
 
-/// DEPRECATED: Matches legacy numbered session target names: {team}:{name}-{instance}
-/// Team agents no longer have numbered instances. Kept for backward compatibility.
-/// Examples: default:ana-2, alpha:bill-3 (legacy)
-pub static RE_SPAWNED_TARGET: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^([a-z0-9]+):([a-z]+)-([a-z0-9]+)$")
-        .expect("Invalid regex pattern for legacy numbered target")
-});
-
-/// Matches legacy target names (without team prefix): {name} or {name}-{instance}
+/// Matches legacy target names (without team prefix): {name}
 /// Used for backwards compatibility - routes to team "default"
-/// Examples: ana, bill-2
+/// Examples: ana, bill
 pub static RE_LEGACY_TARGET: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^([a-z]+)(-[a-z0-9]+)?$")
+    Regex::new(r"^([a-z]+)$")
         .expect("Invalid regex pattern for legacy target")
 });
 
@@ -121,4 +104,50 @@ pub static RE_MESSAGE_ID_PARTS: Lazy<Regex> = Lazy::new(|| {
 pub fn get_nolan_root() -> Result<String, String> {
     std::env::var("NOLAN_ROOT")
         .map_err(|_| "NOLAN_ROOT environment variable not set. Please set it to your Nolan installation directory.".to_string())
+}
+
+// =============================================================================
+// Agent Naming Utilities
+// =============================================================================
+// Centralized functions for generating consistent agent session and directory names.
+// Use these functions instead of inline format! strings to ensure naming consistency.
+
+/// Generate session name for a team agent
+/// Format: agent-{team}-{name}
+/// Example: team_agent_session("default", "ana") -> "agent-default-ana"
+pub fn team_agent_session(team: &str, agent: &str) -> String {
+    format!("agent-{}-{}", team, agent)
+}
+
+/// Generate session name for a Ralph agent
+/// Format: agent-ralph-{name}
+/// Example: ralph_session("ziggy") -> "agent-ralph-ziggy"
+pub fn ralph_session(name: &str) -> String {
+    format!("agent-ralph-{}", name)
+}
+
+/// Generate directory name for a Ralph agent
+/// Format: agent-ralph-{name} (matches session name for consistency)
+/// Example: ralph_directory("ziggy") -> "agent-ralph-ziggy"
+pub fn ralph_directory(name: &str) -> String {
+    format!("agent-ralph-{}", name)
+}
+
+/// Check if a session name is a Ralph session
+/// Returns the ralph name if it matches, None otherwise
+pub fn parse_ralph_session(session: &str) -> Option<&str> {
+    session.strip_prefix("agent-ralph-")
+        .filter(|name| !name.is_empty() && name.chars().all(|c| c.is_alphanumeric()))
+}
+
+/// Check if a session name is a team agent session
+/// Returns (team, agent_name) if it matches, None otherwise
+pub fn parse_team_session(session: &str) -> Option<(String, String)> {
+    RE_CORE_AGENT.captures(session)
+        .map(|caps| (caps[1].to_string(), caps[2].to_string()))
+}
+
+/// Check if a name is in the Ralph names pool
+pub fn is_ralph_name(name: &str) -> bool {
+    RALPH_NAMES.contains(&name)
 }

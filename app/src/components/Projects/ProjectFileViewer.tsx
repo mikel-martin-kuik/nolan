@@ -3,16 +3,20 @@ import { invoke } from '@tauri-apps/api/core';
 import { MessageRenderer } from '../Sessions/MessageRenderer';
 import { FileText, RefreshCw, FolderOpen, Pencil, X, Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
 
 // File type metadata - minimal
+// Note: Coordinator file is determined by team config, not hardcoded here
+// Phase output files are also determined by team config
 const FILE_META: Record<string, { owner: string; label: string }> = {
   'prompt': { owner: 'PO', label: 'Prompt' },
   'context': { owner: 'PO', label: 'Context' },
-  'NOTES': { owner: 'Dan', label: 'Notes' },
   'research': { owner: 'Ana', label: 'Research' },
   'plan': { owner: 'Bill', label: 'Plan' },
   'qa-review': { owner: 'Enzo', label: 'QA' },
   'progress': { owner: 'Carl', label: 'Progress' },
+  'log': { owner: 'Dan', label: 'Log' },
 };
 
 interface ProjectFileViewerProps {
@@ -116,41 +120,49 @@ export function ProjectFileViewer({ project, file }: ProjectFileViewerProps) {
             <div className="flex items-center gap-1">
               {isEditing ? (
                 <>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={handleCancel}
                     disabled={saving}
-                    className="p-1.5 hover:bg-accent rounded transition-colors disabled:opacity-50"
                     title="Cancel"
+                    className="h-7 w-7"
                   >
-                    <X className="w-3.5 h-3.5 text-muted-foreground" />
-                  </button>
-                  <button
+                    <X className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={handleSave}
                     disabled={saving}
-                    className="p-1.5 hover:bg-accent rounded transition-colors disabled:opacity-50 text-green-500"
                     title="Save"
+                    className="h-7 w-7 text-green-500 hover:text-green-500"
                   >
                     <Save className={cn("w-3.5 h-3.5", saving && "animate-pulse")} />
-                  </button>
+                  </Button>
                 </>
               ) : (
                 <>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={handleEdit}
                     disabled={loading || !content}
-                    className="p-1.5 hover:bg-accent rounded transition-colors disabled:opacity-50"
                     title="Edit"
+                    className="h-7 w-7"
                   >
-                    <Pencil className="w-3.5 h-3.5 text-muted-foreground" />
-                  </button>
-                  <button
+                    <Pencil className="w-3.5 h-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={loadFile}
                     disabled={loading}
-                    className="p-1.5 hover:bg-accent rounded transition-colors disabled:opacity-50"
                     title="Refresh"
+                    className="h-7 w-7"
                   >
-                    <RefreshCw className={cn("w-3.5 h-3.5 text-muted-foreground", loading && "animate-spin")} />
-                  </button>
+                    <RefreshCw className={cn("w-3.5 h-3.5", loading && "animate-spin")} />
+                  </Button>
                 </>
               )}
             </div>
@@ -170,12 +182,9 @@ export function ProjectFileViewer({ project, file }: ProjectFileViewerProps) {
           <div className="flex items-center justify-center py-16 px-4">
             <div className="text-center max-w-sm">
               <p className="text-sm text-red-500 mb-3">{error}</p>
-              <button
-                onClick={loadFile}
-                className="px-3 py-1.5 bg-primary text-primary-foreground text-xs rounded hover:bg-primary/90 transition-colors"
-              >
+              <Button size="sm" onClick={loadFile}>
                 Retry
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -191,10 +200,10 @@ export function ProjectFileViewer({ project, file }: ProjectFileViewerProps) {
 
         {content && !loading && !error && (
           isEditing ? (
-            <textarea
+            <Textarea
               value={editContent}
               onChange={(e) => setEditContent(e.target.value)}
-              className="w-full h-full p-6 bg-transparent text-foreground font-mono text-sm resize-none focus:outline-none"
+              className="w-full h-full p-6 bg-transparent font-mono text-sm rounded-none border-none focus:ring-0"
               spellCheck={false}
             />
           ) : (

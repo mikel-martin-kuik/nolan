@@ -4,17 +4,14 @@ use std::time::Duration;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter};
 use tokio::time::sleep;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 use notify::{Watcher, RecursiveMode, Event, EventKind};
 use std::sync::mpsc;
 use dashmap::DashMap;
-use std::sync::{Arc, Mutex as StdMutex};
-use tokio::sync::Mutex;
+use std::sync::Mutex as StdMutex;
 use crate::config::TeamConfig;
-use crate::services::python_service::PythonService;
 
 // Global flag to prevent multiple streaming tasks
 static STREAMING: AtomicBool = AtomicBool::new(false);
@@ -410,6 +407,7 @@ pub fn update_session_index(tmux_session: &str, agent: &str, agent_dir: &str) {
 fn find_session_by_agent_name(agent_name: &str) -> Option<String> {
     use crate::tmux::session::session_exists;
     use crate::config::TeamConfig;
+    use crate::constants::team_agent_session;
 
     // Load team config to get valid agent names
     let agent_names: Vec<String> = TeamConfig::load("default")
@@ -417,8 +415,8 @@ fn find_session_by_agent_name(agent_name: &str) -> Option<String> {
         .unwrap_or_default();
 
     if agent_names.iter().any(|n| n == agent_name) {
-        // Try core agent session pattern: agent-{name}
-        let session_name = format!("agent-{}", agent_name);
+        // Try team agent session pattern: agent-{team}-{name}
+        let session_name = team_agent_session("default", agent_name);
         if let Ok(true) = session_exists(&session_name) {
             return Some(session_name);
         }
@@ -467,8 +465,9 @@ fn find_tmux_session(agent_dir: &str) -> Option<String> {
             .unwrap_or(false);
 
         if is_valid_agent {
-            // Try core agent session pattern: agent-{name}
-            let session_name = format!("agent-{}", agent_name);
+            // Try team agent session pattern: agent-{team}-{name}
+            use crate::constants::team_agent_session;
+            let session_name = team_agent_session("default", agent_name);
             if let Ok(true) = session_exists(&session_name) {
                 return Some(session_name);
             }
@@ -757,30 +756,4 @@ pub async fn load_history_for_active_sessions(
         loaded_count, entries_emitted
     );
     Ok(message)
-}
-
-#[tauri::command]
-pub async fn get_cached_history_entries(
-    state: State<'_, Arc<Mutex<PythonService>>>,
-    project: Option<String>,
-    from_date: Option<String>,
-    to_date: Option<String>,
-    limit: Option<usize>,
-) -> Result<Vec<HistoryEntry>, String> {
-    let params = json!({
-        "project": project,
-        "from_date": from_date,
-        "to_date": to_date,
-        "limit": limit,
-    });
-
-    let mut service = state.lock().await;
-    let result = service.call_rpc("get_history_entries", params)?;
-
-    // Extract entries array from response
-    let entries = result.get("entries")
-        .ok_or_else(|| "Missing entries in response".to_string())?;
-
-    serde_json::from_value(entries.clone())
-        .map_err(|e| format!("Failed to deserialize entries: {}", e))
 }

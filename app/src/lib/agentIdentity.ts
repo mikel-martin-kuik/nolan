@@ -5,6 +5,54 @@
  * called "ralph" but visually displays as a random fun name from a curated list.
  */
 
+// =============================================================================
+// Agent Session Patterns
+// =============================================================================
+// Centralized regex patterns for agent session matching.
+// Use these constants instead of inline regex strings for consistency.
+//
+// Session naming convention:
+// - Team agents: agent-{team}-{name} (e.g., agent-default-ana, agent-sprint-bill)
+// - Ralph (free agent): agent-ralph-{name} (e.g., agent-ralph-ziggy)
+
+/** Matches team agent sessions: agent-{team}-{name} */
+export const RE_TEAM_SESSION = /^agent-([a-z0-9]+)-([a-z]+)$/;
+
+/** Matches Ralph sessions: agent-ralph-{name} */
+export const RE_RALPH_SESSION = /^agent-ralph-([a-z0-9]+)$/;
+
+/**
+ * Parse a Ralph session name
+ * @returns The ralph instance name if it matches, undefined otherwise
+ */
+export function parseRalphSession(session: string): string | undefined {
+  const match = session.match(RE_RALPH_SESSION);
+  return match ? match[1] : undefined;
+}
+
+/**
+ * Parse a team agent session name
+ * @returns [team, agentName] if it matches, undefined otherwise
+ */
+export function parseTeamSession(session: string): [string, string] | undefined {
+  const match = session.match(RE_TEAM_SESSION);
+  return match ? [match[1], match[2]] : undefined;
+}
+
+/**
+ * Check if a session belongs to a Ralph agent
+ */
+export function isRalphSession(session: string): boolean {
+  return RE_RALPH_SESSION.test(session);
+}
+
+/**
+ * Check if a session is a team agent session
+ */
+export function isTeamSession(session: string): boolean {
+  return RE_TEAM_SESSION.test(session);
+}
+
 /**
  * 32 fun agent names for visual display
  * These names evoke AI/tech/cosmic themes while being friendly and memorable
@@ -116,43 +164,21 @@ export function getAgentVisualName(agentName: string): string {
 }
 
 /**
- * Get visual display name for an agent
- * - For ralph instances: the instanceId IS the display name (already a fun name)
- * - For ralph primary session: returns the assigned fun name
- * - For other agent instances: returns "AgentName-InstanceNum" (e.g., "Ana-2")
- * - For other primary sessions: returns capitalized name
+ * Get visual display name for an agent based on session
+ * - For Ralph: uses the session name suffix (e.g., agent-ralph-ziggy -> "Ziggy")
+ * - For team agents: capitalizes the agent name (e.g., ana -> "Ana")
  *
  * @param agentName - Internal agent name
- * @param instanceId - Instance identifier (e.g., "2", "ziggy")
- * @param isPrimarySession - Whether this is a primary session (not an instance)
+ * @param ralphName - For Ralph sessions, the name suffix (e.g., "ziggy" from agent-ralph-ziggy)
  */
 export function getAgentDisplayNameForUI(
   agentName: string,
-  instanceId?: string,
-  isPrimarySession: boolean = false
+  ralphName?: string
 ): string {
-  // For agent instances
-  if (instanceId) {
-    const isNumeric = /^\d+$/.test(instanceId);
-
-    if (agentName === 'ralph') {
-      // Ralph instances use their instanceId as display name (already a fun name)
-      return instanceId.charAt(0).toUpperCase() + instanceId.slice(1);
-    }
-
-    if (isNumeric) {
-      // Other agents with numeric IDs: "Ana-2"
-      return agentName.charAt(0).toUpperCase() + agentName.slice(1) + '-' + instanceId;
-    }
-
-    // Non-numeric instanceId (edge case): just capitalize it
-    return instanceId.charAt(0).toUpperCase() + instanceId.slice(1);
+  if (agentName === 'ralph' && ralphName) {
+    // Ralph sessions use their name suffix as display name
+    return ralphName.charAt(0).toUpperCase() + ralphName.slice(1);
   }
 
-  // For primary sessions
-  if (isPrimarySession || !instanceId) {
-    return getAgentVisualName(agentName);
-  }
-
-  return agentName.charAt(0).toUpperCase() + agentName.slice(1);
+  return getAgentVisualName(agentName);
 }

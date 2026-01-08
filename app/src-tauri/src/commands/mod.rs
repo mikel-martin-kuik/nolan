@@ -1,7 +1,6 @@
 pub mod lifecycle;
 pub mod communicator;
 pub mod history;
-pub mod sessions;
 pub mod projects;
 pub mod teams;
 pub mod agents;

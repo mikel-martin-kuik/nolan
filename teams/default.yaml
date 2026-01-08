@@ -2,6 +2,16 @@ team:
   name: default
   description: Default Nolan team with standard workflow
   version: 1.0.0
+
+  # Role assignments: Map abstract roles to specific agents
+  role_assignments:
+    researcher: ana
+    planner: bill
+    plan_reviewer: enzo
+    implementer: carl
+    auditor: frank
+    coordinator: dan
+
   agents:
   - name: ana
     output_file: research.md
@@ -59,40 +69,62 @@ team:
     coordinator: dan
     phases:
     - name: Research
+      role: researcher
       owner: ana
       output: research.md
       requires:
       - context.md
+      predecessor_files: []
       template: Investigate and research the problem as described in context.md
     - name: Planning
+      role: planner
       owner: bill
       output: plan.md
       requires:
       - research.md
+      predecessor_files:
+      - file: research.md
+        description: Research findings
       template: Create detailed implementation plan based on research findings
     - name: Plan Review
+      role: plan_reviewer
       owner: enzo
       output: plan-review.md
       requires:
       - plan.md
+      predecessor_files:
+      - file: plan.md
+        description: Implementation plan to review
       template: Review implementation plan for feasibility, research alignment, architecture, and completeness
     - name: Implementation
+      role: implementer
       owner: carl
       output: progress.md
       requires:
       - plan.md
       - plan-review.md
+      predecessor_files:
+      - file: plan.md
+        description: Implementation plan
+      - file: plan-review.md
+        description: Plan review feedback
       template: Implement changes following the approved plan
     - name: Implementation Audit
+      role: auditor
       owner: frank
       output: implementation-audit.md
       requires:
       - progress.md
+      predecessor_files:
+      - file: progress.md
+        description: Implementation progress
+      - file: plan.md
+        description: Original implementation plan
       template: Audit implementation for code execution, security, integration, and plan compliance
   communication:
     broadcast_groups:
     - name: core
-      pattern: ^agent-[a-z]+$
+      pattern: ^agent-[a-z0-9]+-[a-z]+$
       members:
       - ana
       - bill
@@ -100,7 +132,7 @@ team:
       - enzo
       - frank
     - name: all_agents
-      pattern: ^agent-[a-z]+(-[0-9]+)?$
+      pattern: ^agent-(ralph-)?[a-z0-9]+-[a-z]+$
       members:
       - ana
       - bill

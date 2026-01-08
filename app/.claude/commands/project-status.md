@@ -1,18 +1,21 @@
 ---
-description: Show current project status from NOTES.md
+description: Show current project status from coordinator file
 argument-hint: <project-name>
-allowed-tools: Read, Bash(cat:*), Bash(ls:*), Bash(find:*)
+allowed-tools: Read, Bash
 ---
 # Project Status: $1
 
 ## Environment
 !`echo "DOCS_PATH=$PROJECTS_DIR/$1"`
 
-## Status Detection
-!`notes="$PROJECTS_DIR/$1/NOTES.md"; if [ ! -f "$notes" ]; then echo "**Status:** PENDING (no NOTES.md)"; elif grep -q '<!-- PROJECT:STATUS:COMPLETE' "$notes"; then marker=$(grep '<!-- PROJECT:STATUS:' "$notes" | head -1); echo "**Status:** COMPLETE (structured marker)"; echo "Marker: $marker"; elif grep -qiE '\*\*(Status|Phase)\*?\*?:.*\b(COMPLETE|CLOSED|DEPLOYED|PRODUCTION.READY)\b' "$notes"; then echo "**Status:** COMPLETE (detected from content)"; echo "Consider adding structured marker: \`<!-- PROJECT:STATUS:COMPLETE:$(date +%Y-%m-%d) -->\`"; else echo "**Status:** ACTIVE"; fi`
+## Coordinator File Detection
+!`docs_path="$PROJECTS_DIR/$1"; coord_file=$(python3 -c "import yaml; from pathlib import Path; import os; t=(Path('$docs_path')/ '.team').read_text().strip(); c=yaml.safe_load((Path(os.environ['NOLAN_ROOT'])/'teams'/f'{t}.yaml').read_text()); n=c['team']['workflow']['coordinator']; a=next((x for x in c['team']['agents'] if x['name']==n),None); print(a['output_file'])" 2>/dev/null); echo "Coordinator file: $coord_file"`
 
-## NOTES.md
-!`docs_path="$PROJECTS_DIR/$1"; if [ -f "$docs_path/NOTES.md" ]; then cat "$docs_path/NOTES.md"; else echo "No NOTES.md found at $docs_path"; fi`
+## Status Detection
+!`docs_path="$PROJECTS_DIR/$1"; coord_file=$(python3 -c "import yaml; from pathlib import Path; import os; t=(Path('$docs_path')/ '.team').read_text().strip(); c=yaml.safe_load((Path(os.environ['NOLAN_ROOT'])/'teams'/f'{t}.yaml').read_text()); n=c['team']['workflow']['coordinator']; a=next((x for x in c['team']['agents'] if x['name']==n),None); print(a['output_file'])" 2>/dev/null); notes="$docs_path/$coord_file"; if [ ! -f "$notes" ]; then echo "**Status:** PENDING (no $coord_file)"; elif grep -q '<!-- PROJECT:STATUS:COMPLETE' "$notes"; then marker=$(grep '<!-- PROJECT:STATUS:' "$notes" | head -1); echo "**Status:** COMPLETE (structured marker)"; echo "Marker: $marker"; elif grep -qiE '\*\*(Status|Phase)\*?\*?:.*\b(COMPLETE|CLOSED|DEPLOYED|PRODUCTION.READY)\b' "$notes"; then echo "**Status:** COMPLETE (detected from content)"; echo "Consider adding structured marker: \`<!-- PROJECT:STATUS:COMPLETE:$(date +%Y-%m-%d) -->\`"; else echo "**Status:** ACTIVE"; fi`
+
+## Coordinator File
+!`docs_path="$PROJECTS_DIR/$1"; coord_file=$(python3 -c "import yaml; from pathlib import Path; import os; t=(Path('$docs_path')/ '.team').read_text().strip(); c=yaml.safe_load((Path(os.environ['NOLAN_ROOT'])/'teams'/f'{t}.yaml').read_text()); n=c['team']['workflow']['coordinator']; a=next((x for x in c['team']['agents'] if x['name']==n),None); print(a['output_file'])" 2>/dev/null); if [ -f "$docs_path/$coord_file" ]; then cat "$docs_path/$coord_file"; else echo "No $coord_file found at $docs_path"; fi`
 
 ## Project Files
 !`docs_path="$PROJECTS_DIR/$1"; if [ -d "$docs_path" ]; then ls -la "$docs_path"; else echo "Project directory not found: $docs_path"; fi`
@@ -29,4 +32,4 @@ allowed-tools: Read, Bash(cat:*), Bash(ls:*), Bash(find:*)
 | plan.md | Bill's implementation plan | Bill |
 | qa-review.md | Enzo's QA findings | Enzo |
 | progress.md | Carl's implementation status | Carl |
-| NOTES.md | Dan's coordination hub | Dan |
+| (coordinator file) | Coordinator's hub | (from team config) |

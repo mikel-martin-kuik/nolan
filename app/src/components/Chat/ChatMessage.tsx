@@ -73,9 +73,9 @@ export const ChatMessage: React.FC<ChatMessageProps> = memo(({
         className={cn(
           'max-w-[85%] rounded-2xl px-4 py-3 relative',
           isUser
-            ? 'bg-primary text-primary-foreground rounded-br-md'
-            : 'bg-secondary/80 rounded-bl-md',
-          message.isQuestion && showNeedsResponse && 'ring-2 ring-yellow-500/50 bg-yellow-500/10'
+            ? 'glass-message-user text-primary-foreground rounded-br-md'
+            : 'glass-message rounded-bl-md',
+          message.isQuestion && showNeedsResponse && 'ring-2 ring-yellow-500/50'
         )}
       >
         {/* Message content */}

@@ -11,10 +11,10 @@ team:
     - '## Risks'
     file_permissions: restricted
     workflow_participant: true
-    awaits_qa: true
+    awaits_qa: false
     qa_passes: 1
   - name: carl
-    output_file: progress.md
+    output_file: implementation.md
     required_sections:
     - '## Status'
     - '## Changes'
@@ -23,7 +23,7 @@ team:
     awaits_qa: false
     qa_passes: 1
   - name: dan
-    output_file: NOTES.md
+    output_file: log.md
     required_sections:
     - '## Current Assignment'
     - '## Phase Status'
@@ -48,7 +48,7 @@ team:
       template: Create detailed implementation plan based on research findings
     - name: Implementation
       owner: carl
-      output: progress.md
+      output: implementation.md
       requires:
       - plan.md
       template: Implement changes following the approved plan
@@ -56,7 +56,7 @@ team:
       owner: frank
       output: implementation-audit.md
       requires:
-      - progress.md
+      - implementation.md
       template: Audit implementation for code execution, security, integration, and plan compliance
   communication:
     broadcast_groups:

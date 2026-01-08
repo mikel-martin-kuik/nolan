@@ -7,7 +7,6 @@ use crate::constants::{
     PROTECTED_SESSIONS,
     RE_AGENT_SESSION,
     RE_CORE_AGENT,
-    RE_SPAWNED_AGENT,
     RE_LEGACY_AGENT,
     RE_RALPH_SESSION,
 };
@@ -195,14 +194,15 @@ fn get_default_model(agent: &str) -> String {
     "sonnet".to_string()
 }
 
-/// Determine which agents are needed based on project phase status in NOTES.md
-/// Returns None if NOTES.md doesn't exist (new project - launch all agents)
+/// Determine which agents are needed based on project phase status in coordinator's output file
+/// Returns None if coordinator file doesn't exist (new project - launch all agents)
 /// Returns Some(Vec<agent_names>) for existing projects based on incomplete phases
 fn determine_needed_agents(docs_path: &std::path::Path, team: &TeamConfig) -> Option<Vec<String>> {
     use std::fs;
 
-    let notes_path = docs_path.join("NOTES.md");
-    let content = fs::read_to_string(&notes_path).ok()?;
+    let coordinator_file = team.coordinator_output_file();
+    let coordinator_path = docs_path.join(&coordinator_file);
+    let content = fs::read_to_string(&coordinator_path).ok()?;
 
     // Check if project is complete - only launch coordinator
     let coordinator = team.coordinator().to_string();
@@ -786,9 +786,9 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
     // Find available name from RALPH_NAMES pool (ziggy, nova, etc.)
     let instance_id = find_available_ralph_name()?;
 
-    // Create ephemeral agent directory: /agents/agent-{name}/
+    // Create ephemeral agent directory: /agents/agent-ralph-{name}/ (matches session name)
     let agents_dir = crate::utils::paths::get_agents_dir()?;
-    let agent_dir = agents_dir.join(format!("agent-{}", instance_id));
+    let agent_dir = agents_dir.join(format!("agent-ralph-{}", instance_id));
 
     // Session naming: agent-ralph-{name}
     let session = format!("agent-ralph-{}", instance_id);
@@ -1006,15 +1006,15 @@ pub async fn kill_instance(app_handle: AppHandle, session: String) -> Result<Str
     // Kill the session
     crate::tmux::session::kill_session(&session)?;
 
-    // For ephemeral Ralph agents (agent-ralph-{name}), delete the agent directory
-    // Session: agent-ralph-{name}, Directory: agent-{name}
+    // For ephemeral Ralph agents, delete the agent directory (agent-ralph-{name})
+    // Directory naming now matches session naming for consistency
     // Names are from RALPH_NAMES pool (ziggy, nova, etc.) or random alphanumeric fallback
     if let Some(instance_id) = session.strip_prefix("agent-ralph-") {
         if !instance_id.is_empty() && instance_id.chars().all(|c| c.is_alphanumeric()) {
             // This is an ephemeral agent, delete its directory
             let agents_dir = crate::utils::paths::get_agents_dir()
                 .unwrap_or_else(|_| std::path::PathBuf::new());
-            let agent_path = agents_dir.join(format!("agent-{}", instance_id));
+            let agent_path = agents_dir.join(format!("agent-ralph-{}", instance_id));
 
             if agent_path.exists() {
                 if let Err(e) = fs::remove_dir_all(&agent_path) {
@@ -1056,10 +1056,10 @@ pub async fn kill_all_instances(app_handle: AppHandle, _team_name: String, agent
         if let Some(instance_id) = session.strip_prefix("agent-ralph-") {
             if !instance_id.is_empty() && instance_id.chars().all(|c| c.is_alphanumeric()) {
                 if crate::tmux::session::kill_session(session).is_ok() {
-                    // Delete the ephemeral agent directory (agent-{name})
+                    // Delete the ephemeral agent directory (agent-ralph-{name})
                     let agents_dir = crate::utils::paths::get_agents_dir()
                         .unwrap_or_else(|_| std::path::PathBuf::new());
-                    let agent_path = agents_dir.join(format!("agent-{}", instance_id));
+                    let agent_path = agents_dir.join(format!("agent-ralph-{}", instance_id));
                     if agent_path.exists() {
                         let _ = fs::remove_dir_all(&agent_path);
                     }
@@ -1196,32 +1196,6 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
 
         // Check for team-scoped agent: agent-{team}-{name} (base session)
         if let Some(caps) = RE_CORE_AGENT.captures(session) {
-            let team_name = caps[1].to_string();
-            let agent_name = caps[2].to_string();
-
-            // Validate against team config - all agents in config are team agents
-            if let Some(team_config) = team_configs.get(&team_name) {
-                if team_config.agent_names().contains(&agent_name.as_str()) {
-                    if let Ok(info) = crate::tmux::session::get_session_info(session) {
-                        let statusline = parse_statusline(session);
-                        team_agents.push(AgentStatus {
-                            name: agent_name,
-                            team: team_name,
-                            active: true,
-                            session: session.clone(),
-                            attached: info.attached,
-                            context_usage: statusline.context_usage,
-                            current_project: statusline.current_project,
-                            created_at: Some(info.created_at * 1000),
-                        });
-                    }
-                }
-            }
-            continue;
-        }
-
-        // Check for team-scoped agent instance: agent-{team}-{name}-{instance}
-        if let Some(caps) = RE_SPAWNED_AGENT.captures(session) {
             let team_name = caps[1].to_string();
             let agent_name = caps[2].to_string();
 

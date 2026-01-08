@@ -4,6 +4,14 @@ import { TerminalView } from './TerminalView';
 import { invoke } from '@tauri-apps/api/core';
 import { X, ExternalLink, Maximize2, Minimize2, Plus, Minus } from 'lucide-react';
 import { FEATURES } from '@/lib/features';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 
 interface Dimensions {
   width: number;
@@ -50,6 +58,7 @@ export function TerminalModal() {
   });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [fontSize, setFontSize] = useState(13);
+  const [sizePreset, setSizePreset] = useState('');
   const [dimensions, setDimensions] = useState<Dimensions>({
     width: 1600, // Increased default from 1280 (max-w-6xl)
     height: window.innerHeight * 0.85, // Increased from 0.8
@@ -292,56 +301,63 @@ export function TerminalModal() {
             </div>
 
             {/* Size Presets */}
-            <select
-              onChange={(e) => {
-                const preset = SIZE_PRESETS[e.target.value as keyof typeof SIZE_PRESETS];
+            <Select
+              value={sizePreset}
+              onValueChange={(value) => {
+                const preset = SIZE_PRESETS[value as keyof typeof SIZE_PRESETS];
                 if (preset) {
                   handlePresetSize(preset);
                 }
-                e.target.value = '';
+                setSizePreset('');
               }}
-              className="text-xs px-2 py-1.5 bg-secondary hover:bg-secondary/80 rounded border border-border cursor-pointer"
-              title="Choose preset size"
             >
-              <option value="">Size</option>
-              <option value="small">Small (800×600)</option>
-              <option value="medium">Medium (1280×800)</option>
-              <option value="large">Large (1600×1000)</option>
-            </select>
+              <SelectTrigger className="w-auto text-xs h-8" title="Choose preset size">
+                <SelectValue placeholder="Size" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="small">Small (800×600)</SelectItem>
+                <SelectItem value="medium">Medium (1280×800)</SelectItem>
+                <SelectItem value="large">Large (1600×1000)</SelectItem>
+              </SelectContent>
+            </Select>
 
             {/* Fullscreen Toggle */}
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setIsFullscreen(!isFullscreen)}
-              className="p-1.5 hover:bg-secondary rounded transition-colors"
               title="Toggle fullscreen (F11)"
+              className="h-8 w-8"
             >
               {isFullscreen ? (
                 <Minimize2 className="w-4 h-4" />
               ) : (
                 <Maximize2 className="w-4 h-4" />
               )}
-            </button>
+            </Button>
 
             {/* Open External */}
             {FEATURES.EXTERNAL_TERMINAL && (
-              <button
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={handleOpenExternal}
-                className="flex items-center gap-2 px-3 py-1.5 text-sm bg-secondary hover:bg-secondary/80 rounded transition-colors"
                 title="Open in external terminal"
               >
-                <ExternalLink className="w-4 h-4" />
+                <ExternalLink />
                 <span className="hidden sm:inline">External</span>
-              </button>
+              </Button>
             )}
 
             {/* Close */}
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={closeModal}
-              className="flex items-center justify-center w-8 h-8 hover:bg-secondary rounded transition-colors"
               title="Close (Esc)"
             >
               <X className="w-5 h-5" />
-            </button>
+            </Button>
           </div>
         </div>
 

@@ -41,22 +41,38 @@ export function ProjectListItem({
   const fileOrder = getFileOrder(projectTeamConfig);
 
   // Calculate workflow step completion
+  // Uses file_completions from backend which checks for HANDOFF markers
+  // Special case: "close" step checks project status instead of file
   const stepCompletion = workflowSteps.map(step => {
-    // Special handling for prompt.md: check if it exists AND has a HANDOFF marker
-    if (step.key === 'prompt') {
-      const promptCompletion = project.file_completions.find(f => f.file.includes('prompt'));
-      // Green only if exists AND completed (has marker)
-      return {
-        ...step,
-        complete: promptCompletion ? (promptCompletion.exists && promptCompletion.completed) : false,
-      };
+    // Special handling for "close" step - check project status
+    if (step.key === 'close') {
+      return { ...step, complete: project.status === 'complete' };
     }
 
-    // For other files, use existing_files check
-    return {
-      ...step,
-      complete: project.existing_files.some(f => f.includes(step.key)),
-    };
+    const fileKey = `${step.key}.md`;
+
+    // Find the file completion info for this step
+    // Use exact match to avoid "plan" matching "plan-review"
+    const completion = project.file_completions.find(f =>
+      f.file === fileKey || f.file === step.key
+    );
+
+    if (completion) {
+      // For workflow files, check HANDOFF marker (completed flag)
+      // For context, just checking exists is fine since it's a prerequisite
+      const isComplete = step.key === 'context'
+        ? completion.exists
+        : (completion.exists && completion.completed);
+
+      return { ...step, complete: isComplete };
+    }
+
+    // Fallback: check existing_files with exact match
+    const exactMatch = project.existing_files.some(f =>
+      f === fileKey || f === `${step.key}.md`
+    );
+
+    return { ...step, complete: exactMatch };
   });
 
   const completedCount = stepCompletion.filter(s => s.complete).length;
@@ -106,39 +122,49 @@ export function ProjectListItem({
       {/* File List */}
       {isExpanded && sortedFiles && (
         <div className="ml-5 mt-0.5 space-y-0.5">
-          {sortedFiles.map(file => (
-            <button
-              key={file.relative_path}
-              onClick={() => !file.is_placeholder && onFileSelect(file.relative_path)}
-              disabled={file.is_placeholder}
-              className={cn(
-                "w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs transition-colors",
-                file.is_placeholder && "opacity-40 cursor-not-allowed",
-                !file.is_placeholder && isSelected && selectedFile === file.relative_path && "bg-foreground/10 text-foreground",
-                !file.is_placeholder && !(isSelected && selectedFile === file.relative_path) && "text-muted-foreground hover:text-foreground hover:bg-accent/50"
-              )}
-            >
-              {file.is_placeholder ? (
-                <Circle className="w-3 h-3 flex-shrink-0" />
-              ) : (
-                <FileText className="w-3 h-3 flex-shrink-0" />
-              )}
+          {sortedFiles.map(file => {
+            const isPrompt = file.file_type === 'prompt';
 
-              <span className={cn("flex-1 truncate", file.is_placeholder && "italic")}>
-                {file.name}
-              </span>
+            return (
+              <button
+                key={file.relative_path}
+                onClick={() => !file.is_placeholder && onFileSelect(file.relative_path)}
+                disabled={file.is_placeholder}
+                className={cn(
+                  "w-full flex items-center gap-2 py-1.5 rounded text-left text-xs transition-colors",
+                  // Prompt has no left padding, workflow files are indented
+                  isPrompt ? "px-0" : "px-2 ml-2",
+                  file.is_placeholder && "opacity-40 cursor-not-allowed",
+                  !file.is_placeholder && isSelected && selectedFile === file.relative_path && "bg-foreground/10 text-foreground",
+                  !file.is_placeholder && !(isSelected && selectedFile === file.relative_path) && "text-muted-foreground hover:text-foreground hover:bg-accent/50"
+                )}
+              >
+                {/* Prompt has no icon, workflow files have FileText/Circle */}
+                {!isPrompt && (
+                  file.is_placeholder ? (
+                    <Circle className="w-3 h-3 flex-shrink-0" />
+                  ) : (
+                    <FileText className="w-3 h-3 flex-shrink-0" />
+                  )
+                )}
 
-              {!file.is_placeholder && file.is_recent && (
-                <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
-              )}
-
-              {!file.is_placeholder && file.last_modified_ago && !file.is_recent && (
-                <span className="text-[10px] text-muted-foreground/70">
-                  {file.last_modified_ago}
+                <span className={cn("flex-1 truncate", file.is_placeholder && "italic")}>
+                  {/* Prompt shows "Prompt" without .md, others show full name */}
+                  {isPrompt ? 'Prompt' : file.name}
                 </span>
-              )}
-            </button>
-          ))}
+
+                {!file.is_placeholder && file.is_recent && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary flex-shrink-0" />
+                )}
+
+                {!file.is_placeholder && file.last_modified_ago && !file.is_recent && (
+                  <span className="text-[10px] text-muted-foreground/70">
+                    {file.last_modified_ago}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

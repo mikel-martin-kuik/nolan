@@ -150,6 +150,15 @@ impl TeamConfig {
         &self.team.workflow.coordinator
     }
 
+    /// Get coordinator's output file from team config
+    pub fn coordinator_output_file(&self) -> String {
+        self.team.agents.iter()
+            .find(|a| a.name == self.team.workflow.coordinator)
+            .and_then(|a| a.output_file.as_ref())
+            .map(|s| s.to_string())
+            .expect("Coordinator must have output_file defined in team config")
+    }
+
     /// Check if an agent is a workflow participant
     pub fn is_workflow_participant(&self, agent_name: &str) -> bool {
         self.team.agents.iter()

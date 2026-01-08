@@ -31,8 +31,16 @@ export function isQuestion(message: string, toolName?: string): boolean {
 function classifyEntry(entry: HistoryEntry): ClassifiedMessage {
   const { entry_type, message, tool_name } = entry;
 
-  // User messages are always primary (visible)
+  // User messages are primary (visible) only if they have content
   if (entry_type === 'user') {
+    const hasContent = message && message.trim().length > 0;
+    if (!hasContent) {
+      return {
+        entry,
+        priority: 'secondary',
+        isQuestion: false,
+      };
+    }
     return {
       entry,
       priority: 'primary',
@@ -40,8 +48,17 @@ function classifyEntry(entry: HistoryEntry): ClassifiedMessage {
     };
   }
 
-  // Assistant messages are always primary (visible), check if it's a question for badge
+  // Assistant messages are primary (visible) only if they have content
   if (entry_type === 'assistant') {
+    // Skip empty messages - they'll be collapsed instead
+    const hasContent = message && message.trim().length > 0;
+    if (!hasContent) {
+      return {
+        entry,
+        priority: 'secondary',
+        isQuestion: false,
+      };
+    }
     const questionDetected = isQuestion(message, tool_name);
     return {
       entry,

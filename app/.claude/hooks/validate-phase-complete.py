@@ -34,10 +34,12 @@ def load_team_config(project_path: Path) -> dict:
     """Load team configuration for a project.
 
     Security: Includes DoS protection (file size limit, depth limit).
-    Error handling: Falls back to default team on failure (B05).
+    Requires .team file - no fallback.
     """
     team_file = project_path / '.team'
-    team_name = team_file.read_text().strip() if team_file.exists() else 'default'
+    if not team_file.exists():
+        raise FileNotFoundError(f".team file not found in {project_path}")
+    team_name = team_file.read_text().strip()
 
     nolan_root = Path(os.environ['NOLAN_ROOT'])
     config_path = nolan_root / 'teams' / f'{team_name}.yaml'
@@ -101,31 +103,38 @@ def get_docs_path():
                 except Exception:
                     pass
 
-    # 3. Fallback: Find most recently modified NOTES.md (heuristic)
-    notes_files = list(projects_base.glob("*/NOTES.md"))
-    if notes_files:
-        latest = max(notes_files, key=lambda p: p.stat().st_mtime)
-        return latest.parent
+    # 3. Fallback: Find most recently modified project by coordinator file
+    for project_dir in projects_base.iterdir():
+        if not project_dir.is_dir() or project_dir.name.startswith('.') or project_dir.name.startswith('_'):
+            continue
+        team_file = project_dir / '.team'
+        if not team_file.exists():
+            continue
+        try:
+            team_name = team_file.read_text().strip()
+            nolan_root = Path(os.environ['NOLAN_ROOT'])
+            config_path = nolan_root / 'teams' / f'{team_name}.yaml'
+            config = yaml.safe_load(config_path.read_text())
+            coordinator_name = config['team']['workflow']['coordinator']
+            coordinator_agent = next((a for a in config['team']['agents'] if a['name'] == coordinator_name), None)
+            if coordinator_agent and coordinator_agent.get('output_file'):
+                coordinator_path = project_dir / coordinator_agent['output_file']
+                if coordinator_path.exists():
+                    return project_dir
+        except Exception:
+            continue
 
     return None
 
 def check_agent_output(docs_path, agent):
     """Check if agent's output file has required sections.
 
-    Loads requirements from team config with error handling and fallback (B05).
+    Loads requirements from team config (required - no fallback).
     """
     try:
         team = load_team_config(docs_path)
     except Exception as e:
-        print(f"Warning: Failed to load team config: {e}", file=sys.stderr)
-        print(f"Falling back to default team", file=sys.stderr)
-        try:
-            # Fallback to default team
-            team_file = docs_path / '.team'
-            team_file.write_text('default')
-            team = load_team_config(docs_path)
-        except Exception as e2:
-            return f"FATAL: Cannot load team config: {e2}"
+        return None  # Skip projects without valid team config
 
     agent_config = get_agent_config(team, agent)
 
@@ -225,19 +234,12 @@ def trigger_handoff(docs_path, agent, output_file):
 def check_handoff_done(docs_path, agent):
     """Auto-trigger handoff if output file has required sections and marker missing or stale.
 
-    Loads file requirements from team config with error handling (B05).
+    Loads file requirements from team config (required - no fallback).
     """
     try:
         team = load_team_config(docs_path)
     except Exception as e:
-        print(f"Warning: Failed to load team config: {e}", file=sys.stderr)
-        print(f"Falling back to default team", file=sys.stderr)
-        try:
-            team_file = docs_path / '.team'
-            team_file.write_text('default')
-            team = load_team_config(docs_path)
-        except Exception as e2:
-            return None  # Cannot validate, allow stop
+        return None  # Skip projects without valid team config
 
     agent_config = get_agent_config(team, agent)
 
@@ -291,17 +293,34 @@ def check_handoff_done(docs_path, agent):
 
     return None  # Handoff marker found and recent
 
+def get_coordinator_file(docs_path):
+    """Get coordinator's output file from team config."""
+    try:
+        team = load_team_config(docs_path)
+        coordinator_name = team['team']['workflow']['coordinator']
+        coordinator_agent = next((a for a in team['team']['agents'] if a['name'] == coordinator_name), None)
+        if coordinator_agent and coordinator_agent.get('output_file'):
+            return coordinator_agent['output_file']
+    except Exception:
+        pass
+    return None
+
+
 def check_notes_status(docs_path):
-    """Check NOTES.md for incomplete markers."""
-    notes_path = docs_path / "NOTES.md"
+    """Check coordinator's output file for incomplete markers."""
+    coordinator_file = get_coordinator_file(docs_path)
+    if not coordinator_file:
+        return None  # No valid team config, allow stop
 
-    if not notes_path.exists():
-        return None  # No NOTES.md, allow stop
+    coordinator_path = docs_path / coordinator_file
 
-    content = notes_path.read_text()
+    if not coordinator_path.exists():
+        return None  # No coordinator file, allow stop
+
+    content = coordinator_path.read_text()
 
     if 'STATUS: IN_PROGRESS' in content.upper() or 'Status: IN_PROGRESS' in content:
-        return "Work marked as IN_PROGRESS in NOTES.md. Update status before stopping."
+        return f"Work marked as IN_PROGRESS in {coordinator_file}. Update status before stopping."
 
     return None
 

@@ -67,11 +67,24 @@ try:
 
     # Handle unknown agent - block writes to any output files
     if not agent:
-        # Block writes to common output files if agent is unknown
-        protected = ['research.md', 'plan.md', 'progress.md', 'plan-review.md', 'implementation-audit.md', 'NOTES.md']
-        if filename in protected:
-            print(f"BLOCKED: Unknown agent cannot write to {filename}. Set AGENT_NAME environment variable.", file=sys.stderr)
-            sys.exit(2)
+        # Get protected files from team config
+        projects_dir = os.environ.get('PROJECTS_DIR', os.path.join(os.environ.get('HOME', ''), 'nolan', 'projects'))
+        if str(file_path).startswith(projects_dir):
+            relative = Path(str(file_path)[len(projects_dir):].lstrip('/'))
+            project_name = relative.parts[0] if relative.parts else None
+            if project_name:
+                project_path = Path(projects_dir) / project_name
+                team_file = project_path / '.team'
+                if team_file.exists():
+                    team_name = team_file.read_text().strip()
+                    nolan_root = Path(os.environ['NOLAN_ROOT'])
+                    config_path = nolan_root / 'teams' / f'{team_name}.yaml'
+                    config = yaml.safe_load(config_path.read_text())
+                    # Build protected files list from agent output_files
+                    protected = [a['output_file'] for a in config['team']['agents'] if a.get('output_file')]
+                    if filename in protected:
+                        print(f"BLOCKED: Unknown agent cannot write to {filename}. Set AGENT_NAME environment variable.", file=sys.stderr)
+                        sys.exit(2)
         sys.exit(0)  # Allow other files
 
     # Determine if this is a project file
@@ -89,19 +102,15 @@ try:
             # Edge case: writing directly to projects dir
             sys.exit(0)
 
-        # Load team config with fallback (B05)
+        # Load team config (required)
         team_file = project_path / '.team'
-        team_name = team_file.read_text().strip() if team_file.exists() else 'default'
+        if not team_file.exists():
+            sys.exit(0)  # Skip projects without .team file
 
+        team_name = team_file.read_text().strip()
         nolan_root = Path(os.environ['NOLAN_ROOT'])
         config_path = nolan_root / 'teams' / f'{team_name}.yaml'
-
-        try:
-            config = yaml.safe_load(config_path.read_text())
-        except Exception as e:
-            print(f"Warning: Failed to load team config '{team_name}': {e}", file=sys.stderr)
-            print("Falling back to default team", file=sys.stderr)
-            config = yaml.safe_load((nolan_root / 'teams' / 'default.yaml').read_text())
+        config = yaml.safe_load(config_path.read_text())
 
         # Find agent configuration
         agent_config = next((a for a in config['team']['agents'] if a['name'] == agent), None)

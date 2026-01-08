@@ -71,7 +71,7 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = memo(({
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="h-full overflow-y-auto px-4 py-4 space-y-3"
+        className="h-full overflow-y-auto px-4 py-4 space-y-4"
       >
         {groups.length === 0 ? (
           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">

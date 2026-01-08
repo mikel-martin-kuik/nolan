@@ -1,4 +1,5 @@
 // Agent and session types matching Rust backend structures
+import { RE_RALPH_SESSION, RE_TEAM_SESSION } from '../lib/agentIdentity';
 
 export interface AgentStatus {
   name: string;
@@ -312,19 +313,13 @@ export interface WorkflowStep {
 
 /**
  * Get workflow steps for progress tracking from team config
- * Returns ordered list of files to track: context → phase outputs → NOTES
+ * Returns ordered list of steps: context → phase outputs → close
+ * Note: Coordinator file exists throughout, but "close" is the final action
+ * Requires team config - throws if null
  */
 export function getWorkflowSteps(team: TeamConfig | null): WorkflowStep[] {
   if (!team) {
-    // Fallback for when team config isn't loaded yet
-    return [
-      { key: 'context' },
-      { key: 'research' },
-      { key: 'plan' },
-      { key: 'plan-review' },
-      { key: 'progress' },
-      { key: 'NOTES' },
-    ];
+    throw new Error('Team config is required for workflow steps');
   }
 
   const steps: WorkflowStep[] = [];
@@ -342,67 +337,73 @@ export function getWorkflowSteps(team: TeamConfig | null): WorkflowStep[] {
     });
   }
 
-  // Add coordinator's NOTES file at the end
-  const coordinatorAgent = team.team.agents.find(
-    a => a.name === team.team.workflow.coordinator
-  );
-  if (coordinatorAgent?.output_file) {
-    const notesKey = coordinatorAgent.output_file.replace(/\.md$/, '');
-    // Only add if not already included from phases
-    if (!steps.some(s => s.key === notesKey)) {
-      steps.push({
-        key: notesKey,
-        label: 'Notes',
-        owner: team.team.workflow.coordinator,
-      });
-    }
-  }
+  // Add "close" step at the end (represents PROJECT:STATUS:COMPLETE marker in coordinator file)
+  steps.push({
+    key: 'close',
+    label: 'Close',
+    owner: team.team.workflow.coordinator,
+  });
 
   return steps;
 }
 
 /**
  * Get file order mapping for sorting project files
- * Derived from workflow steps
+ * Order: prompt -> coordinator file -> context -> phase outputs
+ * (Coordinator file is created early, even though it's closed last)
+ * Requires team config - throws if null
  */
 export function getFileOrder(team: TeamConfig | null): Record<string, number> {
-  const steps = getWorkflowSteps(team);
+  if (!team) {
+    throw new Error('Team config is required for file order');
+  }
+
   const order: Record<string, number> = {};
-  steps.forEach((step, index) => {
-    order[step.key] = index;
+
+  // prompt.md is always first (user input)
+  order['prompt'] = 0;
+
+  // Coordinator file second (created early by coordinator)
+  const coordinatorAgent = team.team.agents.find(a => a.name === team.team.workflow.coordinator);
+  if (coordinatorAgent?.output_file) {
+    const coordKey = coordinatorAgent.output_file.replace(/\.md$/, '');
+    order[coordKey] = 1;
+  }
+
+  // context file at index 2
+  order['context'] = 2;
+
+  // Then each phase output
+  team.team.workflow.phases.forEach((phase, index) => {
+    const fileKey = phase.output.replace(/\.md$/, '');
+    if (order[fileKey] === undefined) {
+      order[fileKey] = index + 3;
+    }
   });
+
   return order;
 }
 
 /**
  * Check if a session belongs to a team agent
- * Session formats:
- * - Team-scoped: agent-{team}-{name} or agent-{team}-{name}-{instance}
- * - Legacy: agent-{name} (treated as team "default")
+ * Session format: agent-{team}-{name}
  */
 export function isTeamAgent(sessionName: string, team: TeamConfig | null): boolean {
   if (!team) return false;
 
   // Ralph sessions are free agents, not team agents
-  if (sessionName.match(/^agent-ralph-[a-z0-9]+$/)) {
+  if (RE_RALPH_SESSION.test(sessionName)) {
     return false;
   }
 
-  // Try team-scoped format: agent-{team}-{name}[-{instance}]
-  const teamMatch = sessionName.match(/^agent-([a-z0-9]+)-([a-z]+)(?:-[a-z0-9]+)?$/);
+  // Team agent format: agent-{team}-{name}
+  const teamMatch = sessionName.match(RE_TEAM_SESSION);
   if (teamMatch) {
     const sessionTeam = teamMatch[1];
     const agentName = teamMatch[2];
 
     // Only match if the team matches and agent is in team config
     if (sessionTeam !== team.team.name) return false;
-    return team.team.agents.some(a => a.name === agentName);
-  }
-
-  // Try legacy format: agent-{name}
-  const legacyMatch = sessionName.match(/^agent-([a-z]+)$/);
-  if (legacyMatch) {
-    const agentName = legacyMatch[1];
     return team.team.agents.some(a => a.name === agentName);
   }
 

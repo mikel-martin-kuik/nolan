@@ -53,22 +53,13 @@ def validate_team_config(config: Dict) -> List[str]:
             errors.append(f"Invalid agent name '{name}': must match ^[a-z][a-z0-9-]*$")
 
         # Validate required agent fields
-        for field in ['role', 'model', 'color', 'file_permissions', 'workflow_participant']:
+        for field in ['file_permissions', 'workflow_participant']:
             if field not in agent:
                 errors.append(f"Agent '{name}': missing required field '{field}'")
-
-        # Validate model
-        if agent.get('model') not in ['opus', 'sonnet', 'haiku']:
-            errors.append(f"Agent '{name}': model must be opus|sonnet|haiku, got '{agent.get('model')}'")
 
         # Validate file_permissions
         if agent.get('file_permissions') not in ['restricted', 'permissive', 'no_projects']:
             errors.append(f"Agent '{name}': file_permissions must be restricted|permissive|no_projects")
-
-        # Validate color is hex format
-        color = agent.get('color', '')
-        if color and not re.match(r'^#[0-9a-fA-F]{6}$', color):
-            errors.append(f"Agent '{name}': color must be hex format (#RRGGBB), got '{color}'")
 
     # Validate workflow references
     workflow = team.get('workflow', {})
@@ -108,12 +99,6 @@ def validate_team_config(config: Dict) -> List[str]:
                 output_files.add(phase['output'])
 
     # Extended semantic validation
-
-    # Check for awaits_qa without QA agent
-    qa_agents = [a for a in agents.values() if a.get('role', '').lower() == 'qa']
-    agents_awaiting_qa = [a for a in agents.values() if a.get('awaits_qa')]
-    if agents_awaiting_qa and not qa_agents:
-        errors.append("Agents require QA (awaits_qa: true) but no QA agent defined")
 
     # Check for duplicate output files
     output_file_list = [a['output_file'] for a in agents.values() if a.get('output_file')]

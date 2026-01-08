@@ -3,7 +3,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { Clock, MessageSquareX, Eraser, Terminal } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { AgentStatus, AGENT_DESCRIPTIONS, AgentWorkflowState, AgentName, getWorkflowSteps } from '../../types';
-import { getAgentDisplayNameForUI } from '../../lib/agentIdentity';
+import {
+  getAgentDisplayNameForUI,
+  parseRalphSession
+} from '../../lib/agentIdentity';
 import { useLiveOutputStore, AgentLiveOutput } from '../../store/liveOutputStore';
 import { useTerminalStore } from '../../store/terminalStore';
 import { useTeamStore } from '../../store/teamStore';
@@ -23,28 +26,14 @@ interface AgentListItemProps {
 }
 
 /**
- * Get display name for an agent, handling instances
- * Uses agentIdentity utility for consistent naming (ralph shows as fun name)
+ * Get display name for an agent
+ * - Team agents: capitalize the name (e.g., ana -> "Ana")
+ * - Ralph: use the session name suffix (e.g., agent-ralph-ziggy -> "Ziggy")
  */
 function getAgentDisplayName(agent: AgentStatus): string {
-  const session = agent.session;
-
-  // Check if this is a primary session (agent-{team}-{name}) vs an instance (agent-{team}-{name}-{num})
-  const isPrimarySession = session.match(/^agent-[a-z0-9]+-[a-z]+$/) !== null;
-
-  // Extract instanceId for agent instances
-  // For ralph: agent-ralph-{id} -> id
-  // For team agents: agent-{team}-{name}-{id} -> id
-  let instanceId: string | undefined;
-  if (agent.name === 'ralph') {
-    const match = session.match(/^agent-ralph-([a-z0-9]+)$/);
-    instanceId = match ? match[1] : undefined;
-  } else {
-    const match = session.match(/^agent-[a-z0-9]+-[a-z]+-([a-z0-9]+)$/);
-    instanceId = match ? match[1] : undefined;
-  }
-
-  return getAgentDisplayNameForUI(agent.name, instanceId, isPrimarySession);
+  // For Ralph, extract the name from the session (e.g., "ziggy" from "agent-ralph-ziggy")
+  const ralphName = agent.name === 'ralph' ? parseRalphSession(agent.session) : undefined;
+  return getAgentDisplayNameForUI(agent.name, ralphName);
 }
 
 export const AgentListItem: React.FC<AgentListItemProps> = memo(({
@@ -65,9 +54,10 @@ export const AgentListItem: React.FC<AgentListItemProps> = memo(({
   const menuId = useRef(`agent-list-menu-${agent.session}`);
 
   const entries = output?.entries || [];
-  const lastEntry = entries[entries.length - 1];
-  // Find the last user prompt (entry_type === 'user')
-  const lastUserPrompt = [...entries].reverse().find(e => e.entry_type === 'user');
+  // Find the last user prompt (entry_type === 'user') that doesn't contain "Warmup"
+  const lastUserPrompt = [...entries].reverse().find(
+    e => e.entry_type === 'user' && !e.message?.includes('Warmup')
+  );
   const description = AGENT_DESCRIPTIONS[agent.name as AgentName] || 'Agent';
   const blockerMessage = workflowState ? getBlockerMessage(workflowState) : null;
   const displayName = getAgentDisplayName(agent);

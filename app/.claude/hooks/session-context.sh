@@ -7,6 +7,9 @@
 #
 # Output (stdout): Team status summary
 
+# Source shared helpers
+source "$(dirname "$0")/_lib.sh"
+
 # Use PROJECTS_DIR from environment (set by launch scripts)
 PROJECTS_BASE="${PROJECTS_DIR:-$HOME/nolan/projects}"
 HANDOFFS_QUEUE="$PROJECTS_BASE/.handoffs/pending.log"
@@ -103,7 +106,10 @@ for dir in "$PROJECTS_BASE"/*/; do
     project=$(basename "$dir")
     [[ "$project" == _* ]] && continue  # Skip template directories
     [[ "$project" == .* ]] && continue  # Skip hidden directories (.legacy, .state, .handoffs)
-    notes="$dir/NOTES.md"
+
+    # Get coordinator file from team config (skip if no .team file)
+    coordinator_file=$(get_coordinator_file "$dir" 2>/dev/null) || continue
+    notes="$dir/$coordinator_file"
 
     # Get status from marker
     get_project_status "$notes"

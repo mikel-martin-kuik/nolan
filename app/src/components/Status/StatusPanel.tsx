@@ -7,6 +7,8 @@ import { TeamCard } from '../shared/TeamCard';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
 import { ProjectSelectModal, LaunchParams } from '../shared/ProjectSelectModal';
 import { Tooltip } from '../ui/tooltip';
+import { Button } from '../ui/button';
+import { Badge } from '../ui/badge';
 import { Users, Plus, XCircle, LayoutGrid } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import type { AgentName, ClaudeModel, TeamConfig } from '@/types';
@@ -111,12 +113,12 @@ export const StatusPanel: React.FC = () => {
   }, [teamAgents]);
 
 
-  // Extract instance identifiers from free agents for display
-  // Ralph uses names (ziggy, nova)
-  const freeAgentsWithInstances = freeAgents.map(agent => {
+  // Extract ralph names from free agents for display
+  // Ralph sessions are agent-ralph-{name} (e.g., agent-ralph-ziggy)
+  const freeAgentsWithNames = freeAgents.map(agent => {
     const match = agent.session.match(/^agent-ralph-([a-z0-9]+)$/);
-    const instanceId = match ? match[1] : undefined;
-    return { ...agent, instanceId };
+    const ralphName = match ? match[1] : undefined;
+    return { ...agent, ralphName };
   }).sort((a, b) => {
     // Sort by creation timestamp to maintain order (oldest first)
     if (a.created_at && b.created_at) {
@@ -348,9 +350,9 @@ export const StatusPanel: React.FC = () => {
                 <Users className="w-3.5 h-3.5" />
                 <span>Free Agents</span>
                 {freeAgents.filter(a => a.active).length > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary">
+                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
                     {freeAgents.filter(a => a.active).length}
-                  </span>
+                  </Badge>
                 )}
               </span>
               <div className="h-px flex-1 bg-border/50" />
@@ -361,36 +363,32 @@ export const StatusPanel: React.FC = () => {
               {/* Free Agent Control Buttons - positioned left */}
               <div className="absolute left-0 top-0 flex gap-1.5">
                 <Tooltip content="Kill All" side="bottom">
-                  <button
+                  <Button
+                    variant="outline"
+                    size="icon"
                     onClick={handleKillAllRalph}
                     disabled={loading || freeAgents.filter(a => a.active).length === 0}
-                    className="w-9 h-9 rounded-xl flex items-center justify-center
-                      bg-secondary/50 border border-border text-muted-foreground
-                      hover:bg-red-500/10 hover:border-red-400/20 hover:text-red-500
-                      active:scale-95 transition-all duration-200
-                      disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
+                    className="w-9 h-9 rounded-xl hover:bg-destructive/10 hover:text-destructive hover:border-destructive/30"
                   >
                     <XCircle className="w-4 h-4" />
-                  </button>
+                  </Button>
                 </Tooltip>
                 <Tooltip content="Terminals" side="bottom">
-                  <button
+                  <Button
+                    variant="outline"
+                    size="icon"
                     onClick={handleOpenAllRalphTerminals}
                     disabled={loading || freeAgents.filter(a => a.active).length === 0}
-                    className="w-9 h-9 rounded-xl flex items-center justify-center
-                      bg-secondary/50 border border-border text-muted-foreground
-                      hover:bg-accent hover:border-border hover:text-foreground
-                      active:scale-95 transition-all duration-200
-                      disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
+                    className="w-9 h-9 rounded-xl"
                   >
                     <LayoutGrid className="w-4 h-4" />
-                  </button>
+                  </Button>
                 </Tooltip>
               </div>
 
               <div className="flex flex-wrap justify-center gap-2 lg:gap-4">
               {/* Free Agent instances (Ralph) */}
-              {freeAgentsWithInstances
+              {freeAgentsWithNames
                 .filter(agent => agent.active)
                 .map((agent) => (
                   <div key={agent.session} className="w-[clamp(120px,calc(70vw/2),160px)]">
@@ -398,26 +396,22 @@ export const StatusPanel: React.FC = () => {
                       agent={agent}
                       variant="dashboard"
                       showActions={true}
-                      instanceId={agent.instanceId}
+                      ralphName={agent.ralphName}
                     />
                   </div>
                 ))}
 
               {/* Spawn Ralph Button */}
               <div className="w-[clamp(120px,calc(70vw/2),160px)]">
-                <button
+                <Button
+                  variant="outline"
                   onClick={handleSpawnRalphClick}
                   disabled={loading}
-                  className="w-full h-full py-4 transition-all duration-200 rounded-xl backdrop-blur-sm
-                    cursor-pointer active:scale-[0.98]
-                    bg-card/60 border border-dashed border-border/60
-                    hover:bg-card/80 hover:border-purple-400/40
-                    disabled:opacity-30 disabled:cursor-not-allowed
-                    flex items-center justify-center"
+                  className="w-full h-full py-4 rounded-xl border-dashed hover:border-purple-400/40"
                   aria-label={`Spawn new ${ralphDisplayName} instance`}
                 >
                   <Plus className="w-6 h-6 text-foreground/50" />
-                </button>
+                </Button>
               </div>
               </div>
             </div>

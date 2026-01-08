@@ -5,6 +5,15 @@ import { useToastStore } from '../../store/toastStore';
 import { AgentCard } from './AgentCard';
 import { AgentCreator } from './AgentCreator';
 import { AgentEditor } from './AgentEditor';
+import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import type { AgentDirectoryInfo } from '@/types';
 
 export const AgentManager: React.FC = () => {
@@ -132,7 +141,7 @@ Outline communication style and guidelines.
   }, [deleteConfirm, handleRefresh, showError, showSuccess]);
 
   return (
-    <div className="h-full flex flex-col p-6">
+    <div className="h-full flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between mb-6 pb-4 border-b border-border">
         <div>
@@ -142,21 +151,14 @@ Outline communication style and guidelines.
           </p>
         </div>
         <div className="flex gap-2">
-          <button
-            onClick={handleRefresh}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          <Button variant="secondary" onClick={handleRefresh} disabled={loading}>
+            <RefreshCw className={loading ? 'animate-spin' : ''} />
             Refresh
-          </button>
-          <button
-            onClick={() => setCreatorOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            <Plus className="w-4 h-4" />
+          </Button>
+          <Button onClick={() => setCreatorOpen(true)}>
+            <Plus />
             Create Agent
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -181,12 +183,9 @@ Outline communication style and guidelines.
             <p className="text-sm text-muted-foreground mb-4">
               Create your first agent to get started
             </p>
-            <button
-              onClick={() => setCreatorOpen(true)}
-              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
-            >
+            <Button onClick={() => setCreatorOpen(true)}>
               Create Agent
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -227,37 +226,31 @@ Outline communication style and guidelines.
       )}
 
       {/* Delete Confirmation Modal */}
-      {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-card rounded-xl border border-border max-w-md w-full p-6">
-            <div className="flex items-start gap-4 mb-4">
+      <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <div className="flex items-start gap-4">
               <div className="w-10 h-10 rounded-full bg-destructive/20 flex items-center justify-center flex-shrink-0">
                 <AlertTriangle className="w-5 h-5 text-destructive" />
               </div>
               <div className="flex-1">
-                <h3 className="text-lg font-semibold text-foreground mb-1">Delete Agent</h3>
-                <p className="text-sm text-muted-foreground">
+                <AlertDialogTitle>Delete Agent</AlertDialogTitle>
+                <AlertDialogDescription>
                   Are you sure you want to delete agent '{deleteConfirm}'? This will remove the directory and all files.
-                </p>
+                </AlertDialogDescription>
               </div>
             </div>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setDeleteConfirm(null)}
-                className="px-4 py-2 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => confirmDelete(false)}
-                className="px-4 py-2 rounded-lg bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <Button variant="secondary" onClick={() => setDeleteConfirm(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={() => confirmDelete(false)}>
+              Delete
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

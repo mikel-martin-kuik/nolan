@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback, useState } from 'react';
-import { MessageCircle, RefreshCw, Trash2, Activity, AlertCircle, Zap, Clock, Moon, ChevronLeft } from 'lucide-react';
+import { MessageCircle, RefreshCw, Trash2, Activity, AlertCircle, Zap, Clock, Moon, ChevronLeft, CheckCircle } from 'lucide-react';
 import { invoke } from '@tauri-apps/api/core';
 import { useLiveOutputStore } from '../../store/liveOutputStore';
 import { useAgentStore } from '../../store/agentStore';
@@ -10,7 +10,7 @@ import { ChatInput } from './ChatInput';
 import { AgentListItem } from './AgentListItem';
 import { cn } from '../../lib/utils';
 import type { AgentStatus } from '../../types';
-import { getAgentDisplayNameForUI } from '../../lib/agentIdentity';
+import { getAgentDisplayNameForUI, parseRalphSession } from '../../lib/agentIdentity';
 
 // Group configuration with icons and colors
 const GROUP_CONFIG = {
@@ -34,31 +34,22 @@ const GROUP_CONFIG = {
     icon: Moon,
     dotColor: 'bg-zinc-500',
   },
+  complete: {
+    label: 'Complete',
+    icon: CheckCircle,
+    dotColor: 'bg-teal-500',
+  },
 } as const;
 
 /**
- * Get display name for an agent, handling instances
- * Uses agentIdentity utility for consistent naming (ralph shows as fun name)
+ * Get display name for an agent
+ * - Team agents: capitalize the name (e.g., ana -> "Ana")
+ * - Ralph: use the session name suffix (e.g., agent-ralph-ziggy -> "Ziggy")
  */
 function getAgentDisplayName(agent: AgentStatus): string {
-  const session = agent.session;
-
-  // Check if this is a primary session (agent-{team}-{name}) vs an instance (agent-{team}-{name}-{num})
-  const isPrimarySession = session.match(/^agent-[a-z0-9]+-[a-z]+$/) !== null;
-
-  // Extract instanceId for agent instances
-  // For ralph: agent-ralph-{id} -> id
-  // For team agents: agent-{team}-{name}-{id} -> id
-  let instanceId: string | undefined;
-  if (agent.name === 'ralph') {
-    const match = session.match(/^agent-ralph-([a-z0-9]+)$/);
-    instanceId = match ? match[1] : undefined;
-  } else {
-    const match = session.match(/^agent-[a-z0-9]+-[a-z]+-([a-z0-9]+)$/);
-    instanceId = match ? match[1] : undefined;
-  }
-
-  return getAgentDisplayNameForUI(agent.name, instanceId, isPrimarySession);
+  // For Ralph, extract the name from the session (e.g., "ziggy" from "agent-ralph-ziggy")
+  const ralphName = agent.name === 'ralph' ? parseRalphSession(agent.session) : undefined;
+  return getAgentDisplayNameForUI(agent.name, ralphName);
 }
 
 export const ChatView: React.FC = () => {
@@ -77,12 +68,14 @@ export const ChatView: React.FC = () => {
     [teamAgents, freeAgents]
   );
 
-  // Flatten grouped agents in priority order: attention > active > blocked (exclude idle/offline)
+  // Flatten grouped agents in priority order: attention > active > blocked > idle > complete (exclude offline)
   const orderedAgents = useMemo(() => {
     return [
       ...grouped.attention,
       ...grouped.active,
       ...grouped.blocked,
+      ...grouped.idle,
+      ...grouped.complete,
     ];
   }, [grouped]);
 
@@ -251,6 +244,8 @@ export const ChatView: React.FC = () => {
             {renderAgentGroup('attention', grouped.attention)}
             {renderAgentGroup('active', grouped.active)}
             {renderAgentGroup('blocked', grouped.blocked)}
+            {renderAgentGroup('idle', grouped.idle)}
+            {renderAgentGroup('complete', grouped.complete)}
           </>
         )}
       </div>

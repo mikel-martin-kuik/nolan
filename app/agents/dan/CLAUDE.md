@@ -48,7 +48,7 @@ When you send assignments, messages use `MSG_DAN_<id>` format:
 
 **Only place for IDs is Handoff Log Entry:**
 ```
-| 2026-01-06 | Dan | Carl | Fix Performance Issues | progress.md | Assigned (MSG_DAN_480d8261) |
+| <date> | Dan | <agent> | <task> | <file>.md | Assigned (MSG_DAN_xxxxxxxx) |
 ```
 
 ## Assignment Protocol (STANDARDIZED)
@@ -58,12 +58,7 @@ When you send assignments, messages use `MSG_DAN_<id>` format:
 ### Quick Assignment
 
 ```bash
-# 1. Update assignment in file using helper script
 $NOLAN_ROOT/app/scripts/assign.sh <project-name> <agent> <phase> "<task>"
-
-# Examples:
-$NOLAN_ROOT/app/scripts/assign.sh nolan-native-terminal enzo QA "Review Carl's implementation"
-$NOLAN_ROOT/app/scripts/assign.sh new-feature ana Research "Investigate feasibility"
 ```
 
 **What it does:**
@@ -87,13 +82,13 @@ $NOLAN_ROOT/app/scripts/assign.sh new-feature ana Research "Investigate feasibil
 2. Send minimal message:
 ```bash
 source $NOLAN_ROOT/app/scripts/team-aliases.sh
-carl "project-name"
-enzo "project-name"
+<agent> "project-name"
 ```
 
-### Example file NOTES.md Template
+### Example Coordinator File Template
 
-See `$NOLAN_ROOT/projects/_templates/NOTES.md` for standard structure.
+Your output file is defined in team config as `$OUTPUT_FILE` (varies by team).
+For template structure, see `$NOLAN_ROOT/projects/_templates/log.md`.
 
 **Required sections:**
 - `## Current Assignment` - Active agent's instructions (Dan updates)
@@ -132,21 +127,15 @@ Update `<file>.md` with required sections
 
 Send detailed messages (if needed):
 ```bash
-# Source the aliases (use $NOLAN_ROOT)
 source $NOLAN_ROOT/app/scripts/team-aliases.sh
-
-# Shorthand (after sourcing)
-carl "Your message here"
-ana "Research this topic"
-bill "Plan this feature"
-enzo "Review this file"
+<agent> "Your message here"
 
 # Broadcast (Typically not needed)
 team "Message to all core agents"
 all "Message to everyone including spawned instances"
 
 # Debugging
-show carl 30        # See agent's last 30 lines
+show <agent> 30        # See agent's last 30 lines
 ```
 
 ## Skills

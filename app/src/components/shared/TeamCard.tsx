@@ -97,6 +97,97 @@ export const TeamCard: React.FC<TeamCardProps> = ({
 
   const completedCount = stepCompletion.filter(s => s.complete).length;
 
+  // Arrow state types for workflow progression visualization
+  type ArrowState = 'completed' | 'current' | 'pending';
+
+  // Derive arrow states from step completion
+  // Each arrow appears AFTER its agent, so arrow[i] represents the transition from agent[i] to agent[i+1]
+  const getArrowStates = (): ArrowState[] => {
+    if (!teamProject || !currentProjectInfo) {
+      // No project - all arrows are pending (dimmed)
+      return workflowAgents.slice(0, -1).map(() => 'pending');
+    }
+
+    // Map each workflow agent to their output file completion status
+    const agentCompletion = workflowAgents.map(agent => {
+      const agentStep = stepCompletion.find(s => s.owner === agent.name);
+      return agentStep?.complete ?? false;
+    });
+
+    // Arrow[i] = transition from agent[i] to agent[i+1]
+    // - 'completed': agent[i] has completed their output file
+    // - 'current': agent[i] is working (first incomplete in sequence)
+    // - 'pending': not yet reached in workflow
+    const arrows: ArrowState[] = [];
+    let foundCurrent = false;
+
+    for (let i = 0; i < workflowAgents.length - 1; i++) {
+      if (agentCompletion[i]) {
+        arrows.push('completed');
+      } else if (!foundCurrent) {
+        arrows.push('current');
+        foundCurrent = true;
+      } else {
+        arrows.push('pending');
+      }
+    }
+
+    return arrows;
+  };
+
+  const arrowStates = getArrowStates();
+
+  // Vertical arrow state: completed if context.md exists and first agent output exists
+  const verticalArrowState: ArrowState = (() => {
+    if (!teamProject || !currentProjectInfo) return 'pending';
+    const contextComplete = stepCompletion.find(s => s.key === 'context')?.complete ?? false;
+    if (!contextComplete) return 'pending';
+    // Context exists, so coordinator has handed off - this arrow is "completed" or "current"
+    const firstAgentComplete = arrowStates.length > 0 ? arrowStates[0] === 'completed' : false;
+    return contextComplete ? (firstAgentComplete ? 'completed' : 'current') : 'pending';
+  })();
+
+  // Helper function to get arrow classes based on state
+  const getArrowClasses = (state: ArrowState): string => {
+    switch (state) {
+      case 'completed':
+        return 'text-emerald-500';
+      case 'current':
+        return 'text-primary animate-pulse';
+      case 'pending':
+        return 'text-muted-foreground/30';
+    }
+  };
+
+  // Layout type determination for different team sizes
+  type LayoutType = 'single-row' | 'two-row';
+
+  const getLayoutType = (agentCount: number): LayoutType => {
+    // For current teams (3-5 agents), single row works well
+    // Future: 6+ agents could use two-row layout
+    if (agentCount >= 6) {
+      return 'two-row';
+    }
+    return 'single-row';
+  };
+
+  const layoutType = getLayoutType(workflowAgents.length);
+
+  // Find the currently active workflow agent (first agent whose output is incomplete and is active)
+  const getCurrentWorkflowAgent = (): string | null => {
+    if (!teamProject || !currentProjectInfo) return null;
+
+    for (const agent of workflowAgents) {
+      const step = stepCompletion.find(s => s.owner === agent.name);
+      if (step && !step.complete && agent.active) {
+        return agent.name;
+      }
+    }
+    return null;
+  };
+
+  const currentWorkflowAgent = getCurrentWorkflowAgent();
+
   const agentCount = agents.length;
 
   return (
@@ -240,37 +331,106 @@ export const TeamCard: React.FC<TeamCardProps> = ({
             </div>
           )}
 
-          {/* Arrow separator */}
+          {/* Arrow separator - state-based styling */}
           <div className="flex justify-center py-2 sm:py-3">
             <ArrowDown className={cn(
               "w-4 h-4 sm:w-5 sm:h-5 transition-colors",
-              anyActive ? "text-emerald-500/60" : "text-muted-foreground/40"
+              getArrowClasses(verticalArrowState)
             )} />
           </div>
 
-          {/* Workflow Agents Row */}
-          <div className="flex flex-wrap justify-center gap-2 lg:gap-4">
-            {workflowAgents.map((agent, index) => (
-              <React.Fragment key={agent.name}>
-                <div className="w-[clamp(120px,calc(70vw/2),160px)]">
-                  <AgentCard
-                    agent={agent}
-                    variant="dashboard"
-                    showActions={showActions}
-                    hideProject
-                  />
-                </div>
-                {index < workflowAgents.length - 1 && (
-                  <div className="hidden lg:flex items-center justify-center flex-shrink-0">
-                    <ArrowRight className={cn(
-                      "w-4 h-4 sm:w-5 sm:h-5 transition-colors",
-                      anyActive ? "text-emerald-500/60" : "text-muted-foreground/40"
-                    )} />
+          {/* Workflow Agents Row - Layout adapts to team size */}
+          {layoutType === 'single-row' && (
+            <div className="flex flex-wrap justify-center items-center gap-2 lg:gap-3">
+              {workflowAgents.map((agent, index) => (
+                <React.Fragment key={agent.name}>
+                  <div className="w-[clamp(120px,calc(70vw/2),160px)]">
+                    <AgentCard
+                      agent={agent}
+                      variant="dashboard"
+                      showActions={showActions}
+                      hideProject
+                      isWorkflowActive={agent.name === currentWorkflowAgent}
+                    />
                   </div>
-                )}
-              </React.Fragment>
-            ))}
-          </div>
+                  {index < workflowAgents.length - 1 && (
+                    <div className="hidden lg:flex items-center justify-center flex-shrink-0">
+                      <ArrowRight className={cn(
+                        "w-4 h-4 sm:w-5 sm:h-5 transition-colors",
+                        getArrowClasses(arrowStates[index])
+                      )} />
+                    </div>
+                  )}
+                </React.Fragment>
+              ))}
+            </div>
+          )}
+
+          {/* Two-row layout for 6+ workflow agents */}
+          {layoutType === 'two-row' && (() => {
+            const midpoint = Math.ceil(workflowAgents.length / 2);
+            const topRow = workflowAgents.slice(0, midpoint);
+            const bottomRow = workflowAgents.slice(midpoint);
+
+            return (
+              <div className="flex flex-col items-center gap-2">
+                {/* Top row */}
+                <div className="flex flex-wrap justify-center items-center gap-2 lg:gap-3">
+                  {topRow.map((agent, index) => (
+                    <React.Fragment key={agent.name}>
+                      <div className="w-[clamp(120px,calc(70vw/2),160px)]">
+                        <AgentCard
+                          agent={agent}
+                          variant="dashboard"
+                          showActions={showActions}
+                          hideProject
+                          isWorkflowActive={agent.name === currentWorkflowAgent}
+                        />
+                      </div>
+                      {index < topRow.length - 1 && (
+                        <div className="hidden lg:flex items-center">
+                          <ArrowRight className={cn("w-4 h-4", getArrowClasses(arrowStates[index]))} />
+                        </div>
+                      )}
+                    </React.Fragment>
+                  ))}
+                </div>
+
+                {/* Connecting arrow between rows */}
+                <div className="flex justify-end w-full pr-8">
+                  <ArrowDown className={cn(
+                    "w-4 h-4",
+                    getArrowClasses(arrowStates[midpoint - 1])
+                  )} />
+                </div>
+
+                {/* Bottom row */}
+                <div className="flex flex-wrap justify-center items-center gap-2 lg:gap-3">
+                  {bottomRow.map((agent, index) => {
+                    const globalIndex = midpoint + index;
+                    return (
+                      <React.Fragment key={agent.name}>
+                        <div className="w-[clamp(120px,calc(70vw/2),160px)]">
+                          <AgentCard
+                            agent={agent}
+                            variant="dashboard"
+                            showActions={showActions}
+                            hideProject
+                            isWorkflowActive={agent.name === currentWorkflowAgent}
+                          />
+                        </div>
+                        {index < bottomRow.length - 1 && (
+                          <div className="hidden lg:flex items-center">
+                            <ArrowRight className={cn("w-4 h-4", getArrowClasses(arrowStates[globalIndex]))} />
+                          </div>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
         </>
       )}
     </Card>

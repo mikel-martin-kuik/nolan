@@ -10,6 +10,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Tooltip } from '@/components/ui/tooltip';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
 import type { TeamConfig, AgentConfig, PhaseConfig, AgentDirectoryInfo } from '@/types';
 
 interface TeamEditorProps {
@@ -241,21 +244,14 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
           {teamConfig ? `Edit Team: ${teamConfig.team.name}` : 'Create New Team'}
         </h1>
         <div className="flex gap-2">
-          <button
-            onClick={onCancel}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors"
-          >
-            <X className="w-4 h-4" />
+          <Button variant="secondary" onClick={onCancel}>
+            <X />
             Cancel
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-          >
-            <Save className="w-4 h-4" />
+          </Button>
+          <Button onClick={handleSave} disabled={saving}>
+            <Save />
             {saving ? 'Saving...' : 'Save'}
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -271,12 +267,10 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
               <label className="block text-sm font-medium text-foreground mb-1">
                 Team Name
               </label>
-              <input
-                type="text"
+              <Input
                 value={name}
                 onChange={(e) => setName(e.target.value.toLowerCase())}
                 placeholder="my-team"
-                className="w-full px-3 py-2 rounded-lg bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
               />
               <p className="text-xs text-muted-foreground mt-1">
                 {originalName ? 'Changing name will rename the config file' : 'Lowercase letters, numbers, and hyphens only'}
@@ -286,12 +280,10 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
               <label className="block text-sm font-medium text-foreground mb-1">
                 Description
               </label>
-              <input
-                type="text"
+              <Input
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Team description..."
-                className="w-full px-3 py-2 rounded-lg bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
               />
             </div>
           </div>
@@ -303,13 +295,10 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
             <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
               Agents ({agents.length})
             </h2>
-            <button
-              onClick={handleAddAgent}
-              className="flex items-center gap-1 text-sm text-primary hover:text-primary/80"
-            >
-              <Plus className="w-4 h-4" />
+            <Button variant="link" size="sm" onClick={handleAddAgent} className="h-auto p-0">
+              <Plus />
               Add Agent
-            </button>
+            </Button>
           </div>
 
           <div className="space-y-4">
@@ -359,14 +348,13 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
                       <Tooltip content="File this agent writes output to in the project directory" side="top">
                         <label className="block text-xs text-muted-foreground mb-1 w-fit cursor-help">Output File</label>
                       </Tooltip>
-                      <input
-                        type="text"
+                      <Input
                         value={agent.output_file || ''}
                         onChange={(e) =>
                           handleAgentChange(index, 'output_file', e.target.value || null)
                         }
                         placeholder="output.md"
-                        className="w-full px-2 py-1 text-sm rounded bg-background border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                        className="h-8 text-sm"
                       />
                     </div>
                     <div>
@@ -392,39 +380,37 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
                     <div className="flex items-center gap-4 col-span-2">
                       <Tooltip content="Include in core workflow and broadcast groups" side="top">
                         <label className="flex items-center gap-2 text-sm cursor-help">
-                          <input
-                            type="checkbox"
+                          <Checkbox
                             checked={agent.workflow_participant}
-                            onChange={(e) =>
-                              handleAgentChange(index, 'workflow_participant', e.target.checked)
+                            onCheckedChange={(checked) =>
+                              handleAgentChange(index, 'workflow_participant', checked)
                             }
-                            className="rounded border-border"
                           />
                           <span className="text-foreground">Workflow Participant</span>
                         </label>
                       </Tooltip>
                       <Tooltip content="Require QA review before completing phase" side="top">
                         <label className="flex items-center gap-2 text-sm cursor-help">
-                          <input
-                            type="checkbox"
+                          <Checkbox
                             checked={agent.awaits_qa || false}
-                            onChange={(e) =>
-                              handleAgentChange(index, 'awaits_qa', e.target.checked)
+                            onCheckedChange={(checked) =>
+                              handleAgentChange(index, 'awaits_qa', checked)
                             }
-                            className="rounded border-border"
                           />
                           <span className="text-foreground">Awaits QA</span>
                         </label>
                       </Tooltip>
                     </div>
                   </div>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={() => handleRemoveAgent(index)}
-                    className="p-1 text-muted-foreground hover:text-red-500 transition-colors"
                     disabled={agents.length <= 1}
+                    className="text-muted-foreground hover:text-destructive"
                   >
                     <Trash2 className="w-4 h-4" />
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}
@@ -467,13 +453,10 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
               <label className="text-sm font-medium text-foreground">
                 Phases ({phases.length})
               </label>
-              <button
-                onClick={handleAddPhase}
-                className="flex items-center gap-1 text-sm text-primary hover:text-primary/80"
-              >
-                <Plus className="w-4 h-4" />
+              <Button variant="link" size="sm" onClick={handleAddPhase} className="h-auto p-0">
+                <Plus />
                 Add Phase
-              </button>
+              </Button>
             </div>
 
             <div className="space-y-3">
@@ -490,12 +473,11 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
                       <Tooltip content="Name displayed in workflow status" side="top">
                         <label className="block text-xs text-muted-foreground mb-1 w-fit cursor-help">Phase Name</label>
                       </Tooltip>
-                      <input
-                        type="text"
+                      <Input
                         value={phase.name}
                         onChange={(e) => handlePhaseChange(index, 'name', e.target.value)}
                         placeholder="Research"
-                        className="w-full px-2 py-1 text-sm rounded bg-background border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                        className="h-8 text-sm"
                       />
                     </div>
                     <div>
@@ -522,20 +504,18 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
                       <Tooltip content="File the owner creates upon completing this phase" side="top">
                         <label className="block text-xs text-muted-foreground mb-1 w-fit cursor-help">Output File</label>
                       </Tooltip>
-                      <input
-                        type="text"
+                      <Input
                         value={phase.output}
                         onChange={(e) => handlePhaseChange(index, 'output', e.target.value)}
                         placeholder="output.md"
-                        className="w-full px-2 py-1 text-sm rounded bg-background border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                        className="h-8 text-sm"
                       />
                     </div>
                     <div>
                       <Tooltip content="Files that must exist before this phase can start" side="top">
                         <label className="block text-xs text-muted-foreground mb-1 w-fit cursor-help">Requires</label>
                       </Tooltip>
-                      <input
-                        type="text"
+                      <Input
                         value={(phase.requires || []).join(', ')}
                         onChange={(e) =>
                           handlePhaseChange(
@@ -548,17 +528,19 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
                           )
                         }
                         placeholder="context.md, research.md"
-                        className="w-full px-2 py-1 text-sm rounded bg-background border border-border text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50"
+                        className="h-8 text-sm"
                       />
                     </div>
                   </div>
-                  <button
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={() => handleRemovePhase(index)}
-                    className="p-1 text-muted-foreground hover:text-red-500 transition-colors"
                     disabled={phases.length <= 1}
+                    className="text-muted-foreground hover:text-destructive"
                   >
                     <Trash2 className="w-4 h-4" />
-                  </button>
+                  </Button>
                 </div>
               ))}
             </div>

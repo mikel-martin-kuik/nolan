@@ -487,8 +487,10 @@ export function sortByWorkflowPriority(
 
 /**
  * Group agents by their workflow status for display
+ * Order: attention > active > blocked > idle > complete
+ * Note: 'offline' agents are filtered out (not shown in Chat)
  */
-export type WorkflowGroup = 'attention' | 'active' | 'blocked' | 'idle';
+export type WorkflowGroup = 'attention' | 'active' | 'blocked' | 'idle' | 'complete' | 'offline';
 
 export function getWorkflowGroup(status: WorkflowStatus): WorkflowGroup {
   switch (status) {
@@ -500,10 +502,12 @@ export function getWorkflowGroup(status: WorkflowStatus): WorkflowGroup {
     case 'blocked':
       return 'blocked';
     case 'idle':
-    case 'offline':
-    case 'complete':
-    default:
       return 'idle';
+    case 'complete':
+      return 'complete';
+    case 'offline':
+    default:
+      return 'offline';
   }
 }
 

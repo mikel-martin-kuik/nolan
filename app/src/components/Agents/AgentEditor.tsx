@@ -9,6 +9,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
 import type { AgentDirectoryInfo } from '@/types';
 
 interface AgentEditorProps {
@@ -164,12 +167,11 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({
               <h2 className="text-xl font-semibold text-foreground">
                 {agentName}
               </h2>
-              <input
-                type="text"
+              <Input
                 value={role}
                 onChange={(e) => setRole(e.target.value)}
                 placeholder="Role (e.g., Research, Planning)"
-                className="flex-1 max-w-xs px-3 py-1 text-sm rounded-lg bg-background border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+                className="flex-1 max-w-xs h-8 text-sm"
               />
               <Select value={model} onValueChange={setModel}>
                 <SelectTrigger className="w-28 h-8 text-sm">
@@ -189,29 +191,18 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({
           </div>
           <div className="flex items-center gap-2">
             {hasChanges && (
-              <button
-                onClick={handleRevert}
-                disabled={saving}
-                className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50"
-              >
-                <RotateCcw className="w-4 h-4" />
+              <Button variant="secondary" size="sm" onClick={handleRevert} disabled={saving}>
+                <RotateCcw />
                 Revert
-              </button>
+              </Button>
             )}
-            <button
-              onClick={handleSave}
-              disabled={!hasChanges || saving}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-            >
-              <Save className="w-4 h-4" />
+            <Button onClick={handleSave} disabled={!hasChanges || saving}>
+              <Save />
               {saving ? 'Saving...' : 'Save'}
-            </button>
-            <button
-              onClick={handleCancel}
-              className="p-2 rounded-lg hover:bg-secondary transition-colors"
-            >
+            </Button>
+            <Button variant="ghost" size="icon" onClick={handleCancel}>
               <X className="w-5 h-5 text-muted-foreground" />
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -222,10 +213,10 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({
               <p className="text-sm text-muted-foreground">Loading...</p>
             </div>
           ) : (
-            <textarea
+            <Textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              className="w-full h-full resize-none rounded-lg border border-input bg-background px-4 py-3 text-sm font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
+              className="w-full h-full font-mono"
               placeholder="Enter CLAUDE.md content..."
               spellCheck={false}
             />

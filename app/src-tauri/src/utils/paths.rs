@@ -109,18 +109,6 @@ pub fn get_nolan_root() -> Result<PathBuf, String> {
         .map_err(|e| format!("Invalid root path: {}", e))
 }
 
-/// Get services directory
-/// Returns: <nolan_root>/services
-pub fn get_services_dir() -> Result<PathBuf, String> {
-    Ok(get_nolan_root()?.join("services"))
-}
-
-/// Get transcript service directory
-/// Returns: <nolan_root>/services/transcript-service
-pub fn get_transcript_service_dir() -> Result<PathBuf, String> {
-    Ok(get_services_dir()?.join("transcript-service"))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

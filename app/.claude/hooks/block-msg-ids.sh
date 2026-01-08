@@ -6,11 +6,11 @@
 # Format: MSG_USER_abc12345, MSG_DAN_abc12345, MSG_ANA_abc12345, etc.
 #
 # Allowed locations:
-#   - Handoff Log table in NOTES.md (the | Assigned (MSG_DAN_xxx) | column only)
+#   - Handoff Log table in coordinator's output file (the | Assigned (MSG_DAN_xxx) | column only)
 #   - Current Assignment section: **Assigned**: YYYY-MM-DD (MSG_DAN_xxx)
 #
 # Blocked locations:
-#   - All other content in NOTES.md (log entries, status, blockers, etc.)
+#   - All other content in coordinator's output file (log entries, status, blockers, etc.)
 #   - All other project files (context.md, research.md, plan.md, qa-review.md, progress.md)
 #   - Any files in projects directory
 #
@@ -19,6 +19,9 @@
 #   2 - Block write (MSG_ID pattern found)
 
 set -euo pipefail
+
+# Source shared helpers
+source "$(dirname "$0")/_lib.sh"
 
 # Read JSON input
 data=$(cat)
@@ -66,8 +69,13 @@ fi
 # MSG_ pattern found - check if it's in the allowed context (Handoff Log table)
 filename=$(basename "$file_path")
 
-if [[ "$filename" == "NOTES.md" ]]; then
-    # For NOTES.md, allow MSG_IDs in two contexts:
+# Get project directory from file path
+project_dir=$(dirname "$file_path")
+# Get coordinator's output file for this project
+coordinator_file=$(get_coordinator_file "$project_dir" 2>/dev/null) || coordinator_file=""
+
+if [[ -n "$coordinator_file" && "$filename" == "$coordinator_file" ]]; then
+    # For coordinator's output file, allow MSG_IDs in two contexts:
     # 1. Handoff Log table format: | Date | From | To | Phase | Output | Status (MSG_DAN_xxx) |
     # 2. Current Assignment section: **Assigned**: YYYY-MM-DD (MSG_DAN_xxx)
 
@@ -84,7 +92,7 @@ if [[ "$filename" == "NOTES.md" ]]; then
     fi
 
     # MSG_ID found but NOT in allowed formats - block
-    echo "BLOCKED: MSG_IDs can only appear in specific formats in NOTES.md" >&2
+    echo "BLOCKED: MSG_IDs can only appear in specific formats in $coordinator_file" >&2
     echo "  Found MSG_ pattern outside allowed formats in: $content" >&2
     echo "" >&2
     echo "  Allowed formats:" >&2

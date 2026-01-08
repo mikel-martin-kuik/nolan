@@ -2,9 +2,10 @@ use std::fs;
 use std::path::PathBuf;
 use serde::Serialize;
 use regex::Regex;
+use crate::config::{TeamConfig, load_project_team};
 use crate::utils::paths::get_projects_dir;
 
-/// Project status derived from NOTES.md
+/// Project status derived from coordinator's output file
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectStatus {
@@ -13,25 +14,44 @@ pub enum ProjectStatus {
     Pending,
 }
 
-/// Expected workflow files for scaffolding
-const EXPECTED_FILES: &[&str] = &[
-    "prompt.md",
-    "context.md",
-    "research.md",
-    "plan.md",
-    "qa-review.md",
-    "progress.md",
-    "NOTES.md",
-];
+/// Get expected workflow files from team config
+/// Returns: (all_expected_files, workflow_files_with_handoff_tracking)
+/// Requires team config - no fallback
+fn get_expected_files_from_config(config: &TeamConfig) -> (Vec<String>, Vec<String>) {
+    let mut expected = Vec::new();
+    let mut workflow = Vec::new();
 
-/// Workflow files that track completion via HANDOFF markers
-const WORKFLOW_FILES: &[&str] = &[
-    "context.md",
-    "research.md",
-    "plan.md",
-    "qa-review.md",
-    "progress.md",
-];
+    // Always include prompt.md and context.md
+    expected.push("prompt.md".to_string());
+    expected.push("context.md".to_string());
+    workflow.push("context.md".to_string());
+
+    // Add phase outputs from workflow
+    for phase in &config.team.workflow.phases {
+        let output = if phase.output.ends_with(".md") {
+            phase.output.clone()
+        } else {
+            format!("{}.md", phase.output)
+        };
+        if !expected.contains(&output) {
+            expected.push(output.clone());
+            workflow.push(output);
+        }
+    }
+
+    // Add coordinator's output file
+    let coordinator_file = config.coordinator_output_file();
+    let coordinator_file = if coordinator_file.ends_with(".md") {
+        coordinator_file
+    } else {
+        format!("{}.md", coordinator_file)
+    };
+    if !expected.contains(&coordinator_file) {
+        expected.push(coordinator_file);
+    }
+
+    (expected, workflow)
+}
 
 /// Completion status for a workflow file
 #[derive(Debug, Clone, Serialize)]
@@ -123,11 +143,12 @@ fn parse_handoff_marker(content: &str) -> Option<(String, String)> {
 }
 
 /// Get completion status for workflow files (and prompt.md)
-fn get_file_completions(project_path: &PathBuf) -> Vec<FileCompletion> {
+/// workflow_files: List of files to check for HANDOFF markers (from team config)
+fn get_file_completions(project_path: &PathBuf, workflow_files: &[String]) -> Vec<FileCompletion> {
     let mut completions = Vec::new();
 
     // Check workflow files first
-    for file in WORKFLOW_FILES {
+    for file in workflow_files {
         let file_path = project_path.join(file);
         let exists = file_path.exists();
 
@@ -188,11 +209,12 @@ fn get_file_completions(project_path: &PathBuf) -> Vec<FileCompletion> {
 }
 
 /// Determine which expected files exist and which are missing
-fn get_file_scaffolding(project_path: &PathBuf) -> (Vec<String>, Vec<String>) {
+/// expected_files: List of expected files from team config
+fn get_file_scaffolding(project_path: &PathBuf, expected_files: &[String]) -> (Vec<String>, Vec<String>) {
     let mut existing = Vec::new();
     let mut missing = Vec::new();
 
-    for file in EXPECTED_FILES {
+    for file in expected_files {
         let file_path = project_path.join(file);
         if file_path.exists() {
             existing.push(file.to_string());
@@ -259,10 +281,30 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
             })
             .unwrap_or_default();
 
-        // Parse status from NOTES.md
-        let notes_path = path.join("NOTES.md");
-        let (status, status_detail) = if notes_path.exists() {
-            match fs::read_to_string(&notes_path) {
+        // Read team from .team file (required)
+        let team_file = path.join(".team");
+        let team = match fs::read_to_string(&team_file) {
+            Ok(s) => s.trim().to_string(),
+            Err(_) => {
+                // Skip projects without .team file
+                continue;
+            }
+        };
+
+        // Load team config (required)
+        let team_config = match load_project_team(&path) {
+            Ok(config) => config,
+            Err(_) => {
+                // Skip projects with invalid team config
+                continue;
+            }
+        };
+
+        // Parse status from coordinator's output file
+        let coordinator_file = team_config.coordinator_output_file();
+        let coordinator_path = path.join(&coordinator_file);
+        let (status, status_detail) = if coordinator_path.exists() {
+            match fs::read_to_string(&coordinator_path) {
                 Ok(content) => parse_project_status(&content),
                 Err(_) => (ProjectStatus::Pending, None),
             }
@@ -270,21 +312,14 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
             (ProjectStatus::Pending, None)
         };
 
-        // Get file scaffolding info
-        let (existing_files, missing_files) = get_file_scaffolding(&path);
+        // Get expected files from team config
+        let (expected_files, workflow_files) = get_expected_files_from_config(&team_config);
 
-        // Get workflow file completion status
-        let file_completions = get_file_completions(&path);
+        // Get file scaffolding info using team-specific expected files
+        let (existing_files, missing_files) = get_file_scaffolding(&path, &expected_files);
 
-        // Read team from .team file (defaults to "default" if not present)
-        let team_file = path.join(".team");
-        let team = if team_file.exists() {
-            fs::read_to_string(&team_file)
-                .map(|s| s.trim().to_string())
-                .unwrap_or_else(|_| "default".to_string())
-        } else {
-            "default".to_string()
-        };
+        // Get workflow file completion status using team-specific workflow files
+        let file_completions = get_file_completions(&path, &workflow_files);
 
         projects.push(ProjectInfo {
             name,
@@ -372,14 +407,20 @@ pub async fn list_project_files(project_name: String) -> Result<Vec<ProjectFile>
         return Err("Project is not a directory".to_string());
     }
 
+    // Load team config for this project (required)
+    let team_config = load_project_team(&canonical_path)
+        .map_err(|e| format!("Failed to load team config: {}", e))?;
+    let (expected_files, _) = get_expected_files_from_config(&team_config);
+    let coordinator_file = team_config.coordinator_output_file();
+
     let mut files = Vec::new();
     let mut existing_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
     collect_md_files(&canonical_path, &canonical_path, &mut files, &mut existing_names)?;
 
-    // Add placeholder files for missing expected files
-    for expected in EXPECTED_FILES {
-        if !existing_names.contains(*expected) {
+    // Add placeholder files for missing expected files (from team config)
+    for expected in &expected_files {
+        if !existing_names.contains(expected) {
             let file_type = expected.strip_suffix(".md").unwrap_or(expected).to_string();
             files.push(ProjectFile {
                 name: expected.to_string(),
@@ -394,7 +435,7 @@ pub async fn list_project_files(project_name: String) -> Result<Vec<ProjectFile>
         }
     }
 
-    // Sort: NOTES.md first, context.md second, placeholders last, then alphabetically
+    // Sort: coordinator file first, context.md second, placeholders last, then alphabetically
     files.sort_by(|a, b| {
         // Placeholders go last
         if a.is_placeholder && !b.is_placeholder {
@@ -404,9 +445,9 @@ pub async fn list_project_files(project_name: String) -> Result<Vec<ProjectFile>
             return std::cmp::Ordering::Less;
         }
 
-        if a.name == "NOTES.md" {
+        if a.name == coordinator_file {
             std::cmp::Ordering::Less
-        } else if b.name == "NOTES.md" {
+        } else if b.name == coordinator_file {
             std::cmp::Ordering::Greater
         } else if a.name == "context.md" {
             std::cmp::Ordering::Less
@@ -646,7 +687,7 @@ pub async fn write_project_file(
     Ok(())
 }
 
-/// Create a new project directory with initial NOTES.md and .team file
+/// Create a new project directory with initial coordinator file and .team file
 #[tauri::command]
 pub async fn create_project(project_name: String, team_name: Option<String>) -> Result<String, String> {
     // Validate project name: only lowercase letters, numbers, and hyphens
@@ -669,6 +710,13 @@ pub async fn create_project(project_name: String, team_name: Option<String>) -> 
         return Err("Project name cannot contain consecutive hyphens".to_string());
     }
 
+    // Load team config first to get coordinator's output file
+    let team = team_name.unwrap_or_else(|| "default".to_string());
+    let team_config = TeamConfig::load(&team)
+        .map_err(|e| format!("Failed to load team config '{}': {}", team, e))?;
+    let coordinator_file = team_config.coordinator_output_file();
+    let coordinator_name = team_config.coordinator();
+
     let projects_dir = get_projects_dir()?;
     let project_path = projects_dir.join(&project_name);
 
@@ -681,15 +729,14 @@ pub async fn create_project(project_name: String, team_name: Option<String>) -> 
     fs::create_dir_all(&project_path)
         .map_err(|e| format!("Failed to create project directory: {}", e))?;
 
-    // Create .team file with team assignment (defaults to "default")
-    let team = team_name.unwrap_or_else(|| "default".to_string());
+    // Create .team file with team assignment
     let team_file = project_path.join(".team");
     fs::write(&team_file, &team)
         .map_err(|e| format!("Failed to create .team file: {}", e))?;
 
-    // Create initial NOTES.md with IN_PROGRESS marker
+    // Create initial coordinator file with IN_PROGRESS marker
     let now = chrono::Utc::now().format("%Y-%m-%d").to_string();
-    let notes_content = format!(
+    let coordinator_content = format!(
         r#"# {}
 
 <!-- PROJECT:STATUS:INPROGRESS:{} -->
@@ -697,18 +744,18 @@ pub async fn create_project(project_name: String, team_name: Option<String>) -> 
 ## Current Status
 
 **Phase**: Initializing
-**Assigned**: Dan
+**Assigned**: {}
 
 ## Notes
 
 Project created via Nolan Dashboard.
 "#,
-        project_name, now
+        project_name, now, coordinator_name
     );
 
-    let notes_path = project_path.join("NOTES.md");
-    fs::write(&notes_path, notes_content)
-        .map_err(|e| format!("Failed to create NOTES.md: {}", e))?;
+    let coordinator_path = project_path.join(&coordinator_file);
+    fs::write(&coordinator_path, coordinator_content)
+        .map_err(|e| format!("Failed to create {}: {}", coordinator_file, e))?;
 
     Ok(project_path.to_string_lossy().to_string())
 }

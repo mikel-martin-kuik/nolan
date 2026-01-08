@@ -212,6 +212,8 @@ export function useWorkflowStatus(): WorkflowStatusResult {
       active: [],
       blocked: [],
       idle: [],
+      complete: [],
+      offline: [],
     };
 
     agents.forEach(agent => {

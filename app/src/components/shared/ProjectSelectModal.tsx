@@ -16,6 +16,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Button } from '@/components/ui/button';
 import { ProjectInfo } from '@/types/projects';
 import { FolderOpen, Plus, Rocket, FileText, MessageSquare } from 'lucide-react';
 
@@ -89,18 +93,26 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
   // Reset state when modal opens
   useEffect(() => {
     if (open) {
-      setMode('existing');
       setNewProjectName('');
       setNewProjectPrompt('');
       setOriginalPrompt('');
       setSavedOriginalPrompt('');
       setFollowupPrompt('');
-      // Select first team project by default if available
-      if (teamProjects.length > 0) {
-        const firstProject = teamProjects[0].name;
+
+      // Check if there are any pending or in-progress projects
+      const activeProjects = teamProjects.filter(
+        p => p.status === 'pending' || p.status === 'inprogress'
+      );
+
+      if (activeProjects.length > 0) {
+        // Default to existing mode with first active project selected
+        setMode('existing');
+        const firstProject = activeProjects[0].name;
         setSelectedProject(firstProject);
         fetchProjectPrompt(firstProject);
       } else {
+        // No pending/in-progress projects - default to create new
+        setMode('new');
         setSelectedProject('');
       }
     }
@@ -169,90 +181,81 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
 
         <div className="flex flex-col gap-4 py-2">
           {/* Mode Selection */}
-          <div className="flex flex-col gap-2">
-            {/* Existing Project Option */}
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="radio"
-                name="mode"
-                checked={mode === 'existing'}
-                onChange={() => handleModeChange('existing')}
-                className="w-4 h-4 text-primary shrink-0"
-              />
-              <FolderOpen className="w-4 h-4 text-muted-foreground shrink-0" />
-              <span className="text-sm text-foreground">Select Existing Project</span>
-            </label>
+          <RadioGroup value={mode} onValueChange={(value) => handleModeChange(value as Mode)}>
+            <div className="flex flex-col gap-3">
+              {/* Existing Project Option */}
+              <div className="flex items-center gap-3">
+                <RadioGroupItem value="existing" id="mode-existing" />
+                <label htmlFor="mode-existing" className="flex items-center gap-3 cursor-pointer flex-1">
+                  <FolderOpen className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-foreground">Select Existing Project</span>
+                </label>
+              </div>
 
-            {/* Project Dropdown */}
-            <div className="pl-7">
-              <Select
-                value={selectedProject}
-                onValueChange={handleProjectChange}
-                disabled={mode !== 'existing' || teamProjects.length === 0}
-              >
-                <SelectTrigger className="w-full bg-secondary/50 border-border">
-                  <SelectValue placeholder="Select a project" />
-                </SelectTrigger>
-                <SelectContent>
-                  {teamProjects.length > 0 && (
-                    <>
-                      {groupedProjects.inprogress.length > 0 && (
-                        <SelectGroup>
-                          <SelectLabel>In Progress</SelectLabel>
-                          {groupedProjects.inprogress.map(p => (
-                            <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
-                          ))}
-                        </SelectGroup>
-                      )}
-                      {groupedProjects.pending.length > 0 && (
-                        <SelectGroup>
-                          <SelectLabel>Pending</SelectLabel>
-                          {groupedProjects.pending.map(p => (
-                            <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
-                          ))}
-                        </SelectGroup>
-                      )}
-                      {groupedProjects.complete.length > 0 && (
-                        <SelectGroup>
-                          <SelectLabel>Complete</SelectLabel>
-                          {groupedProjects.complete.map(p => (
-                            <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
-                          ))}
-                        </SelectGroup>
-                      )}
-                    </>
-                  )}
-                </SelectContent>
-              </Select>
+              {/* Project Dropdown */}
+              <div className="pl-7">
+                <Select
+                  value={selectedProject}
+                  onValueChange={handleProjectChange}
+                  disabled={mode !== 'existing' || teamProjects.length === 0}
+                >
+                  <SelectTrigger className="w-full bg-secondary/50 border-border">
+                    <SelectValue placeholder="Select a project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teamProjects.length > 0 && (
+                      <>
+                        {groupedProjects.inprogress.length > 0 && (
+                          <SelectGroup>
+                            <SelectLabel>In Progress</SelectLabel>
+                            {groupedProjects.inprogress.map(p => (
+                              <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
+                            ))}
+                          </SelectGroup>
+                        )}
+                        {groupedProjects.pending.length > 0 && (
+                          <SelectGroup>
+                            <SelectLabel>Pending</SelectLabel>
+                            {groupedProjects.pending.map(p => (
+                              <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
+                            ))}
+                          </SelectGroup>
+                        )}
+                        {groupedProjects.complete.length > 0 && (
+                          <SelectGroup>
+                            <SelectLabel>Complete</SelectLabel>
+                            {groupedProjects.complete.map(p => (
+                              <SelectItem key={p.name} value={p.name}>{p.name}</SelectItem>
+                            ))}
+                          </SelectGroup>
+                        )}
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* New Project Option */}
+              <div className="flex items-center gap-3">
+                <RadioGroupItem value="new" id="mode-new" />
+                <label htmlFor="mode-new" className="flex items-center gap-3 cursor-pointer flex-1">
+                  <Plus className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <span className="text-sm text-foreground">Create New Project</span>
+                </label>
+              </div>
+
+              {/* New Project Name Input */}
+              <div className="pl-7">
+                <Input
+                  value={newProjectName}
+                  onChange={(e) => setNewProjectName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
+                  placeholder="project-name"
+                  disabled={mode !== 'new'}
+                  className="bg-secondary/50"
+                />
+              </div>
             </div>
-
-            {/* New Project Option */}
-            <label className="flex items-center gap-3 cursor-pointer mt-2">
-              <input
-                type="radio"
-                name="mode"
-                checked={mode === 'new'}
-                onChange={() => handleModeChange('new')}
-                className="w-4 h-4 text-primary shrink-0"
-              />
-              <Plus className="w-4 h-4 text-muted-foreground shrink-0" />
-              <span className="text-sm text-foreground">Create New Project</span>
-            </label>
-
-            {/* New Project Name Input */}
-            <div className="pl-7">
-              <input
-                type="text"
-                value={newProjectName}
-                onChange={(e) => setNewProjectName(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
-                placeholder="project-name"
-                disabled={mode !== 'new'}
-                className="w-full bg-secondary/50 border border-border rounded-lg px-3 py-2
-                  text-foreground text-sm placeholder-muted-foreground focus:outline-none focus:ring-2
-                  focus:ring-primary/50 disabled:opacity-50 disabled:cursor-not-allowed"
-              />
-            </div>
-          </div>
+          </RadioGroup>
 
           {/* New Project: Single prompt textarea */}
           {mode === 'new' && (
@@ -261,14 +264,12 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
                 <FileText className="w-4 h-4" />
                 Project prompt:
               </label>
-              <textarea
+              <Textarea
                 value={newProjectPrompt}
                 onChange={(e) => setNewProjectPrompt(e.target.value)}
                 placeholder="Describe the project objectives and initial task..."
                 rows={4}
-                className="w-full bg-secondary/50 border border-border rounded-lg px-3 py-2
-                  text-foreground text-sm placeholder-muted-foreground focus:outline-none focus:ring-2
-                  focus:ring-primary/50 resize-none"
+                className="bg-secondary/50"
               />
             </div>
           )}
@@ -291,14 +292,12 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
                     Loading...
                   </div>
                 ) : (
-                  <textarea
+                  <Textarea
                     value={originalPrompt}
                     onChange={(e) => setOriginalPrompt(e.target.value)}
                     placeholder="No original prompt found for this project"
                     rows={3}
-                    className="w-full bg-secondary/30 border border-border rounded-lg px-3 py-2
-                      text-foreground text-sm placeholder-muted-foreground focus:outline-none focus:ring-2
-                      focus:ring-primary/50 resize-none"
+                    className="bg-secondary/30"
                   />
                 )}
               </div>
@@ -309,14 +308,12 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
                   <MessageSquare className="w-4 h-4" />
                   Followup prompt for Dan:
                 </label>
-                <textarea
+                <Textarea
                   value={followupPrompt}
                   onChange={(e) => setFollowupPrompt(e.target.value)}
                   placeholder="Enter instructions to resume work on this project..."
                   rows={3}
-                  className="w-full bg-secondary/50 border border-border rounded-lg px-3 py-2
-                    text-foreground text-sm placeholder-muted-foreground focus:outline-none focus:ring-2
-                    focus:ring-primary/50 resize-none"
+                  className="bg-secondary/50"
                 />
               </div>
             </>
@@ -324,23 +321,17 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
         </div>
 
         <AlertDialogFooter>
-          <button
-            onClick={() => onOpenChange(false)}
-            className="px-4 py-2 text-sm text-muted-foreground hover:text-foreground
-              transition-colors"
-          >
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={handleLaunch}
             disabled={!isValid || isLoading}
-            className="px-4 py-2 text-sm bg-emerald-500/20 text-emerald-400 rounded-lg
-              hover:bg-emerald-500/30 transition-colors disabled:opacity-50
-              disabled:cursor-not-allowed flex items-center gap-2"
+            className="bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
           >
-            <Rocket className="w-4 h-4" />
+            <Rocket />
             {isLoading ? 'Launching...' : 'Launch Team'}
-          </button>
+          </Button>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

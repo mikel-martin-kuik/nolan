@@ -44,16 +44,33 @@ check_sections() {
     fi
 }
 
-# Python-based section validation with team config and error handling (B05)
+# Python-based section validation with team config (B05)
 python3 <<'EOF'
 import sys, yaml, os
 from pathlib import Path
 
 try:
     file_path = Path('''${file_path}''')
+    filename = file_path.name
 
-    # Special handling for NOTES.md (coordinator file - not in team config)
-    if file_path.name == 'NOTES.md':
+    # Load team config (required)
+    docs_path = file_path.parent
+    team_file = docs_path / '.team'
+    if not team_file.exists():
+        sys.exit(0)  # Skip projects without .team file
+
+    team_name = team_file.read_text().strip()
+    nolan_root = Path(os.environ['NOLAN_ROOT'])
+    config_path = nolan_root / 'teams' / f'{team_name}.yaml'
+    config = yaml.safe_load(config_path.read_text())
+
+    # Get coordinator's output file from config
+    coordinator_name = config['team']['workflow']['coordinator']
+    coordinator_agent = next((a for a in config['team']['agents'] if a['name'] == coordinator_name), None)
+    coordinator_file = coordinator_agent['output_file'] if coordinator_agent else None
+
+    # Special handling for coordinator's output file
+    if coordinator_file and filename == coordinator_file:
         content = '''${content}'''
 
         # Accept either "## Log" or "## Handoff Log"
@@ -78,24 +95,7 @@ try:
 
         sys.exit(0)
 
-    # Load team config for other files
-    docs_path = file_path.parent
-    team_file = docs_path / '.team'
-    team_name = team_file.read_text().strip() if team_file.exists() else 'default'
-
-    nolan_root = Path(os.environ['NOLAN_ROOT'])
-    config_path = nolan_root / 'teams' / f'{team_name}.yaml'
-
-    # Load config with fallback to default team (B05)
-    try:
-        config = yaml.safe_load(config_path.read_text())
-    except Exception as e:
-        print(f"Warning: Failed to load team config '{team_name}': {e}", file=sys.stderr)
-        print("Falling back to default team", file=sys.stderr)
-        config = yaml.safe_load((nolan_root / 'teams' / 'default.yaml').read_text())
-
     # Find agent config by output filename
-    filename = file_path.name
     agent_config = next((a for a in config['team']['agents'] if a.get('output_file') == filename), None)
 
     if not agent_config:

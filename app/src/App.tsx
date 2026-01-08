@@ -56,7 +56,6 @@ function App() {
       // Listen for history entries and route to live output store
       unlisten = await listen<HistoryEntry>('history-entry', (event) => {
         const entry = event.payload;
-        console.log('[App] history-entry received:', { tmux_session: entry.tmux_session, entry_type: entry.entry_type, hasMessage: !!entry.message });
         // Only add entries that have a tmux_session (active agent)
         if (entry.tmux_session) {
           addEntry(entry);
@@ -77,13 +76,11 @@ function App() {
             ...status.team.map(a => a.session),
             ...status.free.map(a => a.session),
           ];
-          console.log('[App] Loading history for sessions:', sessions);
           if (sessions.length > 0) {
             await invoke('load_history_for_active_sessions', {
               activeSessions: sessions,
               hours: 1,
             });
-            console.log('[App] History load complete');
           }
         } catch (err) {
           console.error('Failed to load history for active sessions:', err);
@@ -101,7 +98,7 @@ function App() {
 
   const tabs = [
     { id: 'status' as Tab, label: 'Dashboard', tooltip: 'Dashboard', icon: Home },
-    { id: 'chat' as Tab, label: 'Chat', tooltip: 'Agents', icon: MessageCircle },
+    { id: 'chat' as Tab, label: 'Chat', tooltip: 'Chat', icon: MessageCircle },
     { id: 'projects' as Tab, label: 'Projects', tooltip: 'Projects', icon: FolderOpen },
     { id: 'teams' as Tab, label: 'Teams', tooltip: 'Teams', icon: Users },
     { id: 'agents' as Tab, label: 'Agents', tooltip: 'Agents', icon: FileUser },
@@ -152,10 +149,7 @@ function App() {
               </aside>
 
               {/* Main content */}
-              <main className={cn(
-                "flex-1 overflow-hidden",
-                activeTab !== 'chat' && 'overflow-auto pt-0 px-6 pb-6'
-              )}>
+              <main className="flex-1 overflow-hidden overflow-auto px-6 pb-6">
                 {activeTab === 'status' && <StatusPanel />}
                 {activeTab === 'chat' && <ChatView />}
                 {activeTab === 'projects' && <ProjectsPanel />}

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { X } from 'lucide-react';
 import { useToastStore } from '../../store/toastStore';
 import {
   Select,
@@ -9,7 +8,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 import { Tooltip } from '@/components/ui/tooltip';
+import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 import type { ClaudeModel } from '@/types';
 
 interface AgentCreatorProps {
@@ -86,18 +94,11 @@ export const AgentCreator: React.FC<AgentCreatorProps> = ({ onSave, onCancel }) 
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-card rounded-xl border border-border max-w-lg w-full p-6">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold text-foreground">Create New Agent</h2>
-          <button
-            onClick={onCancel}
-            className="p-1 rounded-lg hover:bg-secondary transition-colors"
-          >
-            <X className="w-5 h-5 text-muted-foreground" />
-          </button>
-        </div>
+    <Dialog open onOpenChange={(open) => !open && onCancel()}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Create New Agent</DialogTitle>
+        </DialogHeader>
 
         {/* Form */}
         <div className="space-y-4">
@@ -108,12 +109,10 @@ export const AgentCreator: React.FC<AgentCreatorProps> = ({ onSave, onCancel }) 
                 Agent Name
               </label>
             </Tooltip>
-            <input
-              type="text"
+            <Input
               value={name}
               onChange={(e) => setName(e.target.value.toLowerCase())}
               placeholder="my-agent"
-              className="w-full px-3 py-2 rounded-lg bg-background border border-input text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
               disabled={creating}
             />
             <p className="text-xs text-muted-foreground mt-1">
@@ -128,12 +127,10 @@ export const AgentCreator: React.FC<AgentCreatorProps> = ({ onSave, onCancel }) 
                 Role Description
               </label>
             </Tooltip>
-            <input
-              type="text"
+            <Input
               value={role}
               onChange={(e) => setRole(e.target.value)}
               placeholder="e.g., Researcher, Developer, QA Reviewer"
-              className="w-full px-3 py-2 rounded-lg bg-background border border-input text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50"
               disabled={creating}
             />
           </div>
@@ -170,24 +167,15 @@ export const AgentCreator: React.FC<AgentCreatorProps> = ({ onSave, onCancel }) 
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-border">
-          <button
-            onClick={onCancel}
-            disabled={creating}
-            className="px-4 py-2 rounded-lg bg-secondary text-secondary-foreground hover:bg-secondary/80 transition-colors disabled:opacity-50"
-          >
+        <DialogFooter>
+          <Button variant="secondary" onClick={onCancel} disabled={creating}>
             Cancel
-          </button>
-          <button
-            onClick={handleCreate}
-            disabled={creating}
-            className="px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50"
-          >
+          </Button>
+          <Button onClick={handleCreate} disabled={creating}>
             {creating ? 'Creating...' : 'Create Agent'}
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };

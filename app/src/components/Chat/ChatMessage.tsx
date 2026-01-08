@@ -11,6 +11,10 @@ interface ChatMessageProps {
   showNeedsResponse: boolean;
   /** Session name for interactive responses (e.g., "agent-ana") */
   session?: string;
+  /** Agent name for team chat attribution */
+  agentName?: string;
+  /** Agent color for team chat avatar (Tailwind bg class) */
+  agentColor?: string;
 }
 
 export const ChatMessage: React.FC<ChatMessageProps> = memo(({
@@ -18,6 +22,8 @@ export const ChatMessage: React.FC<ChatMessageProps> = memo(({
   isLast,
   showNeedsResponse,
   session,
+  agentName,
+  agentColor,
 }) => {
   const [copied, setCopied] = React.useState(false);
   const copyTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -62,13 +68,29 @@ export const ChatMessage: React.FC<ChatMessageProps> = memo(({
     };
   }, []);
 
+  // Get agent initial for avatar
+  const agentInitial = agentName ? agentName.charAt(0).toUpperCase() : null;
+
   return (
     <div
       className={cn(
-        'flex group',
+        'flex group gap-2',
         isUser ? 'justify-end' : 'justify-start'
       )}
     >
+      {/* Agent avatar for assistant messages in team chat */}
+      {!isUser && agentName && (
+        <div
+          className={cn(
+            'w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-xs font-semibold text-white',
+            agentColor || 'bg-zinc-500'
+          )}
+          title={agentName}
+        >
+          {agentInitial}
+        </div>
+      )}
+
       <div
         className={cn(
           'max-w-[85%] rounded-2xl px-4 py-3 relative',
@@ -98,7 +120,13 @@ export const ChatMessage: React.FC<ChatMessageProps> = memo(({
             />
           ) : (
             <>
-              {sender && (
+              {/* Agent name label for team chat */}
+              {agentName && (
+                <p className="font-semibold text-xs text-muted-foreground mb-1">
+                  {agentName}
+                </p>
+              )}
+              {sender && !agentName && (
                 <p className="font-semibold text-secondary-foreground/80 mb-2">
                   {sender}:
                 </p>

@@ -1,1 +1,1 @@
-/home/mmartin/Proyectos/nolan/projects/cron-type-bots
+/home/mmartin/Proyectos/nolan/projects/calculadora

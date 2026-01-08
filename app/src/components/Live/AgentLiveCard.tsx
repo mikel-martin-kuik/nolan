@@ -34,7 +34,8 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
 }) => {
   const clearSession = useLiveOutputStore((state) => state.clearSession);
   const openTerminalModal = useTerminalStore((state) => state.openModal);
-  const setActiveChat = useChatViewStore((state) => state.setActiveChat);
+  const setActiveTeam = useChatViewStore((state) => state.setActiveTeam);
+  const setAgentFilter = useChatViewStore((state) => state.setAgentFilter);
   const { error: showError } = useToastStore();
   const currentTeam = useTeamStore((state) => state.currentTeam);
   const workflowSteps = getWorkflowSteps(currentTeam);
@@ -48,8 +49,11 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
   const lastEntry = entries[entries.length - 1];
 
   const handleCardClick = () => {
-    // Navigate to chat with this agent
-    setActiveChat(agent.session);
+    // Navigate to team chat and filter by this agent
+    if (agent.team) {
+      setActiveTeam(agent.team);
+      setAgentFilter(agent.session);
+    }
     window.dispatchEvent(new CustomEvent('navigate-to-chat'));
   };
 
@@ -215,7 +219,11 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  setActiveChat(agent.session);
+                  // Navigate to team chat and filter by this agent
+                  if (agent.team) {
+                    setActiveTeam(agent.team);
+                    setAgentFilter(agent.session);
+                  }
                   // Navigate to chat tab
                   window.dispatchEvent(new CustomEvent('navigate-to-chat'));
                 }}

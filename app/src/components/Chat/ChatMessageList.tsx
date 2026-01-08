@@ -25,6 +25,8 @@ interface ChatMessageListProps {
   agentName: string;
   /** Session name for interactive responses (e.g., "agent-ana") */
   session?: string;
+  /** Map of entry index to agent info for team chat (agentName, agentColor) */
+  agentInfo?: Map<number, { agentName: string; agentColor: string }>;
 }
 
 export const ChatMessageList: React.FC<ChatMessageListProps> = memo(({
@@ -32,6 +34,7 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = memo(({
   isActive,
   agentName,
   session,
+  agentInfo,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -108,6 +111,10 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = memo(({
             const msg = group.messages[0];
             const isPrimaryLast = primaryMessages.indexOf(group) === lastPrimaryIdx;
 
+            // Get agent info for team chat (find the original entry index)
+            const entryIndex = entries.indexOf(msg.entry);
+            const msgAgentInfo = agentInfo?.get(entryIndex);
+
             return (
               <ChatMessage
                 key={group.id}
@@ -115,6 +122,8 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = memo(({
                 isLast={isPrimaryLast}
                 showNeedsResponse={waitingForInput}
                 session={session}
+                agentName={msgAgentInfo?.agentName}
+                agentColor={msgAgentInfo?.agentColor}
               />
             );
           })

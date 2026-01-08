@@ -57,11 +57,6 @@ team:
     awaits_qa: false
   workflow:
     coordinator: dan
-    # Timeout settings for handoff protocol (all values in seconds unless noted)
-    timeouts:
-      ack_timeout_seconds: 60      # How long agents wait for coordinator ACK
-      ack_poll_interval: 6         # Poll interval when waiting for ACK
-      coordinator_wait_minutes: 60 # Max time coordinator waits for project completion
     phases:
     - name: Research
       owner: ana
@@ -98,6 +93,9 @@ team:
       requires:
       - progress.md
       - context.md
+      - research.md
+      - plan.md
+      - plan-review.md
       template: Audit implementation for code execution, security, integration, and plan compliance
   communication:
     broadcast_groups:

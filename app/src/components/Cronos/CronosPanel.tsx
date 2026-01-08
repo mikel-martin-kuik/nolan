@@ -31,6 +31,102 @@ function getStatusBadgeVariant(status: CronRunStatus): 'default' | 'secondary' |
   }
 }
 
+interface LogEntry {
+  type: 'system' | 'assistant' | 'user' | 'result';
+  subtype?: string;
+  message?: {
+    content?: Array<{ type: string; text?: string; name?: string; input?: Record<string, unknown> }>;
+  };
+  tool_use_result?: {
+    stdout?: string;
+    stderr?: string;
+  };
+  result?: string;
+  duration_ms?: number;
+  total_cost_usd?: number;
+  model?: string;
+  cwd?: string;
+}
+
+function parseLogToPlainText(content: string): string {
+  const lines = content.trim().split('\n');
+  const output: string[] = [];
+
+  for (const line of lines) {
+    if (!line.trim()) continue;
+
+    try {
+      const entry: LogEntry = JSON.parse(line);
+
+      switch (entry.type) {
+        case 'system':
+          if (entry.subtype === 'init') {
+            output.push('━━━ Session Start ━━━');
+            if (entry.model) output.push(`Model: ${entry.model}`);
+            if (entry.cwd) output.push(`Working directory: ${entry.cwd}`);
+            output.push('');
+          }
+          break;
+
+        case 'assistant':
+          if (entry.message?.content) {
+            for (const block of entry.message.content) {
+              if (block.type === 'text' && block.text) {
+                output.push(`🤖 Assistant: ${block.text}`);
+                output.push('');
+              } else if (block.type === 'tool_use' && block.name) {
+                const toolInput = block.input || {};
+                let inputSummary = '';
+                if ('command' in toolInput) {
+                  inputSummary = ` → ${toolInput.command}`;
+                } else if ('description' in toolInput) {
+                  inputSummary = ` → ${toolInput.description}`;
+                } else if ('pattern' in toolInput) {
+                  inputSummary = ` → ${toolInput.pattern}`;
+                }
+                output.push(`🔧 Tool: ${block.name}${inputSummary}`);
+              }
+            }
+          }
+          break;
+
+        case 'user':
+          if (entry.tool_use_result) {
+            const { stdout, stderr } = entry.tool_use_result;
+            if (stdout) {
+              output.push('📤 Output:');
+              output.push(stdout.split('\n').map(l => `   ${l}`).join('\n'));
+              output.push('');
+            }
+            if (stderr) {
+              output.push('⚠️ Stderr:');
+              output.push(stderr.split('\n').map(l => `   ${l}`).join('\n'));
+              output.push('');
+            }
+          }
+          break;
+
+        case 'result':
+          output.push('━━━ Result ━━━');
+          if (entry.result) {
+            output.push(entry.result);
+          }
+          if (entry.duration_ms) {
+            output.push(`\nDuration: ${(entry.duration_ms / 1000).toFixed(2)}s`);
+          }
+          if (entry.total_cost_usd) {
+            output.push(`Cost: $${entry.total_cost_usd.toFixed(4)}`);
+          }
+          break;
+      }
+    } catch {
+      output.push(line);
+    }
+  }
+
+  return output.join('\n');
+}
+
 export const CronosPanel: React.FC = () => {
   const [agents, setAgents] = useState<CronAgentInfo[]>([]);
   const [runHistory, setRunHistory] = useState<CronRunLog[]>([]);
@@ -632,7 +728,7 @@ export const CronosPanel: React.FC = () => {
           </DialogHeader>
           <div className="h-[500px] border rounded-md bg-muted/50 overflow-auto">
             <pre className="p-4 text-sm font-mono whitespace-pre-wrap">
-              {logViewer?.content || 'No output'}
+              {logViewer?.content ? parseLogToPlainText(logViewer.content) : 'No output'}
             </pre>
           </div>
           <DialogFooter>

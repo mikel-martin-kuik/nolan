@@ -1,18 +1,25 @@
 import { create } from 'zustand';
 
 interface ChatViewState {
-  // Currently selected agent session for chat
-  activeSession: string | null;
+  // Currently selected team for group chat
+  activeTeam: string | null;
+
+  // Optional filter to show only one agent's messages within team chat
+  agentFilter: string | null;
 
   // Actions
-  setActiveChat: (session: string | null) => void;
+  setActiveTeam: (team: string | null) => void;
+  setAgentFilter: (agent: string | null) => void;
   clearActiveChat: () => void;
 }
 
 export const useChatViewStore = create<ChatViewState>((set) => ({
-  activeSession: null,
+  activeTeam: null,
+  agentFilter: null,
 
-  setActiveChat: (session) => set({ activeSession: session }),
+  setActiveTeam: (team) => set({ activeTeam: team, agentFilter: null }),
 
-  clearActiveChat: () => set({ activeSession: null }),
+  setAgentFilter: (agent) => set({ agentFilter: agent }),
+
+  clearActiveChat: () => set({ activeTeam: null, agentFilter: null }),
 }));

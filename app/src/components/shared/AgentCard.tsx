@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
 import { Terminal, Play, Trash2, MessageSquare, Send, X, FileEdit, Save } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
@@ -8,7 +9,7 @@ import { useToastStore } from '@/store/toastStore';
 import { useTerminalStore } from '@/store/terminalStore';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { AGENT_DESCRIPTIONS } from '@/types';
-import { getAgentDisplayNameForUI } from '@/lib/agentIdentity';
+import { getAgentDisplayNameForUI, isRalphSession, parseRalphSession } from '@/lib/agentIdentity';
 import type { AgentStatus as AgentStatusType } from '@/types';
 
 interface AgentCardProps {
@@ -24,11 +25,14 @@ interface AgentCardProps {
   /** Disabled state */
   disabled?: boolean;
 
-  /** Instance identifier for spawned agents (e.g., "2" for agent-ana-2, "ziggy" for agent-ralph-ziggy) */
-  instanceId?: string;
+  /** Ralph name from session (e.g., "ziggy" from agent-ralph-ziggy). Team agents don't use this. */
+  ralphName?: string;
 
   /** Hide project label (used when inside TeamCard) */
   hideProject?: boolean;
+
+  /** Show workflow-active highlighting (pulse ring) */
+  isWorkflowActive?: boolean;
 }
 
 export const AgentCard: React.FC<AgentCardProps> = ({
@@ -36,8 +40,9 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   variant = 'lifecycle',
   showActions = true,
   disabled = false,
-  instanceId,
+  ralphName,
   hideProject = false,
+  isWorkflowActive = false,
 }) => {
   const { spawnAgent, startAgent, killInstance } = useAgentStore();
   const { error: showError, success: showSuccess } = useToastStore();
@@ -57,13 +62,13 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   // Check if this is a free agent (Ralph) vs team agent
   // Ralph sessions: agent-ralph-{name}
   // Team agent sessions: agent-{team}-{name}
-  const isRalphAgent = agent.name === 'ralph' || agent.session.match(/^agent-ralph-[a-z0-9]+$/) !== null;
+  const isRalphAgent = agent.name === 'ralph' || isRalphSession(agent.session);
 
-  // Team agents have the format agent-{team}-{name} (no instance suffix since they're single-instance)
-  const isPrimarySession = !isRalphAgent;
-
-  // Get visual display name (ralph shows as random fun name, others show normally)
-  const displayName = getAgentDisplayNameForUI(agent.name, instanceId, isPrimarySession);
+  // Get visual display name
+  // For Ralph: use the name from session (e.g., "ziggy" -> "Ziggy")
+  // For team agents: capitalize the name (e.g., "ana" -> "Ana")
+  const effectiveRalphName = ralphName || (isRalphAgent ? parseRalphSession(agent.session) : undefined);
+  const displayName = getAgentDisplayNameForUI(agent.name, effectiveRalphName);
 
   // Get agent description from team config (if available)
   const description = AGENT_DESCRIPTIONS[agent.name] || agent.name;
@@ -159,7 +164,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
 
     setContextMenu({
       x: e.clientX,
-      y: e.clientY - 120
+      y: e.clientY
     });
   };
 
@@ -284,6 +289,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
           ${isProcessing ? 'opacity-50' : ''}
           ${disabled ? 'cursor-not-allowed opacity-60' : ''}
           ${agent.active ? 'glass-active' : 'opacity-80 hover:opacity-100'}
+          ${isWorkflowActive ? 'ring-2 ring-primary/60 ring-offset-2 ring-offset-background animate-pulse' : ''}
         `}
         onClick={isClickable ? (e) => handleCardClick(e) : undefined}
         onKeyDown={isClickable ? handleKeyDown : undefined}
@@ -352,8 +358,8 @@ export const AgentCard: React.FC<AgentCardProps> = ({
 
       </Card>
 
-      {/* Context menu dropdown - rendered completely outside Card */}
-      {contextMenu && (
+      {/* Context menu dropdown - rendered via portal to bypass CSS containment issues */}
+      {contextMenu && createPortal(
         <div
           ref={contextMenuRef}
           className="fixed z-50 bg-secondary border border-border rounded-md shadow-lg py-1 min-w-[180px]"
@@ -387,7 +393,8 @@ export const AgentCard: React.FC<AgentCardProps> = ({
               Kill Agent
             </button>
           )}
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Message dialog */}

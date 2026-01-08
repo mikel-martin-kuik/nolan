@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { invoke } from '@tauri-apps/api/core';
 import { useTeamStore } from '../../store/teamStore';
 import { useToastStore } from '../../store/toastStore';
@@ -187,37 +188,6 @@ export const TeamsPanel: React.FC = () => {
             )}
           </div>
 
-          {/* Context Menu - Positioned like AgentCard */}
-          {contextMenuTeam && contextMenuPos && (
-            <div
-              ref={contextMenuRef}
-              className="fixed z-50 bg-secondary border border-border rounded-md shadow-lg py-1 min-w-[180px]"
-              style={{
-                left: `${contextMenuPos.x}px`,
-                top: `${contextMenuPos.y}px`,
-              }}
-            >
-              <button
-                onClick={() => {
-                  handleSelectTeam(contextMenuTeam);
-                  setContextMenuTeam(null);
-                  setContextMenuPos(null);
-                }}
-                className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
-              >
-                <Edit2 className="w-4 h-4" />
-                Edit Team
-              </button>
-              <button
-                onClick={() => handleDeleteTeam(contextMenuTeam)}
-                disabled={contextMenuTeam === 'default'}
-                className="w-full px-3 py-2 text-sm flex items-center gap-2 text-red-500 hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-left"
-              >
-                <Trash2 className="w-4 h-4" />
-                Delete Team
-              </button>
-            </div>
-          )}
         </div>
 
         {/* Team Details - Flexible */}
@@ -317,6 +287,40 @@ export const TeamsPanel: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Context Menu - Rendered via portal to bypass CSS containment issues */}
+      {contextMenuTeam && contextMenuPos && createPortal(
+        <div
+          ref={contextMenuRef}
+          className="fixed z-50 bg-secondary border border-border rounded-md shadow-lg py-1 min-w-[180px]"
+          style={{
+            left: `${contextMenuPos.x}px`,
+            top: `${contextMenuPos.y}px`,
+          }}
+        >
+          <button
+            onClick={() => {
+              handleSelectTeam(contextMenuTeam);
+              setIsEditing(true);
+              setContextMenuTeam(null);
+              setContextMenuPos(null);
+            }}
+            className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
+          >
+            <Edit2 className="w-4 h-4" />
+            Edit Team
+          </button>
+          <button
+            onClick={() => handleDeleteTeam(contextMenuTeam)}
+            disabled={contextMenuTeam === 'default'}
+            className="w-full px-3 py-2 text-sm flex items-center gap-2 text-red-500 hover:bg-accent disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-left"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete Team
+          </button>
+        </div>,
+        document.body
+      )}
     </div>
   );
 };

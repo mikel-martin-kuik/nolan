@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Home, FolderOpen, DollarSign, MessageCircle, Users, FileUser, Clock } from 'lucide-react';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { listen } from '@tauri-apps/api/event';
-import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@/lib/events';
+import { invoke, isBrowserMode } from '@/lib/api';
 import { queryClient } from './lib/queryClient';
 import { ThemeProvider } from './lib/theme';
 import { AppErrorBoundary } from './components/shared/AppErrorBoundary';
@@ -78,10 +78,28 @@ function App() {
             ...status.free.map(a => a.session),
           ];
           if (sessions.length > 0) {
-            await invoke('load_history_for_active_sessions', {
-              activeSessions: sessions,
-              hours: 1,
-            });
+            // In browser mode, the API returns entries directly (no events)
+            // Use 24 hours to load more context
+            const historyHours = isBrowserMode() ? 24 : 1;
+            if (isBrowserMode()) {
+              const entries = await invoke<HistoryEntry[]>('load_history_for_active_sessions', {
+                activeSessions: sessions,
+                hours: historyHours,
+              });
+              // Add entries that have a tmux_session
+              console.log(`[browser] Loaded ${entries.length} history entries for ${sessions.length} sessions`);
+              entries.forEach(entry => {
+                if (entry.tmux_session) {
+                  addEntry(entry);
+                }
+              });
+            } else {
+              // In Tauri mode, entries are emitted via events
+              await invoke('load_history_for_active_sessions', {
+                activeSessions: sessions,
+                hours: historyHours,
+              });
+            }
           }
         } catch (err) {
           console.error('Failed to load history for active sessions:', err);

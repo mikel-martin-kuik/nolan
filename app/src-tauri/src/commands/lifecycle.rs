@@ -135,7 +135,7 @@ fn get_team_active_project_file(team_name: &str) -> Result<std::path::PathBuf, S
 }
 
 /// Register a session in the session registry for history lookup
-fn register_session(tmux_session: &str, agent: &str, agent_dir: &str, team: &str) -> Result<(), String> {
+pub fn register_session(tmux_session: &str, agent: &str, agent_dir: &str, team: &str) -> Result<(), String> {
     use std::fs::{OpenOptions, create_dir_all};
     use std::io::Write;
 
@@ -173,7 +173,7 @@ fn register_session(tmux_session: &str, agent: &str, agent_dir: &str, team: &str
 }
 
 /// Default models for each agent (loaded from agent.json in agent directory)
-fn get_default_model(agent: &str) -> String {
+pub fn get_default_model(agent: &str) -> String {
     use std::fs;
     use std::path::PathBuf;
 
@@ -338,7 +338,7 @@ fn determine_needed_agents(docs_path: &std::path::Path, team: &TeamConfig) -> Op
 /// Count actual running spawned instances for an agent
 /// Ralph uses ephemeral agent-ralph-{name} format, others use agent-{name}-{number}
 /// Count running instances for a team-agent combination
-fn count_running_instances(team: &str, agent: &str) -> Result<usize, String> {
+pub fn count_running_instances(team: &str, agent: &str) -> Result<usize, String> {
     let sessions = crate::tmux::session::list_sessions()?;
 
     if agent == "ralph" {
@@ -357,7 +357,7 @@ fn count_running_instances(team: &str, agent: &str) -> Result<usize, String> {
 /// Find first available name from RALPH_NAMES pool
 /// Returns a memorable name like "ziggy", "nova", etc.
 /// Falls back to random alphanumeric if all 32 names are in use
-fn find_available_ralph_name() -> Result<String, String> {
+pub fn find_available_ralph_name() -> Result<String, String> {
     use crate::constants::RALPH_NAMES;
 
     let sessions = crate::tmux::session::list_sessions()?;

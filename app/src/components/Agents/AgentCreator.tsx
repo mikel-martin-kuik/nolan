@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/lib/api';
 import { useToastStore } from '../../store/toastStore';
 import {
   Select,

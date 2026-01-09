@@ -16,7 +16,7 @@ team:
     workflow_participant: true
     awaits_qa: false
   - name: dan
-    output_file: null
+    output_file: NOTES.md
     required_sections: []
     file_permissions: restricted
     workflow_participant: true
@@ -57,13 +57,3 @@ team:
       - context.md
       - asd.md
       template: ''
-  communication:
-    broadcast_groups:
-    - name: core
-      pattern: ^agent-[a-z]([a-z0-9-]*[a-z0-9])?-[a-z]+$
-      members:
-      - felix
-    - name: all_agents
-      pattern: ^agent-[a-z]([a-z0-9-]*[a-z0-9])?-[a-z]+(-[0-9]+)?$
-      members:
-      - felix

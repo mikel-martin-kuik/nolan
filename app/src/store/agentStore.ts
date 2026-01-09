@@ -1,8 +1,23 @@
 import { create } from 'zustand';
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { invoke, isBrowserMode } from '@/lib/api';
+import { listen } from '@/lib/events';
 import type { AgentStatusList, AgentName, ClaudeModel } from '../types';
 import { useToastStore } from './toastStore';
+
+// Polling interval for browser mode (status events are Tauri-only)
+const BROWSER_POLL_INTERVAL = 3000; // 3 seconds
+
+// Helper to wrap invoke with a timeout to prevent UI hangs from backend issues
+async function invokeWithTimeout<T>(
+  cmd: string,
+  args: Record<string, unknown>,
+  timeoutMs: number = 30000
+): Promise<T> {
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`Backend timeout after ${timeoutMs/1000}s - check if tmux is responsive`)), timeoutMs);
+  });
+  return Promise.race([invoke<T>(cmd, args), timeoutPromise]);
+}
 
 interface AgentStore {
   // State
@@ -12,6 +27,7 @@ interface AgentStore {
   error: string | null;
   lastUpdate: number;
   unlistenFn: (() => void) | null;
+  pollIntervalId: ReturnType<typeof setInterval> | null;
 
   // Actions
   updateStatus: () => Promise<void>;
@@ -40,6 +56,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   error: null,
   lastUpdate: 0,
   unlistenFn: null,
+  pollIntervalId: null,
 
   // Fetch and update agent status
   updateStatus: async () => {
@@ -71,13 +88,13 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     try {
       set({ loading: true, error: null });
 
-      await invoke<string>('launch_team', {
+      await invokeWithTimeout<string>('launch_team', {
         teamName,
         projectName,
         initialPrompt,
         updatedOriginalPrompt,
         followupPrompt,
-      });
+      }, 60000); // 60s timeout for launch (includes waiting for Claude to be ready)
 
       // Status will update via 'agent-status-changed' event
       set({ loading: false });
@@ -182,11 +199,25 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     const state = get();
 
     // If already listening, don't create duplicate listeners
-    if (state.unlistenFn) {
+    if (state.unlistenFn || state.pollIntervalId) {
       return;
     }
 
-    // Listen for agent status changes from backend
+    // In browser mode, use polling since WebSocket events aren't available
+    if (isBrowserMode()) {
+      // Initial fetch
+      await get().updateStatus();
+
+      // Set up polling interval
+      const pollId = setInterval(() => {
+        get().updateStatus();
+      }, BROWSER_POLL_INTERVAL);
+
+      set({ pollIntervalId: pollId });
+      return;
+    }
+
+    // In Tauri mode, listen for agent status changes from backend
     const unlisten = await listen<AgentStatusList>('agent-status-changed', (event) => {
       set({
         teamAgents: event.payload.team,
@@ -198,12 +229,16 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     set({ unlistenFn: unlisten });
   },
 
-  // Cleanup event listeners
+  // Cleanup event listeners and polling
   cleanup: () => {
     const state = get();
     if (state.unlistenFn) {
       state.unlistenFn();
       set({ unlistenFn: null });
+    }
+    if (state.pollIntervalId) {
+      clearInterval(state.pollIntervalId);
+      set({ pollIntervalId: null });
     }
   },
 }));

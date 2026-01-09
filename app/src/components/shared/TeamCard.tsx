@@ -1,7 +1,7 @@
 import React from 'react';
 import { ArrowDown, ArrowRight, Play, XCircle, LayoutGrid, ChevronRight, ChevronDown } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/lib/api';
 import { Card } from '@/components/ui/card';
 import { Tooltip } from '@/components/ui/tooltip';
 import { AgentCard } from './AgentCard';
@@ -90,10 +90,20 @@ export const TeamCard: React.FC<TeamCardProps> = ({
     : null;
 
   const workflowSteps = getWorkflowSteps(config ?? null);
-  const stepCompletion = workflowSteps.map(step => ({
-    ...step,
-    complete: currentProjectInfo?.existing_files.some(f => f.includes(step.key)) ?? false,
-  }));
+  // Use file_completions (HANDOFF markers) for accurate completion status
+  // Special case: "close" step checks project status instead of file
+  const stepCompletion = workflowSteps.map(step => {
+    if (step.key === 'close') {
+      return { ...step, complete: currentProjectInfo?.status === 'complete' };
+    }
+    const completion = currentProjectInfo?.file_completions.find(
+      f => f.file === `${step.key}.md` || f.file === step.key
+    );
+    return {
+      ...step,
+      complete: completion?.completed ?? false,
+    };
+  });
 
   const completedCount = stepCompletion.filter(s => s.complete).length;
 
@@ -137,14 +147,18 @@ export const TeamCard: React.FC<TeamCardProps> = ({
 
   const arrowStates = getArrowStates();
 
-  // Vertical arrow state: completed if context.md exists and first agent output exists
+  // Vertical arrow state: completed if first workflow phase is complete
+  // This represents the coordinator handing off to the first workflow agent
   const verticalArrowState: ArrowState = (() => {
     if (!teamProject || !currentProjectInfo) return 'pending';
-    const contextComplete = stepCompletion.find(s => s.key === 'context')?.complete ?? false;
-    if (!contextComplete) return 'pending';
-    // Context exists, so coordinator has handed off - this arrow is "completed" or "current"
-    const firstAgentComplete = arrowStates.length > 0 ? arrowStates[0] === 'completed' : false;
-    return contextComplete ? (firstAgentComplete ? 'completed' : 'current') : 'pending';
+    // Check if the first phase output exists (coordinator has handed off)
+    const firstPhaseComplete = stepCompletion.length > 0 && stepCompletion[0].complete;
+    if (!firstPhaseComplete) {
+      // Check if any agent is working (workflow has started)
+      const anyInProgress = arrowStates.some(s => s === 'current');
+      return anyInProgress ? 'current' : 'pending';
+    }
+    return 'completed';
   })();
 
   // Helper function to get arrow classes based on state

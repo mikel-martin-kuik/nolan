@@ -91,29 +91,25 @@ function hasFileExists(files: string[] | FileCompletion[], fileKey: WorkflowFile
  * Determine the current workflow phase based on completed files (HANDOFF markers).
  *
  * Dynamic phase progression based on team config:
- *   0: No files completed (need context.md)
+ *   0: No phases completed
  *   1..N: Each phase completed in order from team.workflow.phases
- *   N+1: All phases complete
+ *   N: All phases complete
  *
  * Note: Completion is determined by HANDOFF markers, not just file existence.
+ * Phase files are defined entirely by team config - no hardcoded files.
  */
 function getCurrentPhase(files: string[] | FileCompletion[], team: TeamConfig | null): number {
-  // First check if context is complete (prerequisite for all phases)
-  if (!hasFile(files, 'context')) {
-    return 0;
-  }
-
   // Validate team config exists
   if (!team) {
-    console.warn('getCurrentPhase: team config is null, defaulting to phase 1');
-    return 1;
+    console.warn('getCurrentPhase: team config is null, defaulting to phase 0');
+    return 0;
   }
 
   // Get phases from team config
   const phases = getWorkflowPhases(team);
   if (phases.length === 0) {
-    // Fallback for no phases - return 1 if context exists
-    return 1;
+    // No phases defined - return 0
+    return 0;
   }
 
   // Count completed phases by checking each phase's output file
@@ -127,8 +123,7 @@ function getCurrentPhase(files: string[] | FileCompletion[], team: TeamConfig | 
     }
   }
 
-  // Phase 0 = no context, Phase 1 = context done, Phase 2+ = phases completed
-  return completedPhases + 1;
+  return completedPhases;
 }
 
 /**

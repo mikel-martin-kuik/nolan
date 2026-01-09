@@ -1,8 +1,8 @@
-import React, { memo, useRef, useEffect, useState, useCallback } from 'react';
-import { ArrowDown } from 'lucide-react';
+import React, { memo, useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import { ArrowDown, MessageSquare, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { HistoryEntry } from '../../types';
-import { useMessageClassifier, isWaitingForInput } from './useMessageClassifier';
+import { useMessageClassifier, isWaitingForInput, isWarmupMessage } from './useMessageClassifier';
 import { ChatMessage } from './ChatMessage';
 import { CollapsedActivity } from './CollapsedActivity';
 import { ChatActivityIndicator } from './ChatActivityIndicator';
@@ -18,6 +18,78 @@ function debounce<T extends (...args: Parameters<T>) => void>(
     timeoutId = setTimeout(() => fn(...args), delay);
   };
 }
+
+// Helper to extract display text from message (removes MSG_ID prefix)
+function getDisplayText(message: string): string {
+  const msgMatch = message.match(/^MSG_([A-Z_]+)_[a-f0-9]+:\s*(.*)/s);
+  return msgMatch ? msgMatch[2] : message;
+}
+
+// Helper to truncate text with ellipsis
+function truncateText(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return text.substring(0, maxLength).trim() + '...';
+}
+
+// Component for pinned user messages summary
+interface PinnedUserMessagesProps {
+  firstMessage: HistoryEntry | null;
+  lastMessage: HistoryEntry | null;
+}
+
+const PinnedUserMessages: React.FC<PinnedUserMessagesProps> = memo(({ firstMessage, lastMessage }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  if (!firstMessage) return null;
+
+  const isSameMessage = firstMessage === lastMessage || !lastMessage;
+  const firstText = getDisplayText(firstMessage.message);
+  const lastText = lastMessage ? getDisplayText(lastMessage.message) : '';
+
+  return (
+    <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border/50 px-4 py-2">
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-start gap-2 text-left hover:bg-secondary/30 rounded-lg p-2 -m-2 transition-colors"
+      >
+        <MessageSquare className="w-4 h-4 text-muted-foreground flex-shrink-0 mt-0.5" />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xs font-medium text-muted-foreground">Context</span>
+            {isExpanded ? (
+              <ChevronUp className="w-3 h-3 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="w-3 h-3 text-muted-foreground" />
+            )}
+          </div>
+          {isExpanded ? (
+            <div className="space-y-2">
+              <div>
+                <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wider">First</span>
+                <p className="text-sm text-foreground whitespace-pre-wrap">{firstText}</p>
+              </div>
+              {!isSameMessage && (
+                <div>
+                  <span className="text-[10px] text-muted-foreground/70 uppercase tracking-wider">Latest</span>
+                  <p className="text-sm text-foreground whitespace-pre-wrap">{lastText}</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-foreground truncate">
+              {truncateText(firstText, 100)}
+              {!isSameMessage && (
+                <span className="text-muted-foreground"> ... {truncateText(lastText, 60)}</span>
+              )}
+            </p>
+          )}
+        </div>
+      </button>
+    </div>
+  );
+});
+
+PinnedUserMessages.displayName = 'PinnedUserMessages';
 
 interface ChatMessageListProps {
   entries: HistoryEntry[];
@@ -45,6 +117,23 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = memo(({
 
   // Check if waiting for input
   const waitingForInput = isWaitingForInput(entries, isActive);
+
+  // Extract first and last user messages for pinned context (excluding warmup messages)
+  const { firstUserMessage, lastUserMessage } = useMemo(() => {
+    const userMessages = entries.filter(e =>
+      e.entry_type === 'user' &&
+      e.message &&
+      e.message.trim().length > 0 &&
+      !isWarmupMessage(e.message)
+    );
+    if (userMessages.length === 0) {
+      return { firstUserMessage: null, lastUserMessage: null };
+    }
+    return {
+      firstUserMessage: userMessages[0],
+      lastUserMessage: userMessages.length > 1 ? userMessages[userMessages.length - 1] : null,
+    };
+  }, [entries]);
 
   // Get last tool name for activity indicator
   const lastToolEntry = [...entries].reverse().find(e => e.entry_type === 'tool_use');
@@ -86,11 +175,17 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = memo(({
   const lastPrimaryIdx = primaryMessages.length - 1;
 
   return (
-    <div className="relative flex-1 overflow-hidden">
+    <div className="relative flex-1 overflow-hidden flex flex-col">
+      {/* Pinned user messages context */}
+      <PinnedUserMessages
+        firstMessage={firstUserMessage}
+        lastMessage={lastUserMessage}
+      />
+
       <div
         ref={containerRef}
         onScroll={handleScroll}
-        className="h-full overflow-y-auto px-4 py-4 space-y-4"
+        className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
       >
         {groups.length === 0 ? (
           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">

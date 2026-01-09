@@ -30,7 +30,6 @@ export interface TeamConfig {
     version?: string;
     agents: AgentConfig[];
     workflow: WorkflowConfig;
-    communication: CommunicationConfig;
   };
 }
 
@@ -58,14 +57,22 @@ export interface PhaseConfig {
   template?: string;
 }
 
-export interface CommunicationConfig {
-  broadcast_groups: BroadcastGroup[];
+// Department grouping types
+export interface Department {
+  name: string;
+  order: number;
+  teams: string[];
 }
 
-export interface BroadcastGroup {
+export interface DepartmentsConfig {
+  departments: Department[];
+}
+
+export interface DepartmentGroup {
   name: string;
-  pattern: string;
-  members: string[];
+  order: number;
+  teams: string[];
+  isOther: boolean;
 }
 
 // Dynamic agent metadata (populated from agent.json files at runtime)
@@ -163,10 +170,10 @@ export type TurnCategory =
   | 'not_involved';    // Dan, Ralph, or not yet their phase
 
 /**
- * Workflow files in order of execution
+ * Workflow file type - now dynamic based on team config
+ * @deprecated Use team config to get workflow files instead of this hardcoded list
  */
-export const WORKFLOW_FILES = ['context', 'research', 'plan', 'plan-review', 'progress', 'implementation-audit'] as const;
-export type WorkflowFile = typeof WORKFLOW_FILES[number];
+export type WorkflowFile = string;
 
 /**
  * Workflow phase definition
@@ -316,8 +323,8 @@ export interface WorkflowStep {
 
 /**
  * Get workflow steps for progress tracking from team config
- * Returns ordered list of steps: context → phase outputs → close
- * Note: Coordinator file exists throughout, but "close" is the final action
+ * Returns ordered list of steps: phase outputs → close
+ * Note: Steps are derived entirely from team workflow phases - no hardcoded files
  * Requires team config - throws if null
  */
 export function getWorkflowSteps(team: TeamConfig | null): WorkflowStep[] {
@@ -327,10 +334,7 @@ export function getWorkflowSteps(team: TeamConfig | null): WorkflowStep[] {
 
   const steps: WorkflowStep[] = [];
 
-  // Always start with context (prerequisite for first phase)
-  steps.push({ key: 'context', label: 'Context' });
-
-  // Add each phase's output file
+  // Add each phase's output file (team defines its own workflow)
   for (const phase of team.team.workflow.phases) {
     const fileKey = phase.output.replace(/\.md$/, '');
     steps.push({
@@ -352,7 +356,7 @@ export function getWorkflowSteps(team: TeamConfig | null): WorkflowStep[] {
 
 /**
  * Get file order mapping for sorting project files
- * Order: prompt -> coordinator file -> context -> phase outputs
+ * Order: prompt -> coordinator file -> phase outputs (in workflow order)
  * (Coordinator file is created early, even though it's closed last)
  * Requires team config - throws if null
  */
@@ -373,14 +377,11 @@ export function getFileOrder(team: TeamConfig | null): Record<string, number> {
     order[coordKey] = 1;
   }
 
-  // context file at index 2
-  order['context'] = 2;
-
-  // Then each phase output
+  // Then each phase output in workflow order
   team.team.workflow.phases.forEach((phase, index) => {
     const fileKey = phase.output.replace(/\.md$/, '');
     if (order[fileKey] === undefined) {
-      order[fileKey] = index + 3;
+      order[fileKey] = index + 2;
     }
   });
 

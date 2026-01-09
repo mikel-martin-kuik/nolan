@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { AlertCircle, CheckCircle, Circle, Send, Loader2 } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/lib/api';
 import { cn } from '../../lib/utils';
 import { useTeamStore } from '../../store/teamStore';
 

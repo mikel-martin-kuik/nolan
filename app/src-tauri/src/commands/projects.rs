@@ -23,16 +23,15 @@ pub enum ProjectStatus {
 /// Get expected workflow files from team config
 /// Returns: (all_expected_files, workflow_files_with_handoff_tracking)
 /// Requires team config - no fallback
+/// Note: Only includes files defined in team workflow phases, not hardcoded files
 fn get_expected_files_from_config(config: &TeamConfig) -> (Vec<String>, Vec<String>) {
     let mut expected = Vec::new();
     let mut workflow = Vec::new();
 
-    // Always include prompt.md and context.md
+    // Always include prompt.md (user input)
     expected.push("prompt.md".to_string());
-    expected.push("context.md".to_string());
-    workflow.push("context.md".to_string());
 
-    // Add phase outputs from workflow
+    // Add phase outputs from workflow (team defines its own files)
     for phase in &config.team.workflow.phases {
         let output = if phase.output.ends_with(".md") {
             phase.output.clone()
@@ -440,7 +439,7 @@ pub async fn list_project_files(project_name: String) -> Result<Vec<ProjectFile>
         }
     }
 
-    // Sort: coordinator file first, context.md second, placeholders last, then alphabetically
+    // Sort: coordinator file first, placeholders last, then alphabetically
     files.sort_by(|a, b| {
         // Placeholders go last
         if a.is_placeholder && !b.is_placeholder {
@@ -453,10 +452,6 @@ pub async fn list_project_files(project_name: String) -> Result<Vec<ProjectFile>
         if a.name == coordinator_file {
             std::cmp::Ordering::Less
         } else if b.name == coordinator_file {
-            std::cmp::Ordering::Greater
-        } else if a.name == "context.md" {
-            std::cmp::Ordering::Less
-        } else if b.name == "context.md" {
             std::cmp::Ordering::Greater
         } else {
             a.name.cmp(&b.name)

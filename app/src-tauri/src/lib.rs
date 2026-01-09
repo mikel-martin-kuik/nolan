@@ -1,4 +1,5 @@
 // Module declarations
+pub mod api;
 pub mod commands;
 pub mod config;
 pub mod constants;
@@ -31,6 +32,18 @@ pub fn run() {
         eprintln!("Warning: Failed to initialize Cronos scheduler: {}", e);
         // Non-fatal - cronos features will be unavailable
     }
+
+    // Start HTTP API server in background
+    // Port configurable via NOLAN_API_PORT environment variable (default: 3030)
+    let api_port: u16 = std::env::var("NOLAN_API_PORT")
+        .ok()
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(3030);
+
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().expect("Failed to create API runtime");
+        rt.block_on(api::start_server(api_port));
+    });
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -91,6 +104,8 @@ pub fn run() {
             commands::teams::list_teams,
             commands::teams::get_project_team,
             commands::teams::set_project_team,
+            commands::teams::get_departments_config,
+            commands::teams::save_departments_config,
             // Agents commands
             commands::agents::list_agent_directories,
             commands::agents::create_agent_directory,

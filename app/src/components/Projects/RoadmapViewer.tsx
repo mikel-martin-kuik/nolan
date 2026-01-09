@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/lib/api';
 import { MessageRenderer } from '../Sessions/MessageRenderer';
 import {
   Compass, RefreshCw, ArrowLeft, ChevronRight, ChevronDown,

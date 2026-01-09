@@ -1,4 +1,5 @@
 pub mod lifecycle;
+pub mod lifecycle_core;
 pub mod communicator;
 pub mod history;
 pub mod projects;

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/lib/api';
 import type { TeamConfig, AgentDirectoryInfo } from '../types';
 import { updateAgentDescriptions } from '../types';
 

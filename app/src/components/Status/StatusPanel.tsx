@@ -3,6 +3,7 @@ import { useAgentStore } from '../../store/agentStore';
 import { useToastStore } from '../../store/toastStore';
 import { useTeamStore } from '../../store/teamStore';
 import { useCollapsedTeamsStore } from '../../store/collapsedTeamsStore';
+import { useDepartmentStore } from '../../store/departmentStore';
 import { AgentCard } from '../shared/AgentCard';
 import { TeamCard } from '../shared/TeamCard';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
@@ -10,8 +11,8 @@ import { ProjectSelectModal, LaunchParams } from '../shared/ProjectSelectModal';
 import { Tooltip } from '../ui/tooltip';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
-import { Users, Plus, XCircle, LayoutGrid } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
+import { Users, Plus, XCircle, LayoutGrid, ChevronDown, ChevronRight } from 'lucide-react';
+import { invoke } from '@/lib/api';
 import type { AgentName, ClaudeModel, TeamConfig } from '@/types';
 import { getRalphDisplayName, parseRalphSession } from '@/lib/agentIdentity';
 import { getTeamMembers } from '@/types';
@@ -32,6 +33,7 @@ export const StatusPanel: React.FC = () => {
   } = useAgentStore();
   const { error: showError } = useToastStore();
   const { currentTeam, availableTeams, teamConfigs, loadAvailableTeams, loadAllTeams } = useTeamStore();
+  const { loadDepartments, collapsedDepartments, toggleDepartmentCollapsed, getGroupedTeams } = useDepartmentStore();
 
   // Get team member names from team config for dialog display
   const teamMemberNames = useMemo(() => {
@@ -57,10 +59,8 @@ export const StatusPanel: React.FC = () => {
   const { collapsedTeams, toggleCollapsed } = useCollapsedTeamsStore();
   const collapsedTeamsSet = useMemo(() => new Set(collapsedTeams), [collapsedTeams]);
 
-  // Sort teams alphabetically
-  const sortedTeams = useMemo(() => {
-    return [...availableTeams].sort((a, b) => a.localeCompare(b));
-  }, [availableTeams]);
+  // Get teams grouped by department
+  const departmentGroups = getGroupedTeams(availableTeams);
 
   // Get visual display name for ralph (persisted fun name)
   const ralphDisplayName = getRalphDisplayName();
@@ -80,14 +80,15 @@ export const StatusPanel: React.FC = () => {
     };
   }, [updateStatus, setupEventListeners]);
 
-  // Load all teams on mount
+  // Load all teams and departments on mount
   useEffect(() => {
     const initTeams = async () => {
       await loadAvailableTeams();
       await loadAllTeams();
+      await loadDepartments();
     };
     initTeams();
-  }, [loadAvailableTeams, loadAllTeams]);
+  }, [loadAvailableTeams, loadAllTeams, loadDepartments]);
 
   // Get agents for a specific team
   const getAgentsForTeam = useCallback((teamConfig: TeamConfig) => {
@@ -119,10 +120,19 @@ export const StatusPanel: React.FC = () => {
     // Store the target team for the launch operation
     setTargetTeam(teamName);
 
-    // Fetch projects before showing modal
+    // Show modal immediately, fetch projects in background
+    setShowProjectSelectModal(true);
     setProjectsLoading(true);
+
     try {
-      const projectList = await invoke<ProjectInfo[]>('list_projects');
+      // Add timeout to prevent UI hang if backend is unresponsive
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('Backend timeout')), 10000);
+      });
+      const projectList = await Promise.race([
+        invoke<ProjectInfo[]>('list_projects'),
+        timeoutPromise
+      ]);
       setProjects(projectList);
     } catch (error) {
       console.error('Failed to fetch projects:', error);
@@ -130,7 +140,6 @@ export const StatusPanel: React.FC = () => {
     } finally {
       setProjectsLoading(false);
     }
-    setShowProjectSelectModal(true);
   }, []);
 
   const handleProjectLaunch = useCallback(async (params: LaunchParams) => {
@@ -303,28 +312,59 @@ export const StatusPanel: React.FC = () => {
       <div className="w-full h-full flex flex-col">
         {/* Teams List (scrollable area) */}
         <div className="flex-1 min-h-0 overflow-auto">
-          {/* Team List - Alphabetically sorted */}
-          <div className="space-y-3">
-            {sortedTeams.map(teamName => {
-              const teamConfig = teamConfigs.get(teamName);
-              if (!teamConfig) return null;
-
-              const teamAgentsList = getAgentsForTeam(teamConfig);
+          {/* Team List - Grouped by Department */}
+          <div className="space-y-4">
+            {departmentGroups.map((group) => {
+              const isDeptCollapsed = collapsedDepartments.includes(group.name);
 
               return (
-                <div key={teamName}>
-                  <TeamCard
-                    teamName={teamConfig.team.name || teamName}
-                    teamConfig={teamConfig}
-                    agents={teamAgentsList}
-                    collapsed={collapsedTeamsSet.has(teamName)}
-                    onToggleCollapse={() => toggleCollapsed(teamName)}
-                    showActions={true}
-                    loading={loading}
-                    onLaunch={() => handleLaunchTeamClick(teamName)}
-                    onKill={() => handleKillTeamClick(teamName)}
-                    onShowTerminals={() => handleShowTerminals(teamName)}
-                  />
+                <div key={group.name}>
+                  {/* Department Header */}
+                  <button
+                    onClick={() => toggleDepartmentCollapsed(group.name)}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-secondary/30 rounded-lg transition-colors mb-2"
+                  >
+                    {isDeptCollapsed ? (
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                    )}
+                    <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+                      {group.name}
+                    </span>
+                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5 ml-auto">
+                      {group.teams.length}
+                    </Badge>
+                  </button>
+
+                  {/* Team Cards (collapsible) */}
+                  {!isDeptCollapsed && (
+                    <div className="space-y-3 pl-2">
+                      {group.teams.map(teamName => {
+                        const teamConfig = teamConfigs.get(teamName);
+                        if (!teamConfig) return null;
+
+                        const teamAgentsList = getAgentsForTeam(teamConfig);
+
+                        return (
+                          <div key={teamName}>
+                            <TeamCard
+                              teamName={teamConfig.team.name || teamName}
+                              teamConfig={teamConfig}
+                              agents={teamAgentsList}
+                              collapsed={collapsedTeamsSet.has(teamName)}
+                              onToggleCollapse={() => toggleCollapsed(teamName)}
+                              showActions={true}
+                              loading={loading}
+                              onLaunch={() => handleLaunchTeamClick(teamName)}
+                              onKill={() => handleKillTeamClick(teamName)}
+                              onShowTerminals={() => handleShowTerminals(teamName)}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}

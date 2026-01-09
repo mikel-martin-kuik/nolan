@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
-use crate::config::TeamConfig;
+use crate::config::{TeamConfig, DepartmentsConfig};
 
 /// Get team configuration by name
 #[tauri::command]
@@ -69,7 +69,10 @@ pub async fn list_teams() -> Result<Vec<String>, String> {
 
         if path.extension().and_then(|s| s.to_str()) == Some("yaml") {
             if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-                teams.push(name.to_string());
+                // Exclude departments.yaml from team list
+                if name != "departments" {
+                    teams.push(name.to_string());
+                }
             }
         }
     }
@@ -225,4 +228,17 @@ pub async fn delete_team(team_name: String) -> Result<(), String> {
         .map_err(|e| format!("Failed to delete team config file: {}", e))?;
 
     Ok(())
+}
+
+/// Get departments configuration
+/// Returns empty config if file doesn't exist (graceful fallback)
+#[tauri::command]
+pub async fn get_departments_config() -> Result<DepartmentsConfig, String> {
+    DepartmentsConfig::load()
+}
+
+/// Save departments configuration
+#[tauri::command]
+pub async fn save_departments_config(config: DepartmentsConfig) -> Result<(), String> {
+    config.save()
 }

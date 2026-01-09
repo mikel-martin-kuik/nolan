@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useRef, useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/lib/api';
 import { Clock, MessageSquareX, Eraser, Terminal } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { AgentStatus, AGENT_DESCRIPTIONS, AgentWorkflowState, AgentName, getWorkflowSteps } from '../../types';

@@ -1,6 +1,6 @@
 import { memo, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/lib/api';
 import { ChevronDown, FileText, Circle } from 'lucide-react';
 import { ProjectInfo, ProjectFile } from '@/types/projects';
 import { getWorkflowSteps, getFileOrder } from '@/types';
@@ -60,13 +60,8 @@ export const ProjectListItem = memo(function ProjectListItem({
     );
 
     if (completion) {
-      // For workflow files, check HANDOFF marker (completed flag)
-      // For context, just checking exists is fine since it's a prerequisite
-      const isComplete = step.key === 'context'
-        ? completion.exists
-        : (completion.exists && completion.completed);
-
-      return { ...step, complete: isComplete };
+      // All workflow files require HANDOFF marker to be considered complete
+      return { ...step, complete: completion.exists && completion.completed };
     }
 
     // Fallback: check existing_files with exact match

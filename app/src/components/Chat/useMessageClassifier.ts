@@ -3,6 +3,13 @@ import { HistoryEntry } from '../../types';
 import { ClassifiedMessage, MessageGroup } from './types';
 
 /**
+ * Detect if a message is a warmup message (used for model prefetching)
+ */
+export function isWarmupMessage(message: string): boolean {
+  return message?.includes('Warmup') ?? false;
+}
+
+/**
  * Detect if a message is a question or request requiring user input
  */
 export function isQuestion(message: string, toolName?: string): boolean {
@@ -30,6 +37,15 @@ export function isQuestion(message: string, toolName?: string): boolean {
  */
 function classifyEntry(entry: HistoryEntry): ClassifiedMessage {
   const { entry_type, message, tool_name } = entry;
+
+  // Warmup messages are always secondary (collapsed)
+  if (isWarmupMessage(message)) {
+    return {
+      entry,
+      priority: 'secondary',
+      isQuestion: false,
+    };
+  }
 
   // User messages are primary (visible) only if they have content
   if (entry_type === 'user') {
@@ -97,9 +113,17 @@ function classifyEntry(entry: HistoryEntry): ClassifiedMessage {
  * Generate summary for a collapsed group
  */
 function generateGroupSummary(messages: ClassifiedMessage[]): string {
-  const toolUses = messages.filter(m => m.entry.entry_type === 'tool_use');
-  const toolResults = messages.filter(m => m.entry.entry_type === 'tool_result');
-  const assistantMsgs = messages.filter(m => m.entry.entry_type === 'assistant');
+  const warmupMsgs = messages.filter(m => isWarmupMessage(m.entry.message));
+  const nonWarmupMsgs = messages.filter(m => !isWarmupMessage(m.entry.message));
+
+  // If all messages are warmup, show a simple warmup summary
+  if (warmupMsgs.length > 0 && nonWarmupMsgs.length === 0) {
+    return 'warmup';
+  }
+
+  const toolUses = nonWarmupMsgs.filter(m => m.entry.entry_type === 'tool_use');
+  const toolResults = nonWarmupMsgs.filter(m => m.entry.entry_type === 'tool_result');
+  const assistantMsgs = nonWarmupMsgs.filter(m => m.entry.entry_type === 'assistant');
 
   const parts: string[] = [];
 
@@ -128,6 +152,11 @@ function generateGroupSummary(messages: ClassifiedMessage[]): string {
 
   if (assistantMsgs.length > 0) {
     parts.push(`${assistantMsgs.length} message${assistantMsgs.length > 1 ? 's' : ''}`);
+  }
+
+  // Add warmup indicator if mixed with other content
+  if (warmupMsgs.length > 0 && nonWarmupMsgs.length > 0) {
+    parts.push('warmup');
   }
 
   return parts.join(', ') || `${messages.length} items`;

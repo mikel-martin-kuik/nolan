@@ -18,7 +18,6 @@ pub struct Team {
     pub version: Option<String>,
     pub agents: Vec<AgentConfig>,
     pub workflow: WorkflowConfig,
-    pub communication: CommunicationConfig,
 }
 
 /// Agent configuration
@@ -54,18 +53,72 @@ pub struct PhaseConfig {
     pub template: Option<String>,
 }
 
-/// Communication configuration
+/// Department configuration for grouping teams
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CommunicationConfig {
-    pub broadcast_groups: Vec<BroadcastGroup>,
+pub struct Department {
+    pub name: String,
+    pub order: i32,
+    pub teams: Vec<String>,
 }
 
-/// Broadcast group definition
+/// Root departments configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct BroadcastGroup {
-    pub name: String,
-    pub pattern: String,
-    pub members: Vec<String>,
+pub struct DepartmentsConfig {
+    pub departments: Vec<Department>,
+}
+
+impl DepartmentsConfig {
+    /// Load departments configuration from YAML file
+    /// Returns empty config if file doesn't exist (graceful fallback)
+    pub fn load() -> Result<Self, String> {
+        let nolan_root = std::env::var("NOLAN_ROOT")
+            .map_err(|_| "NOLAN_ROOT not set".to_string())?;
+
+        let config_path = PathBuf::from(nolan_root)
+            .join("teams")
+            .join("departments.yaml");
+
+        if !config_path.exists() {
+            // Return empty config for graceful fallback
+            return Ok(DepartmentsConfig { departments: vec![] });
+        }
+
+        // Check file size (1MB max) - DoS protection
+        let metadata = fs::metadata(&config_path)
+            .map_err(|e| format!("Failed to read file metadata: {}", e))?;
+
+        if metadata.len() > 1_048_576 {
+            return Err(format!("Departments config too large: {} bytes (max 1MB)", metadata.len()));
+        }
+
+        let contents = fs::read_to_string(&config_path)
+            .map_err(|e| format!("Failed to read config: {}", e))?;
+
+        serde_yaml::from_str(&contents)
+            .map_err(|e| format!("Failed to parse YAML: {}", e))
+    }
+
+    /// Save departments configuration to YAML file
+    pub fn save(&self) -> Result<(), String> {
+        let nolan_root = std::env::var("NOLAN_ROOT")
+            .map_err(|_| "NOLAN_ROOT not set".to_string())?;
+
+        let teams_dir = PathBuf::from(nolan_root).join("teams");
+
+        // Ensure teams directory exists
+        if !teams_dir.exists() {
+            fs::create_dir_all(&teams_dir)
+                .map_err(|e| format!("Failed to create teams directory: {}", e))?;
+        }
+
+        let config_path = teams_dir.join("departments.yaml");
+
+        let yaml_content = serde_yaml::to_string(self)
+            .map_err(|e| format!("Failed to serialize config: {}", e))?;
+
+        fs::write(&config_path, yaml_content)
+            .map_err(|e| format!("Failed to write config: {}", e))
+    }
 }
 
 impl TeamConfig {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/lib/api';
 import { useToastStore } from '../../store/toastStore';
 import { Save, X, Plus, Trash2, GripVertical } from 'lucide-react';
 import {
@@ -209,22 +209,6 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
           workflow: {
             coordinator,
             phases,
-          },
-          communication: {
-            broadcast_groups: [
-              {
-                // Pattern supports team-scoped sessions: agent-{team}-{name}
-                // Team pattern: [a-z]([a-z0-9-]*[a-z0-9])? supports multi-word teams like bug-bounty
-                name: 'core',
-                pattern: '^agent-[a-z]([a-z0-9-]*[a-z0-9])?-[a-z]+$',
-                members: agents.filter((a) => a.workflow_participant).map((a) => a.name),
-              },
-              {
-                name: 'all_agents',
-                pattern: '^agent-[a-z]([a-z0-9-]*[a-z0-9])?-[a-z]+(-[0-9]+)?$',
-                members: agents.map((a) => a.name),
-              },
-            ],
           },
         },
       };

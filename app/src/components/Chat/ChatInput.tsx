@@ -1,6 +1,6 @@
 import React, { memo, useState, useCallback, useRef, useEffect } from 'react';
 import { Send, Square } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/lib/api';
 import { useToastStore } from '../../store/toastStore';
 import { useTeamStore } from '../../store/teamStore';
 import { Textarea } from '@/components/ui/textarea';

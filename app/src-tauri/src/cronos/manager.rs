@@ -1,7 +1,4 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
-use tokio::sync::RwLock;
 use tokio_cron_scheduler::JobScheduler;
 
 use super::types::*;
@@ -9,7 +6,6 @@ use crate::utils::paths;
 
 pub struct CronosManager {
     scheduler: JobScheduler,
-    agents: Arc<RwLock<HashMap<String, CronAgentConfig>>>,
     cronos_root: PathBuf,
 }
 
@@ -29,7 +25,6 @@ impl CronosManager {
 
         Ok(Self {
             scheduler,
-            agents: Arc::new(RwLock::new(HashMap::new())),
             cronos_root,
         })
     }

@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/lib/api';
 import { useTeamStore } from '../../store/teamStore';
+import { useDepartmentStore } from '../../store/departmentStore';
 import { useToastStore } from '../../store/toastStore';
-import { Users, Plus, Edit2, Check, FileText, Trash2, Settings2, X, Save } from 'lucide-react';
+import { Users, Plus, Edit2, Check, FileText, Trash2, Settings2, X, Save, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -28,6 +29,7 @@ interface ContextMenuState {
 
 export const TeamsPanel: React.FC = () => {
   const { availableTeams, loadAvailableTeams, loadTeam } = useTeamStore();
+  const { departments, loadDepartments, saveDepartments, collapsedDepartments, toggleDepartmentCollapsed, getGroupedTeams } = useDepartmentStore();
   const { success, error: showError } = useToastStore();
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [teamConfig, setTeamConfig] = useState<TeamConfig | null>(null);
@@ -45,6 +47,7 @@ export const TeamsPanel: React.FC = () => {
   const [addPhaseModal, setAddPhaseModal] = useState(false);
   const [teamSettingsModal, setTeamSettingsModal] = useState(false);
   const [createTeamModal, setCreateTeamModal] = useState(false);
+  const [departmentsModal, setDepartmentsModal] = useState(false);
 
   // Edited values for modals
   const [editedAgent, setEditedAgent] = useState<AgentConfig | null>(null);
@@ -57,6 +60,10 @@ export const TeamsPanel: React.FC = () => {
   const [newTeamName, setNewTeamName] = useState('');
   const [newTeamDescription, setNewTeamDescription] = useState('');
   const [newTeamFirstAgent, setNewTeamFirstAgent] = useState('');
+
+  // Department editing state
+  const [editedDepartments, setEditedDepartments] = useState<{ name: string; order: number; teams: string[] }[]>([]);
+  const [newDepartmentName, setNewDepartmentName] = useState('');
 
   // Saving state
   const [saving, setSaving] = useState(false);
@@ -84,7 +91,11 @@ export const TeamsPanel: React.FC = () => {
   useEffect(() => {
     loadAvailableTeams();
     fetchAgentInfos();
-  }, [loadAvailableTeams, fetchAgentInfos]);
+    loadDepartments();
+  }, [loadAvailableTeams, fetchAgentInfos, loadDepartments]);
+
+  // Get teams grouped by department
+  const departmentGroups = getGroupedTeams(availableTeams);
 
   const handleSelectTeam = async (teamName: string) => {
     setSelectedTeam(teamName);
@@ -139,17 +150,9 @@ export const TeamsPanel: React.FC = () => {
               name: 'Initial Phase',
               owner: newTeamFirstAgent,
               output: 'output.md',
-              requires: ['context.md'],
+              requires: [],
               template: '',
             }],
-          },
-          communication: {
-            broadcast_groups: [
-              // Pattern supports team-scoped sessions: agent-{team}-{name}
-              // Team pattern: [a-z]([a-z0-9-]*[a-z0-9])? supports multi-word teams like bug-bounty
-              { name: 'core', pattern: '^agent-[a-z]([a-z0-9-]*[a-z0-9])?-[a-z]+$', members: [newTeamFirstAgent] },
-              { name: 'all_agents', pattern: '^agent-[a-z]([a-z0-9-]*[a-z0-9])?-[a-z]+(-[0-9]+)?$', members: [newTeamFirstAgent] },
-            ],
           },
         },
       };
@@ -468,33 +471,79 @@ export const TeamsPanel: React.FC = () => {
       <div className="flex-1 flex gap-4 overflow-hidden min-h-0">
         {/* Team List - Fixed Width */}
         <div className="w-[320px] flex flex-col flex-shrink-0 bg-card/50 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
-          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider px-4 pt-4 pb-2 flex-shrink-0">
-            Available Teams ({availableTeams.length})
-          </h2>
-          <div className="flex-1 overflow-auto px-2 pb-4 space-y-1">
-            {availableTeams.map((teamName) => (
-              <button
-                key={teamName}
-                onClick={() => handleSelectTeam(teamName)}
-                onContextMenu={(e) => openContextMenu(e, 'team', teamName)}
-                className={`w-full text-left p-2.5 rounded-lg transition-colors flex items-center gap-2 ${
-                  selectedTeam === teamName
-                    ? 'bg-primary/10 border border-primary/30 text-foreground'
-                    : 'bg-secondary/30 border border-border hover:bg-secondary/50 text-foreground'
-                }`}
-              >
-                <FileText className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                <span className="font-medium text-sm truncate">{teamName}</span>
-                {teamName === 'default' && (
-                  <Badge variant="secondary" className="ml-auto text-[10px]">
-                    Default
-                  </Badge>
-                )}
-                {selectedTeam === teamName && (
-                  <Check className="w-3.5 h-3.5 text-primary ml-auto flex-shrink-0" />
-                )}
-              </button>
-            ))}
+          <div className="flex items-center justify-between px-4 pt-4 pb-2 flex-shrink-0">
+            <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+              Available Teams ({availableTeams.length})
+            </h2>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-6 w-6"
+              onClick={() => {
+                setEditedDepartments(departments?.departments || []);
+                setNewDepartmentName('');
+                setDepartmentsModal(true);
+              }}
+              title="Configure Departments"
+            >
+              <Settings2 className="w-3.5 h-3.5 text-muted-foreground" />
+            </Button>
+          </div>
+          <div className="flex-1 overflow-auto px-2 pb-4 space-y-3">
+            {departmentGroups.map((group) => {
+              const isCollapsed = collapsedDepartments.includes(group.name);
+
+              return (
+                <div key={group.name}>
+                  {/* Department Header */}
+                  <button
+                    onClick={() => toggleDepartmentCollapsed(group.name)}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-secondary/30 rounded-lg transition-colors"
+                  >
+                    {isCollapsed ? (
+                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                    )}
+                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                      {group.name}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground/60 ml-auto">
+                      {group.teams.length}
+                    </span>
+                  </button>
+
+                  {/* Team List (collapsible) */}
+                  {!isCollapsed && (
+                    <div className="mt-1 space-y-1">
+                      {group.teams.map((teamName) => (
+                        <button
+                          key={teamName}
+                          onClick={() => handleSelectTeam(teamName)}
+                          onContextMenu={(e) => openContextMenu(e, 'team', teamName)}
+                          className={`w-full text-left p-2.5 rounded-lg transition-colors flex items-center gap-2 ${
+                            selectedTeam === teamName
+                              ? 'bg-primary/10 border border-primary/30 text-foreground'
+                              : 'bg-secondary/30 border border-border hover:bg-secondary/50 text-foreground'
+                          }`}
+                        >
+                          <FileText className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                          <span className="font-medium text-sm truncate">{teamName}</span>
+                          {teamName === 'default' && (
+                            <Badge variant="secondary" className="ml-auto text-[10px]">
+                              Default
+                            </Badge>
+                          )}
+                          {selectedTeam === teamName && (
+                            <Check className="w-3.5 h-3.5 text-primary ml-auto flex-shrink-0" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             {availableTeams.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-4">
                 No teams found. Create your first team.
@@ -791,24 +840,8 @@ export const TeamsPanel: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">Requires</label>
-                <p className="text-xs text-muted-foreground mb-2">Select outputs from earlier phases</p>
+                <p className="text-xs text-muted-foreground mb-2">Select outputs from earlier phases that this phase depends on</p>
                 <div className="space-y-2 p-3 rounded-lg bg-secondary/20 border border-border/50 max-h-32 overflow-auto">
-                  {/* context.md is always available */}
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <Checkbox
-                      checked={(editedPhase.requires || []).includes('context.md')}
-                      onCheckedChange={(checked) => {
-                        const requires = editedPhase.requires || [];
-                        setEditedPhase({
-                          ...editedPhase,
-                          requires: checked
-                            ? [...requires, 'context.md']
-                            : requires.filter(r => r !== 'context.md')
-                        });
-                      }}
-                    />
-                    <span className="text-muted-foreground font-mono text-xs">context.md</span>
-                  </label>
                   {/* Output files from EARLIER phases only (prevents circular deps) */}
                   {teamConfig?.team.workflow.phases
                     .filter((_, i) => phaseModal && i < phaseModal.index)
@@ -831,7 +864,7 @@ export const TeamsPanel: React.FC = () => {
                       </label>
                     ))}
                   {phaseModal && phaseModal.index === 0 && (
-                    <p className="text-xs text-muted-foreground/50 italic">First phase - only context.md available</p>
+                    <p className="text-xs text-muted-foreground/50 italic">First phase - no earlier phase outputs available</p>
                   )}
                 </div>
               </div>
@@ -976,24 +1009,8 @@ export const TeamsPanel: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">Requires</label>
-                <p className="text-xs text-muted-foreground mb-2">Select outputs from earlier phases</p>
+                <p className="text-xs text-muted-foreground mb-2">Select outputs from earlier phases that this phase depends on</p>
                 <div className="space-y-2 p-3 rounded-lg bg-secondary/20 border border-border/50 max-h-32 overflow-auto">
-                  {/* context.md is always available */}
-                  <label className="flex items-center gap-2 text-sm cursor-pointer">
-                    <Checkbox
-                      checked={(newPhase.requires || []).includes('context.md')}
-                      onCheckedChange={(checked) => {
-                        const requires = newPhase.requires || [];
-                        setNewPhase({
-                          ...newPhase,
-                          requires: checked
-                            ? [...requires, 'context.md']
-                            : requires.filter(r => r !== 'context.md')
-                        });
-                      }}
-                    />
-                    <span className="text-muted-foreground font-mono text-xs">context.md</span>
-                  </label>
                   {/* Output files from all existing phases (new phase goes at end) */}
                   {teamConfig?.team.workflow.phases.map((p, i) => (
                     <label key={p.output} className="flex items-center gap-2 text-sm cursor-pointer">
@@ -1014,7 +1031,7 @@ export const TeamsPanel: React.FC = () => {
                     </label>
                   ))}
                   {(!teamConfig?.team.workflow.phases || teamConfig.team.workflow.phases.length === 0) && (
-                    <p className="text-xs text-muted-foreground/50 italic">First phase - only context.md available</p>
+                    <p className="text-xs text-muted-foreground/50 italic">First phase - no earlier phase outputs available</p>
                   )}
                 </div>
               </div>
@@ -1132,6 +1149,210 @@ export const TeamsPanel: React.FC = () => {
               <Button onClick={createNewTeam} disabled={saving || !newTeamName || !newTeamFirstAgent}>
                 <Plus className="w-4 h-4 mr-1" />
                 {saving ? 'Creating...' : 'Create Team'}
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Departments Configuration Modal */}
+      {departmentsModal && createPortal(
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center" onClick={() => setDepartmentsModal(false)}>
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-border">
+              <h3 className="text-lg font-semibold text-foreground">Configure Departments</h3>
+              <Button variant="ghost" size="icon" onClick={() => setDepartmentsModal(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-auto p-6 space-y-6">
+              {/* Add New Department */}
+              <div className="flex gap-2">
+                <Input
+                  value={newDepartmentName}
+                  onChange={(e) => setNewDepartmentName(e.target.value)}
+                  placeholder="New department name..."
+                  className="flex-1"
+                />
+                <Button
+                  onClick={() => {
+                    if (!newDepartmentName.trim()) return;
+                    const maxOrder = editedDepartments.reduce((max, d) => Math.max(max, d.order), 0);
+                    setEditedDepartments([
+                      ...editedDepartments,
+                      { name: newDepartmentName.trim(), order: maxOrder + 1, teams: [] }
+                    ]);
+                    setNewDepartmentName('');
+                  }}
+                  disabled={!newDepartmentName.trim()}
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add
+                </Button>
+              </div>
+
+              {/* Department List */}
+              {editedDepartments.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  No departments configured. Add a department to organize your teams.
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {editedDepartments
+                    .sort((a, b) => a.order - b.order)
+                    .map((dept, index) => (
+                      <div key={dept.name} className="p-4 rounded-lg bg-secondary/20 border border-border">
+                        <div className="flex items-center gap-3 mb-3">
+                          {/* Order Controls */}
+                          <div className="flex flex-col gap-0.5">
+                            <button
+                              className="p-0.5 hover:bg-secondary rounded disabled:opacity-30"
+                              disabled={index === 0}
+                              onClick={() => {
+                                const sorted = [...editedDepartments].sort((a, b) => a.order - b.order);
+                                if (index > 0) {
+                                  const temp = sorted[index].order;
+                                  sorted[index].order = sorted[index - 1].order;
+                                  sorted[index - 1].order = temp;
+                                  setEditedDepartments([...sorted]);
+                                }
+                              }}
+                            >
+                              <ChevronRight className="w-3 h-3 -rotate-90" />
+                            </button>
+                            <button
+                              className="p-0.5 hover:bg-secondary rounded disabled:opacity-30"
+                              disabled={index === editedDepartments.length - 1}
+                              onClick={() => {
+                                const sorted = [...editedDepartments].sort((a, b) => a.order - b.order);
+                                if (index < sorted.length - 1) {
+                                  const temp = sorted[index].order;
+                                  sorted[index].order = sorted[index + 1].order;
+                                  sorted[index + 1].order = temp;
+                                  setEditedDepartments([...sorted]);
+                                }
+                              }}
+                            >
+                              <ChevronRight className="w-3 h-3 rotate-90" />
+                            </button>
+                          </div>
+
+                          {/* Department Name */}
+                          <Input
+                            value={dept.name}
+                            onChange={(e) => {
+                              const updated = editedDepartments.map(d =>
+                                d.order === dept.order ? { ...d, name: e.target.value } : d
+                              );
+                              setEditedDepartments(updated);
+                            }}
+                            className="flex-1 font-medium"
+                          />
+
+                          {/* Delete Button */}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => {
+                              setEditedDepartments(editedDepartments.filter(d => d.order !== dept.order));
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+
+                        {/* Team Assignment */}
+                        <div>
+                          <label className="block text-xs font-medium text-muted-foreground mb-2">
+                            Assigned Teams
+                          </label>
+                          <div className="flex flex-wrap gap-2">
+                            {availableTeams.map((teamName) => {
+                              const isAssigned = dept.teams.includes(teamName);
+                              const isAssignedElsewhere = editedDepartments.some(
+                                d => d.order !== dept.order && d.teams.includes(teamName)
+                              );
+                              return (
+                                <button
+                                  key={teamName}
+                                  onClick={() => {
+                                    if (isAssignedElsewhere) {
+                                      // Move from other department to this one
+                                      const updated = editedDepartments.map(d => ({
+                                        ...d,
+                                        teams: d.order === dept.order
+                                          ? [...d.teams, teamName]
+                                          : d.teams.filter(t => t !== teamName)
+                                      }));
+                                      setEditedDepartments(updated);
+                                    } else if (isAssigned) {
+                                      // Remove from this department
+                                      const updated = editedDepartments.map(d =>
+                                        d.order === dept.order
+                                          ? { ...d, teams: d.teams.filter(t => t !== teamName) }
+                                          : d
+                                      );
+                                      setEditedDepartments(updated);
+                                    } else {
+                                      // Add to this department
+                                      const updated = editedDepartments.map(d =>
+                                        d.order === dept.order
+                                          ? { ...d, teams: [...d.teams, teamName] }
+                                          : d
+                                      );
+                                      setEditedDepartments(updated);
+                                    }
+                                  }}
+                                  className={`px-2 py-1 text-xs rounded-md transition-colors ${
+                                    isAssigned
+                                      ? 'bg-primary/20 text-primary border border-primary/30'
+                                      : isAssignedElsewhere
+                                      ? 'bg-secondary/50 text-muted-foreground border border-border opacity-50 hover:opacity-100'
+                                      : 'bg-secondary/30 text-muted-foreground border border-border hover:border-primary/50'
+                                  }`}
+                                >
+                                  {teamName}
+                                  {isAssigned && <Check className="w-3 h-3 inline ml-1" />}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+
+              {/* Unassigned Teams Info */}
+              {editedDepartments.length > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  Teams not assigned to any department will appear in an &quot;Other&quot; section.
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2 p-6 border-t border-border">
+              <Button variant="secondary" onClick={() => setDepartmentsModal(false)}>Cancel</Button>
+              <Button
+                onClick={async () => {
+                  setSaving(true);
+                  try {
+                    await saveDepartments({ departments: editedDepartments });
+                    success('Departments saved successfully');
+                    setDepartmentsModal(false);
+                  } catch (err) {
+                    showError(`Failed to save departments: ${err}`);
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                disabled={saving}
+              >
+                <Save className="w-4 h-4 mr-1" />
+                {saving ? 'Saving...' : 'Save'}
               </Button>
             </div>
           </div>

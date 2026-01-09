@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/lib/api';
 import { ChevronDown, Search, Circle } from 'lucide-react';
 import { cn } from '../../lib/utils';
 

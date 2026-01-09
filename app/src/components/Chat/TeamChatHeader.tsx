@@ -59,55 +59,35 @@ export const TeamChatHeader: React.FC<TeamChatHeaderProps> = ({
   }, [showDropdown]);
 
   return (
-    <div className="px-4 py-3 border-b border-border bg-card/50 backdrop-blur-sm">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {/* Back button - visible on mobile */}
-          <button
-            onClick={onBackClick}
-            className="md:hidden p-1.5 -ml-1.5 rounded-lg text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
-            title="Back to teams"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
+    <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        {/* Back button - visible on mobile */}
+        <button
+          onClick={onBackClick}
+          className="md:hidden -ml-1 text-muted-foreground hover:text-foreground transition-colors"
+          title="Back to teams"
+        >
+          <ChevronLeft className="w-4 h-4" />
+        </button>
 
-          {/* Team avatar */}
-          <div
-            className={cn(
-              'w-10 h-10 rounded-full flex items-center justify-center',
-              teamState.isAnyAgentWorking ? 'bg-primary/20' : 'bg-muted'
-            )}
-          >
-            <Users
-              className={cn(
-                'w-5 h-5',
-                teamState.isAnyAgentWorking ? 'text-primary' : 'text-muted-foreground'
-              )}
-            />
-          </div>
-
-          <div>
-            <h3 className="font-medium flex items-center gap-2">
-              {displayTeamName}
-              {teamState.isAnyAgentWorking && (
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              )}
-            </h3>
-            <p className="text-xs text-muted-foreground">
-              {teamState.activeAgentCount} of {teamState.totalAgentCount} active
-            </p>
-          </div>
-        </div>
+        <span>{displayTeamName}</span>
+        <span className="text-muted-foreground font-normal">
+          {teamState.activeAgentCount}/{teamState.totalAgentCount}
+        </span>
+        {teamState.isAnyAgentWorking && (
+          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+        )}
+      </div>
 
         {/* Agent filter dropdown */}
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setShowDropdown(!showDropdown)}
             className={cn(
-              'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm transition-colors',
+              'flex items-center gap-1.5 px-2 rounded text-sm transition-colors',
               agentFilter
                 ? 'bg-primary/10 text-primary hover:bg-primary/20'
-                : 'bg-secondary text-muted-foreground hover:text-foreground hover:bg-secondary/80'
+                : 'text-muted-foreground hover:text-foreground'
             )}
           >
             <Filter className="w-3.5 h-3.5" />
@@ -178,7 +158,6 @@ export const TeamChatHeader: React.FC<TeamChatHeaderProps> = ({
             </button>
           )}
         </div>
-      </div>
     </div>
   );
 };

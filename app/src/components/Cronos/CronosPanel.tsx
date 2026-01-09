@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/lib/api';
 import { Plus, RefreshCw, Play, Settings, Trash2, Code, Clock, History, Wrench } from 'lucide-react';
 import { useToastStore } from '../../store/toastStore';
 import { Button } from '@/components/ui/button';

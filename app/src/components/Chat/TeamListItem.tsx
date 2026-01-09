@@ -1,14 +1,12 @@
 import React, { memo } from 'react';
-import { Users } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { cn } from '../../lib/utils';
-import type { TeamChatState } from '../../hooks/useTeamMessages';
+import { useTeamMessages } from '../../hooks/useTeamMessages';
 import type { TeamConfig } from '../../types';
 
 interface TeamListItemProps {
   teamName: string;
   teamConfig: TeamConfig | undefined;
-  teamState: TeamChatState | null;
   isSelected: boolean;
   onClick: () => void;
 }
@@ -16,10 +14,11 @@ interface TeamListItemProps {
 export const TeamListItem: React.FC<TeamListItemProps> = memo(({
   teamName,
   teamConfig,
-  teamState,
   isSelected,
   onClick,
 }) => {
+  const teamState = useTeamMessages(teamName);
+
   const description = teamConfig?.team.description || 'Team';
   const memberCount = teamConfig?.team.agents.length || 0;
   const activeCount = teamState?.activeAgentCount || 0;
@@ -53,16 +52,6 @@ export const TeamListItem: React.FC<TeamListItemProps> = memo(({
       <CardHeader className="p-2 sm:p-3 pb-1 sm:pb-2">
         <div className="flex items-center justify-between gap-1 flex-wrap">
           <CardTitle className="flex items-center gap-2 text-xs sm:text-sm">
-            {/* Team avatar */}
-            <div className={cn(
-              'w-8 h-8 rounded-full flex items-center justify-center',
-              activeCount > 0 ? 'bg-primary/20' : 'bg-muted'
-            )}>
-              <Users className={cn(
-                'w-4 h-4',
-                activeCount > 0 ? 'text-primary' : 'text-muted-foreground'
-              )} />
-            </div>
             <span className={cn(
               'truncate',
               activeCount > 0 ? 'text-foreground font-medium' : 'text-muted-foreground'
@@ -85,7 +74,7 @@ export const TeamListItem: React.FC<TeamListItemProps> = memo(({
         </div>
 
         <CardDescription className={cn(
-          'text-[10px] sm:text-xs line-clamp-1 ml-10',
+          'text-[10px] sm:text-xs line-clamp-1',
           activeCount > 0 ? 'text-muted-foreground' : 'text-muted-foreground/60'
         )}>
           {description}
@@ -94,7 +83,7 @@ export const TeamListItem: React.FC<TeamListItemProps> = memo(({
 
       <CardContent className="p-2 sm:p-3 pt-0 text-[10px] sm:text-xs">
         {/* Last message preview */}
-        <div className="min-h-[16px] ml-10">
+        <div className="min-h-[16px]">
           {lastMessagePreview ? (
             <p className="text-[10px] text-muted-foreground/70 truncate">
               {lastMessagePreview}

@@ -1,22 +1,16 @@
 import { useEffect, useState, useMemo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/lib/api';
 import { MessageRenderer } from '../Sessions/MessageRenderer';
 import { FileText, RefreshCw, FolderOpen, Pencil, X, Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
 
-// File type metadata - minimal
-// Note: Coordinator file is determined by team config, not hardcoded here
-// Phase output files are also determined by team config
+// File type metadata - minimal fallback for display purposes
+// Note: Actual workflow files and owners are determined by team config
+// This is only used for display hints when team config is not available
 const FILE_META: Record<string, { owner: string; label: string }> = {
   'prompt': { owner: 'PO', label: 'Prompt' },
-  'context': { owner: 'PO', label: 'Context' },
-  'research': { owner: 'Ana', label: 'Research' },
-  'plan': { owner: 'Bill', label: 'Plan' },
-  'qa-review': { owner: 'Enzo', label: 'QA' },
-  'progress': { owner: 'Carl', label: 'Progress' },
-  'log': { owner: 'Dan', label: 'Log' },
 };
 
 interface ProjectFileViewerProps {

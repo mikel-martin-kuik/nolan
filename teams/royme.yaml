@@ -1,0 +1,77 @@
+team:
+  name: royme
+  description: Development team with PM, Tech Lead, Developer, and QA
+  version: 1.0.0
+  agents:
+  - name: pm
+    output_file: requirements.md
+    required_sections:
+    - '## Functional Requirements'
+    - '## Acceptance Criteria'
+    - '## Priority'
+    file_permissions: restricted
+    workflow_participant: true
+    awaits_qa: false
+  - name: tech
+    output_file: tasks.md
+    required_sections:
+    - '## Task Breakdown'
+    - '## Execution Order'
+    - '## Technical Details'
+    - '## Dependencies'
+    file_permissions: restricted
+    workflow_participant: true
+    awaits_qa: false
+  - name: dev
+    output_file: implementation.md
+    required_sections:
+    - '## Status'
+    - '## Changes'
+    - '## Testing'
+    file_permissions: restricted
+    workflow_participant: true
+    awaits_qa: false
+  - name: qa
+    output_file: review.md
+    required_sections:
+    - '## Review Summary'
+    - '## Task Verification'
+    - '## Issues Found'
+    - '## Recommendation'
+    file_permissions: restricted
+    workflow_participant: true
+    awaits_qa: false
+  workflow:
+    coordinator: pm
+    timeouts:
+      ack_timeout_seconds: 30
+      ack_poll_interval: 5
+      coordinator_wait_minutes: 60
+    phases:
+    - name: Functional Definition
+      owner: pm
+      output: requirements.md
+      requires:
+      - prompt.md
+      template: Define functional requirements and acceptance criteria for the Tech Lead
+    - name: Task Planning
+      owner: tech
+      output: tasks.md
+      requires:
+      - requirements.md
+      template: Break down functional requirements into development tasks with execution order and assign to Developer
+    - name: Implementation
+      owner: dev
+      output: implementation.md
+      requires:
+      - tasks.md
+      - requirements.md
+      template: Implement the assigned tasks following the Tech Lead task breakdown
+    - name: Quality Review
+      owner: qa
+      output: review.md
+      requires:
+      - implementation.md
+      - tasks.md
+      - requirements.md
+      template: Review implementation quality, verify all tasks completed correctly, and validate against requirements

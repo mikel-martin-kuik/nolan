@@ -3,8 +3,8 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { SearchAddon } from '@xterm/addon-search';
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@/lib/api';
+import { listen } from '@/lib/events';
 import '@xterm/xterm/css/xterm.css';
 
 interface TerminalViewProps {
@@ -157,6 +157,7 @@ export function TerminalView({ session, agentName, onClose, fontSize = 13 }: Ter
     });
 
     // Setup terminal output listener
+    // Pass session option for browser mode WebSocket routing
     const unsubscribeOutput = listen<TerminalOutputEvent>('terminal-output', (event) => {
       if (event.payload.session === session) {
         // Save scroll position before write
@@ -169,7 +170,7 @@ export function TerminalView({ session, agentName, onClose, fontSize = 13 }: Ter
           terminal.scrollToBottom();
         }
       }
-    });
+    }, { session });
 
     // Setup terminal disconnected listener
     const unsubscribeDisconnected = listen<string>('terminal-disconnected', (event) => {

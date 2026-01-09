@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Activity, Trash2, RefreshCw, AlertCircle, Zap, Clock, Moon } from 'lucide-react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/lib/api';
 import { useLiveOutputStore } from '../../store/liveOutputStore';
 import { useAgentStore } from '../../store/agentStore';
 import { useWorkflowStatus, type AgentWithWorkflow } from '../../hooks/useWorkflowStatus';

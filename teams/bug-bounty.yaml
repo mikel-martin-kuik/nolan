@@ -37,14 +37,3 @@ team:
       - context.md
       - rca.md
       template: ''
-  communication:
-    broadcast_groups:
-    - name: core
-      pattern: ^agent-([a-z][a-z0-9-]*[a-z0-9]|[a-z])-[a-z]+$
-      members:
-      - ana
-    - name: all_agents
-      pattern: ^agent-(ralph-)?([a-z][a-z0-9-]*[a-z0-9]|[a-z])-[a-z]+$
-      members:
-      - ana
-      - dan

@@ -509,13 +509,37 @@ def check_project_delegated(docs_path: Path) -> bool:
     return False
 
 
+def check_project_pending(docs_path: Path) -> bool:
+    """Check if project is in PENDING state (awaiting assignment).
+
+    Returns True if project is marked PENDING - coordinator can stop while
+    project remains visible and available for assignment. Unlike COMPLETE,
+    PENDING projects stay in the active projects list.
+    """
+    coordinator_file = get_coordinator_file(docs_path)
+    if not coordinator_file:
+        return False
+
+    coord_path = docs_path / coordinator_file
+    if not coord_path.exists():
+        return False
+
+    content = coord_path.read_text()
+
+    # Check for pending marker
+    if '<!-- PROJECT:STATUS:PENDING' in content:
+        return True
+
+    return False
+
+
 def coordinator_stop_check(docs_path: Path) -> Optional[str]:
     """Coordinator stop check - ACK pending handoffs and verify project status.
 
     Dan (coordinator) runs this when trying to stop:
     1. Auto-ACK any pending handoffs (unblocks waiting agents)
-    2. Check if project is marked complete OR delegated
-    3. Block stop if neither (Dan should add marker first)
+    2. Check if project is marked complete, delegated, or pending
+    3. Block stop if none of these (Dan should add marker first)
 
     Returns None to allow stop, or error string to block.
     """
@@ -537,8 +561,13 @@ def coordinator_stop_check(docs_path: Path) -> Optional[str]:
         log_stderr(f"Project '{project_name}' is DELEGATED - coordinator can sleep while waiting")
         return None  # Delegated, allow stop
 
-    # Not complete or delegated - block stop with minimal message
-    return f"Project '{project_name}' not marked complete. Update status before stopping."
+    # Check if project is pending (awaiting assignment, stays visible)
+    if check_project_pending(docs_path):
+        log_stderr(f"Project '{project_name}' is PENDING - coordinator can stop, project remains active")
+        return None  # Pending, allow stop
+
+    # Not complete, delegated, or pending - block stop with helpful message
+    return f"Project '{project_name}' requires status marker. Use PENDING (stays active), DELEGATED (assigned), or COMPLETE (finished)."
 
 
 def trigger_handoff_atomic(docs_path: Path, agent: str, output_file: str,

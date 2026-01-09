@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/lib/api';
 import {
   AlertDialog,
   AlertDialogContent,
+  AlertDialogDescription,
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogFooter,
@@ -177,6 +178,9 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
           <AlertDialogTitle>
             Launch {teamName?.charAt(0).toUpperCase()}{teamName?.slice(1)} Team
           </AlertDialogTitle>
+          <AlertDialogDescription>
+            Select an existing project or create a new one to launch the team.
+          </AlertDialogDescription>
         </AlertDialogHeader>
 
         <div className="flex flex-col gap-4 py-2">

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useTerminalStore } from '@/store/terminalStore';
 import { TerminalView } from './TerminalView';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/lib/api';
 import { X, ExternalLink, Maximize2, Minimize2, Plus, Minus } from 'lucide-react';
 import { FEATURES } from '@/lib/features';
 import {

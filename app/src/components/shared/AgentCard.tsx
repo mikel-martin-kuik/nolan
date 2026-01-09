@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/lib/api';
 import { Terminal, Play, Trash2, MessageSquare, Send, X, FileEdit, Save } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Tooltip } from '@/components/ui/tooltip';

@@ -1,5 +1,5 @@
 name: cron-git
-description: commit changes
+description: commit all changes to the nolan repo
 model: haiku
 timeout: 300
 enabled: true

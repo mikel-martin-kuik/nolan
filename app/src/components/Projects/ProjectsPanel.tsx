@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { invoke } from '@tauri-apps/api/core';
+import { invoke } from '@/lib/api';
 import { ProjectList } from './ProjectList';
 import { ProjectFileViewer } from './ProjectFileViewer';
 import { RoadmapViewer } from './RoadmapViewer';

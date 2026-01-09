@@ -1,0 +1,14 @@
+departments:
+- name: Desarrollo
+  order: 1
+  teams:
+  - default
+  - royme
+  - sprint
+  - bug-bounty
+- name: Core
+  order: 2
+  teams:
+  - finance
+  - talent-acquisition
+  - devops

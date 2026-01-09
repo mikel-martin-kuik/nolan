@@ -63,18 +63,3 @@ team:
       requires:
       - implementation.md
       template: Audit implementation for code execution, security, integration, and plan compliance
-  communication:
-    broadcast_groups:
-    - name: core
-      pattern: ^agent-([a-z][a-z0-9-]*[a-z0-9]|[a-z])-[a-z]+$
-      members:
-      - bill
-      - carl
-      - frank
-    - name: all_agents
-      pattern: ^agent-(ralph-)?([a-z][a-z0-9-]*[a-z0-9]|[a-z])-[a-z]+$
-      members:
-      - bill
-      - carl
-      - dan
-      - frank

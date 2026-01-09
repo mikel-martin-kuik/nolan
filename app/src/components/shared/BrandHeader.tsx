@@ -6,7 +6,7 @@ export const BrandHeader: React.FC = () => {
       {/* Logo & Brand - floating, no background */}
       <div className="flex items-center gap-2.5">
         <span className="text-lg font-semibold text-foreground/90 tracking-wide">
-          DENA
+          NOLAN
         </span>
       </div>
     </div>

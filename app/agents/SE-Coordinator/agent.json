@@ -1,0 +1,7 @@
+{
+  "role": "Coordinator",
+  "model": "opus",
+  "role_template": "coordinator",
+  "team": "structure-engineering",
+  "description": "Orchestrates structure engineering workflow"
+}

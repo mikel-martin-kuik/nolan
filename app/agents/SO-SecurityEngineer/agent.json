@@ -1,0 +1,7 @@
+{
+  "role": "Security Engineer",
+  "model": "opus",
+  "role_template": "security-engineer",
+  "team": "security-operations",
+  "description": "Performs security analysis"
+}

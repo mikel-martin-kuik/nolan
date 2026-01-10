@@ -1,0 +1,33 @@
+role:
+  name: "product-manager"
+  display_name: "Product Manager"
+  description: "Requirements gathering, prioritization, stakeholder coordination"
+
+  capabilities:
+    - requirements_analysis
+    - prioritization
+    - stakeholder_coordination
+    - roadmap_planning
+
+  permissions:
+    file_access: "restricted"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Glob
+      - Grep
+      - Task
+    optional:
+      - WebSearch
+
+  model_preference: "opus"
+
+  output_requirements:
+    required_sections:
+      - "## Requirements"
+      - "## Priority Matrix"
+      - "## Stakeholder Impact"
+    output_file: "product-brief.md"

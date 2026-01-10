@@ -1,0 +1,32 @@
+role:
+  name: "recruiter"
+  display_name: "Recruiter"
+  description: "Agent sourcing, capability assessment, team composition"
+
+  capabilities:
+    - capability_assessment
+    - team_composition
+    - agent_onboarding
+    - skill_gap_analysis
+
+  permissions:
+    file_access: "restricted"
+    can_spawn_agents: true
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Write
+      - Glob
+      - Grep
+    optional:
+      - Task
+
+  model_preference: "sonnet"
+
+  output_requirements:
+    required_sections:
+      - "## Capability Assessment"
+      - "## Team Recommendations"
+    output_file: "recruitment-report.md"

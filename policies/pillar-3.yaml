@@ -1,0 +1,13 @@
+policy:
+  name: "pillar-3-human-ai-collaboration"
+  version: "1.0"
+  description: "Policy overrides for Pillar 3: Human-AI Collaboration teams"
+
+  budget:
+    project_limit: 6000
+
+  models:
+    default: "opus"  # Human interaction needs nuanced reasoning
+
+  escalation:
+    timeout: "15m"  # Faster escalation for human-facing work

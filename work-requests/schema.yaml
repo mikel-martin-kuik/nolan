@@ -1,0 +1,37 @@
+# Work Request Schema
+# Enables cross-team delegation with tracking
+
+work_request:
+  id: "string"                    # Unique request ID (auto-generated)
+  created: "datetime"             # ISO 8601 timestamp
+
+  # Parties
+  from_team: "string"             # Requesting team ID
+  from_agent: "string"            # Requesting agent name
+  to_team: "string"               # Target team ID
+
+  # Request Details
+  type: "string"                  # api_addition, bug_fix, feature, research
+  priority: "string"              # critical, high, medium, low
+  blocking: boolean               # Is original work blocked?
+
+  title: "string"
+  description: "string"
+
+  acceptance_criteria:
+    - "string"
+
+  # Tracking
+  status: "string"                # pending, accepted, in_progress, completed, rejected
+  accepted_by: "string"           # Coordinator who accepted
+  accepted_at: "datetime"
+  completed_at: "datetime"
+
+  # Links
+  project_id: "string"            # Created project (if accepted)
+  deliverables:
+    - "string"                    # Output files/artifacts
+
+  # Feedback
+  rejection_reason: "string"
+  completion_notes: "string"

@@ -40,7 +40,20 @@ for project_dir in "$PROJECTS_DIR"/*/ ; do
     team_file="$project_dir/.team"
 
     if [[ -f "$team_file" ]]; then
-        existing_team=$(cat "$team_file")
+        # Parse team name (supports YAML and plain text formats)
+        existing_team=$(python3 -c "
+import yaml
+from pathlib import Path
+content = Path('$team_file').read_text()
+try:
+    data = yaml.safe_load(content)
+    if isinstance(data, dict) and 'team' in data:
+        print(data['team'])
+    else:
+        print(content.strip())
+except:
+    print(content.strip())
+" 2>/dev/null || cat "$team_file")
         echo "✓ $project → $existing_team (already configured)"
         skipped=$((skipped + 1))
     else

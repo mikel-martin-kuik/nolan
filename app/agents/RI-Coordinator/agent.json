@@ -1,0 +1,7 @@
+{
+  "role": "Coordinator",
+  "model": "opus",
+  "role_template": "coordinator",
+  "team": "role-identity",
+  "description": "Orchestrates role management workflow"
+}

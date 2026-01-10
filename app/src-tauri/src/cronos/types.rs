@@ -101,6 +101,11 @@ pub struct CronRunLog {
     pub attempt: u32,           // Current attempt number (1-based)
     #[serde(default)]
     pub trigger: RunTrigger,    // How the run was triggered
+    // New fields for tmux-based persistence
+    #[serde(default)]
+    pub session_name: Option<String>,  // tmux session name for recovery
+    #[serde(default)]
+    pub run_dir: Option<String>,       // ephemeral working directory
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
@@ -111,8 +116,9 @@ pub enum CronRunStatus {
     Failed,
     Timeout,
     Cancelled,
-    Skipped,    // Skipped due to concurrency
-    Retrying,   // Will be retried
+    Skipped,      // Skipped due to concurrency
+    Retrying,     // Will be retried
+    Interrupted,  // Job was interrupted by app restart (process died)
 }
 
 /// How a run was triggered
@@ -145,7 +151,7 @@ pub struct AgentState {
     pub total_failures: u32,
 }
 
-/// Running process info (in-memory only)
+/// Running process info (in-memory tracking, recoverable via tmux session)
 #[derive(Clone, Debug)]
 pub struct RunningProcess {
     pub run_id: String,
@@ -154,6 +160,48 @@ pub struct RunningProcess {
     pub pid: Option<u32>,
     pub log_file: std::path::PathBuf,
     pub json_file: std::path::PathBuf,
+    pub session_name: Option<String>,  // tmux session name for recovery
+    pub run_dir: Option<std::path::PathBuf>,  // ephemeral working directory
+}
+
+/// Orphaned cron session detected on startup (for recovery)
+#[derive(Clone, Debug)]
+pub struct OrphanedCronSession {
+    pub run_log: CronRunLog,
+    pub json_file: std::path::PathBuf,
+    pub session_alive: bool,  // true if tmux session still exists
+}
+
+/// Result of cron session recovery
+#[derive(Clone, Debug, Default)]
+pub struct CronRecoveryResult {
+    pub recovered: Vec<String>,    // Successfully reattached to running sessions
+    pub interrupted: Vec<String>,  // Marked as interrupted (process died)
+    pub errors: Vec<String>,       // Errors during recovery
+}
+
+impl CronRecoveryResult {
+    pub fn is_empty(&self) -> bool {
+        self.recovered.is_empty() && self.interrupted.is_empty() && self.errors.is_empty()
+    }
+
+    pub fn summary(&self) -> String {
+        let mut parts = Vec::new();
+        if !self.recovered.is_empty() {
+            parts.push(format!("{} recovered", self.recovered.len()));
+        }
+        if !self.interrupted.is_empty() {
+            parts.push(format!("{} interrupted", self.interrupted.len()));
+        }
+        if !self.errors.is_empty() {
+            parts.push(format!("{} errors", self.errors.len()));
+        }
+        if parts.is_empty() {
+            "no orphaned cron sessions".to_string()
+        } else {
+            parts.join(", ")
+        }
+    }
 }
 
 /// Schedule registry entry (in schedules.yaml)

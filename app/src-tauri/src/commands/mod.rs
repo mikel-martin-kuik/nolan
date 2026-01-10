@@ -6,6 +6,9 @@ pub mod projects;
 pub mod teams;
 pub mod agents;
 pub mod usage;
+pub mod organization;
+pub mod roles;
+pub mod policies;
 
 // Whitelist of allowed scripts that Tauri can execute
 // Note: kill-core.sh and spawn-agent.sh have been migrated to native Rust and can be deleted

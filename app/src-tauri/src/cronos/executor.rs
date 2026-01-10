@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::Arc;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
-use tokio::process::{Child, Command};
+use tokio::process::Command;
 use tokio::sync::{broadcast, RwLock};
 use tokio::time::{timeout, Duration};
 use chrono::Utc;
@@ -11,6 +11,7 @@ use uuid::Uuid;
 use super::types::*;
 use super::manager::CronosManager;
 use crate::utils::paths;
+use crate::tmux::session;
 
 /// Cancellation token for running processes
 pub type CancellationToken = Arc<RwLock<bool>>;
@@ -52,6 +53,8 @@ pub async fn execute_cron_agent(
             error: Some("Skipped: agent already running".to_string()),
             attempt: 1,
             trigger: trigger.clone(),
+            session_name: None,
+            run_dir: None,
         };
 
         // Emit skip event
@@ -122,7 +125,10 @@ pub async fn execute_cron_agent(
     }
 }
 
-/// Execute a single run attempt
+/// Execute a single run attempt using tmux for persistence
+///
+/// This implementation runs Claude in a tmux session so the process continues
+/// independently of the Nolan app. If the app restarts, the session can be recovered.
 async fn execute_single_run(
     config: &CronAgentConfig,
     manager: &CronosManager,
@@ -137,7 +143,7 @@ async fn execute_single_run(
     let timestamp = started_at.format("%H%M%S").to_string();
     let date_str = started_at.format("%Y-%m-%d").to_string();
 
-    // Setup run log directory
+    // Setup paths
     let nolan_root = paths::get_nolan_root()?;
     let cronos_root = nolan_root.join("cronos");
     let runs_dir = cronos_root.join("runs").join(&date_str);
@@ -147,13 +153,30 @@ async fn execute_single_run(
     let log_file = runs_dir.join(format!("{}-{}.log", config.name, timestamp));
     let json_file = runs_dir.join(format!("{}-{}.json", config.name, timestamp));
 
+    // Create ephemeral run directory (like Ralph's agent-ralph-{name}/)
+    let run_dir = runs_dir.join(format!("{}-{}", config.name, run_id));
+    std::fs::create_dir_all(&run_dir)
+        .map_err(|e| format!("Failed to create run directory: {}", e))?;
+
+    // Symlink .claude to app root for Claude Code settings
+    #[cfg(unix)]
+    {
+        let claude_link = run_dir.join(".claude");
+        if !claude_link.exists() {
+            let _ = std::os::unix::fs::symlink(nolan_root.join(".claude"), &claude_link);
+        }
+    }
+
+    // Generate tmux session name
+    let session_name = format!("cron-{}-{}", config.name, &run_id);
+
     // Emit start event
     if let Some(ref sender) = output_sender {
         let _ = sender.send(CronOutputEvent {
             run_id: run_id.clone(),
             agent_name: config.name.clone(),
             event_type: OutputEventType::Status,
-            content: format!("Starting {} (attempt {})", config.name, attempt),
+            content: format!("Starting {} in tmux session {} (attempt {})", config.name, session_name, attempt),
             timestamp: started_at.to_rfc3339(),
         });
     }
@@ -166,6 +189,8 @@ async fn execute_single_run(
 
     // For dry run, just validate
     if dry_run {
+        // Cleanup the run directory we created
+        let _ = std::fs::remove_dir_all(&run_dir);
         return Ok(CronRunLog {
             run_id,
             agent_name: config.name.clone(),
@@ -178,20 +203,27 @@ async fn execute_single_run(
             error: None,
             attempt,
             trigger,
+            session_name: None,
+            run_dir: None,
         });
     }
 
-    // Build CLI command
-    let mut cmd = Command::new("claude");
-    cmd.arg("-p").arg(&prompt);
-    cmd.arg("--dangerously-skip-permissions");
-    cmd.arg("--verbose");
-    cmd.arg("--output-format").arg("stream-json");
+    // Build CLI arguments
+    let mut claude_args = vec![
+        "-p".to_string(),
+        prompt.clone(),
+        "--dangerously-skip-permissions".to_string(),
+        "--verbose".to_string(),
+        "--output-format".to_string(),
+        "stream-json".to_string(),
+        "--model".to_string(),
+        config.model.clone(),
+    ];
 
     // Add allowed tools
     if !config.guardrails.allowed_tools.is_empty() {
-        cmd.arg("--allowedTools")
-           .arg(config.guardrails.allowed_tools.join(","));
+        claude_args.push("--allowedTools".to_string());
+        claude_args.push(config.guardrails.allowed_tools.join(","));
     }
 
     // Add guardrails via system prompt
@@ -201,134 +233,160 @@ async fn execute_single_run(
             forbidden.join(", "),
             config.guardrails.max_file_edits.unwrap_or(10)
         );
-        cmd.arg("--append-system-prompt").arg(&guardrail_prompt);
+        claude_args.push("--append-system-prompt".to_string());
+        claude_args.push(guardrail_prompt);
     }
 
-    // Set working directory
+    // Escape prompt for shell (handle quotes and special chars)
+    let prompt_escaped = prompt.replace("'", "'\\''");
+
+    // Build shell command that:
+    // 1. Sets environment variables
+    // 2. Runs claude with output redirected to log file
+    // 3. Captures exit code
+    // 4. Keeps shell alive briefly for debugging (exec bash at end)
     let work_dir = config.context.working_directory
         .as_ref()
         .map(PathBuf::from)
         .unwrap_or_else(|| nolan_root.clone());
-    cmd.current_dir(&work_dir);
 
-    // Set model
-    cmd.arg("--model").arg(&config.model);
+    let mut cmd_parts = vec![
+        format!("export CRON_RUN_ID='{}' CRON_AGENT='{}' NOLAN_ROOT='{}'",
+            run_id, config.name, nolan_root.to_string_lossy()),
+    ];
 
-    // Setup output capture
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
+    // Change to working directory
+    cmd_parts.push(format!("cd '{}'", work_dir.to_string_lossy()));
 
-    // Spawn process
-    let mut child = cmd.spawn()
-        .map_err(|e| format!("Failed to spawn claude: {}", e))?;
+    // Build claude command with all args
+    let mut claude_cmd = format!("claude -p '{}' --dangerously-skip-permissions --verbose --output-format stream-json --model {}",
+        prompt_escaped, config.model);
 
-    let pid = child.id();
+    if !config.guardrails.allowed_tools.is_empty() {
+        claude_cmd.push_str(&format!(" --allowedTools '{}'", config.guardrails.allowed_tools.join(",")));
+    }
 
-    // Register as running
-    manager.register_running(
+    if let Some(ref forbidden) = config.guardrails.forbidden_paths {
+        let guardrail_prompt = format!(
+            "CRITICAL GUARDRAILS:\\n- NEVER access these paths: {}\\n- Maximum file edits: {}",
+            forbidden.join(", "),
+            config.guardrails.max_file_edits.unwrap_or(10)
+        );
+        claude_cmd.push_str(&format!(" --append-system-prompt '{}'", guardrail_prompt.replace("'", "'\\''")));
+    }
+
+    // Run claude with output to both terminal (for live streaming) and file
+    // Use tee so tmux pipe-pane can capture the live output
+    cmd_parts.push(format!("{} 2>&1 | tee '{}'", claude_cmd, log_file.to_string_lossy()));
+
+    // Capture claude's exit code using PIPESTATUS (requires bash)
+    // PIPESTATUS[0] is the exit code of the command before the pipe
+    let exit_code_file = run_dir.join("exit_code");
+    cmd_parts.push(format!("echo ${{PIPESTATUS[0]}} > '{}'", exit_code_file.to_string_lossy()));
+
+    let shell_cmd = cmd_parts.join("; ");
+
+    // Write initial run log (marks as running for recovery)
+    let initial_log = CronRunLog {
+        run_id: run_id.clone(),
+        agent_name: config.name.clone(),
+        started_at: started_at.to_rfc3339(),
+        completed_at: None,  // Marks as running
+        status: CronRunStatus::Running,
+        duration_secs: None,
+        exit_code: None,
+        output_file: log_file.to_string_lossy().to_string(),
+        error: None,
+        attempt,
+        trigger: trigger.clone(),
+        session_name: Some(session_name.clone()),
+        run_dir: Some(run_dir.to_string_lossy().to_string()),
+    };
+
+    let json = serde_json::to_string_pretty(&initial_log)
+        .map_err(|e| format!("Failed to serialize initial run log: {}", e))?;
+    std::fs::write(&json_file, &json)
+        .map_err(|e| format!("Failed to write initial run log: {}", e))?;
+
+    // Create tmux session with explicit bash to ensure PIPESTATUS works
+    // We use "bash -c" to run our command, guaranteeing bash features are available
+    let output = std::process::Command::new("tmux")
+        .args(&[
+            "new-session", "-d", "-s", &session_name,
+            "-c", &run_dir.to_string_lossy(),
+            "bash", "-c", &shell_cmd
+        ])
+        .output()
+        .map_err(|e| format!("Failed to create tmux session: {}", e))?;
+
+    if !output.status.success() {
+        // Cleanup and return error
+        let _ = std::fs::remove_dir_all(&run_dir);
+        return Err(format!(
+            "Failed to start tmux session: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    // Register in session registry for recovery
+    if let Err(e) = crate::commands::lifecycle::register_session(
+        &session_name,
+        &config.name,
+        &run_dir.to_string_lossy(),
+        "",  // no team
+    ) {
+        eprintln!("Warning: Failed to register cron session: {}", e);
+    }
+
+    // Register as running in manager
+    manager.register_running_with_session(
         &run_id,
         &config.name,
-        pid,
+        None,  // PID not directly available from tmux
         log_file.clone(),
         json_file.clone(),
+        Some(session_name.clone()),
+        Some(run_dir.clone()),
     ).await;
 
-    // Take stdout and stderr handles
-    let stdout = child.stdout.take();
-    let stderr = child.stderr.take();
-
-    // Stream output in real-time
-    let log_file_clone = log_file.clone();
-    let run_id_clone = run_id.clone();
-    let agent_name_clone = config.name.clone();
-    let output_sender_clone = output_sender.clone();
-
-    let stdout_handle = tokio::spawn(async move {
-        let mut output = Vec::new();
-        if let Some(stdout) = stdout {
-            let mut reader = BufReader::new(stdout).lines();
-            while let Ok(Some(line)) = reader.next_line().await {
-                // Emit real-time event
-                if let Some(ref sender) = output_sender_clone {
-                    let _ = sender.send(CronOutputEvent {
-                        run_id: run_id_clone.clone(),
-                        agent_name: agent_name_clone.clone(),
-                        event_type: OutputEventType::Stdout,
-                        content: line.clone(),
-                        timestamp: Utc::now().to_rfc3339(),
-                    });
-                }
-                output.push(line);
-            }
-        }
-        // Write all output to log file
-        if let Ok(mut file) = tokio::fs::File::create(&log_file_clone).await {
-            for line in &output {
-                let _ = file.write_all(line.as_bytes()).await;
-                let _ = file.write_all(b"\n").await;
-            }
-        }
-        output
-    });
-
-    let run_id_clone2 = run_id.clone();
-    let agent_name_clone2 = config.name.clone();
-    let output_sender_clone2 = output_sender.clone();
-
-    let stderr_handle = tokio::spawn(async move {
-        let mut output = Vec::new();
-        if let Some(stderr) = stderr {
-            let mut reader = BufReader::new(stderr).lines();
-            while let Ok(Some(line)) = reader.next_line().await {
-                // Emit real-time event
-                if let Some(ref sender) = output_sender_clone2 {
-                    let _ = sender.send(CronOutputEvent {
-                        run_id: run_id_clone2.clone(),
-                        agent_name: agent_name_clone2.clone(),
-                        event_type: OutputEventType::Stderr,
-                        content: line.clone(),
-                        timestamp: Utc::now().to_rfc3339(),
-                    });
-                }
-                output.push(line);
-            }
-        }
-        output
-    });
-
-    // Wait with timeout and cancellation check
+    // Wait for completion with timeout and cancellation
     let timeout_duration = Duration::from_secs(config.timeout as u64);
-    let result = wait_with_cancellation(&mut child, timeout_duration, cancellation).await;
-
-    // Wait for output capture to complete
-    let _stdout_result = stdout_handle.await.unwrap_or_default();
-    let stderr_result = stderr_handle.await.unwrap_or_default();
+    let result = wait_for_tmux_completion(
+        &session_name,
+        &run_dir,
+        timeout_duration,
+        cancellation,
+    ).await;
 
     // Unregister from running
     manager.unregister_running(&config.name).await;
 
     let (status, exit_code, error) = match result {
-        WaitResult::Completed(Ok(exit)) => {
-            if exit.success() {
-                (CronRunStatus::Success, exit.code(), None)
+        TmuxWaitResult::Completed => {
+            // Read exit code from file
+            let exit_code_file = run_dir.join("exit_code");
+            let code = std::fs::read_to_string(&exit_code_file)
+                .ok()
+                .and_then(|s| s.trim().parse::<i32>().ok());
+
+            if code == Some(0) {
+                (CronRunStatus::Success, code, None)
             } else {
-                let err_msg = if !stderr_result.is_empty() {
-                    Some(stderr_result.join("\n"))
-                } else {
-                    Some("Non-zero exit code".to_string())
-                };
-                (CronRunStatus::Failed, exit.code(), err_msg)
+                (CronRunStatus::Failed, code, Some("Non-zero exit code".to_string()))
             }
         }
-        WaitResult::Completed(Err(e)) => {
-            (CronRunStatus::Failed, None, Some(e.to_string()))
-        }
-        WaitResult::Timeout => {
-            let _ = child.kill().await;
+        TmuxWaitResult::Timeout => {
+            // Kill the tmux session
+            let _ = std::process::Command::new("tmux")
+                .args(&["kill-session", "-t", &session_name])
+                .output();
             (CronRunStatus::Timeout, None, Some(format!("Timeout after {}s", config.timeout)))
         }
-        WaitResult::Cancelled => {
-            let _ = child.kill().await;
+        TmuxWaitResult::Cancelled => {
+            // Kill the tmux session
+            let _ = std::process::Command::new("tmux")
+                .args(&["kill-session", "-t", &session_name])
+                .output();
             (CronRunStatus::Cancelled, None, Some("Cancelled by user".to_string()))
         }
     };
@@ -348,9 +406,11 @@ async fn execute_single_run(
         error,
         attempt,
         trigger,
+        session_name: Some(session_name.clone()),
+        run_dir: Some(run_dir.to_string_lossy().to_string()),
     };
 
-    // Write JSON log
+    // Write final JSON log
     let json = serde_json::to_string_pretty(&run_log)
         .map_err(|e| format!("Failed to serialize run log: {}", e))?;
     std::fs::write(&json_file, json)
@@ -367,69 +427,92 @@ async fn execute_single_run(
         });
     }
 
+    // Cleanup ephemeral directory on successful completion
+    // Keep it on failure for debugging
+    if status == CronRunStatus::Success {
+        let _ = std::fs::remove_dir_all(&run_dir);
+    }
+
     Ok(run_log)
 }
 
-enum WaitResult {
-    Completed(Result<std::process::ExitStatus, std::io::Error>),
+/// Result of waiting for tmux session completion
+enum TmuxWaitResult {
+    Completed,
     Timeout,
     Cancelled,
 }
 
-async fn wait_with_cancellation(
-    child: &mut Child,
+/// Wait for a tmux session to complete, with timeout and cancellation support
+async fn wait_for_tmux_completion(
+    session_name: &str,
+    run_dir: &PathBuf,
     timeout_duration: Duration,
     cancellation: Option<CancellationToken>,
-) -> WaitResult {
-    let check_interval = Duration::from_millis(100);
+) -> TmuxWaitResult {
+    let check_interval = Duration::from_secs(2);
     let start = std::time::Instant::now();
 
     loop {
-        // Check cancellation
+        // Check cancellation first
         if let Some(ref token) = cancellation {
             if *token.read().await {
-                return WaitResult::Cancelled;
+                return TmuxWaitResult::Cancelled;
             }
         }
 
-        // Check timeout
+        // Check for exit_code file FIRST - this is the most reliable completion signal
+        // The shell writes this file after Claude exits, before the tmux session ends
+        if run_dir.join("exit_code").exists() {
+            // Process wrote exit code - job completed naturally
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            return TmuxWaitResult::Completed;
+        }
+
+        // Check if session still exists
+        match session::session_exists(session_name) {
+            Ok(false) => {
+                // Session ended - wait briefly for exit_code file to be written
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                return TmuxWaitResult::Completed;
+            }
+            Ok(true) => {
+                // Still running, continue to timeout check
+            }
+            Err(_) => {
+                // Error checking session, assume it ended
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                return TmuxWaitResult::Completed;
+            }
+        }
+
+        // Check timeout AFTER checking for completion
+        // This ensures we don't timeout a job that just completed
         if start.elapsed() > timeout_duration {
-            return WaitResult::Timeout;
+            return TmuxWaitResult::Timeout;
         }
 
-        // Try to get exit status (non-blocking)
-        match child.try_wait() {
-            Ok(Some(status)) => return WaitResult::Completed(Ok(status)),
-            Ok(None) => {
-                // Still running, wait a bit
-                tokio::time::sleep(check_interval).await;
-            }
-            Err(e) => return WaitResult::Completed(Err(e)),
-        }
+        tokio::time::sleep(check_interval).await;
     }
 }
 
-/// Cancel a running agent
+/// Cancel a running cron agent by killing its tmux session
 pub async fn cancel_cron_agent(manager: &CronosManager, agent_name: &str) -> Result<(), String> {
     let process = manager.get_running_process(agent_name).await
         .ok_or_else(|| format!("Agent '{}' is not running", agent_name))?;
 
-    if let Some(pid) = process.pid {
-        // Kill the process
+    // Kill the tmux session if we have one
+    if let Some(ref session_name) = process.session_name {
+        let _ = std::process::Command::new("tmux")
+            .args(&["kill-session", "-t", session_name])
+            .output();
+    } else if let Some(pid) = process.pid {
+        // Fallback: kill by PID if no session (legacy support)
         #[cfg(unix)]
         {
-            use std::process::Command as StdCommand;
-            let _ = StdCommand::new("kill")
+            let _ = std::process::Command::new("kill")
                 .arg("-TERM")
                 .arg(pid.to_string())
-                .output();
-        }
-
-        #[cfg(windows)]
-        {
-            use std::process::Command as StdCommand;
-            let _ = StdCommand::new("taskkill")
-                .args(["/PID", &pid.to_string(), "/F"])
                 .output();
         }
     }
@@ -448,6 +531,8 @@ pub async fn cancel_cron_agent(manager: &CronosManager, agent_name: &str) -> Res
         error: Some("Cancelled by user".to_string()),
         attempt: 1,
         trigger: RunTrigger::Manual,
+        session_name: process.session_name.clone(),
+        run_dir: process.run_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
     };
 
     // Write updated JSON
@@ -455,6 +540,11 @@ pub async fn cancel_cron_agent(manager: &CronosManager, agent_name: &str) -> Res
         .map_err(|e| format!("Failed to serialize run log: {}", e))?;
     std::fs::write(&process.json_file, json)
         .map_err(|e| format!("Failed to write run log: {}", e))?;
+
+    // Delete ephemeral directory to prevent recovery
+    if let Some(ref run_dir) = process.run_dir {
+        let _ = std::fs::remove_dir_all(run_dir);
+    }
 
     // Unregister
     manager.unregister_running(agent_name).await;
@@ -502,10 +592,12 @@ pub async fn execute_cron_agent_simple(
             error: None,
             attempt: 1,
             trigger: RunTrigger::Manual,
+            session_name: None,
+            run_dir: None,
         });
     }
 
-    // Build CLI command
+    // Build CLI command (simple mode uses direct process, not tmux)
     let mut cmd = Command::new("claude");
     cmd.arg("-p").arg(&prompt);
     cmd.arg("--dangerously-skip-permissions");
@@ -611,6 +703,8 @@ pub async fn execute_cron_agent_simple(
         error,
         attempt: 1,
         trigger: RunTrigger::Manual,
+        session_name: None,  // Simple mode doesn't use tmux
+        run_dir: None,
     };
 
     let json = serde_json::to_string_pretty(&run_log)

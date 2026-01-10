@@ -6,7 +6,7 @@ allowed-tools: Read, Bash(cat:*), Bash(grep:*), Bash(python3:*)
 # Blockers: $1
 
 ## Current Blockers from Coordinator File
-!`docs_path="$PROJECTS_DIR/$1"; coord_file=$(python3 -c "import yaml; from pathlib import Path; import os; t=(Path('$docs_path')/ '.team').read_text().strip(); c=yaml.safe_load((Path(os.environ['NOLAN_ROOT'])/'teams'/f'{t}.yaml').read_text()); n=c['team']['workflow']['coordinator']; a=next((x for x in c['team']['agents'] if x['name']==n),None); print(a['output_file'])" 2>/dev/null); if [ -f "$docs_path/$coord_file" ]; then grep -A20 -i "blocker" "$docs_path/$coord_file" 2>/dev/null || echo "No blockers section found in $coord_file"; else echo "No $coord_file found at $docs_path"; fi`
+!`docs_path="$PROJECTS_DIR/$1"; coord_file=$(python3 -c "import yaml; from pathlib import Path; import os; d=yaml.safe_load((Path('$docs_path')/'.team').read_text()); t=d['team'] if isinstance(d,dict) and 'team' in d else str(d).strip(); c=yaml.safe_load((Path(os.environ['NOLAN_ROOT'])/'teams'/f'{t}.yaml').read_text()); n=c['team']['workflow']['coordinator']; a=next((x for x in c['team']['agents'] if x['name']==n),None); print(a['output_file'])" 2>/dev/null); if [ -f "$docs_path/$coord_file" ]; then grep -A20 -i "blocker" "$docs_path/$coord_file" 2>/dev/null || echo "No blockers section found in $coord_file"; else echo "No $coord_file found at $docs_path"; fi`
 
 ## Blockers from QA Review
 !`docs_path="$PROJECTS_DIR/$1"; if [ -f "$docs_path/qa-review.md" ]; then grep -B2 -A5 "Critical\|High" "$docs_path/qa-review.md" 2>/dev/null || echo "No Critical/High issues in qa-review.md"; else echo "No qa-review.md found"; fi`

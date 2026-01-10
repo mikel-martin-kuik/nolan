@@ -1,0 +1,7 @@
+{
+  "role": "Coordinator",
+  "model": "opus",
+  "role_template": "coordinator",
+  "team": "platform-engineering",
+  "description": "Orchestrates platform engineering workflow"
+}

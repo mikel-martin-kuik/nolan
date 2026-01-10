@@ -1,0 +1,37 @@
+role:
+  name: "protocol-engineer"
+  display_name: "Protocol Engineer"
+  description: "External protocol implementation (MCP, A2A, API standards)"
+
+  capabilities:
+    - protocol_implementation
+    - api_design
+    - standards_compliance
+    - integration_testing
+
+  permissions:
+    file_access: "permissive"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Write
+      - Edit
+      - Bash
+      - Glob
+      - Grep
+    optional:
+      - Task
+      - WebFetch
+      - WebSearch
+
+  model_preference: "opus"
+
+  output_requirements:
+    required_sections:
+      - "## Protocol Specification"
+      - "## Implementation Details"
+      - "## Compliance Status"
+    output_file: "protocol-report.md"

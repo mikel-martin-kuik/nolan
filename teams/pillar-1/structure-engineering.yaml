@@ -1,0 +1,53 @@
+team:
+  id: "structure-engineering"
+  name: "Structure Engineering"
+  prefix: "SE"
+  pillar: "organizational-intelligence"
+  department: "Structure & Governance"
+  mission: "Build and maintain the hierarchical organization system"
+
+  ownership:
+    milestones:
+      - "V1.1"  # Department Engine
+    directories:
+      - "organization/"
+      - "src-tauri/src/departments/"
+    file_patterns:
+      - "**/organization/**"
+      - "**/departments/**"
+
+  agents:
+    - name: "SE-Coordinator"
+      role_template: "coordinator"
+      model: "opus"
+      description: "Orchestrates structure engineering workflow"
+
+    - name: "SE-Architect"
+      role_template: "architect"
+      model: "opus"
+      description: "Designs organizational hierarchies and schemas"
+
+    - name: "SE-Researcher"
+      role_template: "researcher"
+      model: "sonnet"
+      description: "Researches organizational patterns and requirements"
+
+    - name: "SE-Implementer"
+      role_template: "implementer"
+      model: "sonnet"
+      description: "Implements organization schema changes"
+
+    - name: "SE-Reviewer"
+      role_template: "reviewer"
+      model: "sonnet"
+      description: "Reviews structure changes for consistency"
+
+  workflow:
+    phases:
+      - research
+      - plan
+      - implement
+      - review
+      - audit
+
+  policy: "pillar-1"

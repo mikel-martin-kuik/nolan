@@ -105,6 +105,19 @@ echo ""
 echo "$TEAM_INFO"
 echo ""
 
+# Show agent's output requirements (helps avoid validation failures)
+if [[ -n "${AGENT_NAME:-}" ]]; then
+    REQ_SCRIPT="$NOLAN_ROOT/app/scripts/get-requirements.sh"
+    if [[ -x "$REQ_SCRIPT" ]]; then
+        REQ_OUTPUT=$("$REQ_SCRIPT" "$AGENT_NAME" "$CURRENT_TEAM" 2>/dev/null) || true
+        if [[ -n "$REQ_OUTPUT" ]]; then
+            echo "### Output Requirements"
+            echo "$REQ_OUTPUT"
+            echo ""
+        fi
+    fi
+fi
+
 # Show assigned project path if set (critical for agents to find project docs)
 if [[ -n "${DOCS_PATH:-}" ]]; then
     echo "### Assigned Project"

@@ -1,0 +1,42 @@
+team:
+  id: "security-operations"
+  name: "Security Operations"
+  prefix: "SO"
+  pillar: null  # Support
+  department: "Specialized Operations"
+  mission: "Security testing, vulnerability management, and penetration testing"
+
+  ownership:
+    milestones: []  # Support function
+    directories: []  # No code ownership (testing only)
+    file_patterns: []
+
+  agents:
+    - name: "SO-Coordinator"
+      role_template: "coordinator"
+      model: "opus"
+      description: "Orchestrates security operations workflow"
+
+    - name: "SO-SecurityEngineer"
+      role_template: "security-engineer"
+      model: "opus"
+      description: "Performs security analysis"
+
+    - name: "SO-Tester"
+      role_template: "qa-automation"
+      model: "sonnet"
+      description: "Executes penetration tests"
+
+    - name: "SO-Auditor"
+      role_template: "auditor"
+      model: "opus"
+      description: "Audits security compliance"
+
+  workflow:
+    phases:
+      - research
+      - plan
+      - review
+      - audit
+
+  policy: "default"

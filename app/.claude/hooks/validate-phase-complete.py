@@ -93,6 +93,19 @@ def release_lock(fd: int):
         pass
 
 
+def parse_team_name(team_file: Path) -> str:
+    """Parse team name from .team file (supports YAML and plain text formats)."""
+    content = team_file.read_text()
+    try:
+        data = yaml.safe_load(content)
+        if isinstance(data, dict) and 'team' in data:
+            return data['team']
+        else:
+            return content.strip()
+    except:
+        return content.strip()
+
+
 def load_team_config(project_path: Path) -> dict:
     """Load team configuration for a project.
 
@@ -102,7 +115,7 @@ def load_team_config(project_path: Path) -> dict:
     team_file = project_path / '.team'
     if not team_file.exists():
         raise FileNotFoundError(f".team file not found in {project_path}")
-    team_name = team_file.read_text().strip()
+    team_name = parse_team_name(team_file)
 
     nolan_root = os.environ.get('NOLAN_ROOT')
     if not nolan_root:
@@ -331,7 +344,7 @@ def write_handoff_file_atomic(agent: str, project_name: str, project_path: Path,
         try:
             team_file = project_path / '.team'
             if team_file.exists():
-                team_name = team_file.read_text().strip()
+                team_name = parse_team_name(team_file)
         except Exception:
             pass
 
@@ -592,7 +605,7 @@ def trigger_handoff_atomic(docs_path: Path, agent: str, output_file: str,
         try:
             team_file = docs_path / '.team'
             if team_file.exists():
-                team_name = team_file.read_text().strip()
+                team_name = parse_team_name(team_file)
         except Exception:
             pass
 
@@ -601,21 +614,12 @@ def trigger_handoff_atomic(docs_path: Path, agent: str, output_file: str,
         if not write_handoff_file_atomic(agent, docs_path.name, docs_path, handoff_id, "COMPLETE"):
             return None, "Failed to write handoff queue file. Check disk space and permissions."
 
-        # STEP 2: Add marker to output file (only if queue write succeeded)
-        handoff_marker = (
-            f"\n---\n**Handoff:** Queued for dan at {timestamp} (ID: {handoff_id})\n"
-            f"<!-- HANDOFF:{timestamp}:{agent}:COMPLETE:{handoff_id} -->"
-        )
+        # NOTE: We deliberately do NOT write markers to agent output files.
+        # Agents see markers in predecessor files and copy them manually, which
+        # bypasses the atomic handoff system. The .handoffs/ directory is the
+        # single source of truth for handoff state.
 
-        try:
-            with open(filepath, 'a') as f:
-                f.write(handoff_marker)
-        except Exception as e:
-            # Queue file exists but marker write failed - this is OK
-            # The handoff will still be processed, marker is just for visibility
-            log_stderr(f"Warning: Handoff queued but marker write failed: {e}")
-
-        # STEP 3: Send wake-up notification to coordinator
+        # STEP 2: Send wake-up notification to coordinator
         # This wakes the coordinator from sleep state so they can ACK the handoff
         notify_coordinator(agent, docs_path.name, handoff_id, team_name)
 
@@ -639,7 +643,7 @@ def _clear_agent_state_file(docs_path: Path, agent: str):
     try:
         team_file = docs_path / '.team'
         if team_file.exists():
-            team_name = team_file.read_text().strip()
+            team_name = parse_team_name(team_file)
     except Exception:
         pass
 
@@ -692,58 +696,130 @@ def check_handoff_done(docs_path: Path, agent: str, timeout_config: dict) -> Opt
     if missing:
         return None  # Required sections missing, other check handles this
 
-    # Required sections present - check for handoff marker with ID
-    marker_pattern = r'<!-- HANDOFF:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:[a-z]+:COMPLETE:([a-f0-9]+) -->'
-    marker_match = re.search(marker_pattern, content)
+    # Required sections present - check .handoffs/ directory for existing handoff
+    # NOTE: We do NOT check for markers in output files. The .handoffs/ directory
+    # is the single source of truth. This prevents agents from copying markers
+    # they see in predecessor files.
 
     ack_timeout = timeout_config.get('ack_timeout_seconds', DEFAULT_ACK_TIMEOUT_SECONDS)
     poll_interval = timeout_config.get('ack_poll_interval', DEFAULT_ACK_POLL_INTERVAL)
 
-    if not marker_match:
-        # Check for old format marker (without ID) - allow stop for backwards compat
-        old_marker = r'<!-- HANDOFF:\d{4}-\d{2}-\d{2} \d{2}:\d{2}:[a-z]+:COMPLETE -->'
-        if re.search(old_marker, content):
-            return None  # Old format marker - allow stop
-
-        # No marker found - trigger handoff atomically
-        handoff_id, error = trigger_handoff_atomic(docs_path, agent, agent_config['output_file'], timeout_config)
-        if not handoff_id:
-            return error or f"Work complete but handoff automation failed. Please run: /handoff {agent} dan"
-
-        # Wait for coordinator ACK
-        acked = wait_for_ack(handoff_id, timeout_seconds=ack_timeout, poll_interval=poll_interval)
-        if not acked:
-            log_stderr(f"Handoff {handoff_id} not ACK'd within {ack_timeout}s - allowing stop anyway")
-
-        # Clear state file AFTER ACK confirmed (or timeout)
-        _clear_agent_state_file(docs_path, agent)
-        return None
-
-    # Marker with ID exists - check if already ACK'd
-    handoff_id = marker_match.group(1)
-
-    # Check if this handoff was already ACK'd (file in processed/)
     projects_dir = get_projects_base()
+    project_name = docs_path.name
+
     if projects_dir:
         processed_dir = projects_dir / '.handoffs' / 'processed'
         pending_dir = projects_dir / '.handoffs' / 'pending'
 
-        processed_files = list(processed_dir.glob(f'*{handoff_id}*.handoff')) if processed_dir.exists() else []
-        pending_files = list(pending_dir.glob(f'*{handoff_id}*.handoff')) if pending_dir.exists() else []
+        # Check for existing handoff for this agent+project (in pending or processed)
+        # Handoff files are named: YYYYMMDD_HHMMSS_<agent>_<id>.handoff
+        agent_pattern = f'*_{agent}_*.handoff'
 
-        if processed_files:
-            return None  # Already ACK'd, allow stop
+        processed_files = sorted(processed_dir.glob(agent_pattern), reverse=True) if processed_dir.exists() else []
+        pending_files = sorted(pending_dir.glob(agent_pattern), reverse=True) if pending_dir.exists() else []
 
-        if pending_files:
-            # Handoff still pending - wait for ACK
-            acked = wait_for_ack(handoff_id, timeout_seconds=ack_timeout, poll_interval=poll_interval)
-            if not acked:
-                log_stderr(f"Existing handoff {handoff_id} not ACK'd - allowing stop anyway")
-            # Clear state file after ACK (or timeout)
-            _clear_agent_state_file(docs_path, agent)
-            return None
+        # Get current assignment timestamp from NOTES.md
+        # Format: **Assigned**: 2026-01-10 15:30 (MSG_xxx)
+        assignment_timestamp = None
+        notes_path = docs_path / 'NOTES.md'
+        if notes_path.exists():
+            try:
+                notes_content = notes_path.read_text()
+                # Look for assignment timestamp (with or without time)
+                import re
+                # Try full timestamp first (YYYY-MM-DD HH:MM)
+                match = re.search(r'\*\*Assigned\*\*:\s*(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2})', notes_content)
+                if match:
+                    assignment_timestamp = match.group(1).strip()
+                else:
+                    # Fallback to date only (legacy format)
+                    match = re.search(r'\*\*Assigned\*\*:\s*(\d{4}-\d{2}-\d{2})', notes_content)
+                    if match:
+                        assignment_timestamp = match.group(1) + ' 00:00'
+            except Exception:
+                pass
 
-    # No pending file found (edge case) - clear state and allow stop
+        def normalize_timestamp(ts: str) -> str:
+            """Convert timestamp to comparable format YYYY-MM-DD HH:MM"""
+            if not ts:
+                return ''
+            # Handle ISO format: 2026-01-10T12:50:33
+            if 'T' in ts:
+                ts = ts.replace('T', ' ')
+            # Take first 16 chars: YYYY-MM-DD HH:MM
+            return ts[:16].strip()
+
+        # Check processed files for this project
+        for hf in processed_files:
+            try:
+                import yaml
+                data = yaml.safe_load(hf.read_text())
+                if data.get('project') == project_name:
+                    # Check if handoff is NEWER than current assignment
+                    handoff_ts = normalize_timestamp(data.get('timestamp', ''))
+                    assignment_ts = normalize_timestamp(assignment_timestamp or '')
+
+                    # If we have BOTH timestamps, compare them
+                    if handoff_ts and assignment_ts:
+                        if handoff_ts < assignment_ts:
+                            # Handoff is OLDER than assignment - don't count it
+                            log_stderr(f"Ignoring stale handoff (handoff: {handoff_ts}, assignment: {assignment_ts})")
+                            continue
+                        # Valid handoff for this project - allow stop
+                        return None
+                    elif handoff_ts and not assignment_ts:
+                        # No assignment timestamp means NOTES.md was overwritten or malformed
+                        # Don't trust existing handoffs - force a new one
+                        log_stderr(f"No assignment timestamp found - cannot validate handoff age, forcing new handoff")
+                        continue
+                    # If neither has timestamp (legacy), allow the handoff
+                    elif not handoff_ts:
+                        return None
+            except Exception:
+                pass
+
+        # Check pending files for this project
+        for hf in pending_files:
+            try:
+                import yaml
+                data = yaml.safe_load(hf.read_text())
+                if data.get('project') == project_name:
+                    # Check if handoff is NEWER than current assignment
+                    handoff_ts = normalize_timestamp(data.get('timestamp', ''))
+                    assignment_ts = normalize_timestamp(assignment_timestamp or '')
+
+                    # If we have BOTH timestamps, compare them
+                    if handoff_ts and assignment_ts:
+                        if handoff_ts < assignment_ts:
+                            # Handoff is OLDER than assignment - don't count it
+                            log_stderr(f"Ignoring stale pending handoff (handoff: {handoff_ts}, assignment: {assignment_ts})")
+                            continue
+                    elif handoff_ts and not assignment_ts:
+                        # No assignment timestamp - can't validate, force new handoff
+                        log_stderr(f"No assignment timestamp found - cannot validate pending handoff age")
+                        continue
+
+                    # Pending handoff exists and is valid - wait for ACK
+                    handoff_id = data.get('id', '')
+                    acked = wait_for_ack(handoff_id, timeout_seconds=ack_timeout, poll_interval=poll_interval)
+                    if not acked:
+                        log_stderr(f"Existing handoff {handoff_id} not ACK'd - allowing stop anyway")
+                    _clear_agent_state_file(docs_path, agent)
+                    return None
+            except Exception:
+                pass
+
+    # No existing handoff found - trigger atomic handoff
+    handoff_id, error = trigger_handoff_atomic(docs_path, agent, agent_config['output_file'], timeout_config)
+    if not handoff_id:
+        return error or f"Work complete but handoff automation failed. Please run: /handoff {agent} dan"
+
+    # Wait for coordinator ACK
+    acked = wait_for_ack(handoff_id, timeout_seconds=ack_timeout, poll_interval=poll_interval)
+    if not acked:
+        log_stderr(f"Handoff {handoff_id} not ACK'd within {ack_timeout}s - allowing stop anyway")
+
+    # Clear state file AFTER ACK confirmed (or timeout)
     _clear_agent_state_file(docs_path, agent)
     return None
 

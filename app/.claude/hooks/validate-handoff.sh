@@ -27,8 +27,17 @@ file_path=$(echo "$data" | jq -r '.tool_input.file_path // ""') || true
 if [[ "$tool_name" == "Write" ]]; then
     content=$(echo "$data" | jq -r '.tool_input.content // ""') || true
 elif [[ "$tool_name" == "Edit" ]]; then
-    # For Edit tool, validate the new content being written
-    content=$(echo "$data" | jq -r '.tool_input.new_string // ""') || true
+    # For Edit: read current file, apply edit, validate result
+    old_string=$(echo "$data" | jq -r '.tool_input.old_string // ""') || true
+    new_string=$(echo "$data" | jq -r '.tool_input.new_string // ""') || true
+    if [[ -f "$file_path" ]] && [[ -n "$old_string" ]]; then
+        current_content=$(cat "$file_path" 2>/dev/null) || true
+        # Simulate the edit by replacing old with new
+        content="${current_content//"$old_string"/"$new_string"}"
+    else
+        # New file or missing old_string - use new_string only
+        content="$new_string"
+    fi
 else
     exit 0  # Unknown tool, skip validation
 fi
@@ -85,7 +94,17 @@ try:
     if not team_file.exists():
         sys.exit(0)  # Skip projects without .team file
 
-    team_name = team_file.read_text().strip()
+    # Parse team name (supports YAML and plain text formats)
+    team_content = team_file.read_text()
+    try:
+        data = yaml.safe_load(team_content)
+        if isinstance(data, dict) and 'team' in data:
+            team_name = data['team']
+        else:
+            team_name = team_content.strip()
+    except:
+        team_name = team_content.strip()
+
     nolan_root = Path(os.environ.get('NOLAN_ROOT', ''))
     if not nolan_root:
         sys.exit(0)  # Can't validate without NOLAN_ROOT
@@ -96,36 +115,7 @@ try:
 
     config = yaml.safe_load(config_path.read_text())
 
-    # Get coordinator's output file from config
-    coordinator_name = config['team']['workflow']['coordinator']
-    coordinator_agent = next((a for a in config['team']['agents'] if a['name'] == coordinator_name), None)
-    coordinator_file = coordinator_agent['output_file'] if coordinator_agent else None
-
-    # Special handling for coordinator's output file
-    if coordinator_file and filename == coordinator_file:
-        # Accept either "## Log" or "## Handoff Log"
-        if not ('## Handoff Log' in content or '## Log' in content):
-            print("Missing required sections:", file=sys.stderr)
-            print("  - ## Handoff Log (or ## Log)", file=sys.stderr)
-            sys.exit(2)
-
-        # Still check for Current Status
-        if '## Current Status' not in content:
-            print("Missing required sections:", file=sys.stderr)
-            print("  - ## Current Status", file=sys.stderr)
-            sys.exit(2)
-
-        # Warn if content indicates completion but lacks structured marker
-        import re
-        if re.search(r'\*\*(Status|Phase)\*?\*?:.*\b(COMPLETE|CLOSED|DEPLOYED|PRODUCTION.READY)\b', content, re.IGNORECASE):
-            if '<!-- PROJECT:STATUS:' not in content:
-                print("SUGGESTION: Project appears complete but lacks structured marker.", file=sys.stderr)
-                print("  Add: <!-- PROJECT:STATUS:COMPLETE:YYYY-MM-DD -->", file=sys.stderr)
-                print("  This improves status detection reliability.", file=sys.stderr)
-
-        sys.exit(0)
-
-    # Find agent config by output filename
+    # Find agent config by output filename (includes coordinator)
     agent_config = next((a for a in config['team']['agents'] if a.get('output_file') == filename), None)
 
     if not agent_config:

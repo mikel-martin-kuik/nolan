@@ -196,7 +196,95 @@ fn parse_project_status(coordinator_content: &str) -> (ProjectStatus, Option<Str
     (ProjectStatus::Pending, None)
 }
 
-/// Parse HANDOFF marker from file content
+/// Check .handoffs/processed/ directory for completed handoffs
+/// Returns map of agent_name -> (timestamp, handoff_id) for a specific project
+/// This is the primary source of truth for completion status
+fn get_processed_handoffs(projects_dir: &PathBuf, project_name: &str) -> std::collections::HashMap<String, (String, String)> {
+    let mut handoffs = std::collections::HashMap::new();
+    let processed_dir = projects_dir.join(".handoffs").join("processed");
+
+    if !processed_dir.exists() {
+        return handoffs;
+    }
+
+    // Read all .handoff files in processed directory
+    if let Ok(entries) = fs::read_dir(&processed_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().map_or(false, |e| e == "handoff") {
+                if let Ok(content) = fs::read_to_string(&path) {
+                    // Parse YAML content to check project name
+                    // Format: project: <name>, from_agent: <agent>, timestamp: <time>, id: <id>
+                    let mut agent: Option<String> = None;
+                    let mut project: Option<String> = None;
+                    let mut timestamp: Option<String> = None;
+                    let mut handoff_id: Option<String> = None;
+
+                    for line in content.lines() {
+                        let line = line.trim();
+                        if line.starts_with("from_agent:") {
+                            agent = line.strip_prefix("from_agent:").map(|s| s.trim().to_string());
+                        } else if line.starts_with("project:") {
+                            project = line.strip_prefix("project:").map(|s| s.trim().to_string());
+                        } else if line.starts_with("timestamp:") {
+                            // Format: '2026-01-10T12:50:33' -> '2026-01-10 12:50'
+                            if let Some(ts) = line.strip_prefix("timestamp:") {
+                                let ts = ts.trim().trim_matches('\'').trim_matches('"');
+                                // Convert ISO format to display format
+                                timestamp = Some(ts.replace('T', " ").chars().take(16).collect());
+                            }
+                        } else if line.starts_with("id:") {
+                            handoff_id = line.strip_prefix("id:").map(|s| s.trim().to_string());
+                        }
+                    }
+
+                    // Only include if this handoff is for the requested project
+                    if let (Some(ag), Some(proj), Some(ts)) = (agent, project, timestamp) {
+                        if proj == project_name {
+                            let id = handoff_id.unwrap_or_default();
+                            handoffs.insert(ag, (ts, id));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    handoffs
+}
+
+/// Get the agent that produces a specific file (from team config)
+fn get_file_producer(config: &TeamConfig, file: &str) -> Option<String> {
+    // Check workflow phases
+    for phase in &config.team.workflow.phases {
+        let output = if phase.output.ends_with(".md") {
+            phase.output.clone()
+        } else {
+            format!("{}.md", phase.output)
+        };
+        if output == file || phase.output == file {
+            return Some(phase.owner.clone());
+        }
+    }
+
+    // Check agent output files
+    for agent in &config.team.agents {
+        if let Some(ref output_file) = agent.output_file {
+            let output = if output_file.ends_with(".md") {
+                output_file.clone()
+            } else {
+                format!("{}.md", output_file)
+            };
+            if output == file || output_file == file {
+                return Some(agent.name.clone());
+            }
+        }
+    }
+
+    None
+}
+
+/// Parse HANDOFF marker from file content (legacy fallback)
 /// Formats supported:
 ///   <!-- HANDOFF:YYYY-MM-DD HH:MM:agent:COMPLETE -->
 ///   <!-- HANDOFF:YYYY-MM-DD HH:MM:agent:COMPLETE:handoff_id -->
@@ -216,17 +304,49 @@ fn parse_handoff_marker(content: &str) -> Option<(String, String)> {
 }
 
 /// Get completion status for workflow files (and prompt.md)
-/// workflow_files: List of files to check for HANDOFF markers (from team config)
-fn get_file_completions(project_path: &PathBuf, workflow_files: &[String]) -> Vec<FileCompletion> {
+/// Primary source of truth: .handoffs/processed/ directory
+/// Fallback: HANDOFF markers in files (for legacy compatibility)
+fn get_file_completions(
+    project_path: &PathBuf,
+    workflow_files: &[String],
+    projects_dir: Option<&PathBuf>,
+    project_name: &str,
+    config: Option<&TeamConfig>,
+) -> Vec<FileCompletion> {
     let mut completions = Vec::new();
 
-    // Check workflow files first
+    // Get processed handoffs from .handoffs/ directory (primary source of truth)
+    let processed_handoffs = if let Some(pd) = projects_dir {
+        get_processed_handoffs(pd, project_name)
+    } else {
+        std::collections::HashMap::new()
+    };
+
+    // Check workflow files
     for file in workflow_files {
         let file_path = project_path.join(file);
         let exists = file_path.exists();
 
-        let (completed, completed_by, completed_at) = if exists {
-            // Read file and check for HANDOFF marker
+        // First: Check .handoffs/processed/ directory (primary source of truth)
+        let handoff_completion = if let Some(cfg) = config {
+            if let Some(agent) = get_file_producer(cfg, file) {
+                if let Some((timestamp, _id)) = processed_handoffs.get(&agent) {
+                    Some((timestamp.clone(), agent))
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let (completed, completed_by, completed_at) = if let Some((ts, ag)) = handoff_completion {
+            // Completion found in .handoffs/processed/
+            (true, Some(ag), Some(ts))
+        } else if exists {
+            // Fallback: Check for HANDOFF marker in file (legacy compatibility)
             match fs::read_to_string(&file_path) {
                 Ok(content) => {
                     if let Some((timestamp, agent)) = parse_handoff_marker(&content) {
@@ -250,12 +370,12 @@ fn get_file_completions(project_path: &PathBuf, workflow_files: &[String]) -> Ve
         });
     }
 
-    // Check prompt.md separately (special file with different requirements)
+    // Check prompt.md separately (special file - always uses file marker)
     let prompt_path = project_path.join("prompt.md");
     let prompt_exists = prompt_path.exists();
 
     let (prompt_completed, prompt_completed_by, prompt_completed_at) = if prompt_exists {
-        // Read file and check for HANDOFF marker
+        // prompt.md always uses file marker (it's user-generated, not agent handoff)
         match fs::read_to_string(&prompt_path) {
             Ok(content) => {
                 if let Some((timestamp, agent)) = parse_handoff_marker(&content) {
@@ -400,7 +520,15 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
         let (existing_files, missing_files) = get_file_scaffolding(&path, &expected_files);
 
         // Get workflow file completion status using stored or team-config workflow files
-        let file_completions = get_file_completions(&path, &workflow_files);
+        // Primary source: .handoffs/processed/ directory
+        // Fallback: HANDOFF markers in files (legacy compatibility)
+        let file_completions = get_file_completions(
+            &path,
+            &workflow_files,
+            Some(&projects_dir),
+            &name,
+            Some(&team_config),
+        );
 
         projects.push(ProjectInfo {
             name,

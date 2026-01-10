@@ -1,0 +1,7 @@
+{
+  "role": "Implementer",
+  "model": "sonnet",
+  "role_template": "implementer",
+  "team": "strategic-direction",
+  "description": "Implements goal tracking systems"
+}

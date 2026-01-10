@@ -55,6 +55,28 @@ pub fn run() {
         // Non-fatal - cronos features will be unavailable
     }
 
+    // Recover orphaned cron sessions (runs interrupted by app restart)
+    match runtime.block_on(cronos::commands::recover_orphaned_cron_sessions()) {
+        Ok(result) => {
+            if !result.is_empty() {
+                eprintln!("Cron recovery: {}", result.summary());
+                for msg in &result.recovered {
+                    eprintln!("  {}", msg);
+                }
+                for msg in &result.interrupted {
+                    eprintln!("  {}", msg);
+                }
+                for err in &result.errors {
+                    eprintln!("  Error: {}", err);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: Failed to recover cron sessions: {}", e);
+            // Non-fatal - continue startup
+        }
+    }
+
     // Start HTTP API server in background
     // Port configurable via NOLAN_API_PORT environment variable (default: 3030)
     let api_port: u16 = std::env::var("NOLAN_API_PORT")
@@ -139,6 +161,13 @@ pub fn run() {
             commands::agents::get_agent_template,
             commands::agents::save_agent_metadata,
             commands::agents::get_agent_metadata,
+            // Organization commands (V1.1)
+            commands::organization::get_organization_config,
+            // Role commands (V1.2)
+            commands::roles::get_role_config,
+            commands::roles::list_role_templates,
+            // Policy commands (V1.3)
+            commands::policies::get_policy_config,
             // Usage commands
             get_usage_stats,
             get_usage_by_date_range,

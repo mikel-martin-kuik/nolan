@@ -43,6 +43,34 @@ if [[ ! -f "$PROJECT_DIR/.team" ]]; then
     exit 1
 fi
 
+# Parse team name from .team file (supports YAML and plain text formats)
+# YAML format: team: default\nworkflow_files: [...]
+# Plain text format: default
+get_team_name() {
+    local project_path="$1"
+
+    python3 -c "
+import yaml
+from pathlib import Path
+
+project_path = Path('$project_path')
+team_file = project_path / '.team'
+content = team_file.read_text()
+
+# Try YAML parse first (new format)
+try:
+    data = yaml.safe_load(content)
+    if isinstance(data, dict) and 'team' in data:
+        print(data['team'])
+    else:
+        # Plain text format (legacy)
+        print(content.strip())
+except:
+    # Fallback to plain text
+    print(content.strip())
+"
+}
+
 # Get coordinator from team config
 get_coordinator() {
     local project_path="$1"
@@ -52,7 +80,19 @@ import yaml, os
 from pathlib import Path
 
 project_path = Path('$project_path')
-team_name = (project_path / '.team').read_text().strip()
+team_file = project_path / '.team'
+content = team_file.read_text()
+
+# Parse team name (supports YAML and plain text)
+try:
+    data = yaml.safe_load(content)
+    if isinstance(data, dict) and 'team' in data:
+        team_name = data['team']
+    else:
+        team_name = content.strip()
+except:
+    team_name = content.strip()
+
 nolan_root = Path(os.environ.get('NOLAN_ROOT', os.path.expanduser('~/nolan')))
 config = yaml.safe_load((nolan_root / 'teams' / f'{team_name}.yaml').read_text())
 print(config['team']['workflow']['coordinator'])
@@ -68,7 +108,19 @@ import yaml, os
 from pathlib import Path
 
 project_path = Path('$project_path')
-team_name = (project_path / '.team').read_text().strip()
+team_file = project_path / '.team'
+content = team_file.read_text()
+
+# Parse team name (supports YAML and plain text)
+try:
+    data = yaml.safe_load(content)
+    if isinstance(data, dict) and 'team' in data:
+        team_name = data['team']
+    else:
+        team_name = content.strip()
+except:
+    team_name = content.strip()
+
 nolan_root = Path(os.environ.get('NOLAN_ROOT', os.path.expanduser('~/nolan')))
 config = yaml.safe_load((nolan_root / 'teams' / f'{team_name}.yaml').read_text())
 coordinator = config['team']['workflow']['coordinator']
@@ -105,7 +157,19 @@ import yaml, os
 from pathlib import Path
 
 project_path = Path('$project_path')
-team_name = (project_path / '.team').read_text().strip()
+team_file = project_path / '.team'
+content = team_file.read_text()
+
+# Parse team name (supports YAML and plain text)
+try:
+    data = yaml.safe_load(content)
+    if isinstance(data, dict) and 'team' in data:
+        team_name = data['team']
+    else:
+        team_name = content.strip()
+except:
+    team_name = content.strip()
+
 nolan_root = Path(os.environ.get('NOLAN_ROOT', os.path.expanduser('~/nolan')))
 config = yaml.safe_load((nolan_root / 'teams' / f'{team_name}.yaml').read_text())
 
@@ -128,7 +192,19 @@ import yaml, os
 from pathlib import Path
 
 project_path = Path('$project_path')
-team_name = (project_path / '.team').read_text().strip()
+team_file = project_path / '.team'
+content = team_file.read_text()
+
+# Parse team name (supports YAML and plain text)
+try:
+    data = yaml.safe_load(content)
+    if isinstance(data, dict) and 'team' in data:
+        team_name = data['team']
+    else:
+        team_name = content.strip()
+except:
+    team_name = content.strip()
+
 nolan_root = Path(os.environ.get('NOLAN_ROOT', os.path.expanduser('~/nolan')))
 config = yaml.safe_load((nolan_root / 'teams' / f'{team_name}.yaml').read_text())
 
@@ -153,7 +229,19 @@ import yaml, os
 from pathlib import Path
 
 project_path = Path('$project_path')
-team_name = (project_path / '.team').read_text().strip()
+team_file = project_path / '.team'
+content = team_file.read_text()
+
+# Parse team name (supports YAML and plain text)
+try:
+    data = yaml.safe_load(content)
+    if isinstance(data, dict) and 'team' in data:
+        team_name = data['team']
+    else:
+        team_name = content.strip()
+except:
+    team_name = content.strip()
+
 nolan_root = Path(os.environ.get('NOLAN_ROOT', os.path.expanduser('~/nolan')))
 config = yaml.safe_load((nolan_root / 'teams' / f'{team_name}.yaml').read_text())
 
@@ -241,7 +329,7 @@ assignment_section = f'''## Current Assignment
 **Agent**: {agent.capitalize()}
 **Task**: {task}
 **Phase**: {phase}
-**Assigned**: {timestamp_date} ({msg_id})
+**Assigned**: {timestamp_full} ({msg_id})
 
 ### Instructions
 
@@ -300,6 +388,14 @@ echo "   Phase: $PHASE"
 echo "   Task: $TASK"
 echo "   MSG_ID: $MSG_ID"
 echo ""
+
+# Set agent's active project state file
+# This is CRITICAL - the stop hook uses this to know which project to validate
+TEAM_NAME=$(get_team_name "$PROJECT_DIR")
+STATE_DIR="$PROJECTS_DIR/.state/$TEAM_NAME"
+mkdir -p "$STATE_DIR"
+echo "$PROJECT_NAME" > "$STATE_DIR/active-$AGENT.txt"
+echo "✅ Set active project for $AGENT"
 
 # Send handoff message via team-aliases
 NOLAN_ROOT="${NOLAN_ROOT:-$(dirname "$(dirname "$(readlink -f "$0")")")/..}"

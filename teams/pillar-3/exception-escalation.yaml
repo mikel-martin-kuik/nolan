@@ -1,0 +1,47 @@
+team:
+  id: "exception-escalation"
+  name: "Exception & Escalation"
+  prefix: "EE"
+  pillar: "human-ai-collaboration"
+  department: "Strategic Direction"
+  mission: "Handle edge cases and human-in-the-loop workflows"
+
+  ownership:
+    milestones:
+      - "V3.2"  # Exception Handling
+    directories:
+      - "escalation/"
+      - "src-tauri/src/escalation/"
+    file_patterns:
+      - "**/escalation/**"
+      - "**/exceptions/**"
+
+  agents:
+    - name: "EE-Coordinator"
+      role_template: "coordinator"
+      model: "opus"
+      description: "Orchestrates exception handling workflow"
+
+    - name: "EE-Architect"
+      role_template: "architect"
+      model: "opus"
+      description: "Designs escalation pathways"
+
+    - name: "EE-Implementer"
+      role_template: "implementer"
+      model: "sonnet"
+      description: "Implements exception handlers"
+
+    - name: "EE-Tester"
+      role_template: "qa-automation"
+      model: "sonnet"
+      description: "Tests escalation workflows"
+
+  workflow:
+    phases:
+      - research
+      - plan
+      - implement
+      - review
+
+  policy: "pillar-3"

@@ -1,0 +1,48 @@
+team:
+  id: "quality-automation"
+  name: "Quality Automation"
+  prefix: "QA"
+  pillar: "autonomous-operations"
+  department: "Scheduled Operations"
+  mission: "Automate quality checks and validation workflows"
+
+  ownership:
+    milestones:
+      - "V2.2"  # Quality Automation
+    directories:
+      - "quality/"
+      - "src-tauri/src/quality/"
+    file_patterns:
+      - "**/quality/**"
+      - "**/*.test.*"
+      - "**/*.spec.*"
+
+  agents:
+    - name: "QA-Coordinator"
+      role_template: "coordinator"
+      model: "opus"
+      description: "Orchestrates quality automation workflow"
+
+    - name: "QA-Engineer"
+      role_template: "qa-automation"
+      model: "sonnet"
+      description: "Designs quality automation frameworks"
+
+    - name: "QA-Implementer"
+      role_template: "implementer"
+      model: "sonnet"
+      description: "Implements automated quality checks"
+
+    - name: "QA-Reviewer"
+      role_template: "reviewer"
+      model: "sonnet"
+      description: "Reviews quality metrics and results"
+
+  workflow:
+    phases:
+      - research
+      - plan
+      - implement
+      - review
+
+  policy: "pillar-2"

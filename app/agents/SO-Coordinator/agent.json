@@ -1,0 +1,7 @@
+{
+  "role": "Coordinator",
+  "model": "opus",
+  "role_template": "coordinator",
+  "team": "security-operations",
+  "description": "Orchestrates security operations workflow"
+}

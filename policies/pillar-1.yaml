@@ -1,0 +1,13 @@
+policy:
+  name: "pillar-1-organizational-intelligence"
+  version: "1.0"
+  description: "Policy overrides for Pillar 1: Organizational Intelligence teams"
+
+  budget:
+    project_limit: 7500  # Higher for architectural work
+
+  models:
+    default: "opus"  # Architecture decisions need deeper reasoning
+
+  execution:
+    max_concurrent_agents: 3  # Lower concurrency for coordination-heavy work

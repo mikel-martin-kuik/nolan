@@ -49,6 +49,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/teams/:old_name/rename/:new_name", post(handlers::teams::rename_team))
         .route("/api/departments", get(handlers::teams::get_departments))
         .route("/api/departments", put(handlers::teams::update_departments))
+        // Organization (V1.1)
+        .route("/api/organization", get(handlers::organization::get_organization))
+        // Roles (V1.2)
+        .route("/api/roles", get(handlers::roles::list_roles))
+        .route("/api/roles/:name", get(handlers::roles::get_role))
+        // Policies (V1.3)
+        .route("/api/policies/:name", get(handlers::policies::get_policy))
         // Lifecycle
         .route("/api/lifecycle/launch-team", post(handlers::lifecycle::launch_team))
         .route("/api/lifecycle/kill-team", post(handlers::lifecycle::kill_team))

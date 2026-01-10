@@ -479,3 +479,140 @@ export interface AgentWorkflowState {
   statusLabel: string;            // Human-readable status
   statusColor: string;            // Tailwind color class
 }
+
+// =============================================================================
+// Organization Types (V1.1)
+// =============================================================================
+
+export interface OrganizationConfig {
+  organization: Organization;
+}
+
+export interface Organization {
+  name: string;
+  version: string;
+  description?: string;
+  pillars: Pillar[];
+  defaults?: OrganizationDefaults;
+}
+
+export interface Pillar {
+  id: string;
+  name: string;
+  version_target?: string;
+  description?: string;
+}
+
+export interface OrganizationDefaults {
+  model?: string;
+  file_permissions?: string;
+  escalation_timeout?: string;
+}
+
+// Extended Department (V1.1)
+export interface DepartmentV2 extends Department {
+  pillar?: string;
+  parent?: string;
+  description?: string;
+  policies?: DepartmentPoliciesConfig;
+}
+
+export interface DepartmentPoliciesConfig {
+  budget_limit?: number;
+  model_restriction?: string[];
+  escalation_timeout?: string;
+}
+
+// =============================================================================
+// Role Template Types (V1.2)
+// =============================================================================
+
+export interface RoleConfig {
+  role: Role;
+}
+
+export interface Role {
+  name: string;
+  display_name: string;
+  description?: string;
+  capabilities: string[];
+  permissions: RolePermissions;
+  tools: RoleTools;
+  model_preference?: string;
+  output_requirements?: OutputRequirements;
+}
+
+export interface RolePermissions {
+  file_access?: string;
+  can_spawn_agents: boolean;
+  can_modify_workflow: boolean;
+}
+
+export interface RoleTools {
+  required: string[];
+  optional: string[];
+}
+
+export interface OutputRequirements {
+  required_sections: string[];
+  output_file?: string;
+}
+
+// Extended Agent Metadata (V1.2)
+export interface AgentMetadataV2 extends AgentMetadata {
+  role_template?: string;
+  role_overrides?: Partial<Role>;
+}
+
+// =============================================================================
+// Policy Types (V1.3)
+// =============================================================================
+
+export interface PolicyConfig {
+  policy: Policy;
+}
+
+export interface Policy {
+  name: string;
+  version?: string;
+  description?: string;
+  budget?: BudgetPolicy;
+  models?: ModelPolicy;
+  escalation?: EscalationPolicy;
+  execution?: ExecutionPolicy;
+  audit?: AuditPolicy;
+}
+
+export interface BudgetPolicy {
+  daily_limit?: number;
+  project_limit?: number;
+  alert_threshold?: number;
+}
+
+export interface ModelPolicy {
+  allowed: string[];
+  default?: string;
+  opus_requires_approval: boolean;
+}
+
+export interface EscalationPolicy {
+  timeout?: string;
+  budget_exceeded?: string;
+  quality_failed?: {
+    first_action?: string;
+    second_action?: string;
+  };
+  paths: string[];
+}
+
+export interface ExecutionPolicy {
+  max_concurrent_agents?: number;
+  max_retries?: number;
+  retry_delay?: string;
+}
+
+export interface AuditPolicy {
+  log_decisions: boolean;
+  log_file_changes: boolean;
+  require_rationale: boolean;
+}

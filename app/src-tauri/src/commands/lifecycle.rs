@@ -747,6 +747,12 @@ pub async fn kill_team(app_handle: AppHandle, team_name: String) -> Result<Strin
         }
     }
 
+    // Clear active project to prevent stale recovery
+    if let Err(e) = crate::commands::lifecycle_core::clear_team_active_project(&team_name) {
+        eprintln!("Warning: Failed to clear active project for team '{}': {}", team_name, e);
+        // Non-fatal - sessions are still killed
+    }
+
     // Emit status change event after operation
     let app_clone = app_handle.clone();
     tokio::spawn(async move {

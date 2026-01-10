@@ -1,0 +1,46 @@
+team:
+  id: "role-identity"
+  name: "Role & Identity"
+  prefix: "RI"
+  pillar: "organizational-intelligence"
+  department: "Role Management"
+  mission: "Create and manage the role marketplace and agent identity system"
+
+  ownership:
+    milestones:
+      - "V1.2"  # Role Marketplace
+    directories:
+      - "roles/"
+      - "src-tauri/src/roles/"
+    file_patterns:
+      - "**/roles/**"
+
+  agents:
+    - name: "RI-Coordinator"
+      role_template: "coordinator"
+      model: "opus"
+      description: "Orchestrates role management workflow"
+
+    - name: "RI-Designer"
+      role_template: "architect"
+      model: "opus"
+      description: "Designs role templates and capability models"
+
+    - name: "RI-Implementer"
+      role_template: "implementer"
+      model: "sonnet"
+      description: "Implements role template changes"
+
+    - name: "RI-Reviewer"
+      role_template: "reviewer"
+      model: "sonnet"
+      description: "Reviews role definitions for completeness"
+
+  workflow:
+    phases:
+      - research
+      - plan
+      - implement
+      - review
+
+  policy: "pillar-1"

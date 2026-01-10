@@ -45,6 +45,49 @@ pub async fn shutdown_cronos() -> Result<(), String> {
 }
 
 // ========================
+// Session Recovery
+// ========================
+
+/// Recover orphaned cron sessions (called at app startup after init_cronos)
+pub async fn recover_orphaned_cron_sessions() -> Result<CronRecoveryResult, String> {
+    let guard = CRONOS.read().await;
+    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+    manager.recover_orphaned_cron_sessions().await
+}
+
+/// List orphaned cron sessions (for UI display)
+#[tauri::command]
+pub async fn list_orphaned_cron_sessions() -> Result<Vec<OrphanedSessionInfo>, String> {
+    let guard = CRONOS.read().await;
+    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+
+    let orphaned = manager.find_orphaned_cron_sessions()?;
+    Ok(orphaned.into_iter().map(|s| OrphanedSessionInfo {
+        run_id: s.run_log.run_id,
+        agent_name: s.run_log.agent_name,
+        session_name: s.run_log.session_name,
+        started_at: s.run_log.started_at,
+        session_alive: s.session_alive,
+    }).collect())
+}
+
+/// Manually recover orphaned cron sessions (Tauri command)
+#[tauri::command]
+pub async fn recover_cron_sessions() -> Result<CronRecoveryResult, String> {
+    recover_orphaned_cron_sessions().await
+}
+
+/// Info about an orphaned session (for UI)
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct OrphanedSessionInfo {
+    pub run_id: String,
+    pub agent_name: String,
+    pub session_name: Option<String>,
+    pub started_at: String,
+    pub session_alive: bool,
+}
+
+// ========================
 // Agent CRUD
 // ========================
 

@@ -1,0 +1,47 @@
+team:
+  id: "trust-autonomy"
+  name: "Trust & Autonomy"
+  prefix: "TA"
+  pillar: "human-ai-collaboration"
+  department: "Strategic Direction"
+  mission: "Implement graduated autonomy and trust metrics"
+
+  ownership:
+    milestones:
+      - "V3.4"  # Trust Building
+    directories:
+      - "trust/"
+      - "src-tauri/src/trust/"
+    file_patterns:
+      - "**/trust/**"
+      - "**/autonomy/**"
+
+  agents:
+    - name: "TA-Coordinator"
+      role_template: "coordinator"
+      model: "opus"
+      description: "Orchestrates trust management workflow"
+
+    - name: "TA-Designer"
+      role_template: "architect"
+      model: "opus"
+      description: "Designs trust metrics and autonomy levels"
+
+    - name: "TA-Implementer"
+      role_template: "implementer"
+      model: "sonnet"
+      description: "Implements trust tracking systems"
+
+    - name: "TA-Reviewer"
+      role_template: "reviewer"
+      model: "sonnet"
+      description: "Reviews trust level assignments"
+
+  workflow:
+    phases:
+      - research
+      - plan
+      - implement
+      - review
+
+  policy: "pillar-3"

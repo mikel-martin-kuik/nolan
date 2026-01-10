@@ -1,0 +1,7 @@
+{
+  "role": "Planner",
+  "model": "opus",
+  "role_template": "planner",
+  "team": "strategic-direction",
+  "description": "Plans goal implementation"
+}

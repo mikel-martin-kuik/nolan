@@ -1,0 +1,7 @@
+{
+  "role": "Trainer",
+  "model": "sonnet",
+  "role_template": "planner",
+  "team": "talent-operations",
+  "description": "Designs agent onboarding plans"
+}

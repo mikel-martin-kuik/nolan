@@ -1,0 +1,47 @@
+team:
+  id: "strategic-direction"
+  name: "Strategic Direction"
+  prefix: "SD"
+  pillar: "human-ai-collaboration"
+  department: "Strategic Direction"
+  mission: "Implement goal hierarchy and priority management"
+
+  ownership:
+    milestones:
+      - "V3.1"  # Strategic Direction
+    directories:
+      - "goals/"
+      - "src-tauri/src/goals/"
+    file_patterns:
+      - "**/goals/**"
+      - "**/priorities/**"
+
+  agents:
+    - name: "SD-Coordinator"
+      role_template: "coordinator"
+      model: "opus"
+      description: "Orchestrates strategic direction workflow"
+
+    - name: "SD-ProductManager"
+      role_template: "product-manager"
+      model: "opus"
+      description: "Defines strategic priorities"
+
+    - name: "SD-Planner"
+      role_template: "planner"
+      model: "opus"
+      description: "Plans goal implementation"
+
+    - name: "SD-Implementer"
+      role_template: "implementer"
+      model: "sonnet"
+      description: "Implements goal tracking systems"
+
+  workflow:
+    phases:
+      - research
+      - plan
+      - implement
+      - review
+
+  policy: "pillar-3"

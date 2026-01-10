@@ -1,0 +1,42 @@
+team:
+  id: "finance-operations"
+  name: "Finance Operations"
+  prefix: "FO"
+  pillar: null  # Support
+  department: "Specialized Operations"
+  mission: "Financial tracking, budget management, and cost reporting"
+
+  ownership:
+    milestones: []  # Support function, no specific milestone
+    directories: []  # No code ownership
+    file_patterns: []
+
+  agents:
+    - name: "FO-Coordinator"
+      role_template: "coordinator"
+      model: "opus"
+      description: "Orchestrates finance operations workflow"
+
+    - name: "FO-Analyst"
+      role_template: "financial-analyst"
+      model: "sonnet"
+      description: "Analyzes costs and budgets"
+
+    - name: "FO-Reporter"
+      role_template: "researcher"
+      model: "sonnet"
+      description: "Generates financial reports"
+
+    - name: "FO-Auditor"
+      role_template: "auditor"
+      model: "sonnet"
+      description: "Audits financial compliance"
+
+  workflow:
+    phases:
+      - research
+      - plan
+      - review
+      - audit
+
+  policy: "default"

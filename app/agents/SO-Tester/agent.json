@@ -1,0 +1,7 @@
+{
+  "role": "Security Tester",
+  "model": "sonnet",
+  "role_template": "qa-automation",
+  "team": "security-operations",
+  "description": "Executes penetration tests"
+}

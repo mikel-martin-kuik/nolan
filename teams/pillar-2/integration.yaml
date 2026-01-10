@@ -1,0 +1,49 @@
+team:
+  id: "integration"
+  name: "Integration"
+  prefix: "IN"
+  pillar: "autonomous-operations"
+  department: "Specialized Operations"
+  mission: "Connect Nolan to external ecosystems via MCP, A2A, and APIs"
+
+  ownership:
+    milestones:
+      - "V2.5"  # MCP/A2A Protocols
+    directories:
+      - "src-tauri/src/mcp/"
+      - "src-tauri/src/a2a/"
+    file_patterns:
+      - "**/mcp/**"
+      - "**/a2a/**"
+      - "**/protocols/**"
+
+  agents:
+    - name: "IN-Coordinator"
+      role_template: "coordinator"
+      model: "opus"
+      description: "Orchestrates integration workflow"
+
+    - name: "IN-ProtocolEngineer"
+      role_template: "protocol-engineer"
+      model: "opus"
+      description: "Implements external protocols"
+
+    - name: "IN-Implementer"
+      role_template: "implementer"
+      model: "sonnet"
+      description: "Implements integration adapters"
+
+    - name: "IN-Tester"
+      role_template: "qa-automation"
+      model: "sonnet"
+      description: "Tests integration compliance"
+
+  workflow:
+    phases:
+      - research
+      - plan
+      - implement
+      - review
+      - audit
+
+  policy: "pillar-2"

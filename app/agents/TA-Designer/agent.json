@@ -1,0 +1,7 @@
+{
+  "role": "Architect",
+  "model": "opus",
+  "role_template": "architect",
+  "team": "trust-autonomy",
+  "description": "Designs trust metrics and autonomy levels"
+}

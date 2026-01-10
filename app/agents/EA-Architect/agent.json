@@ -1,0 +1,7 @@
+{
+  "role": "Architect",
+  "model": "opus",
+  "role_template": "architect",
+  "team": "event-automation",
+  "description": "Designs event-driven architecture"
+}

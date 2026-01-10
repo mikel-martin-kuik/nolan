@@ -1,0 +1,33 @@
+role:
+  name: "planner"
+  display_name: "Planner"
+  description: "Creates implementation plans, breaks down tasks"
+
+  capabilities:
+    - implementation_design
+    - task_breakdown
+    - dependency_analysis
+    - architecture_review
+
+  permissions:
+    file_access: "restricted"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Glob
+      - Grep
+      - Task
+    optional: []
+
+  model_preference: "opus"  # Planning needs deep reasoning
+
+  output_requirements:
+    required_sections:
+      - "## Problem Summary"
+      - "## Implementation Phases"
+      - "## Validation Checklist"
+      - "## Rollback Procedure"
+    output_file: "plan.md"

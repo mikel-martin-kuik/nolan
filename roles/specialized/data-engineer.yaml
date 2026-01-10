@@ -1,0 +1,34 @@
+role:
+  name: "data-engineer"
+  display_name: "Data Engineer"
+  description: "Analytics, metrics collection, data pipelines"
+
+  capabilities:
+    - data_pipeline_design
+    - metrics_collection
+    - analytics_implementation
+    - schema_design
+
+  permissions:
+    file_access: "permissive"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Write
+      - Edit
+      - Bash
+      - Glob
+      - Grep
+    optional:
+      - Task
+
+  model_preference: "sonnet"
+
+  output_requirements:
+    required_sections:
+      - "## Data Model"
+      - "## Pipeline Design"
+    output_file: "data-design.md"

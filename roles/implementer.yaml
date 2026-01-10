@@ -1,0 +1,34 @@
+role:
+  name: "implementer"
+  display_name: "Implementer"
+  description: "Writes code and implements features"
+
+  capabilities:
+    - code_writing
+    - testing
+    - file_modification
+    - build_execution
+
+  permissions:
+    file_access: "permissive"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Write
+      - Edit
+      - Bash
+      - Glob
+      - Grep
+    optional:
+      - Task
+
+  model_preference: "sonnet"
+
+  output_requirements:
+    required_sections:
+      - "## Changes Made"
+      - "## Testing"
+    output_file: "progress.md"

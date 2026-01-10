@@ -1,0 +1,49 @@
+team:
+  id: "resource-optimization"
+  name: "Resource Optimization"
+  prefix: "RO"
+  pillar: "autonomous-operations"
+  department: "Specialized Operations"
+  mission: "Optimize costs, resource allocation, and self-improvement metrics"
+
+  ownership:
+    milestones:
+      - "V2.3"  # Resource Management
+      - "V2.4"  # Self-Improvement
+    directories:
+      - "src-tauri/src/usage/"
+      - "src-tauri/src/optimization/"
+    file_patterns:
+      - "**/usage/**"
+      - "**/optimization/**"
+      - "**/metrics/**"
+
+  agents:
+    - name: "RO-Coordinator"
+      role_template: "coordinator"
+      model: "opus"
+      description: "Orchestrates resource optimization workflow"
+
+    - name: "RO-DataEngineer"
+      role_template: "data-engineer"
+      model: "sonnet"
+      description: "Builds usage analytics pipelines"
+
+    - name: "RO-Analyst"
+      role_template: "financial-analyst"
+      model: "sonnet"
+      description: "Analyzes resource usage patterns"
+
+    - name: "RO-Implementer"
+      role_template: "implementer"
+      model: "sonnet"
+      description: "Implements optimization algorithms"
+
+  workflow:
+    phases:
+      - research
+      - plan
+      - implement
+      - review
+
+  policy: "pillar-2"

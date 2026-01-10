@@ -1,0 +1,60 @@
+team:
+  id: "platform-engineering"
+  name: "Platform Engineering"
+  prefix: "PE"
+  pillar: null  # Foundation, not pillar-aligned
+  department: "Infrastructure"
+  mission: "Maintain core Nolan platform (Tauri, React, Rust)"
+
+  ownership:
+    milestones: []  # Core platform, not specific milestone
+    directories:
+      - "src-tauri/src/core/"
+      - "src/components/core/"
+      - "src-tauri/src/commands/"
+      - "src-tauri/src/api/"
+    file_patterns:
+      - "src-tauri/src/*.rs"
+      - "src/App.tsx"
+      - "src/main.tsx"
+
+  agents:
+    - name: "PE-Coordinator"
+      role_template: "coordinator"
+      model: "opus"
+      description: "Orchestrates platform engineering workflow"
+
+    - name: "PE-Architect"
+      role_template: "architect"
+      model: "opus"
+      description: "Designs platform architecture"
+
+    - name: "PE-FrontendDev"
+      role_template: "implementer"
+      model: "sonnet"
+      description: "Implements React/TypeScript frontend"
+
+    - name: "PE-BackendDev"
+      role_template: "implementer"
+      model: "sonnet"
+      description: "Implements Rust/Tauri backend"
+
+    - name: "PE-DevOps"
+      role_template: "devops-engineer"
+      model: "sonnet"
+      description: "Manages build and deployment"
+
+    - name: "PE-Reviewer"
+      role_template: "reviewer"
+      model: "sonnet"
+      description: "Reviews platform changes"
+
+  workflow:
+    phases:
+      - research
+      - plan
+      - implement
+      - review
+      - audit
+
+  policy: "default"

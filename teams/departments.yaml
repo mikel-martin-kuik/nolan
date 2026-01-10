@@ -1,14 +1,19 @@
+version: "2.0"
 departments:
-- name: Desarrollo
-  order: 1
-  teams:
-  - default
-  - royme
-  - sprint
-  - bug-bounty
-- name: Core
-  order: 2
-  teams:
-  - finance
-  - talent-acquisition
-  - devops
+  - name: "Structure & Governance"
+    pillar: "organizational-intelligence"
+    teams: ["structure-engineering", "governance"]
+  - name: "Role Management"
+    pillar: "organizational-intelligence"
+    teams: ["role-identity"]
+  - name: "Scheduled Operations"
+    pillar: "autonomous-operations"
+    teams: ["event-automation", "quality-automation"]
+  - name: "Specialized Operations"
+    pillar: "autonomous-operations"
+    teams: ["resource-optimization", "integration", "finance-operations", "security-operations", "talent-operations"]
+  - name: "Strategic Direction"
+    pillar: "human-ai-collaboration"
+    teams: ["strategic-direction", "exception-escalation", "trust-autonomy"]
+  - name: "Infrastructure"
+    teams: ["platform-engineering", "decision-logging"]

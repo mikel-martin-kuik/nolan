@@ -1,0 +1,7 @@
+{
+  "role": "Auditor",
+  "model": "opus",
+  "role_template": "auditor",
+  "team": "security-operations",
+  "description": "Audits security compliance"
+}

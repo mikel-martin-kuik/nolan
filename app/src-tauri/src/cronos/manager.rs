@@ -142,6 +142,20 @@ impl CronosManager {
         log_file: PathBuf,
         json_file: PathBuf,
     ) {
+        self.register_running_with_session(run_id, agent_name, pid, log_file, json_file, None, None).await;
+    }
+
+    /// Register a running process with tmux session info for recovery
+    pub async fn register_running_with_session(
+        &self,
+        run_id: &str,
+        agent_name: &str,
+        pid: Option<u32>,
+        log_file: PathBuf,
+        json_file: PathBuf,
+        session_name: Option<String>,
+        run_dir: Option<PathBuf>,
+    ) {
         let mut running = self.running.write().await;
         running.insert(agent_name.to_string(), RunningProcess {
             run_id: run_id.to_string(),
@@ -150,6 +164,8 @@ impl CronosManager {
             pid,
             log_file,
             json_file,
+            session_name,
+            run_dir,
         });
     }
 
@@ -171,6 +187,248 @@ impl CronosManager {
     pub async fn list_running(&self) -> Vec<RunningProcess> {
         let running = self.running.read().await;
         running.values().cloned().collect()
+    }
+
+    // ========================
+    // Orphan Detection & Recovery
+    // ========================
+
+    /// Find orphaned cron sessions (runs that were interrupted by app restart)
+    ///
+    /// Scans JSON log files for runs with completed_at: null and session_name set,
+    /// then checks if the tmux session is still alive.
+    pub fn find_orphaned_cron_sessions(&self) -> Result<Vec<OrphanedCronSession>, String> {
+        let runs_dir = self.cronos_root.join("runs");
+        let mut orphaned = Vec::new();
+
+        // Scan date directories (e.g., runs/2026-01-10/)
+        if let Ok(date_entries) = std::fs::read_dir(&runs_dir) {
+            for date_entry in date_entries.flatten() {
+                if !date_entry.path().is_dir() {
+                    continue;
+                }
+
+                // Scan JSON files in each date directory
+                if let Ok(run_entries) = std::fs::read_dir(date_entry.path()) {
+                    for run_entry in run_entries.flatten() {
+                        let path = run_entry.path();
+                        if path.extension().map_or(false, |e| e == "json") {
+                            // Try to parse the run log
+                            if let Ok(content) = std::fs::read_to_string(&path) {
+                                if let Ok(run_log) = serde_json::from_str::<CronRunLog>(&content) {
+                                    // Check if it's a running session (completed_at is None)
+                                    if run_log.completed_at.is_none() {
+                                        if let Some(ref session_name) = run_log.session_name {
+                                            // Check if tmux session exists
+                                            let session_alive = crate::tmux::session::session_exists(session_name)
+                                                .unwrap_or(false);
+
+                                            orphaned.push(OrphanedCronSession {
+                                                run_log,
+                                                json_file: path,
+                                                session_alive,
+                                            });
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(orphaned)
+    }
+
+    /// Recover orphaned cron sessions
+    ///
+    /// For sessions still alive: re-register in running processes and start completion monitor
+    /// For dead sessions: mark as interrupted in the JSON log
+    pub async fn recover_orphaned_cron_sessions(&self) -> Result<CronRecoveryResult, String> {
+        let orphaned = self.find_orphaned_cron_sessions()?;
+        let mut result = CronRecoveryResult::default();
+
+        for session in orphaned {
+            if session.session_alive {
+                // Session still running - re-register and monitor
+                match self.reattach_cron_session(&session).await {
+                    Ok(_) => {
+                        result.recovered.push(format!(
+                            "Reattached to running cron: {} (session: {})",
+                            session.run_log.agent_name,
+                            session.run_log.session_name.as_deref().unwrap_or("unknown")
+                        ));
+                    }
+                    Err(e) => {
+                        result.errors.push(format!(
+                            "Failed to reattach {}: {}",
+                            session.run_log.agent_name, e
+                        ));
+                    }
+                }
+            } else {
+                // Session died - mark as interrupted
+                match self.finalize_interrupted_run(&session).await {
+                    Ok(_) => {
+                        result.interrupted.push(format!(
+                            "Marked as interrupted: {} (run_id: {})",
+                            session.run_log.agent_name,
+                            session.run_log.run_id
+                        ));
+                    }
+                    Err(e) => {
+                        result.errors.push(format!(
+                            "Failed to finalize {}: {}",
+                            session.run_log.agent_name, e
+                        ));
+                    }
+                }
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Reattach to a still-running cron session
+    async fn reattach_cron_session(&self, session: &OrphanedCronSession) -> Result<(), String> {
+        let run_log = &session.run_log;
+
+        // Re-register in running processes
+        self.register_running_with_session(
+            &run_log.run_id,
+            &run_log.agent_name,
+            None,  // PID not available
+            PathBuf::from(&run_log.output_file),
+            session.json_file.clone(),
+            run_log.session_name.clone(),
+            run_log.run_dir.as_ref().map(PathBuf::from),
+        ).await;
+
+        // Spawn a task to monitor for completion
+        let session_name = run_log.session_name.clone().unwrap_or_default();
+        let run_dir = run_log.run_dir.as_ref().map(PathBuf::from);
+        let json_file = session.json_file.clone();
+        let agent_name = run_log.agent_name.clone();
+        let run_id = run_log.run_id.clone();
+        let started_at = run_log.started_at.clone();
+        let output_file = run_log.output_file.clone();
+        let attempt = run_log.attempt;
+        let trigger = run_log.trigger.clone();
+        let running = Arc::clone(&self.running);
+
+        tokio::spawn(async move {
+            // Monitor for completion
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+                // Check if session still exists
+                let session_exists = crate::tmux::session::session_exists(&session_name)
+                    .unwrap_or(false);
+
+                if !session_exists {
+                    // Session ended - finalize the run log
+                    let completed_at = Utc::now();
+
+                    // Try to read exit code
+                    let exit_code = run_dir.as_ref()
+                        .and_then(|d| std::fs::read_to_string(d.join("exit_code")).ok())
+                        .and_then(|s| s.trim().parse::<i32>().ok());
+
+                    let status = if exit_code == Some(0) {
+                        CronRunStatus::Success
+                    } else {
+                        CronRunStatus::Failed
+                    };
+
+                    // Parse started_at to calculate duration
+                    let duration = DateTime::parse_from_rfc3339(&started_at)
+                        .map(|dt| (completed_at - dt.with_timezone(&Utc)).num_seconds() as u32)
+                        .unwrap_or(0);
+
+                    let final_log = CronRunLog {
+                        run_id: run_id.clone(),
+                        agent_name: agent_name.clone(),
+                        started_at: started_at.clone(),
+                        completed_at: Some(completed_at.to_rfc3339()),
+                        status: status.clone(),
+                        duration_secs: Some(duration),
+                        exit_code,
+                        output_file: output_file.clone(),
+                        error: if exit_code != Some(0) {
+                            Some("Non-zero exit code".to_string())
+                        } else {
+                            None
+                        },
+                        attempt,
+                        trigger: trigger.clone(),
+                        session_name: Some(session_name.clone()),
+                        run_dir: run_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
+                    };
+
+                    // Write final log
+                    if let Ok(json) = serde_json::to_string_pretty(&final_log) {
+                        let _ = std::fs::write(&json_file, json);
+                    }
+
+                    // Unregister from running
+                    {
+                        let mut running_guard = running.write().await;
+                        running_guard.remove(&agent_name);
+                    }
+
+                    // Cleanup run directory on success
+                    if status == CronRunStatus::Success {
+                        if let Some(ref dir) = run_dir {
+                            let _ = std::fs::remove_dir_all(dir);
+                        }
+                    }
+
+                    break;
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    /// Mark an interrupted run as failed
+    async fn finalize_interrupted_run(&self, session: &OrphanedCronSession) -> Result<(), String> {
+        let run_log = &session.run_log;
+        let completed_at = Utc::now();
+
+        // Parse started_at to calculate duration
+        let duration = DateTime::parse_from_rfc3339(&run_log.started_at)
+            .map(|dt| (completed_at - dt.with_timezone(&Utc)).num_seconds() as u32)
+            .unwrap_or(0);
+
+        let final_log = CronRunLog {
+            run_id: run_log.run_id.clone(),
+            agent_name: run_log.agent_name.clone(),
+            started_at: run_log.started_at.clone(),
+            completed_at: Some(completed_at.to_rfc3339()),
+            status: CronRunStatus::Interrupted,
+            duration_secs: Some(duration),
+            exit_code: None,
+            output_file: run_log.output_file.clone(),
+            error: Some("Process interrupted by app restart".to_string()),
+            attempt: run_log.attempt,
+            trigger: run_log.trigger.clone(),
+            session_name: run_log.session_name.clone(),
+            run_dir: run_log.run_dir.clone(),
+        };
+
+        let json = serde_json::to_string_pretty(&final_log)
+            .map_err(|e| format!("Failed to serialize: {}", e))?;
+        std::fs::write(&session.json_file, json)
+            .map_err(|e| format!("Failed to write: {}", e))?;
+
+        // Cleanup run directory for interrupted runs
+        if let Some(ref run_dir) = run_log.run_dir {
+            let _ = std::fs::remove_dir_all(run_dir);
+        }
+
+        Ok(())
     }
 
     // ========================

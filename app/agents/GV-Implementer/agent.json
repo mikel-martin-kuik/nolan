@@ -1,0 +1,7 @@
+{
+  "role": "Implementer",
+  "model": "sonnet",
+  "role_template": "implementer",
+  "team": "governance",
+  "description": "Implements policy enforcement mechanisms"
+}

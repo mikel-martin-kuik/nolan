@@ -1,0 +1,7 @@
+{
+  "role": "Implementer",
+  "model": "sonnet",
+  "role_template": "implementer",
+  "team": "event-automation",
+  "description": "Implements event handlers and triggers"
+}

@@ -1,0 +1,47 @@
+team:
+  id: "decision-logging"
+  name: "Decision Logging"
+  prefix: "DL"
+  pillar: null  # Foundation
+  department: "Infrastructure"
+  mission: "Implement transparent decision trails and audit capability"
+
+  ownership:
+    milestones:
+      - "V1.4"  # Decision Logging
+    directories:
+      - "decisions/"
+      - "src-tauri/src/decisions/"
+    file_patterns:
+      - "**/decisions/**"
+      - "**/audit/**"
+
+  agents:
+    - name: "DL-Coordinator"
+      role_template: "coordinator"
+      model: "opus"
+      description: "Orchestrates decision logging workflow"
+
+    - name: "DL-DataEngineer"
+      role_template: "data-engineer"
+      model: "sonnet"
+      description: "Designs decision data models"
+
+    - name: "DL-Implementer"
+      role_template: "implementer"
+      model: "sonnet"
+      description: "Implements decision logging"
+
+    - name: "DL-Reviewer"
+      role_template: "reviewer"
+      model: "sonnet"
+      description: "Reviews decision log integrity"
+
+  workflow:
+    phases:
+      - research
+      - plan
+      - implement
+      - review
+
+  policy: "default"

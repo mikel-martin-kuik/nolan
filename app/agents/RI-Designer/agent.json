@@ -1,0 +1,7 @@
+{
+  "role": "Architect",
+  "model": "opus",
+  "role_template": "architect",
+  "team": "role-identity",
+  "description": "Designs role templates and capability models"
+}

@@ -1,0 +1,7 @@
+{
+  "role": "Auditor",
+  "model": "opus",
+  "role_template": "auditor",
+  "team": "governance",
+  "description": "Audits policy compliance across organization"
+}

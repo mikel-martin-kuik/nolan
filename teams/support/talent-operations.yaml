@@ -1,0 +1,44 @@
+team:
+  id: "talent-operations"
+  name: "Talent Operations"
+  prefix: "TO"
+  pillar: null  # Support
+  department: "Specialized Operations"
+  mission: "Agent recruitment, capability assessment, and team composition"
+
+  ownership:
+    milestones: []  # Support function
+    directories:
+      - "app/agents/"
+    file_patterns:
+      - "**/agents/*/CLAUDE.md"
+      - "**/agents/*/agent.json"
+
+  agents:
+    - name: "TO-Coordinator"
+      role_template: "coordinator"
+      model: "opus"
+      description: "Orchestrates talent operations workflow"
+
+    - name: "TO-Recruiter"
+      role_template: "recruiter"
+      model: "sonnet"
+      description: "Sources and assesses agent capabilities"
+
+    - name: "TO-Assessor"
+      role_template: "reviewer"
+      model: "sonnet"
+      description: "Evaluates agent performance"
+
+    - name: "TO-Trainer"
+      role_template: "planner"
+      model: "sonnet"
+      description: "Designs agent onboarding plans"
+
+  workflow:
+    phases:
+      - research
+      - plan
+      - review
+
+  policy: "default"

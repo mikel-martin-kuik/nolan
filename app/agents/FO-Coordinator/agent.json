@@ -1,0 +1,7 @@
+{
+  "role": "Coordinator",
+  "model": "opus",
+  "role_template": "coordinator",
+  "team": "finance-operations",
+  "description": "Orchestrates finance operations workflow"
+}

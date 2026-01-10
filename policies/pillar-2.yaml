@@ -1,0 +1,14 @@
+policy:
+  name: "pillar-2-autonomous-operations"
+  version: "1.0"
+  description: "Policy overrides for Pillar 2: Autonomous Operations teams"
+
+  budget:
+    project_limit: 5000
+
+  models:
+    default: "sonnet"  # Implementation work uses sonnet
+
+  execution:
+    max_concurrent_agents: 8  # Higher concurrency for parallel implementation
+    max_retries: 5  # More retries for automation tasks

@@ -1,0 +1,7 @@
+{
+  "role": "Implementer",
+  "model": "sonnet",
+  "role_template": "implementer",
+  "team": "trust-autonomy",
+  "description": "Implements trust tracking systems"
+}

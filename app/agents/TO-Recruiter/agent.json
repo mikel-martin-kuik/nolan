@@ -1,0 +1,7 @@
+{
+  "role": "Recruiter",
+  "model": "sonnet",
+  "role_template": "recruiter",
+  "team": "talent-operations",
+  "description": "Sources and assesses agent capabilities"
+}

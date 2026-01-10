@@ -1,0 +1,54 @@
+team:
+  id: "governance"
+  name: "Governance"
+  prefix: "GV"
+  pillar: "organizational-intelligence"
+  department: "Structure & Governance"
+  mission: "Define and enforce organizational policies and approval workflows"
+
+  ownership:
+    milestones:
+      - "V1.3"  # Governance Framework
+      - "V3.3"  # Value Alignment (Approval Workflows)
+    directories:
+      - "policies/"
+      - "src-tauri/src/governance/"
+    file_patterns:
+      - "**/policies/**"
+      - "**/governance/**"
+
+  agents:
+    - name: "GV-Coordinator"
+      role_template: "coordinator"
+      model: "opus"
+      description: "Orchestrates governance workflow"
+
+    - name: "GV-PolicyArchitect"
+      role_template: "architect"
+      model: "opus"
+      description: "Designs policy frameworks and enforcement rules"
+
+    - name: "GV-Implementer"
+      role_template: "implementer"
+      model: "sonnet"
+      description: "Implements policy enforcement mechanisms"
+
+    - name: "GV-Auditor"
+      role_template: "auditor"
+      model: "opus"
+      description: "Audits policy compliance across organization"
+
+    - name: "GV-Reviewer"
+      role_template: "reviewer"
+      model: "sonnet"
+      description: "Reviews policy changes for consistency"
+
+  workflow:
+    phases:
+      - research
+      - plan
+      - implement
+      - review
+      - audit
+
+  policy: "pillar-1"

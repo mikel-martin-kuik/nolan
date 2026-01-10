@@ -1,0 +1,54 @@
+team:
+  id: "event-automation"
+  name: "Event & Automation"
+  prefix: "EA"
+  pillar: "autonomous-operations"
+  department: "Scheduled Operations"
+  mission: "Enable event-driven execution beyond cron scheduling"
+
+  ownership:
+    milestones:
+      - "V2.1"  # Event-Driven Orchestration
+    directories:
+      - "src-tauri/src/cronos/"
+      - "src-tauri/src/events/"
+      - "cronos/"
+    file_patterns:
+      - "**/cronos/**"
+      - "**/events/**"
+
+  agents:
+    - name: "EA-Coordinator"
+      role_template: "coordinator"
+      model: "opus"
+      description: "Orchestrates event automation workflow"
+
+    - name: "EA-Architect"
+      role_template: "architect"
+      model: "opus"
+      description: "Designs event-driven architecture"
+
+    - name: "EA-DevOps"
+      role_template: "devops-engineer"
+      model: "sonnet"
+      description: "Implements automation pipelines"
+
+    - name: "EA-Implementer"
+      role_template: "implementer"
+      model: "sonnet"
+      description: "Implements event handlers and triggers"
+
+    - name: "EA-Tester"
+      role_template: "qa-automation"
+      model: "sonnet"
+      description: "Tests automation reliability"
+
+  workflow:
+    phases:
+      - research
+      - plan
+      - implement
+      - review
+      - audit
+
+  policy: "pillar-2"

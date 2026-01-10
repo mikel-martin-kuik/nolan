@@ -1,13 +1,12 @@
 import { memo, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { invoke } from '@/lib/api';
-import { ChevronDown, FileText, Circle } from 'lucide-react';
+import { ChevronDown, FileText, Circle, Check } from 'lucide-react';
 import { ProjectInfo, ProjectFile } from '@/types/projects';
 import { getWorkflowSteps, getFileOrder } from '@/types';
 import { useTeamStore } from '@/store/teamStore';
 import { cn } from '@/lib/utils';
 import { ProjectStatusDropdown } from './ProjectStatusDropdown';
-import { FileMarkerCheckbox } from './FileMarkerCheckbox';
 
 interface ProjectListItemProps {
   project: ProjectInfo;
@@ -91,7 +90,7 @@ export const ProjectListItem = memo(function ProjectListItem({
       {/* Project Header */}
       <button
         onClick={onToggle}
-        className="w-full flex items-center gap-2 p-2.5 rounded-lg transition-colors hover:bg-accent/50"
+        className="group w-full flex items-center gap-2 p-2.5 rounded-lg transition-colors hover:bg-accent/50"
       >
         <ChevronDown
           className={cn(
@@ -103,12 +102,6 @@ export const ProjectListItem = memo(function ProjectListItem({
         <span className="flex-1 text-left font-medium text-sm text-foreground truncate">
           {project.name}
         </span>
-
-        {/* Status Dropdown */}
-        <ProjectStatusDropdown
-          projectName={project.name}
-          currentStatus={project.status}
-        />
 
         {/* Step Progress - 4 Dots */}
         <div className="flex items-center gap-0.5">
@@ -125,6 +118,12 @@ export const ProjectListItem = memo(function ProjectListItem({
             {completedCount}/{workflowSteps.length}
           </span>
         </div>
+
+        {/* Status Dropdown - appears on hover */}
+        <ProjectStatusDropdown
+          projectName={project.name}
+          currentStatus={project.status}
+        />
       </button>
 
       {/* File List */}
@@ -132,12 +131,8 @@ export const ProjectListItem = memo(function ProjectListItem({
         <div className="ml-5 mt-0.5 space-y-0.5">
           {sortedFiles.map(file => {
             const isPrompt = file.file_type === 'prompt';
-            // Workflow files are files that can have HANDOFF markers (not prompt, not coordinator)
-            const coordinatorType = projectTeamConfig?.team.workflow.coordinator || 'coordinator';
-            const isCoordinator = file.file_type === coordinatorType || file.file_type === 'coordinator';
-            const isWorkflowFile = !isPrompt && !isCoordinator && !file.is_placeholder;
 
-            // Find completion info for this file
+            // Find completion info for this file (for showing done indicator)
             const completion = project.file_completions.find(f =>
               f.file === file.name || f.file === file.file_type
             );
@@ -156,21 +151,20 @@ export const ProjectListItem = memo(function ProjectListItem({
                   !file.is_placeholder && !(isSelected && selectedFile === file.relative_path) && "text-muted-foreground hover:text-foreground hover:bg-accent/50"
                 )}
               >
-                {/* Workflow files get checkbox, prompt has no icon, others have FileText/Circle */}
-                {isWorkflowFile ? (
-                  <FileMarkerCheckbox
-                    projectName={project.name}
-                    filePath={file.relative_path}
-                    isCompleted={completion?.completed ?? false}
-                    completedBy={completion?.completed_by}
-                    completedAt={completion?.completed_at}
-                  />
-                ) : !isPrompt && (
-                  file.is_placeholder ? (
-                    <Circle className="w-3 h-3 flex-shrink-0" />
-                  ) : (
-                    <FileText className="w-3 h-3 flex-shrink-0" />
-                  )
+                {/* File icon - Circle for placeholder, FileText for existing, Check overlay for completed */}
+                {!isPrompt && (
+                  <div className="relative flex-shrink-0">
+                    {file.is_placeholder ? (
+                      <Circle className="w-3 h-3" />
+                    ) : (
+                      <>
+                        <FileText className="w-3 h-3" />
+                        {completion?.completed && (
+                          <Check className="w-2 h-2 absolute -bottom-0.5 -right-0.5 text-green-500" />
+                        )}
+                      </>
+                    )}
+                  </div>
                 )}
 
                 <span className={cn("flex-1 truncate", file.is_placeholder && "italic")}>

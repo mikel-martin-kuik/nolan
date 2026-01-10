@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { invoke } from '@/lib/api';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Check, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface FileMarkerCheckboxProps {
@@ -46,27 +46,29 @@ export function FileMarkerCheckbox({
     }
   };
 
-  if (isUpdating) {
-    return <Loader2 className="w-3 h-3 animate-spin text-muted-foreground flex-shrink-0" />;
-  }
-
   return (
-    <Checkbox
-      checked={isCompleted}
-      onCheckedChange={handleToggle}
-      onClick={(e) => e.stopPropagation()}
-      disabled={disabled}
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={handleToggle}
+      disabled={disabled || isUpdating}
       title={
         isCompleted && completedBy
-          ? `Completed by ${completedBy} at ${completedAt}`
+          ? `Completed by ${completedBy} at ${completedAt}. Click to unmark.`
           : isCompleted
-          ? 'Completed'
+          ? 'Completed. Click to unmark.'
           : 'Mark as complete'
       }
       className={cn(
-        "h-3 w-3 flex-shrink-0",
-        isCompleted && "border-green-500 data-[state=checked]:bg-green-500"
+        "h-7 w-7",
+        isCompleted && "text-green-500 hover:text-green-500"
       )}
-    />
+    >
+      {isUpdating ? (
+        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+      ) : (
+        <Check className={cn("w-3.5 h-3.5", isCompleted && "stroke-[3]")} />
+      )}
+    </Button>
   );
 }

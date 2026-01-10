@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@/lib/api';
-import { Plus, RefreshCw, Play, Settings, Trash2, Code, Clock, History, Wrench } from 'lucide-react';
+import { listen } from '@tauri-apps/api/event';
+import {
+  Plus, RefreshCw, Play, Settings, Trash2, Code, Clock, History,
+  Wrench, Square, Activity, AlertTriangle, CheckCircle, XCircle,
+  Loader2, FileText, Zap, BarChart2
+} from 'lucide-react';
 import { useToastStore } from '../../store/toastStore';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -11,6 +16,9 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
+import { Progress } from '@/components/ui/progress';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -19,14 +27,32 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import type { CronAgentInfo, CronAgentConfig, CronRunLog, CronRunStatus } from '@/types';
-import { CRON_PRESETS, CRON_MODELS, createDefaultCronAgentConfig } from '@/types/cronos';
+import type {
+  CronAgentInfo, CronAgentConfig, CronRunLog, CronRunStatus,
+  CronOutputEvent, CronosHealthSummary, HealthStatus
+} from '@/types';
+import {
+  CRON_PRESETS, CRON_MODELS, AGENT_TEMPLATES,
+  createDefaultCronAgentConfig
+} from '@/types/cronos';
 
 function getStatusBadgeVariant(status: CronRunStatus): 'default' | 'secondary' | 'destructive' | 'outline' {
   switch (status) {
     case 'success': return 'default';
     case 'failed': return 'destructive';
     case 'running': return 'secondary';
+    case 'timeout': return 'destructive';
+    case 'cancelled': return 'outline';
+    case 'skipped': return 'outline';
+    default: return 'outline';
+  }
+}
+
+function getHealthBadgeVariant(status: HealthStatus): 'default' | 'secondary' | 'destructive' | 'outline' {
+  switch (status) {
+    case 'healthy': return 'default';
+    case 'warning': return 'secondary';
+    case 'critical': return 'destructive';
     default: return 'outline';
   }
 }
@@ -48,7 +74,10 @@ interface LogEntry {
   cwd?: string;
 }
 
-function parseLogToPlainText(content: string): string {
+function parseLogToPlainText(content: unknown): string {
+  if (typeof content !== 'string') {
+    return '';
+  }
   const lines = content.trim().split('\n');
   const output: string[] = [];
 
@@ -61,7 +90,7 @@ function parseLogToPlainText(content: string): string {
       switch (entry.type) {
         case 'system':
           if (entry.subtype === 'init') {
-            output.push('━━━ Session Start ━━━');
+            output.push('--- Session Start ---');
             if (entry.model) output.push(`Model: ${entry.model}`);
             if (entry.cwd) output.push(`Working directory: ${entry.cwd}`);
             output.push('');
@@ -72,19 +101,19 @@ function parseLogToPlainText(content: string): string {
           if (entry.message?.content) {
             for (const block of entry.message.content) {
               if (block.type === 'text' && block.text) {
-                output.push(`🤖 Assistant: ${block.text}`);
+                output.push(`Assistant: ${block.text}`);
                 output.push('');
               } else if (block.type === 'tool_use' && block.name) {
                 const toolInput = block.input || {};
                 let inputSummary = '';
                 if ('command' in toolInput) {
-                  inputSummary = ` → ${toolInput.command}`;
+                  inputSummary = ` -> ${toolInput.command}`;
                 } else if ('description' in toolInput) {
-                  inputSummary = ` → ${toolInput.description}`;
+                  inputSummary = ` -> ${toolInput.description}`;
                 } else if ('pattern' in toolInput) {
-                  inputSummary = ` → ${toolInput.pattern}`;
+                  inputSummary = ` -> ${toolInput.pattern}`;
                 }
-                output.push(`🔧 Tool: ${block.name}${inputSummary}`);
+                output.push(`Tool: ${block.name}${inputSummary}`);
               }
             }
           }
@@ -94,12 +123,12 @@ function parseLogToPlainText(content: string): string {
           if (entry.tool_use_result) {
             const { stdout, stderr } = entry.tool_use_result;
             if (stdout) {
-              output.push('📤 Output:');
+              output.push('Output:');
               output.push(stdout.split('\n').map(l => `   ${l}`).join('\n'));
               output.push('');
             }
             if (stderr) {
-              output.push('⚠️ Stderr:');
+              output.push('Stderr:');
               output.push(stderr.split('\n').map(l => `   ${l}`).join('\n'));
               output.push('');
             }
@@ -107,7 +136,7 @@ function parseLogToPlainText(content: string): string {
           break;
 
         case 'result':
-          output.push('━━━ Result ━━━');
+          output.push('--- Result ---');
           if (entry.result) {
             output.push(entry.result);
           }
@@ -130,11 +159,17 @@ function parseLogToPlainText(content: string): string {
 export const CronosPanel: React.FC = () => {
   const [agents, setAgents] = useState<CronAgentInfo[]>([]);
   const [runHistory, setRunHistory] = useState<CronRunLog[]>([]);
+  const [healthSummary, setHealthSummary] = useState<CronosHealthSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('factory');
 
+  // Real-time output state
+  const [liveOutput, setLiveOutput] = useState<CronOutputEvent[]>([]);
+  const [showLiveOutput, setShowLiveOutput] = useState<string | null>(null);
+
   // Dialog states
   const [creatorOpen, setCreatorOpen] = useState(false);
+  const [templateSelectorOpen, setTemplateSelectorOpen] = useState(false);
   const [editorAgent, setEditorAgent] = useState<CronAgentConfig | null>(null);
   const [instructionsAgent, setInstructionsAgent] = useState<string | null>(null);
   const [instructionsContent, setInstructionsContent] = useState('');
@@ -146,6 +181,17 @@ export const CronosPanel: React.FC = () => {
   const [newAgentConfig, setNewAgentConfig] = useState<CronAgentConfig | null>(null);
 
   const { error: showError, success: showSuccess } = useToastStore();
+
+  // Subscribe to real-time output events
+  useEffect(() => {
+    const unsubscribe = listen<CronOutputEvent>('cronos:output', (event) => {
+      setLiveOutput(prev => [...prev.slice(-500), event.payload]);
+    });
+
+    return () => {
+      unsubscribe.then(fn => fn());
+    };
+  }, []);
 
   // Fetch agents list
   const fetchAgents = useCallback(async () => {
@@ -171,18 +217,40 @@ export const CronosPanel: React.FC = () => {
     }
   }, []);
 
+  // Fetch health summary
+  const fetchHealth = useCallback(async () => {
+    try {
+      const health = await invoke<CronosHealthSummary>('get_cronos_health');
+      setHealthSummary(health);
+    } catch (err) {
+      console.error('Failed to load health summary:', err);
+    }
+  }, []);
+
   // Initial load
   useEffect(() => {
     fetchAgents();
     fetchRunHistory();
-  }, [fetchAgents, fetchRunHistory]);
+    fetchHealth();
+  }, [fetchAgents, fetchRunHistory, fetchHealth]);
 
   // Refresh on tab change
   useEffect(() => {
     if (activeTab === 'audit') {
       fetchRunHistory();
+    } else if (activeTab === 'health') {
+      fetchHealth();
     }
-  }, [activeTab, fetchRunHistory]);
+  }, [activeTab, fetchRunHistory, fetchHealth]);
+
+  // Auto-refresh agents when there are running agents
+  useEffect(() => {
+    const hasRunning = agents.some(a => a.is_running);
+    if (hasRunning) {
+      const interval = setInterval(fetchAgents, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [agents, fetchAgents]);
 
   // Handle agent creation
   const handleCreate = useCallback(async () => {
@@ -254,12 +322,25 @@ export const CronosPanel: React.FC = () => {
     try {
       await invoke('trigger_cron_agent', { name });
       showSuccess(`Triggered ${name}`);
-      // Refresh history after a delay to catch the new run
-      setTimeout(fetchRunHistory, 2000);
+      setLiveOutput([]);
+      setShowLiveOutput(name);
+      fetchAgents();
     } catch (err) {
       showError(`Failed to trigger agent: ${err}`);
     }
-  }, [showError, showSuccess, fetchRunHistory]);
+  }, [showError, showSuccess, fetchAgents]);
+
+  // Handle cancel run
+  const handleCancel = useCallback(async (name: string) => {
+    try {
+      await invoke('cancel_cron_agent', { name });
+      showSuccess(`Cancelled ${name}`);
+      fetchAgents();
+      fetchRunHistory();
+    } catch (err) {
+      showError(`Failed to cancel agent: ${err}`);
+    }
+  }, [showError, showSuccess, fetchAgents, fetchRunHistory]);
 
   // Handle edit instructions (CLAUDE.md)
   const handleEditInstructions = useCallback(async (name: string) => {
@@ -309,6 +390,19 @@ export const CronosPanel: React.FC = () => {
     }
   }, [showError]);
 
+  // Handle template selection
+  const handleSelectTemplate = useCallback((templateId: string) => {
+    const template = AGENT_TEMPLATES.find(t => t.id === templateId);
+    if (template) {
+      const config = createDefaultCronAgentConfig(`cron-${templateId}`);
+      Object.assign(config, template.config);
+      setNewAgentConfig(config);
+      setNewAgentName(templateId);
+      setTemplateSelectorOpen(false);
+      setCreatorOpen(true);
+    }
+  }, []);
+
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -323,8 +417,12 @@ export const CronosPanel: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={fetchAgents} disabled={loading}>
+          <Button variant="ghost" size="icon" onClick={() => { fetchAgents(); fetchHealth(); }} disabled={loading}>
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+          </Button>
+          <Button variant="outline" onClick={() => setTemplateSelectorOpen(true)}>
+            <FileText className="w-4 h-4 mr-2" />
+            Templates
           </Button>
           <Button onClick={() => setCreatorOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
@@ -333,9 +431,39 @@ export const CronosPanel: React.FC = () => {
         </div>
       </div>
 
+      {/* Health Summary Bar */}
+      {healthSummary && (
+        <div className="grid grid-cols-4 gap-4 mb-4">
+          <Card className="p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Agents</span>
+              <span className="text-lg font-semibold">{healthSummary.total_agents}</span>
+            </div>
+          </Card>
+          <Card className="p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Active</span>
+              <span className="text-lg font-semibold text-green-500">{healthSummary.active_agents}</span>
+            </div>
+          </Card>
+          <Card className="p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Running</span>
+              <span className="text-lg font-semibold text-blue-500">{healthSummary.running_agents}</span>
+            </div>
+          </Card>
+          <Card className="p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Success Rate (7d)</span>
+              <span className="text-lg font-semibold">{(healthSummary.success_rate_7d * 100).toFixed(0)}%</span>
+            </div>
+          </Card>
+        </div>
+      )}
+
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-        <TabsList className="grid w-full grid-cols-3 mb-4">
+        <TabsList className="grid w-full grid-cols-4 mb-4">
           <TabsTrigger value="factory" className="flex items-center gap-2">
             <Wrench className="w-4 h-4" />
             Factory
@@ -347,6 +475,10 @@ export const CronosPanel: React.FC = () => {
           <TabsTrigger value="audit" className="flex items-center gap-2">
             <History className="w-4 h-4" />
             Audit Log
+          </TabsTrigger>
+          <TabsTrigger value="health" className="flex items-center gap-2">
+            <Activity className="w-4 h-4" />
+            Health
           </TabsTrigger>
         </TabsList>
 
@@ -361,16 +493,24 @@ export const CronosPanel: React.FC = () => {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {agents.map((agent) => (
-                <Card key={agent.name} className="group hover:border-primary/50 transition-colors">
+                <Card key={agent.name} className={`group hover:border-primary/50 transition-colors ${agent.is_running ? 'border-blue-500' : ''}`}>
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
                       <div>
-                        <CardTitle className="text-lg">{agent.name}</CardTitle>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          {agent.name}
+                          {agent.is_running && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+                        </CardTitle>
                         <CardDescription className="mt-1">{agent.description || 'No description'}</CardDescription>
                       </div>
-                      <Badge variant={agent.enabled ? 'default' : 'secondary'}>
-                        {agent.enabled ? 'Active' : 'Inactive'}
-                      </Badge>
+                      <div className="flex flex-col gap-1 items-end">
+                        <Badge variant={agent.enabled ? 'default' : 'secondary'}>
+                          {agent.enabled ? 'Active' : 'Inactive'}
+                        </Badge>
+                        <Badge variant={getHealthBadgeVariant(agent.health.status)} className="text-xs">
+                          {agent.health.status}
+                        </Badge>
+                      </div>
                     </div>
                   </CardHeader>
                   <CardContent>
@@ -383,7 +523,13 @@ export const CronosPanel: React.FC = () => {
                         <span>Model:</span>
                         <span>{agent.model}</span>
                       </div>
-                      {agent.next_run && (
+                      {agent.stats.total_runs > 0 && (
+                        <div className="flex items-center justify-between">
+                          <span>Success rate:</span>
+                          <span>{(agent.stats.success_rate * 100).toFixed(0)}% ({agent.stats.total_runs} runs)</span>
+                        </div>
+                      )}
+                      {agent.next_run && !agent.is_running && (
                         <div className="flex items-center justify-between">
                           <span>Next run:</span>
                           <span>{new Date(agent.next_run).toLocaleString()}</span>
@@ -401,17 +547,28 @@ export const CronosPanel: React.FC = () => {
 
                     {/* Actions */}
                     <div className="flex items-center gap-1 mt-4 pt-3 border-t border-border">
-                      <Button variant="ghost" size="icon" onClick={() => handleTrigger(agent.name)} title="Run now">
-                        <Play className="w-4 h-4" />
-                      </Button>
+                      {agent.is_running ? (
+                        <Button variant="ghost" size="icon" onClick={() => handleCancel(agent.name)} title="Cancel run">
+                          <Square className="w-4 h-4 text-red-500" />
+                        </Button>
+                      ) : (
+                        <Button variant="ghost" size="icon" onClick={() => handleTrigger(agent.name)} title="Run now">
+                          <Play className="w-4 h-4" />
+                        </Button>
+                      )}
                       <Button variant="ghost" size="icon" onClick={() => handleEditInstructions(agent.name)} title="Edit instructions">
                         <Code className="w-4 h-4" />
                       </Button>
                       <Button variant="ghost" size="icon" onClick={() => loadAgentForEdit(agent.name)} title="Settings">
                         <Settings className="w-4 h-4" />
                       </Button>
+                      {agent.is_running && (
+                        <Button variant="ghost" size="icon" onClick={() => setShowLiveOutput(agent.name)} title="View output">
+                          <Zap className="w-4 h-4 text-blue-500" />
+                        </Button>
+                      )}
                       <div className="flex-1" />
-                      <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(agent.name)} title="Delete">
+                      <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(agent.name)} title="Delete" disabled={agent.is_running}>
                         <Trash2 className="w-4 h-4 text-destructive" />
                       </Button>
                     </div>
@@ -429,25 +586,35 @@ export const CronosPanel: React.FC = () => {
               <Card key={agent.name} className="p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <Checkbox
+                    <Switch
                       checked={agent.enabled}
-                      onCheckedChange={(checked: boolean) => handleToggle(agent.name, checked)}
+                      onCheckedChange={(checked) => handleToggle(agent.name, checked)}
                     />
                     <div>
-                      <p className="font-medium">{agent.name}</p>
+                      <p className="font-medium flex items-center gap-2">
+                        {agent.name}
+                        {agent.is_running && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+                      </p>
                       <p className="text-sm text-muted-foreground">{agent.schedule}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {agent.next_run && (
+                    {agent.next_run && !agent.is_running && (
                       <span className="text-sm text-muted-foreground">
                         Next: {new Date(agent.next_run).toLocaleString()}
                       </span>
                     )}
-                    <Button variant="outline" size="sm" onClick={() => handleTrigger(agent.name)}>
-                      <Play className="w-4 h-4 mr-1" />
-                      Run Now
-                    </Button>
+                    {agent.is_running ? (
+                      <Button variant="outline" size="sm" onClick={() => handleCancel(agent.name)}>
+                        <Square className="w-4 h-4 mr-1" />
+                        Stop
+                      </Button>
+                    ) : (
+                      <Button variant="outline" size="sm" onClick={() => handleTrigger(agent.name)}>
+                        <Play className="w-4 h-4 mr-1" />
+                        Run Now
+                      </Button>
+                    )}
                   </div>
                 </div>
               </Card>
@@ -479,6 +646,8 @@ export const CronosPanel: React.FC = () => {
                         <p className="font-medium">{run.agent_name}</p>
                         <p className="text-sm text-muted-foreground">
                           {new Date(run.started_at).toLocaleString()}
+                          {run.attempt > 1 && ` (attempt ${run.attempt})`}
+                          {run.trigger !== 'scheduled' && ` - ${run.trigger}`}
                         </p>
                       </div>
                     </div>
@@ -496,7 +665,112 @@ export const CronosPanel: React.FC = () => {
             )}
           </div>
         </TabsContent>
+
+        {/* Health Dashboard */}
+        <TabsContent value="health" className="flex-1 overflow-auto">
+          {healthSummary ? (
+            <div className="space-y-6">
+              {/* Health Overview */}
+              <div className="grid grid-cols-3 gap-4">
+                <Card className="p-4">
+                  <div className="flex items-center gap-3">
+                    <CheckCircle className="w-8 h-8 text-green-500" />
+                    <div>
+                      <p className="text-2xl font-bold">{healthSummary.healthy_agents}</p>
+                      <p className="text-sm text-muted-foreground">Healthy</p>
+                    </div>
+                  </div>
+                </Card>
+                <Card className="p-4">
+                  <div className="flex items-center gap-3">
+                    <AlertTriangle className="w-8 h-8 text-yellow-500" />
+                    <div>
+                      <p className="text-2xl font-bold">{healthSummary.warning_agents}</p>
+                      <p className="text-sm text-muted-foreground">Warning</p>
+                    </div>
+                  </div>
+                </Card>
+                <Card className="p-4">
+                  <div className="flex items-center gap-3">
+                    <XCircle className="w-8 h-8 text-red-500" />
+                    <div>
+                      <p className="text-2xl font-bold">{healthSummary.critical_agents}</p>
+                      <p className="text-sm text-muted-foreground">Critical</p>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+
+              {/* Agent Health List */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart2 className="w-5 h-5" />
+                    Agent Health Status
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {agents.map((agent) => (
+                      <div key={agent.name} className="flex items-center justify-between p-2 rounded hover:bg-muted/50">
+                        <div className="flex items-center gap-3">
+                          {agent.health.status === 'healthy' && <CheckCircle className="w-5 h-5 text-green-500" />}
+                          {agent.health.status === 'warning' && <AlertTriangle className="w-5 h-5 text-yellow-500" />}
+                          {agent.health.status === 'critical' && <XCircle className="w-5 h-5 text-red-500" />}
+                          {agent.health.status === 'unknown' && <Activity className="w-5 h-5 text-gray-400" />}
+                          <div>
+                            <p className="font-medium">{agent.name}</p>
+                            <p className="text-sm text-muted-foreground">
+                              {agent.health.message || `${agent.stats.total_runs} runs, ${(agent.stats.success_rate * 100).toFixed(0)}% success`}
+                            </p>
+                          </div>
+                        </div>
+                        {agent.stats.total_runs > 0 && (
+                          <div className="w-32">
+                            <Progress value={agent.stats.success_rate * 100} className="h-2" />
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-64">
+              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            </div>
+          )}
+        </TabsContent>
       </Tabs>
+
+      {/* Template Selector Dialog */}
+      <Dialog open={templateSelectorOpen} onOpenChange={setTemplateSelectorOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Agent Templates</DialogTitle>
+            <DialogDescription>
+              Choose a template to quickly create a new agent
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 py-4">
+            {AGENT_TEMPLATES.map((template) => (
+              <Card
+                key={template.id}
+                className="cursor-pointer hover:border-primary transition-colors"
+                onClick={() => handleSelectTemplate(template.id)}
+              >
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base">{template.name}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">{template.description}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Create Agent Dialog */}
       <Dialog open={creatorOpen} onOpenChange={setCreatorOpen}>
@@ -591,7 +865,7 @@ export const CronosPanel: React.FC = () => {
 
       {/* Edit Agent Dialog */}
       <Dialog open={!!editorAgent} onOpenChange={(open) => !open && setEditorAgent(null)}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit {editorAgent?.name}</DialogTitle>
             <DialogDescription>
@@ -661,7 +935,68 @@ export const CronosPanel: React.FC = () => {
                   })}
                 />
               </div>
-              <div className="flex items-center gap-2">
+
+              {/* Concurrency Settings */}
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium mb-2">Concurrency</p>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="allow-parallel"
+                    checked={editorAgent.concurrency?.allow_parallel || false}
+                    onCheckedChange={(checked: boolean) => setEditorAgent({
+                      ...editorAgent,
+                      concurrency: { ...editorAgent.concurrency, allow_parallel: checked }
+                    })}
+                  />
+                  <label htmlFor="allow-parallel" className="text-sm">Allow parallel runs</label>
+                </div>
+              </div>
+
+              {/* Retry Settings */}
+              <div className="border-t pt-4">
+                <p className="text-sm font-medium mb-2">Retry Policy</p>
+                <div className="flex items-center gap-2 mb-2">
+                  <Checkbox
+                    id="retry-enabled"
+                    checked={editorAgent.retry?.enabled || false}
+                    onCheckedChange={(checked: boolean) => setEditorAgent({
+                      ...editorAgent,
+                      retry: { ...editorAgent.retry, enabled: checked }
+                    })}
+                  />
+                  <label htmlFor="retry-enabled" className="text-sm">Enable retries</label>
+                </div>
+                {editorAgent.retry?.enabled && (
+                  <div className="grid grid-cols-2 gap-2 ml-6">
+                    <div>
+                      <label className="text-xs text-muted-foreground">Max Retries</label>
+                      <Input
+                        type="number"
+                        className="h-8"
+                        value={editorAgent.retry?.max_retries || 3}
+                        onChange={(e) => setEditorAgent({
+                          ...editorAgent,
+                          retry: { ...editorAgent.retry, max_retries: parseInt(e.target.value) || 3 }
+                        })}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-muted-foreground">Delay (sec)</label>
+                      <Input
+                        type="number"
+                        className="h-8"
+                        value={editorAgent.retry?.delay_secs || 60}
+                        onChange={(e) => setEditorAgent({
+                          ...editorAgent,
+                          retry: { ...editorAgent.retry, delay_secs: parseInt(e.target.value) || 60 }
+                        })}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 border-t pt-4">
                 <Checkbox
                   id="edit-enabled"
                   checked={editorAgent.enabled}
@@ -734,6 +1069,38 @@ export const CronosPanel: React.FC = () => {
           </div>
           <DialogFooter>
             <Button onClick={() => setLogViewer(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Live Output Dialog */}
+      <Dialog open={!!showLiveOutput} onOpenChange={(open) => !open && setShowLiveOutput(null)}>
+        <DialogContent className="max-w-4xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Live Output - {showLiveOutput}
+            </DialogTitle>
+            <DialogDescription>
+              Real-time output from the running agent
+            </DialogDescription>
+          </DialogHeader>
+          <ScrollArea className="h-[500px] border rounded-md bg-muted/50">
+            <pre className="p-4 text-sm font-mono whitespace-pre-wrap">
+              {liveOutput
+                .filter(e => e.agent_name === showLiveOutput)
+                .map((e, i) => (
+                  <div key={i} className={e.event_type === 'stderr' ? 'text-red-400' : ''}>
+                    {e.content}
+                  </div>
+                ))}
+              {liveOutput.filter(e => e.agent_name === showLiveOutput).length === 0 && (
+                <span className="text-muted-foreground">Waiting for output...</span>
+              )}
+            </pre>
+          </ScrollArea>
+          <DialogFooter>
+            <Button onClick={() => setShowLiveOutput(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

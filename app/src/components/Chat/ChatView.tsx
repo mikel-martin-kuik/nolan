@@ -337,7 +337,7 @@ export const ChatView: React.FC = () => {
     return (
       <>
         {/* Simple header for free agent */}
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border text-sm font-medium">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border text-sm font-medium flex-shrink-0">
           <button
             onClick={handleBackToList}
             className="md:hidden -ml-1 text-muted-foreground hover:text-foreground transition-colors"
@@ -412,14 +412,16 @@ export const ChatView: React.FC = () => {
       {/* On desktop (md+): always visible, takes remaining space */}
       <div
         className={cn(
-          'flex-1 flex-col min-w-0',
+          'flex-1 flex-col min-w-0 pt-2 pr-4 pb-4',
           // Mobile: full width or hidden based on showMobileChat
           showMobileChat ? 'flex' : 'hidden',
           // Desktop: always visible
           'md:flex'
         )}
       >
-        {renderChatPanel()}
+        <div className="glass-card rounded-xl h-full flex flex-col overflow-hidden">
+          {renderChatPanel()}
+        </div>
       </div>
     </div>
   );

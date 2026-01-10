@@ -90,6 +90,46 @@ pub struct ProjectInfo {
     pub missing_files: Vec<String>,
     pub file_completions: Vec<FileCompletion>,
     pub team: String,  // Team that owns this project (from .team file)
+    pub workflow_files: Vec<String>,  // Workflow phase outputs stored at project creation
+}
+
+/// Project team file structure (stored in .team as YAML)
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
+pub struct ProjectTeamFile {
+    pub team: String,
+    #[serde(default)]
+    pub workflow_files: Vec<String>,
+}
+
+impl ProjectTeamFile {
+    /// Read from .team file, handling both old (plain text) and new (YAML) formats
+    pub fn read(project_path: &std::path::Path) -> Result<Self, String> {
+        let team_file = project_path.join(".team");
+        let content = fs::read_to_string(&team_file)
+            .map_err(|e| format!("Failed to read .team file: {}", e))?;
+
+        // Try parsing as YAML first
+        if let Ok(parsed) = serde_yaml::from_str::<ProjectTeamFile>(&content) {
+            return Ok(parsed);
+        }
+
+        // Fall back to old format (plain team name)
+        let team = content.trim().to_string();
+        Ok(ProjectTeamFile {
+            team,
+            workflow_files: Vec::new(), // Will be populated from team config
+        })
+    }
+
+    /// Write to .team file as YAML
+    pub fn write(&self, project_path: &std::path::Path) -> Result<(), String> {
+        let team_file = project_path.join(".team");
+        let content = serde_yaml::to_string(self)
+            .map_err(|e| format!("Failed to serialize .team file: {}", e))?;
+        fs::write(&team_file, content)
+            .map_err(|e| format!("Failed to write .team file: {}", e))?;
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -309,17 +349,17 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
             })
             .unwrap_or_default();
 
-        // Read team from .team file (required)
-        let team_file = path.join(".team");
-        let team = match fs::read_to_string(&team_file) {
-            Ok(s) => s.trim().to_string(),
+        // Read .team file (required) - supports both old plain text and new YAML format
+        let project_team_file = match ProjectTeamFile::read(&path) {
+            Ok(ptf) => ptf,
             Err(_) => {
-                // Skip projects without .team file
+                // Skip projects without valid .team file
                 continue;
             }
         };
+        let team = project_team_file.team.clone();
 
-        // Load team config (required)
+        // Load team config (required for coordinator file and fallback workflow files)
         let team_config = match load_project_team(&path) {
             Ok(config) => config,
             Err(_) => {
@@ -341,12 +381,20 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
         };
 
         // Get expected files from team config
-        let (expected_files, workflow_files) = get_expected_files_from_config(&team_config);
+        let (expected_files, config_workflow_files) = get_expected_files_from_config(&team_config);
+
+        // Use workflow files from .team if stored, otherwise fall back to team config
+        // This preserves the workflow at project creation time even if team changes
+        let workflow_files = if project_team_file.workflow_files.is_empty() {
+            config_workflow_files
+        } else {
+            project_team_file.workflow_files.clone()
+        };
 
         // Get file scaffolding info using team-specific expected files
         let (existing_files, missing_files) = get_file_scaffolding(&path, &expected_files);
 
-        // Get workflow file completion status using team-specific workflow files
+        // Get workflow file completion status using stored or team-config workflow files
         let file_completions = get_file_completions(&path, &workflow_files);
 
         projects.push(ProjectInfo {
@@ -360,6 +408,7 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
             missing_files,
             file_completions,
             team,
+            workflow_files,
         });
     }
 
@@ -734,12 +783,15 @@ pub async fn create_project(project_name: String, team_name: Option<String>) -> 
         return Err("Project name cannot contain consecutive hyphens".to_string());
     }
 
-    // Load team config first to get coordinator's output file
+    // Load team config first to get coordinator's output file and workflow phases
     let team = team_name.unwrap_or_else(|| "default".to_string());
     let team_config = TeamConfig::load(&team)
         .map_err(|e| format!("Failed to load team config '{}': {}", team, e))?;
     let coordinator_file = team_config.coordinator_output_file();
     let coordinator_name = team_config.coordinator();
+
+    // Get workflow files from team config to store in .team
+    let (_, workflow_files) = get_expected_files_from_config(&team_config);
 
     let projects_dir = get_projects_dir()?;
     let project_path = projects_dir.join(&project_name);
@@ -753,10 +805,12 @@ pub async fn create_project(project_name: String, team_name: Option<String>) -> 
     fs::create_dir_all(&project_path)
         .map_err(|e| format!("Failed to create project directory: {}", e))?;
 
-    // Create .team file with team assignment
-    let team_file = project_path.join(".team");
-    fs::write(&team_file, &team)
-        .map_err(|e| format!("Failed to create .team file: {}", e))?;
+    // Create .team file with team assignment and workflow files (YAML format)
+    let project_team_file = ProjectTeamFile {
+        team: team.clone(),
+        workflow_files,
+    };
+    project_team_file.write(&project_path)?;
 
     // Create initial coordinator file with IN_PROGRESS marker
     let now = chrono::Utc::now().format("%Y-%m-%d").to_string();

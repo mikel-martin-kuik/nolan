@@ -5,6 +5,8 @@ import { FileText, RefreshCw, FolderOpen, Pencil, X, Save } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
+import { FileMarkerCheckbox } from './FileMarkerCheckbox';
+import { FileCompletion } from '@/types/projects';
 
 // File type metadata - minimal fallback for display purposes
 // Note: Actual workflow files and owners are determined by team config
@@ -16,9 +18,11 @@ const FILE_META: Record<string, { owner: string; label: string }> = {
 interface ProjectFileViewerProps {
   project: string | null;
   file: string | null;
+  isWorkflowFile?: boolean;
+  fileCompletion?: FileCompletion | null;
 }
 
-export function ProjectFileViewer({ project, file }: ProjectFileViewerProps) {
+export function ProjectFileViewer({ project, file, isWorkflowFile, fileCompletion }: ProjectFileViewerProps) {
   const [content, setContent] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -138,6 +142,16 @@ export function ProjectFileViewer({ project, file }: ProjectFileViewerProps) {
                 </>
               ) : (
                 <>
+                  {/* Mark as done button - only for workflow files */}
+                  {isWorkflowFile && (
+                    <FileMarkerCheckbox
+                      projectName={project}
+                      filePath={file}
+                      isCompleted={fileCompletion?.completed ?? false}
+                      completedBy={fileCompletion?.completed_by}
+                      completedAt={fileCompletion?.completed_at}
+                    />
+                  )}
                   <Button
                     variant="ghost"
                     size="icon"

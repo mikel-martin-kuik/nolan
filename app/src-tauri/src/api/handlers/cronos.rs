@@ -113,7 +113,7 @@ pub async fn test_agent(
 pub async fn trigger_agent(
     Path(name): Path<String>,
 ) -> Result<Json<serde_json::Value>, impl IntoResponse> {
-    match commands::trigger_cron_agent(name).await {
+    match commands::trigger_cron_agent_api(name).await {
         Ok(result) => Ok(Json(serde_json::json!({ "result": result }))),
         Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
     }
@@ -195,5 +195,41 @@ pub async fn shutdown() -> Result<Json<serde_json::Value>, impl IntoResponse> {
     match commands::shutdown_cronos().await {
         Ok(_) => Ok(Json(serde_json::json!({ "success": true }))),
         Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+/// Cancel a running cron agent
+pub async fn cancel_agent(
+    Path(name): Path<String>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::cancel_cron_agent(name).await {
+        Ok(_) => Ok(Json(serde_json::json!({ "success": true }))),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+/// Get currently running agents
+pub async fn get_running() -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::get_running_agents().await {
+        Ok(agents) => Ok(Json(serde_json::json!(agents))),
+        Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+/// Get overall cronos health summary
+pub async fn get_health() -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::get_cronos_health().await {
+        Ok(health) => Ok(Json(serde_json::json!(health))),
+        Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+/// Get statistics for a specific agent
+pub async fn get_agent_stats(
+    Path(name): Path<String>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::get_agent_stats(name).await {
+        Ok(stats) => Ok(Json(serde_json::json!(stats))),
+        Err(e) => Err(error_response(StatusCode::NOT_FOUND, e)),
     }
 }

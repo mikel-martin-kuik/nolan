@@ -28,10 +28,9 @@ pub fn run() {
     }
 
     // Attempt to recover orphaned agent sessions (from crash/restart)
-    // This finds both:
-    // - Ralph directories that exist but have no running tmux session
-    // - Team sessions that were in the registry but are no longer running
-    // and restarts them with --continue to resume the Claude conversation
+    // - Ralph instances: recovered if ephemeral directory exists
+    // - Team sessions: recovered only if team has an active project file
+    //   (teams killed via kill_team have their active project cleared, so they won't recover)
     match runtime.block_on(commands::lifecycle_core::recover_all_sessions()) {
         Ok(result) => {
             if !result.is_empty() {
@@ -157,6 +156,14 @@ pub fn run() {
             cronos::commands::get_cron_run_log,
             cronos::commands::read_cron_agent_claude_md,
             cronos::commands::write_cron_agent_claude_md,
+            // New cronos commands
+            cronos::commands::cancel_cron_agent,
+            cronos::commands::get_running_agents,
+            cronos::commands::get_cronos_health,
+            cronos::commands::get_agent_stats,
+            cronos::commands::subscribe_cron_output,
+            cronos::commands::get_cron_next_runs,
+            cronos::commands::describe_cron_expression,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -474,8 +474,34 @@ struct RegistryEntry {
     start_time: Option<String>,
 }
 
+/// Check if a team has an active project file
+/// Used to determine if a team session should be recovered
+fn team_has_active_project(team_name: &str) -> bool {
+    use std::fs;
+
+    let nolan_root = match std::env::var("NOLAN_ROOT") {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+
+    let state_file = PathBuf::from(&nolan_root)
+        .join(".state")
+        .join(team_name)
+        .join("active-project.txt");
+
+    if state_file.exists() {
+        fs::read_to_string(&state_file)
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false)
+    } else {
+        false
+    }
+}
+
 /// Find orphaned team sessions from the session registry
 /// These are sessions that were registered but no longer have a running tmux session
+/// Only returns sessions for teams that have an active project file
+/// (teams killed via kill_team_sessions have their active project cleared)
 pub fn find_orphaned_team_sessions() -> Result<Vec<OrphanedTeamSession>, String> {
     use std::fs::File;
     use std::io::{BufRead, BufReader};
@@ -523,6 +549,12 @@ pub fn find_orphaned_team_sessions() -> Result<Vec<OrphanedTeamSession>, String>
             continue;
         }
 
+        // Skip if team doesn't have an active project
+        // (teams killed via kill_team_sessions have their active project cleared)
+        if !team_has_active_project(&entry.team) {
+            continue;
+        }
+
         // Verify it's a valid team session format: agent-{team}-{name}
         let parts: Vec<&str> = session_name.strip_prefix("agent-")
             .unwrap_or("")
@@ -530,9 +562,22 @@ pub fn find_orphaned_team_sessions() -> Result<Vec<OrphanedTeamSession>, String>
             .collect();
 
         if parts.len() == 2 {
+            let team_name = parts[0];
+            let agent_name = parts[1];
+
+            // Validate agent exists in team config
+            // This filters out old entries with instance numbers like "carl-1", "carl-2"
+            if let Ok(team_config) = TeamConfig::load(team_name) {
+                if !team_config.agent_names().contains(&agent_name) {
+                    continue; // Agent name not in team config, skip
+                }
+            } else {
+                continue; // Team config doesn't exist, skip
+            }
+
             orphaned.push(OrphanedTeamSession {
-                team: parts[0].to_string(),
-                agent: parts[1].to_string(),
+                team: team_name.to_string(),
+                agent: agent_name.to_string(),
                 session: session_name,
                 agent_dir,
             });

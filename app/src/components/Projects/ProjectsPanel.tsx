@@ -96,6 +96,35 @@ export function ProjectsPanel() {
 
   const currentProjects = groupedProjects[activeTab] || [];
 
+  // Find file completion info for the selected file
+  const selectedFileCompletion = useMemo(() => {
+    if (!selectedProject || !selectedFile || !projects) return null;
+    const project = projects.find(p => p.name === selectedProject);
+    if (!project) return null;
+    // Get file name from path
+    const fileName = selectedFile.split('/').pop() || selectedFile;
+    const fileType = fileName.replace('.md', '');
+    return project.file_completions.find(f =>
+      f.file === fileName || f.file === fileType
+    ) || null;
+  }, [selectedProject, selectedFile, projects]);
+
+  // Determine if selected file is a workflow file (can have HANDOFF marker)
+  // Uses workflow_files stored in project at creation time
+  const isWorkflowFile = useMemo(() => {
+    if (!selectedFile || !selectedProject || !projects) return false;
+
+    // Get file name
+    const fileName = selectedFile.split('/').pop() || selectedFile;
+
+    // Find the project to get its stored workflow files
+    const project = projects.find(p => p.name === selectedProject);
+    if (!project) return false;
+
+    // Check if file matches any stored workflow file
+    return project.workflow_files.includes(fileName);
+  }, [selectedFile, selectedProject, projects]);
+
   return (
     <div className="h-full flex flex-col gap-4">
       {/* Roadmap Banner - Header */}
@@ -187,6 +216,8 @@ export function ProjectsPanel() {
             <ProjectFileViewer
               project={selectedProject}
               file={selectedFile}
+              isWorkflowFile={isWorkflowFile}
+              fileCompletion={selectedFileCompletion}
             />
           )}
         </div>

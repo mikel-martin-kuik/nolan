@@ -1032,16 +1032,18 @@ pub async fn kill_instance(app_handle: AppHandle, session: String) -> Result<Str
     // SECURITY: Validate session name before killing
     validate_agent_session(&session)?;
 
-    // Verify session exists
-    if !crate::tmux::session::session_exists(&session)? {
-        return Err(format!("Session '{}' does not exist", session));
+    // Track whether session existed for response message
+    let session_existed = crate::tmux::session::session_exists(&session)?;
+
+    // Kill the session if it exists
+    if session_existed {
+        crate::tmux::session::kill_session(&session)?;
     }
 
-    // Kill the session
-    crate::tmux::session::kill_session(&session)?;
-
-    // For ephemeral Ralph agents, delete the agent directory (agent-ralph-{name})
+    // For ephemeral Ralph agents, ALWAYS delete the agent directory (agent-ralph-{name})
+    // This runs regardless of session existence to handle orphaned directories
     // Uses centralized parse_ralph_session for consistent validation
+    let mut dir_deleted = false;
     if let Some(instance_id) = parse_ralph_session(&session) {
         // This is an ephemeral agent, delete its directory
         let agents_dir = crate::utils::paths::get_agents_dir()
@@ -1051,17 +1053,28 @@ pub async fn kill_instance(app_handle: AppHandle, session: String) -> Result<Str
         if agent_path.exists() {
             if let Err(e) = fs::remove_dir_all(&agent_path) {
                 eprintln!("Warning: Failed to delete ephemeral agent directory: {}", e);
+            } else {
+                dir_deleted = true;
             }
         }
     }
 
-    // Emit status change event after successful kill
+    // If session didn't exist and no directory was deleted, return error
+    if !session_existed && !dir_deleted {
+        return Err(format!("Session '{}' does not exist", session));
+    }
+
+    // Emit status change event after successful kill/cleanup
     let app_clone = app_handle.clone();
     tokio::spawn(async move {
         emit_status_change(&app_clone).await;
     });
 
-    Ok(format!("Killed session: {}", session))
+    if session_existed {
+        Ok(format!("Killed session: {}", session))
+    } else {
+        Ok(format!("Cleaned up orphaned directory for: {}", session))
+    }
 }
 
 /// Kill all Ralph instances (free agents)
@@ -1080,6 +1093,11 @@ pub async fn kill_all_instances(app_handle: AppHandle, _team_name: String, agent
 
     let sessions = crate::tmux::session::list_sessions()?;
     let mut killed: Vec<String> = Vec::new();
+    let mut cleaned: Vec<String> = Vec::new();
+
+    // Get agents directory once
+    let agents_dir = crate::utils::paths::get_agents_dir()
+        .unwrap_or_else(|_| std::path::PathBuf::new());
 
     // Find all Ralph instances: agent-ralph-{name}
     // Uses centralized parse_ralph_session for consistent validation
@@ -1087,8 +1105,6 @@ pub async fn kill_all_instances(app_handle: AppHandle, _team_name: String, agent
         if let Some(instance_id) = parse_ralph_session(session) {
             if crate::tmux::session::kill_session(session).is_ok() {
                 // Delete the ephemeral agent directory (agent-ralph-{name})
-                let agents_dir = crate::utils::paths::get_agents_dir()
-                    .unwrap_or_else(|_| std::path::PathBuf::new());
                 let agent_path = agents_dir.join(format!("agent-ralph-{}", instance_id));
                 if agent_path.exists() {
                     let _ = fs::remove_dir_all(&agent_path);
@@ -1098,22 +1114,48 @@ pub async fn kill_all_instances(app_handle: AppHandle, _team_name: String, agent
         }
     }
 
-    // Emit status change event if any sessions were killed
-    if !killed.is_empty() {
+    // Also clean up orphaned directories (no running session)
+    // These can occur if the session crashed or was killed externally
+    if agents_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&agents_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with("agent-ralph-") {
+                    // Check if there's a running session for this directory
+                    if !sessions.contains(&name) {
+                        // No session running, this is an orphaned directory
+                        if let Err(e) = fs::remove_dir_all(entry.path()) {
+                            eprintln!("Warning: Failed to delete orphaned directory {}: {}", name, e);
+                        } else {
+                            cleaned.push(name);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Emit status change event if any sessions were killed or directories cleaned
+    if !killed.is_empty() || !cleaned.is_empty() {
         let app_clone = app_handle.clone();
         tokio::spawn(async move {
             emit_status_change(&app_clone).await;
         });
     }
 
-    if killed.is_empty() {
-        Ok("No ralph instances found".to_string())
+    // Build response message
+    let mut messages: Vec<String> = Vec::new();
+    if !killed.is_empty() {
+        messages.push(format!("Killed {} ralph instances: {}", killed.len(), killed.join(", ")));
+    }
+    if !cleaned.is_empty() {
+        messages.push(format!("Cleaned {} orphaned directories: {}", cleaned.len(), cleaned.join(", ")));
+    }
+
+    if messages.is_empty() {
+        Ok("No ralph instances or orphaned directories found".to_string())
     } else {
-        Ok(format!(
-            "Killed {} ralph instances: {}",
-            killed.len(),
-            killed.join(", ")
-        ))
+        Ok(messages.join(". "))
     }
 }
 

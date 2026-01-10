@@ -59,7 +59,7 @@ export const TeamChatHeader: React.FC<TeamChatHeaderProps> = ({
   }, [showDropdown]);
 
   return (
-    <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+    <div className="flex items-center justify-between px-4 py-3 border-b border-border flex-shrink-0">
       <div className="flex items-center gap-2 text-sm font-medium">
         {/* Back button - visible on mobile */}
         <button

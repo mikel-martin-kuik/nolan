@@ -8,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { ChevronDown, Check, Loader2 } from 'lucide-react';
+import { Check, Loader2, MoreHorizontal } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ProjectStatusDropdownProps {
@@ -19,8 +19,6 @@ interface ProjectStatusDropdownProps {
 export function ProjectStatusDropdown({ projectName, currentStatus }: ProjectStatusDropdownProps) {
   const [isUpdating, setIsUpdating] = useState(false);
   const queryClient = useQueryClient();
-
-  const meta = PROJECT_STATUS_META[currentStatus];
 
   const handleStatusChange = async (newStatus: ProjectStatus) => {
     if (newStatus === currentStatus || isUpdating) return;
@@ -45,21 +43,19 @@ export function ProjectStatusDropdown({ projectName, currentStatus }: ProjectSta
       <DropdownMenuTrigger
         onClick={(e) => e.stopPropagation()}
         className={cn(
-          "flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors",
-          "hover:bg-accent/50 focus:outline-none focus:ring-1 focus:ring-ring",
-          meta.color
+          "p-1 rounded opacity-0 group-hover:opacity-100 transition-opacity",
+          "hover:bg-accent/50 focus:opacity-100 focus:outline-none",
+          "text-muted-foreground hover:text-foreground"
         )}
+        title="Change status"
       >
         {isUpdating ? (
-          <Loader2 className="w-3 h-3 animate-spin" />
+          <Loader2 className="w-3.5 h-3.5 animate-spin" />
         ) : (
-          <>
-            {meta.label}
-            <ChevronDown className="w-2.5 h-2.5 opacity-60" />
-          </>
+          <MoreHorizontal className="w-3.5 h-3.5" />
         )}
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="min-w-[140px]">
+      <DropdownMenuContent align="end" className="min-w-[140px]">
         {PROJECT_STATUS_OPTIONS.map((status) => {
           const statusMeta = PROJECT_STATUS_META[status];
           return (

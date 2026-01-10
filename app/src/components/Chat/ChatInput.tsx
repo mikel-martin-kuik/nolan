@@ -75,7 +75,7 @@ export const ChatInput: React.FC<ChatInputProps> = memo(({
   }, [handleSend]);
 
   return (
-    <div className="border-t border-border bg-card/80 backdrop-blur-sm p-4">
+    <div className="border-t border-border p-4 flex-shrink-0">
       <div className="flex items-end gap-3">
         <Textarea
           ref={textareaRef}

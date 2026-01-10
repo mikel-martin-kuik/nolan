@@ -32,6 +32,7 @@ export interface ProjectInfo {
   missing_files: string[];
   file_completions: FileCompletion[];
   team: string;  // Team that owns this project (from .team file)
+  workflow_files: string[];  // Workflow phase outputs stored at project creation
 }
 
 export interface ProjectFile {

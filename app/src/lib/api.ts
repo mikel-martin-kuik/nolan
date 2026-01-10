@@ -13,8 +13,10 @@
 // API server base URL (configurable via environment variable)
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3030';
 
-// Detect if we're running in Tauri
-const isTauri = typeof window !== 'undefined' && '__TAURI__' in window;
+// Detect if we're running in Tauri (checked dynamically to handle load order)
+function isTauri(): boolean {
+  return typeof window !== 'undefined' && '__TAURI__' in window;
+}
 
 /**
  * Command name to HTTP endpoint mapping
@@ -147,7 +149,7 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
  * In Browser: Uses HTTP REST API
  */
 export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  if (isTauri) {
+  if (isTauri()) {
     // Use native Tauri IPC
     const { invoke: tauriInvoke } = await import('@tauri-apps/api/core');
     return tauriInvoke<T>(cmd, args);
@@ -194,7 +196,7 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
  * Check if running in browser mode (not Tauri)
  */
 export function isBrowserMode(): boolean {
-  return !isTauri;
+  return !isTauri();
 }
 
 /**

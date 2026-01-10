@@ -1,9 +1,12 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { invoke, isBrowserMode } from '@/lib/api';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeHighlight from 'rehype-highlight';
 import {
   Plus, RefreshCw, Play, Settings, Trash2, Code, Clock, History,
   Wrench, Square, Activity, AlertTriangle, CheckCircle, XCircle,
-  Loader2, FileText, Zap, BarChart2
+  Loader2, FileText, Zap, BarChart2, Terminal, MessageSquare, Cpu
 } from 'lucide-react';
 import { useToastStore } from '../../store/toastStore';
 import { Button } from '@/components/ui/button';
@@ -65,6 +68,7 @@ interface LogEntry {
   tool_use_result?: {
     stdout?: string;
     stderr?: string;
+    content?: string;
   };
   result?: string;
   duration_ms?: number;
@@ -73,12 +77,26 @@ interface LogEntry {
   cwd?: string;
 }
 
-function parseLogToPlainText(content: unknown): string {
+interface ParsedLogEntry {
+  type: 'system' | 'assistant-text' | 'tool-use' | 'tool-result' | 'result' | 'raw';
+  content: string;
+  metadata?: {
+    model?: string;
+    cwd?: string;
+    toolName?: string;
+    toolInput?: Record<string, unknown>;
+    duration?: number;
+    cost?: number;
+    isError?: boolean;
+  };
+}
+
+function parseLogEntries(content: unknown): ParsedLogEntry[] {
   if (typeof content !== 'string') {
-    return '';
+    return [];
   }
   const lines = content.trim().split('\n');
-  const output: string[] = [];
+  const entries: ParsedLogEntry[] = [];
 
   for (const line of lines) {
     if (!line.trim()) continue;
@@ -89,10 +107,14 @@ function parseLogToPlainText(content: unknown): string {
       switch (entry.type) {
         case 'system':
           if (entry.subtype === 'init') {
-            output.push('--- Session Start ---');
-            if (entry.model) output.push(`Model: ${entry.model}`);
-            if (entry.cwd) output.push(`Working directory: ${entry.cwd}`);
-            output.push('');
+            entries.push({
+              type: 'system',
+              content: 'Session initialized',
+              metadata: {
+                model: entry.model,
+                cwd: entry.cwd,
+              }
+            });
           }
           break;
 
@@ -100,19 +122,19 @@ function parseLogToPlainText(content: unknown): string {
           if (entry.message?.content) {
             for (const block of entry.message.content) {
               if (block.type === 'text' && block.text) {
-                output.push(`Assistant: ${block.text}`);
-                output.push('');
+                entries.push({
+                  type: 'assistant-text',
+                  content: block.text,
+                });
               } else if (block.type === 'tool_use' && block.name) {
-                const toolInput = block.input || {};
-                let inputSummary = '';
-                if ('command' in toolInput) {
-                  inputSummary = ` -> ${toolInput.command}`;
-                } else if ('description' in toolInput) {
-                  inputSummary = ` -> ${toolInput.description}`;
-                } else if ('pattern' in toolInput) {
-                  inputSummary = ` -> ${toolInput.pattern}`;
-                }
-                output.push(`Tool: ${block.name}${inputSummary}`);
+                entries.push({
+                  type: 'tool-use',
+                  content: block.name,
+                  metadata: {
+                    toolName: block.name,
+                    toolInput: block.input,
+                  }
+                });
               }
             }
           }
@@ -120,40 +142,237 @@ function parseLogToPlainText(content: unknown): string {
 
         case 'user':
           if (entry.tool_use_result) {
-            const { stdout, stderr } = entry.tool_use_result;
-            if (stdout) {
-              output.push('Output:');
-              output.push(stdout.split('\n').map(l => `   ${l}`).join('\n'));
-              output.push('');
+            const { stdout, stderr, content: resultContent } = entry.tool_use_result;
+            const output = typeof stdout === 'string' ? stdout :
+                          typeof resultContent === 'string' ? resultContent : '';
+            if (output) {
+              entries.push({
+                type: 'tool-result',
+                content: output,
+                metadata: { isError: false }
+              });
             }
-            if (stderr) {
-              output.push('Stderr:');
-              output.push(stderr.split('\n').map(l => `   ${l}`).join('\n'));
-              output.push('');
+            if (stderr && typeof stderr === 'string') {
+              entries.push({
+                type: 'tool-result',
+                content: stderr,
+                metadata: { isError: true }
+              });
             }
           }
           break;
 
         case 'result':
-          output.push('--- Result ---');
-          if (entry.result) {
-            output.push(entry.result);
-          }
-          if (entry.duration_ms) {
-            output.push(`\nDuration: ${(entry.duration_ms / 1000).toFixed(2)}s`);
-          }
-          if (entry.total_cost_usd) {
-            output.push(`Cost: $${entry.total_cost_usd.toFixed(4)}`);
-          }
+          entries.push({
+            type: 'result',
+            content: entry.result || 'Completed',
+            metadata: {
+              duration: entry.duration_ms,
+              cost: entry.total_cost_usd,
+            }
+          });
           break;
       }
     } catch {
-      output.push(line);
+      // Non-JSON line, show as raw
+      entries.push({
+        type: 'raw',
+        content: line,
+      });
     }
   }
 
-  return output.join('\n');
+  return entries;
 }
+
+// Markdown components for ReactMarkdown
+const markdownComponents: import('react-markdown').Components = {
+  pre: ({ children }) => (
+    <pre className="bg-muted/50 rounded p-2 overflow-x-auto text-xs my-2">{children}</pre>
+  ),
+  code: ({ className, children }) => {
+    const isInline = !className;
+    return isInline ? (
+      <code className="bg-muted/50 px-1 py-0.5 rounded text-xs">{children}</code>
+    ) : (
+      <code className={className}>{children}</code>
+    );
+  },
+  p: ({ children }) => (
+    <p className="mb-2 last:mb-0">{children}</p>
+  ),
+  ul: ({ children }) => (
+    <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>
+  ),
+  ol: ({ children }) => (
+    <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>
+  ),
+  li: ({ children }) => (
+    <li className="text-sm">{children}</li>
+  ),
+  a: ({ href, children }) => (
+    <a href={href} className="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">{children}</a>
+  ),
+  h1: ({ children }) => (
+    <h1 className="text-lg font-bold mt-3 mb-2">{children}</h1>
+  ),
+  h2: ({ children }) => (
+    <h2 className="text-base font-bold mt-2 mb-1">{children}</h2>
+  ),
+  h3: ({ children }) => (
+    <h3 className="text-sm font-bold mt-2 mb-1">{children}</h3>
+  ),
+  blockquote: ({ children }) => (
+    <blockquote className="border-l-2 border-muted-foreground/30 pl-3 italic my-2">{children}</blockquote>
+  ),
+};
+
+// Log entry renderer component
+const LogEntryRenderer: React.FC<{ entry: ParsedLogEntry }> = ({ entry }) => {
+  switch (entry.type) {
+    case 'system':
+      return (
+        <div className="flex items-center gap-2 py-2 px-3 bg-muted/30 rounded text-xs text-muted-foreground border-l-2 border-blue-500/50">
+          <Cpu className="w-3 h-3" />
+          <span>{entry.content}</span>
+          {entry.metadata?.model && (
+            <Badge variant="outline" className="text-[10px] h-4">{entry.metadata.model}</Badge>
+          )}
+          {entry.metadata?.cwd && (
+            <span className="font-mono truncate max-w-[300px]">{entry.metadata.cwd}</span>
+          )}
+        </div>
+      );
+
+    case 'assistant-text': {
+      const textContent = typeof entry.content === 'string' ? entry.content : String(entry.content || '');
+      if (!textContent) return null;
+      return (
+        <div className="py-2 px-3 border-l-2 border-green-500/50">
+          <div className="flex items-center gap-2 mb-1 text-xs text-muted-foreground">
+            <MessageSquare className="w-3 h-3" />
+            <span>Assistant</span>
+          </div>
+          <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              rehypePlugins={[rehypeHighlight]}
+              components={markdownComponents}
+            >
+              {textContent}
+            </ReactMarkdown>
+          </div>
+        </div>
+      );
+    }
+
+    case 'tool-use':
+      return (
+        <div className="py-2 px-3 bg-blue-500/5 border-l-2 border-blue-500/50">
+          <div className="flex items-center gap-2 text-xs">
+            <Terminal className="w-3 h-3 text-blue-400" />
+            <span className="font-medium text-blue-400">{entry.metadata?.toolName}</span>
+            {entry.metadata?.toolInput && (
+              <span className="text-muted-foreground font-mono truncate max-w-[400px]">
+                {(() => {
+                  const input = entry.metadata.toolInput;
+                  if ('command' in input) return String(input.command);
+                  if ('description' in input) return String(input.description);
+                  if ('pattern' in input) return String(input.pattern);
+                  if ('file_path' in input) return String(input.file_path);
+                  return '';
+                })()}
+              </span>
+            )}
+          </div>
+        </div>
+      );
+
+    case 'tool-result': {
+      const content = typeof entry.content === 'string' ? entry.content : String(entry.content || '');
+      if (!content.trim()) return null;
+      const isError = entry.metadata?.isError;
+      const maxLines = 20;
+      const lines = content.split('\n');
+      const truncated = lines.length > maxLines;
+      const displayContent = truncated ? lines.slice(0, maxLines).join('\n') + '\n...' : content;
+
+      return (
+        <div className={`py-1 px-3 text-xs font-mono ${isError ? 'text-red-400' : 'text-muted-foreground'}`}>
+          <pre className="whitespace-pre-wrap overflow-x-auto max-h-[300px] overflow-y-auto">
+            {displayContent}
+          </pre>
+          {truncated && (
+            <span className="text-[10px] text-muted-foreground">({lines.length - maxLines} more lines)</span>
+          )}
+        </div>
+      );
+    }
+
+    case 'result': {
+      const resultContent = typeof entry.content === 'string' ? entry.content : String(entry.content || '');
+      return (
+        <div className="py-3 px-3 bg-green-500/10 border-l-2 border-green-500 mt-2">
+          <div className="flex items-center gap-2 mb-1">
+            <CheckCircle className="w-4 h-4 text-green-500" />
+            <span className="font-medium text-green-500">Completed</span>
+            {entry.metadata?.duration && (
+              <span className="text-xs text-muted-foreground">
+                {(entry.metadata.duration / 1000).toFixed(1)}s
+              </span>
+            )}
+            {entry.metadata?.cost && (
+              <span className="text-xs text-muted-foreground">
+                ${entry.metadata.cost.toFixed(4)}
+              </span>
+            )}
+          </div>
+          {resultContent && resultContent !== 'Completed' && (
+            <div className="prose prose-sm dark:prose-invert max-w-none text-sm mt-2">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                rehypePlugins={[rehypeHighlight]}
+                components={markdownComponents}
+              >
+                {resultContent}
+              </ReactMarkdown>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    case 'raw': {
+      const rawContent = typeof entry.content === 'string' ? entry.content : String(entry.content || '');
+      if (!rawContent) return null;
+      return (
+        <div className="py-1 px-3 text-xs font-mono text-muted-foreground">
+          {rawContent}
+        </div>
+      );
+    }
+
+    default:
+      return null;
+  }
+};
+
+// Log renderer component
+const LogRenderer: React.FC<{ content: string }> = ({ content }) => {
+  const entries = useMemo(() => parseLogEntries(content), [content]);
+
+  if (entries.length === 0) {
+    return <div className="text-muted-foreground text-sm p-4">No output</div>;
+  }
+
+  return (
+    <div className="space-y-1 p-2">
+      {entries.map((entry, index) => (
+        <LogEntryRenderer key={index} entry={entry} />
+      ))}
+    </div>
+  );
+};
 
 export const CronosPanel: React.FC = () => {
   const [agents, setAgents] = useState<CronAgentInfo[]>([]);
@@ -207,7 +426,7 @@ export const CronosPanel: React.FC = () => {
     };
   }, []);
 
-  // Browser mode: Poll for agent status and auto-refresh when running
+  // Poll for agent status and log output (works in both Tauri and browser mode)
   useEffect(() => {
     if (!showLiveOutput) return;
 
@@ -221,20 +440,26 @@ export const CronosPanel: React.FC = () => {
           // Update agents list
           setAgents(updatedAgents);
 
-          // If agent finished running, fetch the log and show it
-          if (!agent.is_running && agent.last_run) {
+          // Get run ID - either current (if running) or last completed
+          const runId = agent.current_run_id || agent.last_run?.run_id;
+
+          if (runId) {
             try {
-              const logContent = await invoke<string>('get_cron_run_log', { runId: agent.last_run.run_id });
-              // Parse and add to live output
-              const lines = logContent.split('\n').filter(Boolean);
-              const events: CronOutputEvent[] = lines.map((line) => ({
-                run_id: agent.last_run!.run_id,
-                agent_name: showLiveOutput,
-                event_type: 'stdout' as const,
-                content: line,
-                timestamp: new Date().toISOString(),
-              }));
-              setLiveOutput(events);
+              const result = await invoke<string | { log: string }>('get_cron_run_log', { runId });
+              const logContent = typeof result === 'string' ? result : result?.log ?? '';
+
+              if (logContent) {
+                // Parse and add to live output
+                const lines = logContent.split('\n').filter(Boolean);
+                const events: CronOutputEvent[] = lines.map((line) => ({
+                  run_id: runId,
+                  agent_name: showLiveOutput,
+                  event_type: 'stdout' as const,
+                  content: line,
+                  timestamp: new Date().toISOString(),
+                }));
+                setLiveOutput(events);
+              }
             } catch {
               // Log might not be ready yet
             }
@@ -243,7 +468,7 @@ export const CronosPanel: React.FC = () => {
       } catch (err) {
         console.warn('[CronosPanel] Poll error:', err);
       }
-    }, 2000);
+    }, 1500); // Poll faster for more responsive updates
 
     return () => clearInterval(pollInterval);
   }, [showLiveOutput]);
@@ -282,11 +507,24 @@ export const CronosPanel: React.FC = () => {
     }
   }, []);
 
-  // Initial load
+  // Initialize Cronos and load data
   useEffect(() => {
-    fetchAgents();
-    fetchRunHistory();
-    fetchHealth();
+    const initAndLoad = async () => {
+      // Ensure Cronos is initialized (important for browser mode)
+      try {
+        await invoke('init_cronos');
+      } catch (err) {
+        // Might already be initialized, or fail - log but continue
+        console.log('[CronosPanel] init_cronos:', err);
+      }
+
+      // Then load data
+      fetchAgents();
+      fetchRunHistory();
+      fetchHealth();
+    };
+
+    initAndLoad();
   }, [fetchAgents, fetchRunHistory, fetchHealth]);
 
   // Refresh on tab change
@@ -375,12 +613,16 @@ export const CronosPanel: React.FC = () => {
   // Handle trigger run
   const handleTrigger = useCallback(async (name: string) => {
     try {
-      await invoke('trigger_cron_agent', { name });
+      console.log(`[CronosPanel] Triggering agent: ${name}`);
+      const result = await invoke('trigger_cron_agent', { name });
+      console.log(`[CronosPanel] Trigger result:`, result);
       showSuccess(`Triggered ${name}`);
       setLiveOutput([]);
       setShowLiveOutput(name);
-      fetchAgents();
+      // Immediate refresh to get current_run_id
+      setTimeout(fetchAgents, 500);
     } catch (err) {
+      console.error(`[CronosPanel] Trigger failed:`, err);
       showError(`Failed to trigger agent: ${err}`);
     }
   }, [showError, showSuccess, fetchAgents]);
@@ -428,7 +670,9 @@ export const CronosPanel: React.FC = () => {
   // Handle view log
   const handleViewLog = useCallback(async (runId: string) => {
     try {
-      const content = await invoke<string>('get_cron_run_log', { runId });
+      const result = await invoke<string | { log: string }>('get_cron_run_log', { runId });
+      // Handle both Tauri (string) and HTTP API ({ log: string }) responses
+      const content = typeof result === 'string' ? result : result?.log ?? '';
       setLogViewer({ runId, content });
     } catch (err) {
       showError(`Failed to load log: ${err}`);
@@ -1117,11 +1361,13 @@ export const CronosPanel: React.FC = () => {
               Output from run {logViewer?.runId}
             </DialogDescription>
           </DialogHeader>
-          <div className="h-[500px] border rounded-md bg-muted/50 overflow-auto">
-            <pre className="p-4 text-sm font-mono whitespace-pre-wrap">
-              {logViewer?.content ? parseLogToPlainText(logViewer.content) : 'No output'}
-            </pre>
-          </div>
+          <ScrollArea className="h-[500px] border rounded-md bg-background">
+            {logViewer?.content ? (
+              <LogRenderer content={logViewer.content} />
+            ) : (
+              <div className="text-muted-foreground text-sm p-4">No output</div>
+            )}
+          </ScrollArea>
           <DialogFooter>
             <Button onClick={() => setLogViewer(null)}>Close</Button>
           </DialogFooter>
@@ -1146,54 +1392,22 @@ export const CronosPanel: React.FC = () => {
                 : 'Run completed'}
             </DialogDescription>
           </DialogHeader>
-          <ScrollArea className="h-[500px] border rounded-md bg-muted/50">
-            <pre className="p-4 text-sm font-mono whitespace-pre-wrap">
-              {liveOutput
-                .filter(e => e.agent_name === showLiveOutput)
-                .map((e, i) => {
-                  // Try to parse JSON log entries for nicer display
-                  try {
-                    const parsed = JSON.parse(e.content);
-                    if (parsed.type === 'assistant' && parsed.message?.content) {
-                      return parsed.message.content.map((block: { type: string; text?: string; name?: string }, j: number) => {
-                        if (block.type === 'text' && block.text) {
-                          return <div key={`${i}-${j}`} className="text-foreground mb-2">{block.text}</div>;
-                        }
-                        if (block.type === 'tool_use' && block.name) {
-                          return <div key={`${i}-${j}`} className="text-blue-400">Tool: {block.name}</div>;
-                        }
-                        return null;
-                      });
-                    }
-                    if (parsed.type === 'result') {
-                      return (
-                        <div key={i} className="text-green-400 mt-2 pt-2 border-t border-border">
-                          {parsed.result || 'Completed'}
-                          {parsed.duration_ms && <span className="text-muted-foreground ml-2">({(parsed.duration_ms / 1000).toFixed(1)}s)</span>}
-                        </div>
-                      );
-                    }
-                    // Skip system init messages
-                    if (parsed.type === 'system') return null;
-                    // For other JSON, show raw
-                    return null;
-                  } catch {
-                    // Not JSON, show as-is
-                    return (
-                      <div key={i} className={e.event_type === 'stderr' ? 'text-red-400' : ''}>
-                        {e.content}
-                      </div>
-                    );
-                  }
-                })}
-              {liveOutput.filter(e => e.agent_name === showLiveOutput).length === 0 && (
-                <span className="text-muted-foreground">
-                  {agents.find(a => a.name === showLiveOutput)?.is_running
-                    ? 'Starting agent...'
-                    : 'No output available'}
-                </span>
-              )}
-            </pre>
+          <ScrollArea className="h-[500px] border rounded-md bg-background">
+            {(() => {
+              const agentEvents = liveOutput.filter(e => e.agent_name === showLiveOutput);
+              if (agentEvents.length === 0) {
+                return (
+                  <div className="text-muted-foreground text-sm p-4">
+                    {agents.find(a => a.name === showLiveOutput)?.is_running
+                      ? 'Starting agent...'
+                      : 'No output available'}
+                  </div>
+                );
+              }
+              // Combine events into a single log content string
+              const combinedContent = agentEvents.map(e => e.content).join('\n');
+              return <LogRenderer content={combinedContent} />;
+            })()}
           </ScrollArea>
           <DialogFooter>
             {agents.find(a => a.name === showLiveOutput)?.is_running && (

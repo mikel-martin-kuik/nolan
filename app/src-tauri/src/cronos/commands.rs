@@ -245,9 +245,13 @@ pub async fn trigger_cron_agent(name: String, app: AppHandle) -> Result<String, 
 
 /// Trigger a cron agent via HTTP API (no AppHandle required)
 pub async fn trigger_cron_agent_api(name: String) -> Result<String, String> {
+    println!("[Cronos API] trigger_cron_agent_api called for: {}", name);
+
     let guard = CRONOS.read().await;
-    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+    let manager = guard.as_ref().ok_or("Cronos not initialized - call /api/cronos/init first")?;
     let config = manager.get_agent(&name).await?;
+
+    println!("[Cronos API] Got config for agent: {}", name);
 
     // Check if already running (unless parallel allowed)
     if !config.concurrency.allow_parallel && manager.is_running(&name).await {
@@ -262,9 +266,10 @@ pub async fn trigger_cron_agent_api(name: String) -> Result<String, String> {
     // Execute in background
     let agent_name = name.clone();
     tokio::spawn(async move {
+        println!("[Cronos API] Starting execution for: {}", agent_name);
         let guard = CRONOS.read().await;
         if let Some(manager) = guard.as_ref() {
-            if let Err(e) = executor::execute_cron_agent(
+            match executor::execute_cron_agent(
                 &config,
                 manager,
                 RunTrigger::Manual,
@@ -272,8 +277,15 @@ pub async fn trigger_cron_agent_api(name: String) -> Result<String, String> {
                 Some(output_sender),
                 None,
             ).await {
-                eprintln!("Cron agent {} failed: {}", agent_name, e);
+                Ok(log) => {
+                    println!("[Cronos API] Agent {} completed with status: {:?}", agent_name, log.status);
+                }
+                Err(e) => {
+                    eprintln!("[Cronos API] Agent {} failed: {}", agent_name, e);
+                }
             }
+        } else {
+            eprintln!("[Cronos API] Manager not available in spawned task for: {}", agent_name);
         }
     });
 
@@ -318,6 +330,21 @@ pub async fn get_cron_run_history(
 
 #[tauri::command]
 pub async fn get_cron_run_log(run_id: String) -> Result<String, String> {
+    // First check running processes
+    let guard = CRONOS.read().await;
+    if let Some(manager) = guard.as_ref() {
+        let running = manager.list_running().await;
+        for process in running {
+            if process.run_id == run_id {
+                // Read from the log file of the running process
+                return Ok(std::fs::read_to_string(&process.log_file)
+                    .unwrap_or_else(|_| String::new()));
+            }
+        }
+    }
+    drop(guard);
+
+    // Check completed runs
     let nolan_root = crate::utils::paths::get_nolan_root()?;
     let runs_dir = nolan_root.join("cronos/runs");
 

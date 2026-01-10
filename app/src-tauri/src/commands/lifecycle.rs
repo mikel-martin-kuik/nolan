@@ -1409,7 +1409,26 @@ pub async fn launch_terminal(
         return Err(format!("Invalid terminal type: '{}'. Only 'gnome-terminal' is supported.", terminal_type));
     }
 
-    let result = Command::new("gnome-terminal")
+    // Log to file for debugging
+    use std::io::Write;
+    let log_path = "/tmp/nolan-terminal-debug.log";
+    let mut log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(log_path)
+        .unwrap_or_else(|_| std::fs::File::create(log_path).unwrap());
+
+    let display = std::env::var("DISPLAY").unwrap_or_else(|_| "NOT_SET".to_string());
+    let wayland = std::env::var("WAYLAND_DISPLAY").unwrap_or_else(|_| "NOT_SET".to_string());
+    let _ = writeln!(log_file, "  launch_terminal: DISPLAY={}, WAYLAND_DISPLAY={}", display, wayland);
+    let _ = writeln!(log_file, "  launch_terminal: spawning gnome-terminal for session '{}' with title '{}'", session, window_title);
+
+    // Use setsid to run in a new session, and --window to explicitly create a new window
+    // This ensures the terminal process is properly detached and runs independently
+    let result = Command::new("setsid")
+        .arg("--fork")
+        .arg("gnome-terminal")
+        .arg("--window")
         .arg("--title")
         .arg(&window_title)
         .arg("--")
@@ -1420,8 +1439,14 @@ pub async fn launch_terminal(
         .spawn();
 
     match result {
-        Ok(_) => Ok(format!("Launched gnome-terminal for {}", session)),
-        Err(e) => Err(format!("Failed to launch gnome-terminal: {}. Is gnome-terminal installed?", e))
+        Ok(child) => {
+            let _ = writeln!(log_file, "  launch_terminal: gnome-terminal spawned successfully, pid={:?}", child.id());
+            Ok(format!("Launched gnome-terminal for {}", session))
+        },
+        Err(e) => {
+            let _ = writeln!(log_file, "  launch_terminal: gnome-terminal spawn FAILED: {}", e);
+            Err(format!("Failed to launch gnome-terminal: {}. Is gnome-terminal installed?", e))
+        }
     }
 }
 
@@ -1431,35 +1456,56 @@ pub async fn launch_terminal(
 #[tauri::command]
 pub async fn open_agent_terminal(session: String) -> Result<String, String> {
     use std::process::Command;
+    use std::io::Write;
+
+    // Debug: write to stderr immediately
+    eprintln!("[NOLAN DEBUG] open_agent_terminal called for session: '{}'", session);
+
+    // Helper macro for logging
+    macro_rules! debug_log {
+        ($($arg:tt)*) => {
+            eprintln!("[NOLAN DEBUG] {}", format!($($arg)*));
+            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open("/tmp/nolan-terminal-debug.log") {
+                let _ = writeln!(f, "{}", format!($($arg)*));
+            }
+        };
+    }
+
+    debug_log!("[{}] open_agent_terminal called for session: '{}'", chrono::Local::now().format("%H:%M:%S"), session);
 
     // Validate session
     validate_agent_session(&session)?;
+    debug_log!("  session validated");
 
     // Verify session exists
     if !crate::tmux::session::session_exists(&session)? {
         return Err(format!("Session '{}' does not exist. Spawn the agent first.", session));
     }
+    debug_log!("  session exists");
 
     // Detach any existing clients from this session first
     // This closes existing terminal windows and prevents duplicates
-    let _ = Command::new("tmux")
+    let detach_result = Command::new("tmux")
         .arg("detach-client")
         .arg("-s")
         .arg(&session)
         .output();
+    debug_log!("  detach result: {:?}", detach_result);
 
     // Reset tmux window to auto-size mode
     // This allows the external terminal to resize the pane to its own dimensions
     // instead of being locked to the embedded terminal's size
-    let _ = Command::new("tmux")
+    let resize_result = Command::new("tmux")
         .args(&["resize-window", "-t", &session, "-A"])
         .output();
+    debug_log!("  resize result: {:?}", resize_result);
 
     // Small delay to allow terminal window to close
     std::thread::sleep(std::time::Duration::from_millis(100));
 
     // Generate title
     let title = format!("Agent: {}", session);
+    debug_log!("  calling launch_terminal with title '{}'", title);
 
     // Use gnome-terminal for single sessions
     launch_terminal(session, "gnome-terminal".to_string(), Some(title)).await
@@ -1510,7 +1556,11 @@ pub async fn open_team_terminals(team_name: String) -> Result<String, String> {
             let title = format!("Agent: {} ({})", agent_name, team_name);
 
             // Launch gnome-terminal for this agent
-            let result = Command::new("gnome-terminal")
+            // Use setsid to run in a new session, and --window to explicitly create a new window
+            let result = Command::new("setsid")
+                .arg("--fork")
+                .arg("gnome-terminal")
+                .arg("--window")
                 .arg("--title")
                 .arg(&title)
                 .arg("--")

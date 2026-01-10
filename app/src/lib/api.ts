@@ -15,7 +15,9 @@ const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3030';
 
 // Detect if we're running in Tauri (checked dynamically to handle load order)
 function isTauri(): boolean {
-  return typeof window !== 'undefined' && '__TAURI__' in window;
+  const result = typeof window !== 'undefined' && '__TAURI__' in window;
+  console.log('[API] isTauri check:', result, '__TAURI__' in (window || {}));
+  return result;
 }
 
 /**

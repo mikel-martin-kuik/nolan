@@ -1,19 +1,25 @@
 version: "2.0"
 departments:
-  - name: "Structure & Governance"
-    pillar: "organizational-intelligence"
-    teams: ["structure-engineering", "governance"]
-  - name: "Role Management"
-    pillar: "organizational-intelligence"
-    teams: ["role-identity"]
-  - name: "Scheduled Operations"
-    pillar: "autonomous-operations"
-    teams: ["event-automation", "quality-automation"]
-  - name: "Specialized Operations"
-    pillar: "autonomous-operations"
-    teams: ["resource-optimization", "integration", "finance-operations", "security-operations", "talent-operations"]
-  - name: "Strategic Direction"
-    pillar: "human-ai-collaboration"
-    teams: ["strategic-direction", "exception-escalation", "trust-autonomy"]
-  - name: "Infrastructure"
-    teams: ["platform-engineering", "decision-logging"]
+  - name: "Delivery Efficiency"
+    pillar: "P1"
+    directory: "p1_delivery"
+    description: "Deliver projects faster with fewer hours"
+    teams: ["platform_engineering"]
+
+  - name: "Competitive Intelligence"
+    pillar: "P2"
+    directory: "p2_competitive"
+    description: "Estimate accurately, bid confidently"
+    teams: ["estimation_bidding"]
+
+  - name: "Quality Assurance"
+    pillar: "P3"
+    directory: "p3_quality"
+    description: "Prove work meets standards, maintain audit trails"
+    teams: ["quality_automation", "decision_logging", "governance"]
+
+  - name: "Autonomous Scaling"
+    pillar: "P4"
+    directory: "p4_autonomy"
+    description: "Reduce human ratio per project, scale without hiring"
+    teams: ["exception_escalation", "resource_optimization"]

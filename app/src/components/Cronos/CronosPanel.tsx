@@ -1,27 +1,15 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { invoke, isBrowserMode } from '@/lib/api';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
-import {
-  Plus, RefreshCw, Play, Settings, Trash2, Code, Clock, History,
-  Wrench, Square, Activity, AlertTriangle, CheckCircle, XCircle,
-  Loader2, FileText, Zap, BarChart2, Terminal, MessageSquare, Cpu,
-  ChevronDown, ChevronRight
-} from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { invoke } from '@/lib/api';
+import { Plus, RefreshCw, Clock, FileText } from 'lucide-react';
+import { CronAgentCard } from './CronAgentCard';
+import { CronAgentDetailPage } from './CronAgentDetailPage';
+import { CronAgentOutputModal } from './CronAgentOutputModal';
 import { useToastStore } from '../../store/toastStore';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Switch } from '@/components/ui/switch';
-import { Progress } from '@/components/ui/progress';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -30,450 +18,27 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import type {
-  CronAgentInfo, CronAgentConfig, CronRunLog, CronRunStatus,
-  CronOutputEvent, CronosHealthSummary, HealthStatus
-} from '@/types';
-import {
-  CRON_PRESETS, CRON_MODELS, AGENT_TEMPLATES,
-  createDefaultCronAgentConfig
-} from '@/types/cronos';
-
-function getStatusBadgeVariant(status: CronRunStatus): 'default' | 'secondary' | 'destructive' | 'outline' {
-  switch (status) {
-    case 'success': return 'default';
-    case 'failed': return 'destructive';
-    case 'running': return 'secondary';
-    case 'timeout': return 'destructive';
-    case 'cancelled': return 'outline';
-    case 'skipped': return 'outline';
-    default: return 'outline';
-  }
-}
-
-function getHealthBadgeVariant(status: HealthStatus): 'default' | 'secondary' | 'destructive' | 'outline' {
-  switch (status) {
-    case 'healthy': return 'default';
-    case 'warning': return 'secondary';
-    case 'critical': return 'destructive';
-    default: return 'outline';
-  }
-}
-
-interface LogEntry {
-  type: 'system' | 'assistant' | 'user' | 'result';
-  subtype?: string;
-  message?: {
-    content?: Array<{ type: string; text?: string; name?: string; input?: Record<string, unknown> }>;
-  };
-  tool_use_result?: {
-    stdout?: string;
-    stderr?: string;
-    content?: string;
-  };
-  result?: string;
-  duration_ms?: number;
-  total_cost_usd?: number;
-  model?: string;
-  cwd?: string;
-}
-
-interface ParsedLogEntry {
-  type: 'system' | 'assistant-text' | 'tool-use' | 'tool-result' | 'result' | 'raw';
-  content: string;
-  metadata?: {
-    model?: string;
-    cwd?: string;
-    toolName?: string;
-    toolInput?: Record<string, unknown>;
-    duration?: number;
-    cost?: number;
-    isError?: boolean;
-  };
-}
-
-function parseLogEntries(content: unknown): ParsedLogEntry[] {
-  if (typeof content !== 'string') {
-    return [];
-  }
-  const lines = content.trim().split('\n');
-  const entries: ParsedLogEntry[] = [];
-
-  for (const line of lines) {
-    if (!line.trim()) continue;
-
-    try {
-      const entry: LogEntry = JSON.parse(line);
-
-      switch (entry.type) {
-        case 'system':
-          if (entry.subtype === 'init') {
-            entries.push({
-              type: 'system',
-              content: 'Session initialized',
-              metadata: {
-                model: entry.model,
-                cwd: entry.cwd,
-              }
-            });
-          }
-          break;
-
-        case 'assistant':
-          if (entry.message?.content) {
-            for (const block of entry.message.content) {
-              if (block.type === 'text' && block.text) {
-                entries.push({
-                  type: 'assistant-text',
-                  content: block.text,
-                });
-              } else if (block.type === 'tool_use' && block.name) {
-                entries.push({
-                  type: 'tool-use',
-                  content: block.name,
-                  metadata: {
-                    toolName: block.name,
-                    toolInput: block.input,
-                  }
-                });
-              }
-            }
-          }
-          break;
-
-        case 'user':
-          if (entry.tool_use_result) {
-            const { stdout, stderr, content: resultContent } = entry.tool_use_result;
-            const output = typeof stdout === 'string' ? stdout :
-                          typeof resultContent === 'string' ? resultContent : '';
-            if (output) {
-              entries.push({
-                type: 'tool-result',
-                content: output,
-                metadata: { isError: false }
-              });
-            }
-            if (stderr && typeof stderr === 'string') {
-              entries.push({
-                type: 'tool-result',
-                content: stderr,
-                metadata: { isError: true }
-              });
-            }
-          }
-          break;
-
-        case 'result':
-          entries.push({
-            type: 'result',
-            content: entry.result || 'Completed',
-            metadata: {
-              duration: entry.duration_ms,
-              cost: entry.total_cost_usd,
-            }
-          });
-          break;
-      }
-    } catch {
-      // Non-JSON line, show as raw
-      entries.push({
-        type: 'raw',
-        content: line,
-      });
-    }
-  }
-
-  return entries;
-}
-
-// Markdown components for ReactMarkdown
-const markdownComponents: import('react-markdown').Components = {
-  pre: ({ children }) => (
-    <pre className="bg-muted/50 rounded p-2 overflow-x-auto text-xs my-2">{children}</pre>
-  ),
-  code: ({ className, children }) => {
-    const isInline = !className;
-    return isInline ? (
-      <code className="bg-muted/50 px-1 py-0.5 rounded text-xs">{children}</code>
-    ) : (
-      <code className={className}>{children}</code>
-    );
-  },
-  p: ({ children }) => (
-    <p className="mb-2 last:mb-0">{children}</p>
-  ),
-  ul: ({ children }) => (
-    <ul className="list-disc list-inside mb-2 space-y-1">{children}</ul>
-  ),
-  ol: ({ children }) => (
-    <ol className="list-decimal list-inside mb-2 space-y-1">{children}</ol>
-  ),
-  li: ({ children }) => (
-    <li className="text-sm">{children}</li>
-  ),
-  a: ({ href, children }) => (
-    <a href={href} className="text-blue-400 hover:underline" target="_blank" rel="noopener noreferrer">{children}</a>
-  ),
-  h1: ({ children }) => (
-    <h1 className="text-lg font-bold mt-3 mb-2">{children}</h1>
-  ),
-  h2: ({ children }) => (
-    <h2 className="text-base font-bold mt-2 mb-1">{children}</h2>
-  ),
-  h3: ({ children }) => (
-    <h3 className="text-sm font-bold mt-2 mb-1">{children}</h3>
-  ),
-  blockquote: ({ children }) => (
-    <blockquote className="border-l-2 border-muted-foreground/30 pl-3 italic my-2">{children}</blockquote>
-  ),
-};
-
-// Log entry renderer component
-const LogEntryRenderer: React.FC<{ entry: ParsedLogEntry }> = ({ entry }) => {
-  switch (entry.type) {
-    case 'system':
-      return (
-        <div className="flex items-center gap-2 py-2 px-3 bg-muted/30 rounded text-xs text-muted-foreground border-l-2 border-blue-500/50">
-          <Cpu className="w-3 h-3" />
-          <span>{entry.content}</span>
-          {entry.metadata?.model && (
-            <Badge variant="outline" className="text-[10px] h-4">{entry.metadata.model}</Badge>
-          )}
-          {entry.metadata?.cwd && (
-            <span className="font-mono truncate max-w-[300px]">{entry.metadata.cwd}</span>
-          )}
-        </div>
-      );
-
-    case 'assistant-text': {
-      const textContent = typeof entry.content === 'string' ? entry.content : String(entry.content || '');
-      if (!textContent) return null;
-      return (
-        <div className="py-2 px-3 border-l-2 border-green-500/50">
-          <div className="flex items-center gap-2 mb-1 text-xs text-muted-foreground">
-            <MessageSquare className="w-3 h-3" />
-            <span>Assistant</span>
-          </div>
-          <div className="prose prose-sm dark:prose-invert max-w-none text-sm">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              rehypePlugins={[rehypeHighlight]}
-              components={markdownComponents}
-            >
-              {textContent}
-            </ReactMarkdown>
-          </div>
-        </div>
-      );
-    }
-
-    case 'tool-use':
-      return (
-        <div className="py-2 px-3 bg-blue-500/5 border-l-2 border-blue-500/50">
-          <div className="flex items-center gap-2 text-xs">
-            <Terminal className="w-3 h-3 text-blue-400" />
-            <span className="font-medium text-blue-400">{entry.metadata?.toolName}</span>
-            {entry.metadata?.toolInput && (
-              <span className="text-muted-foreground font-mono truncate max-w-[400px]">
-                {(() => {
-                  const input = entry.metadata.toolInput;
-                  if ('command' in input) return String(input.command);
-                  if ('description' in input) return String(input.description);
-                  if ('pattern' in input) return String(input.pattern);
-                  if ('file_path' in input) return String(input.file_path);
-                  return '';
-                })()}
-              </span>
-            )}
-          </div>
-        </div>
-      );
-
-    case 'tool-result': {
-      const content = typeof entry.content === 'string' ? entry.content : String(entry.content || '');
-      if (!content.trim()) return null;
-      const isError = entry.metadata?.isError;
-      const maxLines = 20;
-      const lines = content.split('\n');
-      const truncated = lines.length > maxLines;
-      const displayContent = truncated ? lines.slice(0, maxLines).join('\n') + '\n...' : content;
-
-      return (
-        <div className={`py-1 px-3 text-xs font-mono ${isError ? 'text-red-400' : 'text-muted-foreground'}`}>
-          <pre className="whitespace-pre-wrap overflow-x-auto max-h-[300px] overflow-y-auto">
-            {displayContent}
-          </pre>
-          {truncated && (
-            <span className="text-[10px] text-muted-foreground">({lines.length - maxLines} more lines)</span>
-          )}
-        </div>
-      );
-    }
-
-    case 'result': {
-      const resultContent = typeof entry.content === 'string' ? entry.content : String(entry.content || '');
-      return (
-        <div className="py-3 px-3 bg-green-500/10 border-l-2 border-green-500 mt-2">
-          <div className="flex items-center gap-2 mb-1">
-            <CheckCircle className="w-4 h-4 text-green-500" />
-            <span className="font-medium text-green-500">Completed</span>
-            {entry.metadata?.duration && (
-              <span className="text-xs text-muted-foreground">
-                {(entry.metadata.duration / 1000).toFixed(1)}s
-              </span>
-            )}
-            {entry.metadata?.cost && (
-              <span className="text-xs text-muted-foreground">
-                ${entry.metadata.cost.toFixed(4)}
-              </span>
-            )}
-          </div>
-          {resultContent && resultContent !== 'Completed' && (
-            <div className="prose prose-sm dark:prose-invert max-w-none text-sm mt-2">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                rehypePlugins={[rehypeHighlight]}
-                components={markdownComponents}
-              >
-                {resultContent}
-              </ReactMarkdown>
-            </div>
-          )}
-        </div>
-      );
-    }
-
-    case 'raw': {
-      const rawContent = typeof entry.content === 'string' ? entry.content : String(entry.content || '');
-      if (!rawContent) return null;
-      return (
-        <div className="py-1 px-3 text-xs font-mono text-muted-foreground">
-          {rawContent}
-        </div>
-      );
-    }
-
-    default:
-      return null;
-  }
-};
-
-// Log renderer component
-const LogRenderer: React.FC<{ content: string }> = ({ content }) => {
-  const entries = useMemo(() => parseLogEntries(content), [content]);
-
-  if (entries.length === 0) {
-    return <div className="text-muted-foreground text-sm p-4">No output</div>;
-  }
-
-  return (
-    <div className="space-y-1 p-2">
-      {entries.map((entry, index) => (
-        <LogEntryRenderer key={index} entry={entry} />
-      ))}
-    </div>
-  );
-};
+import type { CronAgentInfo, CronAgentConfig } from '@/types';
+import { CRON_PRESETS, CRON_MODELS, AGENT_TEMPLATES, createDefaultCronAgentConfig } from '@/types/cronos';
 
 export const CronosPanel: React.FC = () => {
   const [agents, setAgents] = useState<CronAgentInfo[]>([]);
-  const [runHistory, setRunHistory] = useState<CronRunLog[]>([]);
-  const [healthSummary, setHealthSummary] = useState<CronosHealthSummary | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState('factory');
 
-  // Real-time output state
-  const [liveOutput, setLiveOutput] = useState<CronOutputEvent[]>([]);
-  const [showLiveOutput, setShowLiveOutput] = useState<string | null>(null);
+  // Navigation state
+  const [selectedAgentPage, setSelectedAgentPage] = useState<string | null>(null);
+  const [outputModalAgent, setOutputModalAgent] = useState<string | null>(null);
 
   // Dialog states
   const [creatorOpen, setCreatorOpen] = useState(false);
   const [templateSelectorOpen, setTemplateSelectorOpen] = useState(false);
-  const [editorAgent, setEditorAgent] = useState<CronAgentConfig | null>(null);
-  const [instructionsAgent, setInstructionsAgent] = useState<string | null>(null);
-  const [instructionsContent, setInstructionsContent] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
-  const [logViewer, setLogViewer] = useState<{ runId: string; content: string } | null>(null);
-  const [collapsedAgents, setCollapsedAgents] = useState<Set<string>>(new Set());
 
   // Form state for creator
   const [newAgentName, setNewAgentName] = useState('');
   const [newAgentConfig, setNewAgentConfig] = useState<CronAgentConfig | null>(null);
 
   const { error: showError, success: showSuccess } = useToastStore();
-
-  // Subscribe to real-time output events (Tauri only)
-  useEffect(() => {
-    if (isBrowserMode()) {
-      // In browser mode, real-time streaming is not available
-      return;
-    }
-
-    let cleanup: (() => void) | undefined;
-
-    (async () => {
-      try {
-        const { listen } = await import('@tauri-apps/api/event');
-        const unsubscribe = await listen<CronOutputEvent>('cronos:output', (event) => {
-          setLiveOutput(prev => [...prev.slice(-500), event.payload]);
-        });
-        cleanup = unsubscribe;
-      } catch (err) {
-        console.warn('[CronosPanel] Failed to setup event listener:', err);
-      }
-    })();
-
-    return () => {
-      cleanup?.();
-    };
-  }, []);
-
-  // Poll for agent status and log output (works in both Tauri and browser mode)
-  useEffect(() => {
-    if (!showLiveOutput) return;
-
-    // Poll for updates while live output is shown
-    const pollInterval = setInterval(async () => {
-      try {
-        const updatedAgents = await invoke<CronAgentInfo[]>('list_cron_agents');
-        const agent = updatedAgents.find(a => a.name === showLiveOutput);
-
-        if (agent) {
-          // Update agents list
-          setAgents(updatedAgents);
-
-          // Get run ID - either current (if running) or last completed
-          const runId = agent.current_run_id || agent.last_run?.run_id;
-
-          if (runId) {
-            try {
-              const result = await invoke<string | { log: string }>('get_cron_run_log', { runId });
-              const logContent = typeof result === 'string' ? result : result?.log ?? '';
-
-              if (logContent) {
-                // Parse and add to live output
-                const lines = logContent.split('\n').filter(Boolean);
-                const events: CronOutputEvent[] = lines.map((line) => ({
-                  run_id: runId,
-                  agent_name: showLiveOutput,
-                  event_type: 'stdout' as const,
-                  content: line,
-                  timestamp: new Date().toISOString(),
-                }));
-                setLiveOutput(events);
-              }
-            } catch {
-              // Log might not be ready yet
-            }
-          }
-        }
-      } catch (err) {
-        console.warn('[CronosPanel] Poll error:', err);
-      }
-    }, 1500); // Poll faster for more responsive updates
-
-    return () => clearInterval(pollInterval);
-  }, [showLiveOutput]);
 
   // Fetch agents list
   const fetchAgents = useCallback(async () => {
@@ -489,55 +54,18 @@ export const CronosPanel: React.FC = () => {
     }
   }, [showError]);
 
-  // Fetch run history
-  const fetchRunHistory = useCallback(async () => {
-    try {
-      const history = await invoke<CronRunLog[]>('get_cron_run_history', { limit: 50 });
-      setRunHistory(history);
-    } catch (err) {
-      console.error('Failed to load run history:', err);
-    }
-  }, []);
-
-  // Fetch health summary
-  const fetchHealth = useCallback(async () => {
-    try {
-      const health = await invoke<CronosHealthSummary>('get_cronos_health');
-      setHealthSummary(health);
-    } catch (err) {
-      console.error('Failed to load health summary:', err);
-    }
-  }, []);
-
-  // Initialize Cronos and load data
+  // Initialize and load data
   useEffect(() => {
-    const initAndLoad = async () => {
-      // Ensure Cronos is initialized (important for browser mode)
+    const init = async () => {
       try {
         await invoke('init_cronos');
-      } catch {
-        // Might already be initialized - continue
-      }
-
-      // Then load data
+      } catch { /* might already be initialized */ }
       fetchAgents();
-      fetchRunHistory();
-      fetchHealth();
     };
+    init();
+  }, [fetchAgents]);
 
-    initAndLoad();
-  }, [fetchAgents, fetchRunHistory, fetchHealth]);
-
-  // Refresh on tab change
-  useEffect(() => {
-    if (activeTab === 'audit') {
-      fetchRunHistory();
-    } else if (activeTab === 'health') {
-      fetchHealth();
-    }
-  }, [activeTab, fetchRunHistory, fetchHealth]);
-
-  // Auto-refresh agents when there are running agents
+  // Auto-refresh when there are running agents
   useEffect(() => {
     const hasRunning = agents.some(a => a.is_running);
     if (hasRunning) {
@@ -569,34 +97,6 @@ export const CronosPanel: React.FC = () => {
     }
   }, [newAgentName, newAgentConfig, showError, showSuccess, fetchAgents]);
 
-  // Handle agent update
-  const handleUpdate = useCallback(async () => {
-    if (!editorAgent) return;
-
-    try {
-      await invoke('update_cron_agent', {
-        name: editorAgent.name,
-        config: editorAgent
-      });
-      showSuccess(`Updated ${editorAgent.name}`);
-      setEditorAgent(null);
-      fetchAgents();
-    } catch (err) {
-      showError(`Failed to update agent: ${err}`);
-    }
-  }, [editorAgent, showError, showSuccess, fetchAgents]);
-
-  // Handle toggle enabled
-  const handleToggle = useCallback(async (name: string, enabled: boolean) => {
-    try {
-      await invoke('toggle_cron_agent', { name, enabled });
-      showSuccess(`${name} ${enabled ? 'enabled' : 'disabled'}`);
-      fetchAgents();
-    } catch (err) {
-      showError(`Failed to toggle agent: ${err}`);
-    }
-  }, [showError, showSuccess, fetchAgents]);
-
   // Handle agent delete
   const handleDelete = useCallback(async () => {
     if (!deleteConfirm) return;
@@ -605,6 +105,7 @@ export const CronosPanel: React.FC = () => {
       await invoke('delete_cron_agent', { name: deleteConfirm });
       showSuccess(`Deleted ${deleteConfirm}`);
       setDeleteConfirm(null);
+      setSelectedAgentPage(null);
       fetchAgents();
     } catch (err) {
       showError(`Failed to delete agent: ${err}`);
@@ -616,9 +117,8 @@ export const CronosPanel: React.FC = () => {
     try {
       await invoke('trigger_cron_agent', { name });
       showSuccess(`Triggered ${name}`);
-      setLiveOutput([]);
-      setShowLiveOutput(name);
-      // Immediate refresh to get current_run_id
+      // Open output modal to show the running agent
+      setOutputModalAgent(name);
       setTimeout(fetchAgents, 500);
     } catch (err) {
       showError(`Failed to trigger agent: ${err}`);
@@ -631,61 +131,29 @@ export const CronosPanel: React.FC = () => {
       await invoke('cancel_cron_agent', { name });
       showSuccess(`Cancelled ${name}`);
       fetchAgents();
-      fetchRunHistory();
     } catch (err) {
       showError(`Failed to cancel agent: ${err}`);
     }
-  }, [showError, showSuccess, fetchAgents, fetchRunHistory]);
+  }, [showError, showSuccess, fetchAgents]);
 
-  // Handle edit instructions (CLAUDE.md)
-  const handleEditInstructions = useCallback(async (name: string) => {
-    try {
-      const result = await invoke<string | { content: string }>('read_cron_agent_claude_md', { name });
-      const content = typeof result === 'string' ? result : result?.content ?? '';
-      setInstructionsContent(content);
-      setInstructionsAgent(name);
-    } catch (err) {
-      showError(`Failed to load instructions: ${err}`);
+  // Handle card click - show output modal if running, otherwise show detail page
+  const handleCardClick = useCallback((name: string) => {
+    const agent = agents.find(a => a.name === name);
+    if (agent?.is_running) {
+      setOutputModalAgent(name);
+    } else {
+      setSelectedAgentPage(name);
     }
-  }, [showError]);
+  }, [agents]);
 
-  // Handle save instructions
-  const handleSaveInstructions = useCallback(async () => {
-    if (!instructionsAgent) return;
-
-    try {
-      await invoke('write_cron_agent_claude_md', {
-        name: instructionsAgent,
-        content: instructionsContent
-      });
-      showSuccess('Instructions saved');
-      setInstructionsAgent(null);
-    } catch (err) {
-      showError(`Failed to save instructions: ${err}`);
+  // Handle viewing output from audit log (in detail page)
+  const handleViewOutput = useCallback(async (_runId: string) => {
+    // Open the output modal for the selected agent
+    // TODO: Pass runId to modal to load specific run's output
+    if (selectedAgentPage) {
+      setOutputModalAgent(selectedAgentPage);
     }
-  }, [instructionsAgent, instructionsContent, showError, showSuccess]);
-
-  // Handle view log
-  const handleViewLog = useCallback(async (runId: string) => {
-    try {
-      const result = await invoke<string | { log: string }>('get_cron_run_log', { runId });
-      // Handle both Tauri (string) and HTTP API ({ log: string }) responses
-      const content = typeof result === 'string' ? result : result?.log ?? '';
-      setLogViewer({ runId, content });
-    } catch (err) {
-      showError(`Failed to load log: ${err}`);
-    }
-  }, [showError]);
-
-  // Load agent for editing
-  const loadAgentForEdit = useCallback(async (name: string) => {
-    try {
-      const config = await invoke<CronAgentConfig>('get_cron_agent', { name });
-      setEditorAgent(config);
-    } catch (err) {
-      showError(`Failed to load agent config: ${err}`);
-    }
-  }, [showError]);
+  }, [selectedAgentPage]);
 
   // Handle template selection
   const handleSelectTemplate = useCallback((templateId: string) => {
@@ -699,6 +167,50 @@ export const CronosPanel: React.FC = () => {
       setCreatorOpen(true);
     }
   }, []);
+
+  // If showing detail page, render it
+  if (selectedAgentPage) {
+    return (
+      <div className="h-full flex flex-col">
+        <CronAgentDetailPage
+          agentName={selectedAgentPage}
+          onBack={() => {
+            setSelectedAgentPage(null);
+            fetchAgents();
+          }}
+          onTrigger={handleTrigger}
+          onDelete={(name) => {
+            setDeleteConfirm(name);
+          }}
+          onViewOutput={handleViewOutput}
+        />
+
+        {/* Output Modal - can be opened from detail page */}
+        <CronAgentOutputModal
+          agentName={outputModalAgent}
+          onClose={() => setOutputModalAgent(null)}
+          onCancel={handleCancel}
+        />
+
+        {/* Delete Confirmation */}
+        <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete {deleteConfirm}?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete the agent and all its configuration.
+                Run history will be preserved.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <Button variant="outline" onClick={() => setDeleteConfirm(null)}>Cancel</Button>
+              <Button variant="destructive" onClick={handleDelete}>Delete</Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    );
+  }
 
   return (
     <div className="h-full flex flex-col">
@@ -714,7 +226,7 @@ export const CronosPanel: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={() => { fetchAgents(); fetchHealth(); }} disabled={loading}>
+          <Button variant="ghost" size="icon" onClick={fetchAgents} disabled={loading}>
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </Button>
           <Button variant="outline" onClick={() => setTemplateSelectorOpen(true)}>
@@ -728,382 +240,35 @@ export const CronosPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* Health Summary Bar */}
-      {healthSummary && (
-        <div className="grid grid-cols-4 gap-4 mb-4">
-          <Card className="p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Agents</span>
-              <span className="text-lg font-semibold">{healthSummary.total_agents}</span>
-            </div>
-          </Card>
-          <Card className="p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Active</span>
-              <span className="text-lg font-semibold text-green-500">{healthSummary.active_agents}</span>
-            </div>
-          </Card>
-          <Card className="p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Running</span>
-              <span className="text-lg font-semibold text-blue-500">{healthSummary.running_agents}</span>
-            </div>
-          </Card>
-          <Card className="p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Success Rate (7d)</span>
-              <span className="text-lg font-semibold">{(healthSummary.success_rate_7d * 100).toFixed(0)}%</span>
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-        <TabsList className="grid w-full grid-cols-4 mb-4">
-          <TabsTrigger value="factory" className="flex items-center gap-2">
-            <Wrench className="w-4 h-4" />
-            Factory
-          </TabsTrigger>
-          <TabsTrigger value="scheduler" className="flex items-center gap-2">
-            <Clock className="w-4 h-4" />
-            Scheduler
-          </TabsTrigger>
-          <TabsTrigger value="audit" className="flex items-center gap-2">
-            <History className="w-4 h-4" />
-            Audit Log
-          </TabsTrigger>
-          <TabsTrigger value="health" className="flex items-center gap-2">
-            <Activity className="w-4 h-4" />
-            Health
-          </TabsTrigger>
-        </TabsList>
-
-        {/* Factory View - Agent Cards Grid */}
-        <TabsContent value="factory" className="flex-1 overflow-auto">
-          {agents.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-              <Clock className="w-12 h-12 mb-4 opacity-50" />
-              <p>No cron agents configured</p>
-              <p className="text-sm">Create your first scheduled agent</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {agents.map((agent) => (
-                <Card key={agent.name} className={`group hover:border-primary/50 transition-colors ${agent.is_running ? 'border-blue-500' : ''}`}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          {agent.name}
-                          {agent.is_running && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
-                        </CardTitle>
-                        <CardDescription className="mt-1">{agent.description || 'No description'}</CardDescription>
-                      </div>
-                      <div className="flex flex-col gap-1 items-end">
-                        <Badge variant={agent.enabled ? 'default' : 'secondary'}>
-                          {agent.enabled ? 'Active' : 'Inactive'}
-                        </Badge>
-                        <Badge variant={getHealthBadgeVariant(agent.health.status)} className="text-xs">
-                          {agent.health.status}
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2 text-sm text-muted-foreground">
-                      <div className="flex items-center justify-between">
-                        <span>Schedule:</span>
-                        <span className="font-mono">{agent.schedule}</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span>Model:</span>
-                        <span>{agent.model}</span>
-                      </div>
-                      {agent.stats.total_runs > 0 && (
-                        <div className="flex items-center justify-between">
-                          <span>Success rate:</span>
-                          <span>{(agent.stats.success_rate * 100).toFixed(0)}% ({agent.stats.total_runs} runs)</span>
-                        </div>
-                      )}
-                      {agent.next_run && !agent.is_running && (
-                        <div className="flex items-center justify-between">
-                          <span>Next run:</span>
-                          <span>{new Date(agent.next_run).toLocaleString()}</span>
-                        </div>
-                      )}
-                      {agent.last_run && (
-                        <div className="flex items-center justify-between">
-                          <span>Last run:</span>
-                          <Badge variant={getStatusBadgeVariant(agent.last_run.status)}>
-                            {agent.last_run.status}
-                          </Badge>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-1 mt-4 pt-3 border-t border-border">
-                      {agent.is_running ? (
-                        <Button variant="ghost" size="icon" onClick={() => handleCancel(agent.name)} title="Cancel run">
-                          <Square className="w-4 h-4 text-red-500" />
-                        </Button>
-                      ) : (
-                        <Button variant="ghost" size="icon" onClick={() => handleTrigger(agent.name)} title="Run now">
-                          <Play className="w-4 h-4" />
-                        </Button>
-                      )}
-                      <Button variant="ghost" size="icon" onClick={() => handleEditInstructions(agent.name)} title="Edit instructions">
-                        <Code className="w-4 h-4" />
-                      </Button>
-                      <Button variant="ghost" size="icon" onClick={() => loadAgentForEdit(agent.name)} title="Settings">
-                        <Settings className="w-4 h-4" />
-                      </Button>
-                      {agent.is_running && (
-                        <Button variant="ghost" size="icon" onClick={() => setShowLiveOutput(agent.name)} title="View output">
-                          <Zap className="w-4 h-4 text-blue-500" />
-                        </Button>
-                      )}
-                      <div className="flex-1" />
-                      <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(agent.name)} title="Delete" disabled={agent.is_running}>
-                        <Trash2 className="w-4 h-4 text-destructive" />
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        {/* Scheduler View - Enable/Disable and Run Now */}
-        <TabsContent value="scheduler" className="flex-1 overflow-auto">
-          <div className="space-y-2">
+      {/* Agent Cards Grid */}
+      <div className="flex-1 overflow-auto">
+        {agents.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+            <Clock className="w-12 h-12 mb-4 opacity-50" />
+            <p>No cron agents configured</p>
+            <p className="text-sm">Create your first scheduled agent</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
             {agents.map((agent) => (
-              <Card key={agent.name} className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <Switch
-                      checked={agent.enabled}
-                      onCheckedChange={(checked) => handleToggle(agent.name, checked)}
-                    />
-                    <div>
-                      <p className="font-medium flex items-center gap-2">
-                        {agent.name}
-                        {agent.is_running && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
-                      </p>
-                      <p className="text-sm text-muted-foreground">{agent.schedule}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {agent.next_run && !agent.is_running && (
-                      <span className="text-sm text-muted-foreground">
-                        Next: {new Date(agent.next_run).toLocaleString()}
-                      </span>
-                    )}
-                    {agent.is_running ? (
-                      <Button variant="outline" size="sm" onClick={() => handleCancel(agent.name)}>
-                        <Square className="w-4 h-4 mr-1" />
-                        Stop
-                      </Button>
-                    ) : (
-                      <Button variant="outline" size="sm" onClick={() => handleTrigger(agent.name)}>
-                        <Play className="w-4 h-4 mr-1" />
-                        Run Now
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </Card>
+              <CronAgentCard
+                key={agent.name}
+                agent={agent}
+                onTrigger={handleTrigger}
+                onDelete={(name) => setDeleteConfirm(name)}
+                onClick={handleCardClick}
+              />
             ))}
           </div>
-        </TabsContent>
+        )}
+      </div>
 
-        {/* Audit Log View - Run History */}
-        <TabsContent value="audit" className="flex-1 overflow-hidden">
-          <ScrollArea className="h-full">
-            {runHistory.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-                <History className="w-12 h-12 mb-4 opacity-50" />
-                <p>No run history yet</p>
-              </div>
-            ) : (
-              <div className="space-y-4 pr-4">
-                {(() => {
-                  // Group by agent and sort each group by time (most recent first)
-                  const grouped = runHistory.reduce((acc, run) => {
-                    if (!acc[run.agent_name]) acc[run.agent_name] = [];
-                    acc[run.agent_name].push(run);
-                    return acc;
-                  }, {} as Record<string, typeof runHistory>);
-
-                  // Sort runs within each group by started_at descending
-                  Object.values(grouped).forEach(runs => {
-                    runs.sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
-                  });
-
-                  // Sort agent groups by most recent run
-                  const sortedAgents = Object.entries(grouped).sort(([, runsA], [, runsB]) => {
-                    const latestA = new Date(runsA[0].started_at).getTime();
-                    const latestB = new Date(runsB[0].started_at).getTime();
-                    return latestB - latestA;
-                  });
-
-                  return sortedAgents.map(([agentName, runs]) => {
-                    const isCollapsed = collapsedAgents.has(agentName);
-                    const toggleCollapse = () => {
-                      setCollapsedAgents(prev => {
-                        const next = new Set(prev);
-                        if (next.has(agentName)) {
-                          next.delete(agentName);
-                        } else {
-                          next.add(agentName);
-                        }
-                        return next;
-                      });
-                    };
-
-                    return (
-                      <div key={agentName}>
-                        <button
-                          onClick={toggleCollapse}
-                          className="flex items-center gap-2 mb-2 sticky top-0 bg-background py-1 w-full text-left hover:bg-muted/50 rounded px-1 -ml-1"
-                        >
-                          {isCollapsed ? (
-                            <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                          )}
-                          <h3 className="font-medium text-sm">{agentName}</h3>
-                          <span className="text-xs text-muted-foreground">({runs.length} runs)</span>
-                          {runs[0] && (
-                            <Badge variant={getStatusBadgeVariant(runs[0].status)} className="text-xs ml-auto">
-                              {runs[0].status}
-                            </Badge>
-                          )}
-                        </button>
-                        {!isCollapsed && (
-                          <div className="space-y-2 ml-6">
-                            {runs.map((run) => (
-                              <Card
-                                key={run.run_id}
-                                className="p-3 cursor-pointer hover:border-primary/50 transition-colors"
-                                onClick={() => handleViewLog(run.run_id)}
-                              >
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-3">
-                                    <Badge variant={getStatusBadgeVariant(run.status)} className="text-xs">
-                                      {run.status}
-                                    </Badge>
-                                    <div>
-                                      <p className="text-sm text-muted-foreground">
-                                        {new Date(run.started_at).toLocaleString()}
-                                        {run.attempt > 1 && ` (attempt ${run.attempt})`}
-                                        {run.trigger !== 'scheduled' && (
-                                          <span className="ml-1 text-xs opacity-70">• {run.trigger}</span>
-                                        )}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <div className="text-sm text-muted-foreground">
-                                    {run.duration_secs !== undefined && (
-                                      <span>{run.duration_secs}s</span>
-                                    )}
-                                  </div>
-                                </div>
-                                {run.error && (
-                                  <p className="text-xs text-destructive mt-1 truncate">{run.error}</p>
-                                )}
-                              </Card>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  });
-                })()}
-              </div>
-            )}
-          </ScrollArea>
-        </TabsContent>
-
-        {/* Health Dashboard */}
-        <TabsContent value="health" className="flex-1 overflow-auto">
-          {healthSummary ? (
-            <div className="space-y-6">
-              {/* Health Overview */}
-              <div className="grid grid-cols-3 gap-4">
-                <Card className="p-4">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle className="w-8 h-8 text-green-500" />
-                    <div>
-                      <p className="text-2xl font-bold">{healthSummary.healthy_agents}</p>
-                      <p className="text-sm text-muted-foreground">Healthy</p>
-                    </div>
-                  </div>
-                </Card>
-                <Card className="p-4">
-                  <div className="flex items-center gap-3">
-                    <AlertTriangle className="w-8 h-8 text-yellow-500" />
-                    <div>
-                      <p className="text-2xl font-bold">{healthSummary.warning_agents}</p>
-                      <p className="text-sm text-muted-foreground">Warning</p>
-                    </div>
-                  </div>
-                </Card>
-                <Card className="p-4">
-                  <div className="flex items-center gap-3">
-                    <XCircle className="w-8 h-8 text-red-500" />
-                    <div>
-                      <p className="text-2xl font-bold">{healthSummary.critical_agents}</p>
-                      <p className="text-sm text-muted-foreground">Critical</p>
-                    </div>
-                  </div>
-                </Card>
-              </div>
-
-              {/* Agent Health List */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BarChart2 className="w-5 h-5" />
-                    Agent Health Status
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {agents.map((agent) => (
-                      <div key={agent.name} className="flex items-center justify-between p-2 rounded hover:bg-muted/50">
-                        <div className="flex items-center gap-3">
-                          {agent.health.status === 'healthy' && <CheckCircle className="w-5 h-5 text-green-500" />}
-                          {agent.health.status === 'warning' && <AlertTriangle className="w-5 h-5 text-yellow-500" />}
-                          {agent.health.status === 'critical' && <XCircle className="w-5 h-5 text-red-500" />}
-                          {agent.health.status === 'unknown' && <Activity className="w-5 h-5 text-gray-400" />}
-                          <div>
-                            <p className="font-medium">{agent.name}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {agent.health.message || `${agent.stats.total_runs} runs, ${(agent.stats.success_rate * 100).toFixed(0)}% success`}
-                            </p>
-                          </div>
-                        </div>
-                        {agent.stats.total_runs > 0 && (
-                          <div className="w-32">
-                            <Progress value={agent.stats.success_rate * 100} className="h-2" />
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          ) : (
-            <div className="flex items-center justify-center h-64">
-              <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-            </div>
-          )}
-        </TabsContent>
-      </Tabs>
+      {/* Output Modal - for running agents */}
+      <CronAgentOutputModal
+        agentName={outputModalAgent}
+        onClose={() => setOutputModalAgent(null)}
+        onCancel={handleCancel}
+      />
 
       {/* Template Selector Dialog */}
       <Dialog open={templateSelectorOpen} onOpenChange={setTemplateSelectorOpen}>
@@ -1224,179 +389,6 @@ export const CronosPanel: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Edit Agent Dialog */}
-      <Dialog open={!!editorAgent} onOpenChange={(open) => !open && setEditorAgent(null)}>
-        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edit {editorAgent?.name}</DialogTitle>
-            <DialogDescription>
-              Configure agent settings
-            </DialogDescription>
-          </DialogHeader>
-          {editorAgent && (
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="edit-description" className="text-sm font-medium">Description</label>
-                <Input
-                  id="edit-description"
-                  className="mt-1"
-                  value={editorAgent.description}
-                  onChange={(e) => setEditorAgent({ ...editorAgent, description: e.target.value })}
-                />
-              </div>
-              <div>
-                <label htmlFor="edit-schedule" className="text-sm font-medium">Schedule</label>
-                <Select
-                  value={editorAgent.schedule.cron}
-                  onValueChange={(value) => setEditorAgent({
-                    ...editorAgent,
-                    schedule: { ...editorAgent.schedule, cron: value }
-                  })}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CRON_PRESETS.map((preset) => (
-                      <SelectItem key={preset.cron} value={preset.cron}>
-                        {preset.label} ({preset.cron})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label htmlFor="edit-model" className="text-sm font-medium">Model</label>
-                <Select
-                  value={editorAgent.model}
-                  onValueChange={(value) => setEditorAgent({ ...editorAgent, model: value })}
-                >
-                  <SelectTrigger className="mt-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CRON_MODELS.map((model) => (
-                      <SelectItem key={model.id} value={model.id}>
-                        {model.label} - {model.hint}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label htmlFor="edit-timeout" className="text-sm font-medium">Timeout (seconds)</label>
-                <Input
-                  id="edit-timeout"
-                  className="mt-1"
-                  type="number"
-                  value={editorAgent.timeout}
-                  onChange={(e) => setEditorAgent({
-                    ...editorAgent,
-                    timeout: parseInt(e.target.value) || 300
-                  })}
-                />
-              </div>
-
-              {/* Concurrency Settings */}
-              <div className="border-t pt-4">
-                <p className="text-sm font-medium mb-2">Concurrency</p>
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="allow-parallel"
-                    checked={editorAgent.concurrency?.allow_parallel || false}
-                    onCheckedChange={(checked: boolean) => setEditorAgent({
-                      ...editorAgent,
-                      concurrency: { ...editorAgent.concurrency, allow_parallel: checked }
-                    })}
-                  />
-                  <label htmlFor="allow-parallel" className="text-sm">Allow parallel runs</label>
-                </div>
-              </div>
-
-              {/* Retry Settings */}
-              <div className="border-t pt-4">
-                <p className="text-sm font-medium mb-2">Retry Policy</p>
-                <div className="flex items-center gap-2 mb-2">
-                  <Checkbox
-                    id="retry-enabled"
-                    checked={editorAgent.retry?.enabled || false}
-                    onCheckedChange={(checked: boolean) => setEditorAgent({
-                      ...editorAgent,
-                      retry: { ...editorAgent.retry, enabled: checked }
-                    })}
-                  />
-                  <label htmlFor="retry-enabled" className="text-sm">Enable retries</label>
-                </div>
-                {editorAgent.retry?.enabled && (
-                  <div className="grid grid-cols-2 gap-2 ml-6">
-                    <div>
-                      <label className="text-xs text-muted-foreground">Max Retries</label>
-                      <Input
-                        type="number"
-                        className="h-8"
-                        value={editorAgent.retry?.max_retries || 3}
-                        onChange={(e) => setEditorAgent({
-                          ...editorAgent,
-                          retry: { ...editorAgent.retry, max_retries: parseInt(e.target.value) || 3 }
-                        })}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-xs text-muted-foreground">Delay (sec)</label>
-                      <Input
-                        type="number"
-                        className="h-8"
-                        value={editorAgent.retry?.delay_secs || 60}
-                        onChange={(e) => setEditorAgent({
-                          ...editorAgent,
-                          retry: { ...editorAgent.retry, delay_secs: parseInt(e.target.value) || 60 }
-                        })}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 border-t pt-4">
-                <Checkbox
-                  id="edit-enabled"
-                  checked={editorAgent.enabled}
-                  onCheckedChange={(checked: boolean) => setEditorAgent({ ...editorAgent, enabled: checked })}
-                />
-                <label htmlFor="edit-enabled" className="text-sm font-medium">Enabled</label>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditorAgent(null)}>Cancel</Button>
-            <Button onClick={handleUpdate}>Save</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Instructions Editor Dialog */}
-      <Dialog open={!!instructionsAgent} onOpenChange={(open) => !open && setInstructionsAgent(null)}>
-        <DialogContent className="max-w-2xl max-h-[80vh]">
-          <DialogHeader>
-            <DialogTitle>Instructions - {instructionsAgent}</DialogTitle>
-            <DialogDescription>
-              Edit the CLAUDE.md file that defines this agent's behavior
-            </DialogDescription>
-          </DialogHeader>
-          <div className="h-[400px] border rounded-md overflow-auto">
-            <Textarea
-              className="min-h-[400px] font-mono text-sm border-0 focus-visible:ring-0 resize-none"
-              value={instructionsContent}
-              onChange={(e) => setInstructionsContent(e.target.value)}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setInstructionsAgent(null)}>Cancel</Button>
-            <Button onClick={handleSaveInstructions}>Save</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Delete Confirmation */}
       <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
         <AlertDialogContent>
@@ -1413,75 +405,6 @@ export const CronosPanel: React.FC = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Log Viewer Dialog */}
-      <Dialog open={!!logViewer} onOpenChange={(open) => !open && setLogViewer(null)}>
-        <DialogContent className="max-w-4xl max-h-[80vh]">
-          <DialogHeader>
-            <DialogTitle>Run Log</DialogTitle>
-            <DialogDescription>
-              Output from run {logViewer?.runId}
-            </DialogDescription>
-          </DialogHeader>
-          <ScrollArea className="h-[500px] border rounded-md bg-background">
-            {logViewer?.content ? (
-              <LogRenderer content={logViewer.content} />
-            ) : (
-              <div className="text-muted-foreground text-sm p-4">No output</div>
-            )}
-          </ScrollArea>
-          <DialogFooter>
-            <Button onClick={() => setLogViewer(null)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Live Output Dialog */}
-      <Dialog open={!!showLiveOutput} onOpenChange={(open) => !open && setShowLiveOutput(null)}>
-        <DialogContent className="max-w-4xl max-h-[80vh]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {agents.find(a => a.name === showLiveOutput)?.is_running ? (
-                <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
-              ) : (
-                <CheckCircle className="w-4 h-4 text-green-500" />
-              )}
-              Output - {showLiveOutput}
-            </DialogTitle>
-            <DialogDescription>
-              {agents.find(a => a.name === showLiveOutput)?.is_running
-                ? 'Agent is running... (polling for updates)'
-                : 'Run completed'}
-            </DialogDescription>
-          </DialogHeader>
-          <ScrollArea className="h-[500px] border rounded-md bg-background">
-            {(() => {
-              const agentEvents = liveOutput.filter(e => e.agent_name === showLiveOutput);
-              if (agentEvents.length === 0) {
-                return (
-                  <div className="text-muted-foreground text-sm p-4">
-                    {agents.find(a => a.name === showLiveOutput)?.is_running
-                      ? 'Starting agent...'
-                      : 'No output available'}
-                  </div>
-                );
-              }
-              // Combine events into a single log content string
-              const combinedContent = agentEvents.map(e => e.content).join('\n');
-              return <LogRenderer content={combinedContent} />;
-            })()}
-          </ScrollArea>
-          <DialogFooter>
-            {agents.find(a => a.name === showLiveOutput)?.is_running && (
-              <Button variant="destructive" onClick={() => showLiveOutput && handleCancel(showLiveOutput)}>
-                <Square className="w-4 h-4 mr-1" />
-                Cancel
-              </Button>
-            )}
-            <Button onClick={() => setShowLiveOutput(null)}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

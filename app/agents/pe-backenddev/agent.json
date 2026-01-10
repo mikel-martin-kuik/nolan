@@ -1,7 +1,0 @@
-{
-  "role": "Backend Developer",
-  "model": "sonnet",
-  "role_template": "implementer",
-  "team": "platform-engineering",
-  "description": "Implements Rust/Tauri backend"
-}

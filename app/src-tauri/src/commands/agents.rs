@@ -23,7 +23,8 @@ pub struct AgentMetadata {
     pub model: String,
 }
 
-/// Validate agent name format (lowercase, alphanumeric, hyphens only)
+/// Validate agent name format (lowercase, alphanumeric, underscores only)
+/// Note: Hyphens are reserved as delimiters in session names
 fn validate_agent_name(name: &str) -> Result<(), String> {
     if name.is_empty() {
         return Err("Agent name cannot be empty".to_string());
@@ -33,8 +34,8 @@ fn validate_agent_name(name: &str) -> Result<(), String> {
         return Err("Agent name must start with a lowercase letter".to_string());
     }
 
-    if !name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
-        return Err("Agent name must contain only lowercase letters, digits, and hyphens".to_string());
+    if !name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
+        return Err("Agent name must contain only lowercase letters, digits, and underscores".to_string());
     }
 
     // Check for path traversal

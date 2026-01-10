@@ -1,7 +1,0 @@
-{
-  "role": "Auditor",
-  "model": "sonnet",
-  "role_template": "auditor",
-  "team": "finance-operations",
-  "description": "Audits financial compliance"
-}

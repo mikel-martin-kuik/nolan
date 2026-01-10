@@ -143,9 +143,9 @@ export const useDepartmentStore = create<DepartmentState>()(
 
         // Define pillar order and display names
         const pillarOrder = [
-          { id: 'organizational-intelligence', name: 'Organizational Intelligence', group: 'pillar-1' },
-          { id: 'autonomous-operations', name: 'Autonomous Operations', group: 'pillar-2' },
-          { id: 'human-ai-collaboration', name: 'Human-AI Collaboration', group: 'pillar-3' },
+          { id: 'organizational-intelligence', name: 'Organizational Intelligence', group: 'pillar_1' },
+          { id: 'autonomous-operations', name: 'Autonomous Operations', group: 'pillar_2' },
+          { id: 'human-ai-collaboration', name: 'Human-AI Collaboration', group: 'pillar_3' },
           { id: 'foundation', name: 'Foundation', group: 'foundation' },
           { id: 'support', name: 'Support', group: 'support' },
         ];

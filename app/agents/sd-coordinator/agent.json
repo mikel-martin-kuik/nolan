@@ -1,7 +1,0 @@
-{
-  "role": "Coordinator",
-  "model": "opus",
-  "role_template": "coordinator",
-  "team": "strategic-direction",
-  "description": "Orchestrates strategic direction workflow"
-}

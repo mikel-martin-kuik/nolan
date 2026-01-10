@@ -1,7 +1,0 @@
-{
-  "role": "Reviewer",
-  "model": "sonnet",
-  "role_template": "reviewer",
-  "team": "trust-autonomy",
-  "description": "Reviews trust level assignments"
-}

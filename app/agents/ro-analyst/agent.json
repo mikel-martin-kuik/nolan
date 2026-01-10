@@ -1,7 +1,0 @@
-{
-  "role": "Financial Analyst",
-  "model": "sonnet",
-  "role_template": "financial-analyst",
-  "team": "resource-optimization",
-  "description": "Analyzes resource usage patterns"
-}

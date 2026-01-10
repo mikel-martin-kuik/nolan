@@ -126,6 +126,66 @@ if [[ -n "${DOCS_PATH:-}" ]]; then
     echo ""
 fi
 
+# Show pending task instructions for this agent (if any)
+# These are written by assign.sh when a task is assigned
+# Uses symlink to current assignment (individual files preserved for audit)
+# Structure: .state/{team}/instructions/{project}/{agent}/{MSG_ID}.yaml
+#            .state/{team}/instructions/_current/{agent}.yaml -> symlink
+if [[ -n "${AGENT_NAME:-}" ]]; then
+    INSTRUCTIONS_BASE="$PROJECTS_BASE/.state/$CURRENT_TEAM/instructions"
+    INSTRUCTION_FILE="$INSTRUCTIONS_BASE/_current/${AGENT_NAME}.yaml"
+    if [[ -f "$INSTRUCTION_FILE" ]]; then
+        echo "### Pending Task Assignment"
+        echo ""
+        # Parse and display the instruction file
+        python3 -c "
+import yaml
+from pathlib import Path
+
+try:
+    data = yaml.safe_load(Path('$INSTRUCTION_FILE').read_text())
+    print(f\"**Project:** {data.get('project', 'unknown')}\")
+    print(f\"**Phase:** {data.get('phase', 'unknown')}\")
+    print(f\"**Assigned:** {data.get('assigned', 'unknown')}\")
+    print(f\"**MSG_ID:** \`{data.get('msg_id', 'unknown')}\`\")
+    print()
+    print('**Task:**')
+    task = data.get('task', '').strip()
+    for line in task.split('\n'):
+        print(f'> {line}')
+    print()
+
+    # Show predecessor files
+    pred_files = data.get('predecessor_files', [])
+    if pred_files:
+        print('**Files to Review:**')
+        for f in pred_files:
+            if isinstance(f, dict):
+                print(f\"- {f.get('file', f)} - {f.get('description', '')}\")
+            else:
+                print(f'- {f}')
+        print()
+
+    # Show phase instructions
+    instructions = data.get('instructions', '').strip()
+    if instructions:
+        print('**Phase Instructions:**')
+        print(f'> {instructions}')
+        print()
+
+    project = data.get('project', 'unknown')
+    print(f\"**Output file:** \`{data.get('output_file', 'unknown')}\`\")
+    print(f\"**Instruction file:** \`$INSTRUCTION_FILE\`\")
+    print(f\"**Audit trail:** \`$INSTRUCTIONS_BASE/{project}/\`\")
+except Exception as e:
+    print(f'Error reading instructions: {e}')
+" 2>/dev/null || echo "_(Error parsing instruction file)_"
+        echo ""
+        echo "---"
+        echo ""
+    fi
+fi
+
 # Handoff directories
 PENDING_DIR="$PROJECTS_BASE/.handoffs/pending"
 PROCESSED_DIR="$PROJECTS_BASE/.handoffs/processed"

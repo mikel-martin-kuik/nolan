@@ -1,0 +1,7 @@
+{
+  "role": "Reviewer",
+  "model": "sonnet",
+  "role_template": "reviewer",
+  "team": "decision_logging",
+  "description": "Reviews decision log integrity"
+}

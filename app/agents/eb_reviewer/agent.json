@@ -1,0 +1,7 @@
+{
+  "role": "Estimate Reviewer",
+  "model": "sonnet",
+  "role_template": "reviewer",
+  "team": "estimation_bidding",
+  "description": "Validates estimates and provides margin analysis"
+}

@@ -227,11 +227,11 @@ pub struct OrganizationDefaults {
 /// Team information with path/group metadata for hierarchical display
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TeamInfo {
-    pub id: String,             // Team identifier (e.g., "structure-engineering")
+    pub id: String,             // Team identifier (e.g., "structure_engineering")
     pub name: String,           // Display name from team config
-    pub group: String,          // Directory group (e.g., "pillar-1", "foundation", "")
+    pub group: String,          // Directory group (e.g., "pillar_1", "foundation", "")
     pub pillar: Option<String>, // Pillar from org schema if applicable
-    pub path: String,           // Relative path from teams/ (e.g., "pillar-1/structure-engineering.yaml")
+    pub path: String,           // Relative path from teams/ (e.g., "pillar_1/structure_engineering.yaml")
 }
 
 // =============================================================================
@@ -528,7 +528,7 @@ impl DepartmentsConfig {
 
 impl TeamConfig {
     /// Resolve team name to filesystem path
-    /// Checks root first (backward compat), then pillar-1/, pillar-2/, pillar-3/, foundation/, support/
+    /// Checks root first (backward compat), then pillar_1/, pillar_2/, pillar_3/, foundation/, support/
     pub fn resolve_team_path(team_name: &str) -> Result<PathBuf, String> {
         let nolan_root = std::env::var("NOLAN_ROOT")
             .map_err(|_| "NOLAN_ROOT not set".to_string())?;
@@ -540,8 +540,8 @@ impl TeamConfig {
             return Ok(root_path);
         }
 
-        // Check subdirectories in order
-        for subdir in &["pillar-1", "pillar-2", "pillar-3", "foundation", "support"] {
+        // Check subdirectories in order (underscores in directory names)
+        for subdir in &["pillar_1", "pillar_2", "pillar_3", "foundation", "support"] {
             let subdir_path = teams_dir.join(subdir).join(format!("{}.yaml", team_name));
             if subdir_path.exists() {
                 return Ok(subdir_path);

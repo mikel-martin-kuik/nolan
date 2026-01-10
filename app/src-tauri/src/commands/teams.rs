@@ -24,8 +24,8 @@ pub async fn save_team_config(team_name: String, config: TeamConfig) -> Result<(
         return Err("Team name must start with a lowercase letter".to_string());
     }
 
-    if !team_name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
-        return Err("Team name must contain only lowercase letters, digits, and hyphens".to_string());
+    if !team_name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
+        return Err("Team name must contain only lowercase letters, digits, and underscores".to_string());
     }
 
     let nolan_root = std::env::var("NOLAN_ROOT")
@@ -98,9 +98,9 @@ fn scan_teams_recursive(teams_dir: &std::path::Path) -> Result<Vec<(String, Stri
 /// Map directory group to pillar ID
 fn group_to_pillar(group: &str) -> Option<String> {
     match group {
-        "pillar-1" => Some("organizational-intelligence".to_string()),
-        "pillar-2" => Some("autonomous-operations".to_string()),
-        "pillar-3" => Some("human-ai-collaboration".to_string()),
+        "pillar_1" => Some("organizational-intelligence".to_string()),
+        "pillar_2" => Some("autonomous-operations".to_string()),
+        "pillar_3" => Some("human-ai-collaboration".to_string()),
         _ => None,
     }
 }
@@ -195,8 +195,8 @@ pub async fn rename_team_config(old_name: String, new_name: String) -> Result<()
         return Err("Team name must start with a lowercase letter".to_string());
     }
 
-    if !new_name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
-        return Err("Team name must contain only lowercase letters, digits, and hyphens".to_string());
+    if !new_name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
+        return Err("Team name must contain only lowercase letters, digits, and underscores".to_string());
     }
 
     // If names are the same, nothing to do
@@ -275,7 +275,7 @@ pub async fn set_project_team(project_name: String, team_name: String) -> Result
 ///
 /// Security: Validates team name to prevent path traversal attacks
 /// Prevents deletion of the "default" team
-/// Supports teams in subdirectories (pillar-1/, pillar-2/, etc.)
+/// Supports teams in subdirectories (pillar_1/, pillar_2/, etc.)
 #[tauri::command]
 pub async fn delete_team(team_name: String) -> Result<(), String> {
     // Prevent deletion of the default team

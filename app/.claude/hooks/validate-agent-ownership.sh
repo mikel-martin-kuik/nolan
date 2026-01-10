@@ -29,9 +29,10 @@ get_agent_name() {
     if [[ -n "${TMUX:-}" ]]; then
         local session
         session=$(tmux display-message -p '#S' 2>/dev/null || echo "")
-        if [[ "$session" =~ ^agent-([a-z]([a-z0-9-]*[a-z0-9])?)-([a-z]+)$ ]]; then
+        # Team and agent names use underscores, hyphens are delimiters only
+        if [[ "$session" =~ ^agent-([a-z][a-z0-9_]*)-([a-z][a-z0-9_]*)$ ]]; then
             local team="${BASH_REMATCH[1]}"
-            local agent="${BASH_REMATCH[3]}"
+            local agent="${BASH_REMATCH[2]}"
             if [[ "$team" == "ralph" ]]; then
                 echo "ralph"
             else

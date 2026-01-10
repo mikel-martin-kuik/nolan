@@ -1,7 +1,0 @@
-{
-  "role": "Coordinator",
-  "model": "opus",
-  "role_template": "coordinator",
-  "team": "quality-automation",
-  "description": "Orchestrates quality automation workflow"
-}

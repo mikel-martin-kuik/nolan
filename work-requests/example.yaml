@@ -2,9 +2,9 @@ work_request:
   id: "WR-2026-001"
   created: "2026-01-10T17:00:00Z"
 
-  from_team: "structure-engineering"
+  from_team: "structure_engineering"
   from_agent: "SE-Coordinator"
-  to_team: "platform-engineering"
+  to_team: "platform_engineering"
 
   type: "api_addition"
   priority: "high"

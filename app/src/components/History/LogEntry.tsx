@@ -46,9 +46,9 @@ export const LogEntry: React.FC<LogEntryProps> = ({ entry, onSelect, isSelected 
       };
     }
 
-    // Team-scoped spawned: agent-{team}-{name}-{instance} (e.g., agent-bug-bounty-ana-2)
-    // Extend RE_TEAM_SESSION pattern to include instance suffix
-    const teamSpawnedMatch = agent.match(/^agent-([a-z][a-z0-9-]*[a-z0-9]|[a-z])-([a-z]+)-(\d+)$/);
+    // Team-scoped spawned: agent-{team}-{name}-{instance} (e.g., agent-default-ana-2)
+    // Team and agent names use underscores, hyphens are delimiters only
+    const teamSpawnedMatch = agent.match(/^agent-([a-z][a-z0-9_]*)-([a-z][a-z0-9_]*)-(\d+)$/);
     if (teamSpawnedMatch) {
       const agentName = teamSpawnedMatch[2];
       const instanceNumber = teamSpawnedMatch[3];
@@ -58,7 +58,7 @@ export const LogEntry: React.FC<LogEntryProps> = ({ entry, onSelect, isSelected 
       };
     }
 
-    // Team-scoped core: agent-{team}-{name} (e.g., agent-default-ana, agent-bug-bounty-carl)
+    // Team-scoped core: agent-{team}-{name} (e.g., agent-default-ana, agent-decision_logging-dl_coordinator)
     const teamCoreMatch = agent.match(RE_TEAM_SESSION);
     if (teamCoreMatch) {
       const agentName = teamCoreMatch[2];

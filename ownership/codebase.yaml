@@ -7,7 +7,7 @@ ownership:
 
   rules:
     # Pillar 1: Organizational Intelligence
-    - team: "structure-engineering"
+    - team: "structure_engineering"
       directories:
         - "organization/"
         - "src-tauri/src/departments/"
@@ -16,7 +16,7 @@ ownership:
         - "**/departments/**"
       exclusive: true
 
-    - team: "role-identity"
+    - team: "role_identity"
       directories:
         - "roles/"
         - "src-tauri/src/roles/"
@@ -34,7 +34,7 @@ ownership:
       exclusive: true
 
     # Pillar 2: Autonomous Operations
-    - team: "event-automation"
+    - team: "event_automation"
       directories:
         - "src-tauri/src/cronos/"
         - "src-tauri/src/events/"
@@ -44,7 +44,7 @@ ownership:
         - "**/events/**"
       exclusive: true
 
-    - team: "quality-automation"
+    - team: "quality_automation"
       directories:
         - "quality/"
         - "src-tauri/src/quality/"
@@ -52,7 +52,7 @@ ownership:
         - "**/quality/**"
       exclusive: true
 
-    - team: "resource-optimization"
+    - team: "resource_optimization"
       directories:
         - "src-tauri/src/usage/"
         - "src-tauri/src/optimization/"
@@ -71,7 +71,7 @@ ownership:
       exclusive: true
 
     # Pillar 3: Human-AI Collaboration
-    - team: "strategic-direction"
+    - team: "strategic_direction"
       directories:
         - "goals/"
         - "src-tauri/src/goals/"
@@ -79,7 +79,7 @@ ownership:
         - "**/goals/**"
       exclusive: true
 
-    - team: "exception-escalation"
+    - team: "exception_escalation"
       directories:
         - "escalation/"
         - "src-tauri/src/escalation/"
@@ -87,7 +87,7 @@ ownership:
         - "**/escalation/**"
       exclusive: true
 
-    - team: "trust-autonomy"
+    - team: "trust_autonomy"
       directories:
         - "trust/"
         - "src-tauri/src/trust/"
@@ -96,7 +96,7 @@ ownership:
       exclusive: true
 
     # Foundation
-    - team: "platform-engineering"
+    - team: "platform_engineering"
       directories:
         - "src-tauri/src/core/"
         - "src/components/core/"
@@ -105,7 +105,7 @@ ownership:
         - "src-tauri/src/main.rs"
       exclusive: false  # May need cross-team work requests
 
-    - team: "decision-logging"
+    - team: "decision_logging"
       directories:
         - "decisions/"
         - "src-tauri/src/decisions/"
@@ -114,7 +114,7 @@ ownership:
       exclusive: true
 
     # Support
-    - team: "talent-operations"
+    - team: "talent_operations"
       directories:
         - "app/agents/"
       patterns:
@@ -126,18 +126,18 @@ ownership:
   shared:
     - path: "src-tauri/src/config/mod.rs"
       owners:
-        - "platform-engineering"
-        - "structure-engineering"
-        - "role-identity"
+        - "platform_engineering"
+        - "structure_engineering"
+        - "role_identity"
         - "governance"
 
     - path: "src/types/index.ts"
       owners:
-        - "platform-engineering"
-        - "structure-engineering"
-        - "role-identity"
+        - "platform_engineering"
+        - "structure_engineering"
+        - "role_identity"
         - "governance"
 
     - path: "src-tauri/src/lib.rs"
       owners:
-        - "platform-engineering"
+        - "platform_engineering"

@@ -11,26 +11,28 @@ use crate::constants::parse_ralph_session;
 // Compile regex patterns once at startup
 // Team-scoped patterns for message routing
 
-/// Core agent target: just the agent name (e.g., "ana", "bill")
+/// Core agent target: just the agent name (e.g., "ana", "dl_coordinator")
+/// Agent names use underscores (not hyphens) - hyphens are delimiters only
 static RE_AGENT_NAME: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^([a-z]+)$").expect("Invalid regex pattern for agent name")
+    Regex::new(r"^([a-z][a-z0-9_]*)$").expect("Invalid regex pattern for agent name")
 });
 
 /// Spawned agent target: name-instance (e.g., "ana-2", "ralph-ziggy")
+/// Agent names use underscores, instance suffix after hyphen
 static RE_AGENT_INSTANCE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^([a-z]+)-([a-z0-9]+)$").expect("Invalid regex pattern for agent instance")
+    Regex::new(r"^([a-z][a-z0-9_]*)-([a-z0-9]+)$").expect("Invalid regex pattern for agent instance")
 });
 
 /// Team-scoped core session: agent-{team}-{name}
-/// Team names can contain hyphens (e.g., bug-bounty)
+/// Team and agent names use underscores (not hyphens) - hyphens are delimiters only
 static RE_SESSION_CORE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^agent-([a-z][a-z0-9-]*[a-z0-9]|[a-z])-([a-z]+)$").expect("Invalid regex pattern for team session")
+    Regex::new(r"^agent-([a-z][a-z0-9_]*)-([a-z][a-z0-9_]*)$").expect("Invalid regex pattern for team session")
 });
 
 /// Team-scoped spawned session: agent-{team}-{name}-{instance}
-/// Team names can contain hyphens (e.g., bug-bounty)
+/// Team and agent names use underscores (not hyphens) - hyphens are delimiters only
 static RE_SESSION_SPAWNED: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^agent-([a-z][a-z0-9-]*[a-z0-9]|[a-z])-([a-z]+)-([a-z0-9]+)$").expect("Invalid regex pattern for spawned session")
+    Regex::new(r"^agent-([a-z][a-z0-9_]*)-([a-z][a-z0-9_]*)-([a-z0-9]+)$").expect("Invalid regex pattern for spawned session")
 });
 
 // Ralph sessions use RE_RALPH_SESSION from crate::constants

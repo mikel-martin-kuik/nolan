@@ -69,7 +69,7 @@ fn escape_applescript_string(s: &str) -> String {
 /// 🔒 SECURITY: Validate session name format (defense-in-depth)
 ///
 /// Session names must match one of:
-/// - Team sessions: agent-{team}-{name} (team names can contain hyphens)
+/// - Team sessions: agent-{team}-{name} (team and agent names use underscores, hyphens are delimiters)
 /// - Ralph sessions: agent-ralph-{name}
 ///
 /// This revalidates even though the caller should have already validated.

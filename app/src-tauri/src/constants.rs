@@ -20,27 +20,28 @@ pub const RALPH_NAMES: &[&str] = &[
 /// These are compiled once at first use and cached for performance
 ///
 /// Session naming convention:
-/// - Team agents: agent-{team}-{name} (e.g., agent-default-ana, agent-sprint-bill)
+/// - Team agents: agent-{team}-{name} (e.g., agent-default-ana, agent-decision_logging-dl_coordinator)
+///   Team and agent names use underscores (not hyphens) - hyphens are delimiters only.
 ///   Each team agent has exactly one session per team.
 /// - Free agents (Ralph): agent-ralph-{name} (e.g., agent-ralph-ziggy, agent-ralph-nova)
 ///   Ralph uses memorable names from RALPH_NAMES pool. Multiple instances allowed.
 
 /// Matches team agent primary sessions: agent-{team}-{name}
 /// Captures: group 1 = team, group 2 = agent name
-/// Team names can contain hyphens (e.g., bug-bounty, feature-team)
-/// Examples: agent-default-ana, agent-bug-bounty-carl, agent-team2-dan
+/// Team and agent names use underscores (not hyphens) - hyphens are delimiters only
+/// Examples: agent-default-ana, agent-decision_logging-dl_coordinator
 pub static RE_CORE_AGENT: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^agent-([a-z][a-z0-9-]*[a-z0-9]|[a-z])-([a-z]+)$")
+    Regex::new(r"^agent-([a-z][a-z0-9_]*)-([a-z][a-z0-9_]*)$")
         .expect("Invalid regex pattern for team agent primary session")
 });
 
 /// Matches team agent sessions: agent-{team}-{name}
 /// Team agents have exactly one session per team.
-/// Team names can contain hyphens (e.g., bug-bounty, feature-team)
+/// Team and agent names use underscores (not hyphens) - hyphens are delimiters only
 /// Captures: group 1 = team, group 2 = agent name
-/// Examples: agent-default-ana, agent-bug-bounty-carl
+/// Examples: agent-default-ana, agent-decision_logging-dl_coordinator
 pub static RE_AGENT_SESSION: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^agent-([a-z][a-z0-9-]*[a-z0-9]|[a-z])-([a-z]+)$")
+    Regex::new(r"^agent-([a-z][a-z0-9_]*)-([a-z][a-z0-9_]*)$")
         .expect("Invalid regex pattern for agent session")
 });
 
@@ -54,10 +55,10 @@ pub static RE_RALPH_SESSION: Lazy<Regex> = Lazy::new(|| {
 
 /// Matches team-scoped core agent target names: {team}:{name}
 /// Used for message routing to core agents in a specific team
-/// Team names can contain hyphens (e.g., bug-bounty:ana)
-/// Examples: default:ana, bug-bounty:carl
+/// Team and agent names use underscores (not hyphens)
+/// Examples: default:ana, decision_logging:dl_coordinator
 pub static RE_CORE_TARGET: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^([a-z][a-z0-9-]*[a-z0-9]|[a-z]):([a-z]+)$")
+    Regex::new(r"^([a-z][a-z0-9_]*):([a-z][a-z0-9_]*)$")
         .expect("Invalid regex pattern for core target")
 });
 

@@ -70,16 +70,17 @@ _is_team_independent() {
 
 # ===== SESSION NAMING PATTERNS =====
 # Team-scoped naming convention:
-# - Core agents: agent-{team}-{name} (e.g., agent-default-ana)
+# - Core agents: agent-{team}-{name} (e.g., agent-default-ana, agent-decision_logging-dl_coordinator)
 # - Spawned agents: agent-{team}-{name}-{instance} (e.g., agent-default-ana-2)
 # - Team-independent agents: agent-{name}-{id} (e.g., agent-ralph-ziggy)
 #   (determined by team_independent: true in agent.json)
+# NOTE: Team and agent names use underscores (not hyphens) - hyphens are delimiters only
 
 # Pattern for team-scoped sessions (core + spawned)
-# Team name: [a-z]([a-z0-9-]*[a-z0-9])? - supports multi-word teams like bug-bounty
-RE_TEAM_SESSION='^agent-([a-z]([a-z0-9-]*[a-z0-9])?)-([a-z]+)(-[a-z0-9]+)?$'
+# Team and agent names use underscores, hyphens are delimiters only
+RE_TEAM_SESSION='^agent-([a-z][a-z0-9_]*)-([a-z][a-z0-9_]*)(-[a-z0-9]+)?$'
 # Pattern for team-independent sessions (loaded from config)
-RE_INDEPENDENT_SESSION='^agent-([a-z]+)-([a-z0-9]+)$'
+RE_INDEPENDENT_SESSION='^agent-([a-z][a-z0-9_]*)-([a-z0-9]+)$'
 
 # ===== CORE UTILITIES =====
 
@@ -97,15 +98,15 @@ _get_sessions() {
 
     for session in $all_sessions; do
         # Check team-scoped sessions: agent-{team}-{name}[-{instance}]
-        # Team pattern supports multi-word teams like bug-bounty
-        if [[ "$session" =~ ^agent-([a-z]([a-z0-9-]*[a-z0-9])?)-([a-z]+)(-[a-z0-9]+)?$ ]]; then
+        # Team and agent names use underscores, hyphens are delimiters only
+        if [[ "$session" =~ ^agent-([a-z][a-z0-9_]*)-([a-z][a-z0-9_]*)(-[a-z0-9]+)?$ ]]; then
             local session_team="${BASH_REMATCH[1]}"
             # Only include sessions from the specified team
             if [ "$session_team" = "$team" ]; then
                 sessions="$sessions $session"
             fi
         # Check team-independent sessions (from config)
-        elif [[ "$session" =~ ^agent-([a-z]+)-([a-z0-9]+)$ ]] && [ "$include_independent" = "true" ]; then
+        elif [[ "$session" =~ ^agent-([a-z][a-z0-9_]*)-([a-z0-9]+)$ ]] && [ "$include_independent" = "true" ]; then
             local agent_name="${BASH_REMATCH[1]}"
             if _is_team_independent "$agent_name"; then
                 sessions="$sessions $session"
@@ -141,7 +142,8 @@ _build_session_name() {
     if _is_team_independent "$target"; then
         echo "agent-$target"
     # Spawned instance: name-instance -> agent-{team}-{name}-{instance}
-    elif [[ "$target" =~ ^([a-z]+)-([a-z0-9]+)$ ]]; then
+    # Agent names use underscores, instance suffix after hyphen delimiter
+    elif [[ "$target" =~ ^([a-z][a-z0-9_]*)-([a-z0-9]+)$ ]]; then
         local base="${BASH_REMATCH[1]}"
         local instance="${BASH_REMATCH[2]}"
         # Check if base agent is team-independent
@@ -163,7 +165,7 @@ _extract_agent_name() {
     local session="$1"
 
     # Team-independent: agent-{name}-{id} (check FIRST)
-    if [[ "$session" =~ ^agent-([a-z]+)-([a-z0-9]+)$ ]]; then
+    if [[ "$session" =~ ^agent-([a-z][a-z0-9_]*)-([a-z0-9]+)$ ]]; then
         local name="${BASH_REMATCH[1]}"
         local suffix="${BASH_REMATCH[2]}"
         if _is_team_independent "$name"; then
@@ -173,12 +175,12 @@ _extract_agent_name() {
     fi
 
     # Team-scoped spawned: agent-{team}-{name}-{instance}
-    # Team pattern supports multi-word teams like bug-bounty
-    if [[ "$session" =~ ^agent-([a-z]([a-z0-9-]*[a-z0-9])?)-([a-z]+)-([a-z0-9]+)$ ]]; then
-        echo "${BASH_REMATCH[3]}-${BASH_REMATCH[4]}"
+    # Team and agent names use underscores, hyphens are delimiters only
+    if [[ "$session" =~ ^agent-([a-z][a-z0-9_]*)-([a-z][a-z0-9_]*)-([a-z0-9]+)$ ]]; then
+        echo "${BASH_REMATCH[2]}-${BASH_REMATCH[3]}"
     # Team-scoped core: agent-{team}-{name}
-    elif [[ "$session" =~ ^agent-([a-z]([a-z0-9-]*[a-z0-9])?)-([a-z]+)$ ]]; then
-        echo "${BASH_REMATCH[3]}"
+    elif [[ "$session" =~ ^agent-([a-z][a-z0-9_]*)-([a-z][a-z0-9_]*)$ ]]; then
+        echo "${BASH_REMATCH[2]}"
     else
         echo "$session"
     fi
@@ -453,11 +455,11 @@ _broadcast_team() {
 
     for session in $all_sessions; do
         # Team-scoped core only: agent-{team}-{name}
-        # Team pattern supports multi-word teams like bug-bounty
-        if [[ "$session" =~ ^agent-([a-z]([a-z0-9-]*[a-z0-9])?)-([a-z]+)$ ]]; then
+        # Team and agent names use underscores, hyphens are delimiters only
+        if [[ "$session" =~ ^agent-([a-z][a-z0-9_]*)-([a-z][a-z0-9_]*)$ ]]; then
             local session_team="${BASH_REMATCH[1]}"
             if [ "$session_team" = "$team" ]; then
-                local agent="${BASH_REMATCH[3]}"
+                local agent="${BASH_REMATCH[2]}"
                 if send "$agent" "$message" "$team"; then
                     ((count++))
                 else

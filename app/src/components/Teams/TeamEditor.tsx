@@ -150,15 +150,15 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
 
   const validateConfig = (): string | null => {
     if (!name.trim()) return 'Team name is required';
-    if (!/^[a-z][a-z0-9-]*$/.test(name)) {
-      return 'Team name must start with lowercase letter, contain only lowercase letters, numbers, and hyphens';
+    if (!/^[a-z][a-z0-9_]*$/.test(name)) {
+      return 'Team name must start with lowercase letter, contain only lowercase letters, numbers, and underscores';
     }
     if (agents.length === 0) return 'At least one agent is required';
 
     for (const agent of agents) {
       if (!agent.name.trim()) return 'All agents must have a name';
-      if (!/^[a-z][a-z0-9-]*$/.test(agent.name)) {
-        return `Agent name '${agent.name}' is invalid. Must start with lowercase letter.`;
+      if (!/^[a-z][a-z0-9_]*$/.test(agent.name)) {
+        return `Agent name '${agent.name}' is invalid. Use lowercase letters, numbers, and underscores only.`;
       }
       // Role and model come from agent.json, validated in getAvailableAgentsForSelection
     }
@@ -259,7 +259,7 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
                 placeholder="my-team"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                {originalName ? 'Changing name will rename the config file' : 'Lowercase letters, numbers, and hyphens only'}
+                {originalName ? 'Changing name will rename the config file' : 'Lowercase letters, numbers, and underscores only'}
               </p>
             </div>
             <div>

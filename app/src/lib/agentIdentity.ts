@@ -12,11 +12,12 @@
 // Use these constants instead of inline regex strings for consistency.
 //
 // Session naming convention:
-// - Team agents: agent-{team}-{name} (e.g., agent-default-ana, agent-sprint-bill)
+// - Team agents: agent-{team}-{name} (e.g., agent-default-ana, agent-decision_logging-dl_coordinator)
+//   Team and agent names use underscores (not hyphens) - hyphens are delimiters only
 // - Ralph (free agent): agent-ralph-{name} (e.g., agent-ralph-ziggy)
 
-/** Matches team agent sessions: agent-{team}-{name} (team names can contain hyphens) */
-export const RE_TEAM_SESSION = /^agent-([a-z][a-z0-9-]*[a-z0-9]|[a-z])-([a-z]+)$/;
+/** Matches team agent sessions: agent-{team}-{name} (underscores in names, hyphens as delimiters) */
+export const RE_TEAM_SESSION = /^agent-([a-z][a-z0-9_]*)-([a-z][a-z0-9_]*)$/;
 
 /** Matches Ralph sessions: agent-ralph-{name} */
 export const RE_RALPH_SESSION = /^agent-ralph-([a-z0-9]+)$/;

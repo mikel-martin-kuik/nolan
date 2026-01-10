@@ -1,0 +1,7 @@
+{
+  "role": "DevOps Engineer",
+  "model": "sonnet",
+  "role_template": "devops-engineer",
+  "team": "platform_engineering",
+  "description": "Manages build and deployment"
+}

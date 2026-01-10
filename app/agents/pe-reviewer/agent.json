@@ -1,7 +1,0 @@
-{
-  "role": "Reviewer",
-  "model": "sonnet",
-  "role_template": "reviewer",
-  "team": "platform-engineering",
-  "description": "Reviews platform changes"
-}

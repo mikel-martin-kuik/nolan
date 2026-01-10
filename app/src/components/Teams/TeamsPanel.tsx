@@ -136,8 +136,8 @@ export const TeamsPanel: React.FC = () => {
       showError('Team name is required');
       return;
     }
-    if (!/^[a-z][a-z0-9-]*$/.test(newTeamName)) {
-      showError('Team name must start with lowercase letter, contain only lowercase letters, numbers, and hyphens');
+    if (!/^[a-z][a-z0-9_]*$/.test(newTeamName)) {
+      showError('Team name must start with lowercase letter, contain only lowercase letters, numbers, and underscores');
       return;
     }
     if (!newTeamFirstAgent) {
@@ -439,8 +439,8 @@ export const TeamsPanel: React.FC = () => {
   const saveTeamSettings = async () => {
     if (!teamConfig || !editedTeamName) return;
 
-    if (!/^[a-z][a-z0-9-]*$/.test(editedTeamName)) {
-      showError('Team name must start with lowercase letter, contain only lowercase letters, numbers, and hyphens');
+    if (!/^[a-z][a-z0-9_]*$/.test(editedTeamName)) {
+      showError('Team name must start with lowercase letter, contain only lowercase letters, numbers, and underscores');
       return;
     }
 
@@ -1150,7 +1150,7 @@ export const TeamsPanel: React.FC = () => {
                   onChange={(e) => setEditedTeamName(e.target.value.toLowerCase())}
                   placeholder="my-team"
                 />
-                <p className="text-xs text-muted-foreground mt-1">Lowercase letters, numbers, and hyphens only</p>
+                <p className="text-xs text-muted-foreground mt-1">Lowercase letters, numbers, and underscores only</p>
               </div>
 
               <div>
@@ -1194,7 +1194,7 @@ export const TeamsPanel: React.FC = () => {
                   onChange={(e) => setNewTeamName(e.target.value.toLowerCase())}
                   placeholder="my-team"
                 />
-                <p className="text-xs text-muted-foreground mt-1">Lowercase letters, numbers, and hyphens only</p>
+                <p className="text-xs text-muted-foreground mt-1">Lowercase letters, numbers, and underscores only</p>
               </div>
 
               <div>

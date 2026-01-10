@@ -84,8 +84,9 @@ fn validate_agent_session(session: &str) -> Result<(String, String), String> {
     ))
 }
 
-/// Validates agent name format (lowercase letters, digits, and hyphens)
+/// Validates agent name format (lowercase letters, digits, and underscores)
 /// Must start with a lowercase letter.
+/// Note: Hyphens are reserved as delimiters in session names.
 /// Used for operations on shared agent directories.
 fn validate_agent_name_format(agent: &str) -> Result<(), String> {
     if agent.is_empty() {
@@ -99,9 +100,9 @@ fn validate_agent_name_format(agent: &str) -> Result<(), String> {
         ));
     }
 
-    if !agent.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+    if !agent.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
         return Err(format!(
-            "Invalid agent name '{}'. Must contain only lowercase letters, digits, and hyphens.",
+            "Invalid agent name '{}'. Must contain only lowercase letters, digits, and underscores.",
             agent
         ));
     }
@@ -1279,7 +1280,7 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
         }
 
         // Check for team-scoped agent: agent-{team}-{name} (base session)
-        // Use config-based lookup to support hyphenated agent names (e.g., ea-architect)
+        // Use config-based lookup to support agent names with underscores (e.g., ea_architect)
         let mut matched = false;
         for (team_name, team_config) in &team_configs {
             let prefix = format!("agent-{}-", team_name);

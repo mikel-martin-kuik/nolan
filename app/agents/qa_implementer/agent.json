@@ -1,0 +1,7 @@
+{
+  "role": "Implementer",
+  "model": "sonnet",
+  "role_template": "implementer",
+  "team": "quality_automation",
+  "description": "Implements automated quality checks"
+}

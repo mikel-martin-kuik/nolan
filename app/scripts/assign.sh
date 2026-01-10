@@ -303,7 +303,7 @@ ASSIGNMENT_SECTION+=$'\n'"---"
 # 3. Update Current Status section
 # 4. Add Handoff Log entry
 
-python3 - "$COORDINATOR_PATH" "$PHASE" "$AGENT" "$TASK" "$OUTPUT_FILE" "$MSG_ID" "$TIMESTAMP_FULL" "$COORDINATOR" <<'PYTHON_SCRIPT'
+python3 - "$COORDINATOR_PATH" "$PHASE" "$AGENT" "$TASK" "$OUTPUT_FILE" "$MSG_ID" "$TIMESTAMP_FULL" "$COORDINATOR" "$PROJECT_NAME" <<'PYTHON_SCRIPT'
 import sys
 import re
 from pathlib import Path
@@ -316,6 +316,7 @@ output_file = sys.argv[5]
 msg_id = sys.argv[6]
 timestamp_full = sys.argv[7]
 coordinator = sys.argv[8]
+project_name = sys.argv[9]
 timestamp_date = timestamp_full.split()[0]
 
 content = coord_path.read_text()
@@ -323,13 +324,14 @@ content = coord_path.read_text()
 # 1. Remove old Current Assignment section if exists
 content = re.sub(r'## Current Assignment.*?^---\n', '', content, flags=re.MULTILINE | re.DOTALL)
 
-# 2. Build new assignment section
+# 2. Build new assignment section (includes MSG_ID for traceability)
 assignment_section = f'''## Current Assignment
 
 **Agent**: {agent.capitalize()}
 **Task**: {task}
 **Phase**: {phase}
-**Assigned**: {timestamp_full} ({msg_id})
+**Assigned**: {timestamp_full}
+**Task ID**: `{msg_id}`
 
 ### Instructions
 
@@ -365,8 +367,8 @@ else:
 content = re.sub(r'\*\*Phase\*\*: [^\n]+', f'**Phase**: {phase}', content)
 content = re.sub(r'\*\*Assigned\*\*: [^\n]+', f'**Assigned**: {agent.capitalize()}', content)
 
-# 4. Add Handoff Log entry
-handoff_entry = f'| {timestamp_full} | {coordinator.capitalize()} | {agent.capitalize()} | {task} | {output_file} | Assigned ({msg_id}) |'
+# 4. Add Handoff Log entry (with MSG_ID for audit linking)
+handoff_entry = f'| {timestamp_full} | {coordinator.capitalize()} | {agent.capitalize()} | {task[:50]}{"..." if len(task) > 50 else ""} | {output_file} | `{msg_id}` |'
 
 # Find the header separator and add entry after it
 def add_handoff_entry(match):
@@ -378,6 +380,35 @@ content = re.sub(
     content,
     count=1
 )
+
+# 5. Add/update Task Log section (full audit trail with file references)
+task_log_header = '''## Task Log
+
+| Task ID | Agent | Phase | Assigned | Status | Instruction File |
+|---------|-------|-------|----------|--------|------------------|'''
+
+task_entry = f'| `{msg_id}` | {agent.capitalize()} | {phase} | {timestamp_full} | Active | `instructions/{project_name}/{agent}/{msg_id}.yaml` |'
+
+if '## Task Log' not in content:
+    # Add Task Log section before Notes or at end
+    if '## Notes' in content:
+        content = content.replace('## Notes', task_log_header + '\n' + task_entry + '\n\n## Notes')
+    elif '## Blockers' in content:
+        content = content.replace('## Blockers', task_log_header + '\n' + task_entry + '\n\n## Blockers')
+    else:
+        content = content.rstrip() + '\n\n' + task_log_header + '\n' + task_entry + '\n'
+else:
+    # Add entry after Task Log header separator
+    def add_task_entry(match):
+        return match.group(0) + '\n' + task_entry
+
+    content = re.sub(
+        r'(\| Task ID \|.*?\n\|[-]+\|[-]+\|[-]+\|[-]+\|[-]+\|[-]+\|)',
+        add_task_entry,
+        content,
+        count=1,
+        flags=re.DOTALL
+    )
 
 coord_path.write_text(content)
 PYTHON_SCRIPT
@@ -397,14 +428,65 @@ mkdir -p "$STATE_DIR"
 echo "$PROJECT_NAME" > "$STATE_DIR/active-$AGENT.txt"
 echo "✅ Set active project for $AGENT"
 
+# Write task-specific instructions to agent-scoped file (auditable, never overwritten)
+# Each assignment gets a unique file based on MSG_ID for full audit trail
+# Structure: .state/{team}/instructions/{project}/{agent}/{MSG_ID}.yaml
+INSTRUCTIONS_DIR="$STATE_DIR/instructions/$PROJECT_NAME/$AGENT"
+mkdir -p "$INSTRUCTIONS_DIR"
+INSTRUCTION_FILE="$INSTRUCTIONS_DIR/${MSG_ID}.yaml"
+
+# Also maintain a "current" symlink per agent (at agent level, not project level)
+# This allows quick lookup of agent's current task regardless of project
+AGENT_CURRENT_DIR="$STATE_DIR/instructions/_current"
+mkdir -p "$AGENT_CURRENT_DIR"
+CURRENT_LINK="$AGENT_CURRENT_DIR/${AGENT}.yaml"
+
+cat > "$INSTRUCTION_FILE" <<INSTRUCTIONS_EOF
+# Task Assignment for ${AGENT^}
+# Generated: $TIMESTAMP_FULL
+# ID: $MSG_ID
+
+project: $PROJECT_NAME
+project_path: $PROJECT_DIR
+agent: $AGENT
+phase: $PHASE
+task: |
+  $TASK
+assigned: "$TIMESTAMP_FULL"
+msg_id: $MSG_ID
+coordinator: $COORDINATOR
+output_file: $OUTPUT_FILE
+
+# Files to Review
+predecessor_files:
+  - context.md
+$(echo "$PREDECESSOR_FILES" | sed 's/^- /  - /g' | grep -v '^$' || true)
+
+# Phase Instructions
+instructions: |
+  $INSTRUCTIONS
+INSTRUCTIONS_EOF
+
+# Update current symlink (atomic via temp + mv)
+# Use relative path from _current/ to project/agent/file
+RELATIVE_PATH="../$PROJECT_NAME/$AGENT/$(basename "$INSTRUCTION_FILE")"
+ln -sf "$RELATIVE_PATH" "${CURRENT_LINK}.tmp"
+mv -f "${CURRENT_LINK}.tmp" "$CURRENT_LINK"
+
+echo "✅ Wrote instructions to $INSTRUCTION_FILE"
+echo "   Audit trail: $STATE_DIR/instructions/$PROJECT_NAME/"
+
 # Send handoff message via team-aliases
 NOLAN_ROOT="${NOLAN_ROOT:-$(dirname "$(dirname "$(readlink -f "$0")")")/..}"
 
 if [[ -f "$NOLAN_ROOT/app/scripts/team-aliases.sh" ]]; then
     source "$NOLAN_ROOT/app/scripts/team-aliases.sh"
 
-    # Send minimal message: just the project name
-    $AGENT "$PROJECT_NAME" || {
+    # Build handoff message with project, phase, and task summary
+    # The full instructions are in the instruction file
+    HANDOFF_MSG="HANDOFF: $PROJECT_NAME | Phase: $PHASE | Task: $TASK | Instructions: $INSTRUCTION_FILE"
+
+    $AGENT "$HANDOFF_MSG" || {
         echo "⚠️  Warning: Failed to send message to $AGENT" >&2
         echo "   Please manually notify $AGENT about $PROJECT_NAME" >&2
     }

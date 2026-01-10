@@ -82,7 +82,7 @@ export interface DepartmentGroup {
 export interface TeamInfo {
   id: string;             // Team identifier
   name: string;           // Display name from config
-  group: string;          // Directory group ("pillar-1", "foundation", "")
+  group: string;          // Directory group ("pillar_1", "foundation", "")
   pillar: string | null;  // Pillar ID if applicable
   path: string;           // Relative path from teams/
 }

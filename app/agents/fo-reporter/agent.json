@@ -1,7 +1,0 @@
-{
-  "role": "Reporter",
-  "model": "sonnet",
-  "role_template": "researcher",
-  "team": "finance-operations",
-  "description": "Generates financial reports"
-}

@@ -1,7 +1,0 @@
-{
-  "role": "Implementer",
-  "model": "sonnet",
-  "role_template": "implementer",
-  "team": "integration",
-  "description": "Implements integration adapters"
-}

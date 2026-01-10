@@ -1,7 +1,0 @@
-{
-  "role": "Reviewer",
-  "model": "sonnet",
-  "role_template": "reviewer",
-  "team": "structure-engineering",
-  "description": "Reviews structure changes for consistency"
-}

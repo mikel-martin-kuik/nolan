@@ -1,7 +1,0 @@
-{
-  "role": "Assessor",
-  "model": "sonnet",
-  "role_template": "reviewer",
-  "team": "talent-operations",
-  "description": "Evaluates agent performance"
-}

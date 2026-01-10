@@ -49,8 +49,8 @@ def validate_team_config(config: Dict) -> List[str]:
             errors.append(f"Duplicate agent name: {name}")
         seen_names.add(name)
 
-        if not re.match(r'^[a-z][a-z0-9-]*$', name):
-            errors.append(f"Invalid agent name '{name}': must match ^[a-z][a-z0-9-]*$")
+        if not re.match(r'^[a-z][a-z0-9_]*$', name):
+            errors.append(f"Invalid agent name '{name}': must match ^[a-z][a-z0-9_]*$ (use underscores, not hyphens)")
 
         # Validate required agent fields
         for field in ['file_permissions', 'workflow_participant']:

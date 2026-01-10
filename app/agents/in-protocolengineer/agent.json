@@ -1,7 +1,0 @@
-{
-  "role": "Protocol Engineer",
-  "model": "opus",
-  "role_template": "protocol-engineer",
-  "team": "integration",
-  "description": "Implements external protocols"
-}

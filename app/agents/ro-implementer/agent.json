@@ -1,7 +1,0 @@
-{
-  "role": "Implementer",
-  "model": "sonnet",
-  "role_template": "implementer",
-  "team": "resource-optimization",
-  "description": "Implements optimization algorithms"
-}

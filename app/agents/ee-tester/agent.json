@@ -1,7 +1,0 @@
-{
-  "role": "QA Automation Engineer",
-  "model": "sonnet",
-  "role_template": "qa-automation",
-  "team": "exception-escalation",
-  "description": "Tests escalation workflows"
-}

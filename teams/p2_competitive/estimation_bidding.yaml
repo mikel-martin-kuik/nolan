@@ -1,0 +1,54 @@
+team:
+  name: estimation_bidding
+  description: Generates accurate project estimates and competitive bid proposals
+  version: 1.0.0
+  agents:
+  - name: eb_coordinator
+    output_file: NOTES.md
+    required_sections:
+    - Current Assignment
+    - Handoff Log
+    file_permissions: restricted
+    workflow_participant: false
+  - name: eb_estimator
+    output_file: research.md
+    required_sections:
+    - Requirements Analysis
+    - Complexity Assessment
+    - Historical Comparison
+    file_permissions: restricted
+    workflow_participant: true
+  - name: eb_analyst
+    output_file: estimate.md
+    required_sections:
+    - Scope Breakdown
+    - Hour Estimates
+    - Confidence Intervals
+    - Risk Factors
+    file_permissions: restricted
+    workflow_participant: true
+  - name: eb_reviewer
+    output_file: estimate-review.md
+    required_sections:
+    - Estimate Validation
+    - Margin Analysis
+    - Recommendation
+    file_permissions: restricted
+    workflow_participant: true
+  workflow:
+    coordinator: eb_coordinator
+    phases:
+    - name: requirements
+      owner: eb_estimator
+      output: research.md
+      requires: []
+    - name: estimate
+      owner: eb_analyst
+      output: estimate.md
+      requires:
+      - research.md
+    - name: review
+      owner: eb_reviewer
+      output: estimate-review.md
+      requires:
+      - estimate.md

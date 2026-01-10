@@ -40,8 +40,8 @@ export const AgentCreator: React.FC<AgentCreatorProps> = ({ onSave, onCancel }) 
     if (!/^[a-z]/.test(name)) {
       return 'Agent name must start with a lowercase letter';
     }
-    if (!/^[a-z][a-z0-9-]*$/.test(name)) {
-      return 'Agent name must contain only lowercase letters, digits, and hyphens';
+    if (!/^[a-z][a-z0-9_]*$/.test(name)) {
+      return 'Agent name must contain only lowercase letters, digits, and underscores';
     }
     return null;
   };
@@ -112,11 +112,11 @@ export const AgentCreator: React.FC<AgentCreatorProps> = ({ onSave, onCancel }) 
             <Input
               value={name}
               onChange={(e) => setName(e.target.value.toLowerCase())}
-              placeholder="my-agent"
+              placeholder="my_agent"
               disabled={creating}
             />
             <p className="text-xs text-muted-foreground mt-1">
-              Lowercase letters, numbers, and hyphens only
+              Lowercase letters, numbers, and underscores only
             </p>
           </div>
 

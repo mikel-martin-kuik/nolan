@@ -130,7 +130,7 @@ function App() {
     { id: 'projects' as Tab, label: 'Projects', tooltip: 'Projects', icon: FolderOpen },
     { id: 'teams' as Tab, label: 'Teams', tooltip: 'Teams', icon: Users },
     { id: 'agents' as Tab, label: 'Agents', tooltip: 'Agents', icon: FileUser },
-    { id: 'cronos' as Tab, label: 'Cronos', tooltip: 'Cron Agents', icon: Clock },
+    { id: 'cronos' as Tab, label: 'Cronos', tooltip: 'Scheduled Tasks', icon: Clock },
     { id: 'usage' as Tab, label: 'Usage', tooltip: 'Usage', icon: DollarSign },
   ];
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Home, FolderOpen, DollarSign, MessageCircle, Users, FileUser, Clock } from 'lucide-react';
+import { Home, FolderOpen, DollarSign, MessageCircle, Users, FileUser, Clock, Settings } from 'lucide-react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { listen } from '@/lib/events';
 import { invoke, isBrowserMode } from '@/lib/api';
@@ -17,6 +17,10 @@ import { ToastContainer } from './components/shared/Toast';
 import { TerminalModal } from './components/Terminal/TerminalModal';
 import { BrandHeader } from './components/shared/BrandHeader';
 import { ThemeToggle } from './components/shared/ThemeToggle';
+import { PasswordPrompt } from './components/Settings/PasswordPrompt';
+import { ServerSelector } from './components/Settings/ServerSelector';
+import { AuthStatus } from './components/Settings/AuthStatus';
+import { useAuth } from './hooks/useAuth';
 import { useToastStore } from './store/toastStore';
 import { useLiveOutputStore } from './store/liveOutputStore';
 import { useTeamStore } from './store/teamStore';
@@ -25,14 +29,19 @@ import { cn } from './lib/utils';
 import { HistoryEntry } from './types';
 import './App.css';
 
-type Tab = 'status' | 'chat' | 'projects' | 'teams' | 'agents' | 'cronos' | 'usage';
+type Tab = 'status' | 'chat' | 'projects' | 'teams' | 'agents' | 'cronos' | 'usage' | 'settings';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('status');
   const { toasts, removeToast } = useToastStore();
+  const { status: authStatus, loading: authLoading, login, logout, setupPassword } = useAuth();
 
   const addEntry = useLiveOutputStore((state) => state.addEntry);
   const loadTeam = useTeamStore((state) => state.loadTeam);
+
+  // Check if we need to show auth prompt (browser mode only)
+  const needsAuth = isBrowserMode() && authStatus?.authRequired && !authStatus?.authenticated;
+  const needsSetup = isBrowserMode() && authStatus?.authRequired && !authStatus?.passwordConfigured;
 
   // Load default team configuration on mount
   useEffect(() => {
@@ -125,6 +134,27 @@ function App() {
     { id: 'usage' as Tab, label: 'Usage', tooltip: 'Usage', icon: DollarSign },
   ];
 
+  // Show loading while checking auth
+  if (isBrowserMode() && authLoading) {
+    return (
+      <div className="h-screen bg-background flex items-center justify-center">
+        <div className="text-muted-foreground">Loading...</div>
+      </div>
+    );
+  }
+
+  // Show password prompt if auth is required
+  if (needsAuth || needsSetup) {
+    return (
+      <ThemeProvider defaultTheme="dark" storageKey="nolan-ui-theme">
+        <PasswordPrompt
+          isSetup={needsSetup}
+          onSubmit={needsSetup ? setupPassword : login}
+        />
+      </ThemeProvider>
+    );
+  }
+
   return (
     <AppErrorBoundary>
       <ThemeProvider defaultTheme="dark" storageKey="nolan-ui-theme">
@@ -164,8 +194,23 @@ function App() {
                   })}
                 </nav>
 
-                {/* Theme toggle at bottom */}
-                <ThemeToggle />
+                {/* Settings and theme toggle at bottom */}
+                <div className="flex flex-col items-center gap-3">
+                  <Tooltip content="Settings" side="right">
+                    <button
+                      onClick={() => setActiveTab('settings')}
+                      className={cn(
+                        "w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200",
+                        activeTab === 'settings'
+                          ? "bg-foreground/10 text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                      )}
+                    >
+                      <Settings className="w-5 h-5" />
+                    </button>
+                  </Tooltip>
+                  <ThemeToggle />
+                </div>
               </aside>
 
               {/* Main content */}
@@ -177,6 +222,24 @@ function App() {
                 {activeTab === 'agents' && <AgentManager />}
                 {activeTab === 'cronos' && <CronosPanel />}
                 {activeTab === 'usage' && <UsagePanel />}
+                {activeTab === 'settings' && (
+                  <div className="max-w-2xl space-y-6">
+                    <h1 className="text-2xl font-bold">Settings</h1>
+                    <ServerSelector
+                      currentUrl={localStorage.getItem('nolan-server-url') || 'http://localhost:3030'}
+                      onConnect={() => {
+                        window.location.reload();
+                      }}
+                    />
+                    {authStatus && (
+                      <AuthStatus
+                        authenticated={authStatus.authenticated}
+                        authRequired={authStatus.authRequired}
+                        onLogout={logout}
+                      />
+                    )}
+                  </div>
+                )}
               </main>
             </div>
           </div>

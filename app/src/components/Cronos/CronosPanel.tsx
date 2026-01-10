@@ -6,7 +6,8 @@ import rehypeHighlight from 'rehype-highlight';
 import {
   Plus, RefreshCw, Play, Settings, Trash2, Code, Clock, History,
   Wrench, Square, Activity, AlertTriangle, CheckCircle, XCircle,
-  Loader2, FileText, Zap, BarChart2, Terminal, MessageSquare, Cpu
+  Loader2, FileText, Zap, BarChart2, Terminal, MessageSquare, Cpu,
+  ChevronDown, ChevronRight
 } from 'lucide-react';
 import { useToastStore } from '../../store/toastStore';
 import { Button } from '@/components/ui/button';
@@ -393,6 +394,7 @@ export const CronosPanel: React.FC = () => {
   const [instructionsContent, setInstructionsContent] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [logViewer, setLogViewer] = useState<{ runId: string; content: string } | null>(null);
+  const [collapsedAgents, setCollapsedAgents] = useState<Set<string>>(new Set());
 
   // Form state for creator
   const [newAgentName, setNewAgentName] = useState('');
@@ -513,9 +515,8 @@ export const CronosPanel: React.FC = () => {
       // Ensure Cronos is initialized (important for browser mode)
       try {
         await invoke('init_cronos');
-      } catch (err) {
-        // Might already be initialized, or fail - log but continue
-        console.log('[CronosPanel] init_cronos:', err);
+      } catch {
+        // Might already be initialized - continue
       }
 
       // Then load data
@@ -613,16 +614,13 @@ export const CronosPanel: React.FC = () => {
   // Handle trigger run
   const handleTrigger = useCallback(async (name: string) => {
     try {
-      console.log(`[CronosPanel] Triggering agent: ${name}`);
-      const result = await invoke('trigger_cron_agent', { name });
-      console.log(`[CronosPanel] Trigger result:`, result);
+      await invoke('trigger_cron_agent', { name });
       showSuccess(`Triggered ${name}`);
       setLiveOutput([]);
       setShowLiveOutput(name);
       // Immediate refresh to get current_run_id
       setTimeout(fetchAgents, 500);
     } catch (err) {
-      console.error(`[CronosPanel] Trigger failed:`, err);
       showError(`Failed to trigger agent: ${err}`);
     }
   }, [showError, showSuccess, fetchAgents]);
@@ -922,47 +920,111 @@ export const CronosPanel: React.FC = () => {
         </TabsContent>
 
         {/* Audit Log View - Run History */}
-        <TabsContent value="audit" className="flex-1 overflow-auto">
-          <div className="space-y-2">
+        <TabsContent value="audit" className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full">
             {runHistory.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
                 <History className="w-12 h-12 mb-4 opacity-50" />
                 <p>No run history yet</p>
               </div>
             ) : (
-              runHistory.map((run) => (
-                <Card
-                  key={run.run_id}
-                  className="p-4 cursor-pointer hover:border-primary/50 transition-colors"
-                  onClick={() => handleViewLog(run.run_id)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <Badge variant={getStatusBadgeVariant(run.status)}>
-                        {run.status}
-                      </Badge>
-                      <div>
-                        <p className="font-medium">{run.agent_name}</p>
-                        <p className="text-sm text-muted-foreground">
-                          {new Date(run.started_at).toLocaleString()}
-                          {run.attempt > 1 && ` (attempt ${run.attempt})`}
-                          {run.trigger !== 'scheduled' && ` - ${run.trigger}`}
-                        </p>
+              <div className="space-y-4 pr-4">
+                {(() => {
+                  // Group by agent and sort each group by time (most recent first)
+                  const grouped = runHistory.reduce((acc, run) => {
+                    if (!acc[run.agent_name]) acc[run.agent_name] = [];
+                    acc[run.agent_name].push(run);
+                    return acc;
+                  }, {} as Record<string, typeof runHistory>);
+
+                  // Sort runs within each group by started_at descending
+                  Object.values(grouped).forEach(runs => {
+                    runs.sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
+                  });
+
+                  // Sort agent groups by most recent run
+                  const sortedAgents = Object.entries(grouped).sort(([, runsA], [, runsB]) => {
+                    const latestA = new Date(runsA[0].started_at).getTime();
+                    const latestB = new Date(runsB[0].started_at).getTime();
+                    return latestB - latestA;
+                  });
+
+                  return sortedAgents.map(([agentName, runs]) => {
+                    const isCollapsed = collapsedAgents.has(agentName);
+                    const toggleCollapse = () => {
+                      setCollapsedAgents(prev => {
+                        const next = new Set(prev);
+                        if (next.has(agentName)) {
+                          next.delete(agentName);
+                        } else {
+                          next.add(agentName);
+                        }
+                        return next;
+                      });
+                    };
+
+                    return (
+                      <div key={agentName}>
+                        <button
+                          onClick={toggleCollapse}
+                          className="flex items-center gap-2 mb-2 sticky top-0 bg-background py-1 w-full text-left hover:bg-muted/50 rounded px-1 -ml-1"
+                        >
+                          {isCollapsed ? (
+                            <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                          )}
+                          <h3 className="font-medium text-sm">{agentName}</h3>
+                          <span className="text-xs text-muted-foreground">({runs.length} runs)</span>
+                          {runs[0] && (
+                            <Badge variant={getStatusBadgeVariant(runs[0].status)} className="text-xs ml-auto">
+                              {runs[0].status}
+                            </Badge>
+                          )}
+                        </button>
+                        {!isCollapsed && (
+                          <div className="space-y-2 ml-6">
+                            {runs.map((run) => (
+                              <Card
+                                key={run.run_id}
+                                className="p-3 cursor-pointer hover:border-primary/50 transition-colors"
+                                onClick={() => handleViewLog(run.run_id)}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-3">
+                                    <Badge variant={getStatusBadgeVariant(run.status)} className="text-xs">
+                                      {run.status}
+                                    </Badge>
+                                    <div>
+                                      <p className="text-sm text-muted-foreground">
+                                        {new Date(run.started_at).toLocaleString()}
+                                        {run.attempt > 1 && ` (attempt ${run.attempt})`}
+                                        {run.trigger !== 'scheduled' && (
+                                          <span className="ml-1 text-xs opacity-70">• {run.trigger}</span>
+                                        )}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="text-sm text-muted-foreground">
+                                    {run.duration_secs !== undefined && (
+                                      <span>{run.duration_secs}s</span>
+                                    )}
+                                  </div>
+                                </div>
+                                {run.error && (
+                                  <p className="text-xs text-destructive mt-1 truncate">{run.error}</p>
+                                )}
+                              </Card>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {run.duration_secs !== undefined && (
-                        <span>{run.duration_secs}s</span>
-                      )}
-                    </div>
-                  </div>
-                  {run.error && (
-                    <p className="text-sm text-destructive mt-2">{run.error}</p>
-                  )}
-                </Card>
-              ))
+                    );
+                  });
+                })()}
+              </div>
             )}
-          </div>
+          </ScrollArea>
         </TabsContent>
 
         {/* Health Dashboard */}

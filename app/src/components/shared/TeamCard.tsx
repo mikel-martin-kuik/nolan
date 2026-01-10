@@ -320,7 +320,7 @@ export const TeamCard: React.FC<TeamCardProps> = ({
 
           {/* Coordinator */}
           {coordinator && (
-            <div className="flex justify-center">
+            <div className="flex justify-center px-3 sm:px-4">
               <div className="w-[clamp(140px,70vw,180px)]">
                 <AgentCard
                   agent={coordinator}
@@ -342,7 +342,7 @@ export const TeamCard: React.FC<TeamCardProps> = ({
 
           {/* Workflow Agents Row - Layout adapts to team size */}
           {layoutType === 'single-row' && (
-            <div className="flex flex-wrap justify-center items-center gap-2 lg:gap-3">
+            <div className="flex flex-wrap justify-center items-center gap-2 lg:gap-3 px-3 sm:px-4">
               {workflowAgents.map((agent, index) => (
                 <React.Fragment key={agent.name}>
                   <div className="w-[clamp(120px,calc(70vw/2),160px)]">
@@ -374,7 +374,7 @@ export const TeamCard: React.FC<TeamCardProps> = ({
             const bottomRow = workflowAgents.slice(midpoint);
 
             return (
-              <div className="flex flex-col items-center gap-2">
+              <div className="flex flex-col items-center gap-2 px-3 sm:px-4">
                 {/* Top row */}
                 <div className="flex flex-wrap justify-center items-center gap-2 lg:gap-3">
                   {topRow.map((agent, index) => (

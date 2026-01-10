@@ -7,8 +7,11 @@ use crate::config::{TeamConfig, load_project_team};
 use crate::utils::paths::get_projects_dir;
 
 // Cached regex pattern for HANDOFF markers (compiled once at startup)
+// Supports both formats:
+//   Old: <!-- HANDOFF:YYYY-MM-DD HH:MM:agent:COMPLETE -->
+//   New: <!-- HANDOFF:YYYY-MM-DD HH:MM:agent:COMPLETE:handoff_id -->
 static RE_HANDOFF: Lazy<Option<Regex>> = Lazy::new(|| {
-    Regex::new(r"<!-- HANDOFF:(\d{4}-\d{2}-\d{2} \d{2}:\d{2}):(\w+):COMPLETE -->").ok()
+    Regex::new(r"<!-- HANDOFF:(\d{4}-\d{2}-\d{2} \d{2}:\d{2}):(\w+):COMPLETE(?::[a-f0-9]+)? -->").ok()
 });
 
 // Cached regex pattern for PROJECT:STATUS markers
@@ -194,7 +197,9 @@ fn parse_project_status(coordinator_content: &str) -> (ProjectStatus, Option<Str
 }
 
 /// Parse HANDOFF marker from file content
-/// Format: <!-- HANDOFF:YYYY-MM-DD HH:MM:agent:COMPLETE -->
+/// Formats supported:
+///   <!-- HANDOFF:YYYY-MM-DD HH:MM:agent:COMPLETE -->
+///   <!-- HANDOFF:YYYY-MM-DD HH:MM:agent:COMPLETE:handoff_id -->
 fn parse_handoff_marker(content: &str) -> Option<(String, String)> {
     // Use cached regex pattern (compiled once at startup)
     let re = RE_HANDOFF.as_ref()?;

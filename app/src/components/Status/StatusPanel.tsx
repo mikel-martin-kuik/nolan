@@ -12,7 +12,7 @@ import { Tooltip } from '../ui/tooltip';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Users, Plus, XCircle, LayoutGrid, ChevronDown, ChevronRight } from 'lucide-react';
-import { invoke } from '@/lib/api';
+import { invoke, isBrowserMode } from '@/lib/api';
 import type { AgentName, ClaudeModel, TeamConfig } from '@/types';
 import { getRalphDisplayName, parseRalphSession } from '@/lib/agentIdentity';
 import { getTeamMembers } from '@/types';
@@ -405,17 +405,19 @@ export const StatusPanel: React.FC = () => {
                   <XCircle className="w-3.5 h-3.5" />
                 </Button>
               </Tooltip>
-              <Tooltip content="Terminals" side="bottom">
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={handleOpenAllRalphTerminals}
-                  disabled={loading || freeAgents.filter(a => a.active).length === 0}
-                  className="w-8 h-8 rounded-lg"
-                >
-                  <LayoutGrid className="w-3.5 h-3.5" />
-                </Button>
-              </Tooltip>
+              {!isBrowserMode() && (
+                <Tooltip content="Terminals" side="bottom">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={handleOpenAllRalphTerminals}
+                    disabled={loading || freeAgents.filter(a => a.active).length === 0}
+                    className="w-8 h-8 rounded-lg"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" />
+                  </Button>
+                </Tooltip>
+              )}
             </div>
           </div>
 

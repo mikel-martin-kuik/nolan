@@ -1,11 +1,8 @@
 import { create } from 'zustand';
-import { invoke, isBrowserMode } from '@/lib/api';
+import { invoke } from '@/lib/api';
 import { listen } from '@/lib/events';
 import type { AgentStatusList, AgentName, ClaudeModel } from '../types';
 import { useToastStore } from './toastStore';
-
-// Polling interval for browser mode (status events are Tauri-only)
-const BROWSER_POLL_INTERVAL = 3000; // 3 seconds
 
 // Helper to wrap invoke with a timeout to prevent UI hangs from backend issues
 async function invokeWithTimeout<T>(
@@ -203,21 +200,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       return;
     }
 
-    // In browser mode, use polling since WebSocket events aren't available
-    if (isBrowserMode()) {
-      // Initial fetch
-      await get().updateStatus();
-
-      // Set up polling interval
-      const pollId = setInterval(() => {
-        get().updateStatus();
-      }, BROWSER_POLL_INTERVAL);
-
-      set({ pollIntervalId: pollId });
-      return;
-    }
-
-    // In Tauri mode, listen for agent status changes from backend
+    // Use unified event listener (WebSocket in browser, Tauri events in desktop)
     const unlisten = await listen<AgentStatusList>('agent-status-changed', (event) => {
       set({
         teamAgents: event.payload.team,

@@ -2,6 +2,7 @@
 //!
 //! Provides WebSocket endpoints for:
 //! - Terminal output streaming
+//! - Agent status streaming
 //! - History entry streaming
 
 use axum::{
@@ -15,6 +16,7 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 
 use super::AppState;
+use crate::commands::lifecycle::get_agent_status;
 use crate::tmux::terminal_stream::TerminalOutput;
 
 /// WebSocket handler for terminal output streaming
@@ -205,4 +207,49 @@ pub async fn start_terminal_broadcast(
     });
 
     Ok(())
+}
+
+/// WebSocket handler for agent status streaming
+pub async fn status_stream(
+    State(state): State<Arc<AppState>>,
+    ws: WebSocketUpgrade,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_status_stream(socket, state))
+}
+
+async fn handle_status_stream(mut socket: WebSocket, state: Arc<AppState>) {
+    let mut rx = state.status_tx.subscribe();
+
+    // Send initial status
+    if let Ok(status) = get_agent_status().await {
+        let json = serde_json::to_string(&status).unwrap_or_default();
+        if socket.send(Message::Text(json)).await.is_err() {
+            return;
+        }
+    }
+
+    // Stream status updates
+    loop {
+        tokio::select! {
+            result = rx.recv() => {
+                match result {
+                    Ok(status) => {
+                        let json = serde_json::to_string(&status).unwrap_or_default();
+                        if socket.send(Message::Text(json)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+            msg = socket.recv() => {
+                match msg {
+                    Some(Ok(Message::Close(_))) => break,
+                    Some(Err(_)) => break,
+                    None => break,
+                    _ => {}
+                }
+            }
+        }
+    }
 }

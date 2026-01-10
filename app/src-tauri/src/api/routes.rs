@@ -1,18 +1,31 @@
 //! HTTP API route definitions
 
 use axum::{
+    middleware,
     routing::{get, post, put, delete},
     Router,
 };
 use std::sync::Arc;
 
+use super::auth::{self, AuthState};
 use super::handlers;
 use super::ws;
 use super::AppState;
 
 /// Create the main API router with all routes
 pub fn create_router(state: Arc<AppState>) -> Router {
-    Router::new()
+    let auth_state = AuthState::new();
+
+    // Auth routes (no authentication required)
+    let auth_routes = Router::new()
+        .route("/api/auth/login", post(auth::login))
+        .route("/api/auth/logout", post(auth::logout))
+        .route("/api/auth/status", get(auth::get_auth_status))
+        .route("/api/auth/setup", post(auth::setup_password_handler))
+        .with_state(auth_state.clone());
+
+    // Protected routes with auth middleware
+    let protected_routes = Router::new()
         // Health check
         .route("/api/health", get(handlers::health))
         // No-op endpoint for browser-incompatible commands
@@ -101,6 +114,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/cronos/shutdown", post(handlers::cronos::shutdown))
         // WebSocket endpoints
         .route("/api/ws/terminal/:session", get(ws::terminal_stream))
-        // Add state
+        .route("/api/ws/status", get(ws::status_stream))
+        // Add state and auth middleware
         .with_state(state)
+        .layer(middleware::from_fn_with_state(auth_state, auth::auth_middleware));
+
+    auth_routes.merge(protected_routes)
 }

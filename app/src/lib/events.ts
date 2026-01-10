@@ -58,18 +58,19 @@ export async function listen<T>(
     return listenTerminalOutput(options.session, callback as (event: EventPayload<unknown>) => void);
   }
 
+  // Special handling for agent-status-changed - use dedicated WebSocket
+  if (event === 'agent-status-changed') {
+    return listenAgentStatus(callback as (event: EventPayload<unknown>) => void);
+  }
+
   // Events that don't have WebSocket endpoints in browser mode
-  // These events are Tauri-specific and should be handled via polling in browser
   const unsupportedEvents = [
-    'agent-status-changed',
     'history-entry',
     'terminal-disconnected',
   ];
 
   if (unsupportedEvents.includes(event)) {
-    // Return a no-op unlisten function for unsupported events
-    // The frontend should use polling for status updates in browser mode
-    console.log(`[events] Event '${event}' not supported in browser mode, using polling fallback`);
+    console.log(`[events] Event '${event}' not supported in browser mode`);
     return () => {};
   }
 
@@ -170,6 +171,54 @@ function listenTerminalOutput(
         terminalListeners.delete(session);
       }
     }
+  };
+}
+
+/**
+ * Listen to agent status changes (browser mode)
+ */
+function listenAgentStatus(
+  callback: (event: EventPayload<unknown>) => void
+): UnlistenFn {
+  const wsKey = 'status';
+
+  // Create WebSocket if not exists
+  if (!activeConnections.has(wsKey)) {
+    const wsUrl = getWebSocketUrl('/api/ws/status');
+    const ws = new WebSocket(wsUrl);
+
+    ws.onmessage = (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        callback({ payload });
+      } catch (err) {
+        console.error('Failed to parse status WebSocket message:', err);
+      }
+    };
+
+    ws.onerror = (err) => {
+      console.error('Status WebSocket error:', err);
+    };
+
+    ws.onclose = () => {
+      activeConnections.delete(wsKey);
+      // Attempt reconnect after 3 seconds
+      setTimeout(() => {
+        if (!activeConnections.has(wsKey)) {
+          listenAgentStatus(callback);
+        }
+      }, 3000);
+    };
+
+    activeConnections.set(wsKey, ws);
+  }
+
+  return () => {
+    const ws = activeConnections.get(wsKey);
+    if (ws) {
+      ws.close();
+    }
+    activeConnections.delete(wsKey);
   };
 }
 

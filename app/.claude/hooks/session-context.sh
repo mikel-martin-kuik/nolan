@@ -105,6 +105,13 @@ echo ""
 echo "$TEAM_INFO"
 echo ""
 
+# Show assigned project path if set (critical for agents to find project docs)
+if [[ -n "${DOCS_PATH:-}" ]]; then
+    echo "### Assigned Project"
+    echo "**Path:** \`$DOCS_PATH\`"
+    echo ""
+fi
+
 # Handoff directories
 PENDING_DIR="$PROJECTS_BASE/.handoffs/pending"
 PROCESSED_DIR="$PROJECTS_BASE/.handoffs/processed"

@@ -10,14 +10,25 @@
  *   const agents = await invoke<AgentInfo[]>('list_agent_directories');
  */
 
-// API server base URL (configurable via environment variable)
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3030';
+// API server base URL (configurable via environment variable or localStorage)
+const getApiBaseUrl = (): string => {
+  // Check localStorage first (user preference)
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('nolan-server-url');
+    if (stored) return stored;
+  }
+
+  // Fall back to environment variable or default
+  return import.meta.env.VITE_API_URL || 'http://localhost:3030';
+};
+
+const API_BASE = getApiBaseUrl();
 
 // Detect if we're running in Tauri (checked dynamically to handle load order)
+// Tauri v2 uses __TAURI_INTERNALS__ instead of __TAURI__
 function isTauri(): boolean {
-  const result = typeof window !== 'undefined' && '__TAURI__' in window;
-  console.log('[API] isTauri check:', result, '__TAURI__' in (window || {}));
-  return result;
+  if (typeof window === 'undefined') return false;
+  return '__TAURI__' in window || '__TAURI_INTERNALS__' in window;
 }
 
 /**
@@ -174,10 +185,16 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
   const { method, path } = route;
   const url = API_BASE + (typeof path === 'function' ? path(args || {}) : path);
 
+  // Get session token from localStorage
+  const sessionToken = typeof window !== 'undefined'
+    ? localStorage.getItem('nolan-session-token')
+    : null;
+
   const options: RequestInit = {
     method,
     headers: {
       'Content-Type': 'application/json',
+      ...(sessionToken ? { 'X-Nolan-Session': sessionToken } : {}),
     },
   };
 

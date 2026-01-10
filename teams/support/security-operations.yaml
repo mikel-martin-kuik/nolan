@@ -1,42 +1,58 @@
 team:
-  id: "security-operations"
-  name: "Security Operations"
-  prefix: "SO"
-  pillar: null  # Support
-  department: "Specialized Operations"
-  mission: "Security testing, vulnerability management, and penetration testing"
-
-  ownership:
-    milestones: []  # Support function
-    directories: []  # No code ownership (testing only)
-    file_patterns: []
-
+  name: security-operations
+  description: "Manages security assessments, vulnerability tracking, and security policies"
+  version: "1.0.0"
   agents:
-    - name: "SO-Coordinator"
-      role_template: "coordinator"
-      model: "opus"
-      description: "Orchestrates security operations workflow"
-
-    - name: "SO-SecurityEngineer"
-      role_template: "security-engineer"
-      model: "opus"
-      description: "Performs security analysis"
-
-    - name: "SO-Tester"
-      role_template: "qa-automation"
-      model: "sonnet"
-      description: "Executes penetration tests"
-
-    - name: "SO-Auditor"
-      role_template: "auditor"
-      model: "opus"
-      description: "Audits security compliance"
-
+    - name: so-coordinator
+      output_file: NOTES.md
+      required_sections:
+        - Current Assignment
+        - Handoff Log
+      file_permissions: restricted
+      workflow_participant: false
+    - name: so-securityengineer
+      output_file: research.md
+      required_sections:
+        - Problem
+        - Findings
+        - Recommendations
+      file_permissions: restricted
+      workflow_participant: true
+    - name: so-tester
+      output_file: security-test.md
+      required_sections:
+        - Test Plan
+        - Results
+        - Vulnerabilities
+      file_permissions: restricted
+      workflow_participant: true
+    - name: so-auditor
+      output_file: implementation-audit.md
+      required_sections:
+        - Summary
+        - Findings
+        - Recommendation
+      file_permissions: restricted
+      workflow_participant: true
   workflow:
+    coordinator: so-coordinator
     phases:
-      - research
-      - plan
-      - review
-      - audit
-
-  policy: "default"
+      - name: research
+        owner: so-securityengineer
+        output: research.md
+        requires: []
+      - name: plan
+        owner: so-securityengineer
+        output: plan.md
+        requires:
+          - research.md
+      - name: security-test
+        owner: so-tester
+        output: security-test.md
+        requires:
+          - plan.md
+      - name: implementation-audit
+        owner: so-auditor
+        output: implementation-audit.md
+        requires:
+          - security-test.md

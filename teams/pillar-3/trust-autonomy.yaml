@@ -1,47 +1,58 @@
 team:
-  id: "trust-autonomy"
-  name: "Trust & Autonomy"
-  prefix: "TA"
-  pillar: "human-ai-collaboration"
-  department: "Strategic Direction"
-  mission: "Implement graduated autonomy and trust metrics"
-
-  ownership:
-    milestones:
-      - "V3.4"  # Trust Building
-    directories:
-      - "trust/"
-      - "src-tauri/src/trust/"
-    file_patterns:
-      - "**/trust/**"
-      - "**/autonomy/**"
-
+  name: trust-autonomy
+  description: "Manages trust levels, autonomy boundaries, and human-AI collaboration policies"
+  version: "1.0.0"
   agents:
-    - name: "TA-Coordinator"
-      role_template: "coordinator"
-      model: "opus"
-      description: "Orchestrates trust management workflow"
-
-    - name: "TA-Designer"
-      role_template: "architect"
-      model: "opus"
-      description: "Designs trust metrics and autonomy levels"
-
-    - name: "TA-Implementer"
-      role_template: "implementer"
-      model: "sonnet"
-      description: "Implements trust tracking systems"
-
-    - name: "TA-Reviewer"
-      role_template: "reviewer"
-      model: "sonnet"
-      description: "Reviews trust level assignments"
-
+    - name: ta-coordinator
+      output_file: NOTES.md
+      required_sections:
+        - Current Assignment
+        - Handoff Log
+      file_permissions: restricted
+      workflow_participant: false
+    - name: ta-designer
+      output_file: research.md
+      required_sections:
+        - Problem
+        - Findings
+        - Recommendations
+      file_permissions: restricted
+      workflow_participant: true
+    - name: ta-implementer
+      output_file: progress.md
+      required_sections:
+        - Status
+        - Changes
+        - Next Steps
+      file_permissions: permissive
+      workflow_participant: true
+    - name: ta-reviewer
+      output_file: implementation-audit.md
+      required_sections:
+        - Summary
+        - Findings
+        - Recommendation
+      file_permissions: restricted
+      workflow_participant: true
   workflow:
+    coordinator: ta-coordinator
     phases:
-      - research
-      - plan
-      - implement
-      - review
-
-  policy: "pillar-3"
+      - name: research
+        owner: ta-designer
+        output: research.md
+        requires: []
+      - name: plan
+        owner: ta-designer
+        output: plan.md
+        requires:
+          - research.md
+      - name: implement
+        owner: ta-implementer
+        output: progress.md
+        requires:
+          - plan.md
+      - name: implementation-audit
+        owner: ta-reviewer
+        output: implementation-audit.md
+        requires:
+          - progress.md

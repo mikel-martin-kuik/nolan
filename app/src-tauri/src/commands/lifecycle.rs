@@ -3,6 +3,7 @@ use regex::Regex;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use once_cell::sync::Lazy;
+use walkdir::WalkDir;
 use crate::config::TeamConfig;
 use crate::constants::{
     PROTECTED_SESSIONS,
@@ -207,7 +208,7 @@ fn determine_needed_agents(docs_path: &std::path::Path, team: &TeamConfig) -> Op
     use std::fs;
     use std::collections::HashSet;
 
-    let coordinator_file = team.coordinator_output_file();
+    let coordinator_file = team.coordinator_output_file().ok()?;
     let coordinator_path = docs_path.join(&coordinator_file);
     let content = fs::read_to_string(&coordinator_path).ok()?;
 
@@ -1352,21 +1353,29 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
     })
 }
 
-/// List available team names from teams directory
+/// List available team names from teams directory (scans subdirectories recursively)
 fn list_available_teams() -> Result<Vec<String>, String> {
-    use std::fs;
-
     let nolan_root = std::env::var("NOLAN_ROOT")
         .map_err(|_| "NOLAN_ROOT not set")?;
     let teams_dir = std::path::PathBuf::from(nolan_root).join("teams");
 
     let mut teams = Vec::new();
-    if let Ok(entries) = fs::read_dir(&teams_dir) {
-        for entry in entries.flatten() {
-            if let Some(name) = entry.path().file_stem().and_then(|s| s.to_str()) {
-                if entry.path().extension().map(|e| e == "yaml").unwrap_or(false) {
-                    teams.push(name.to_string());
-                }
+    for entry in WalkDir::new(&teams_dir)
+        .max_depth(2)  // Root (depth 0), immediate children dirs (depth 1), files in subdirs (depth 2)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+
+        // Skip directories and non-yaml files
+        if !path.is_file() || path.extension().and_then(|s| s.to_str()) != Some("yaml") {
+            continue;
+        }
+
+        // Get team name from file stem, skip departments.yaml
+        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+            if stem != "departments" {
+                teams.push(stem.to_string());
             }
         }
     }

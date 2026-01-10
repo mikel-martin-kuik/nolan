@@ -148,6 +148,7 @@ pub fn run() {
             commands::teams::save_team_config,
             commands::teams::rename_team_config,
             commands::teams::list_teams,
+            commands::teams::list_teams_info,  // New: hierarchical team listing
             commands::teams::get_project_team,
             commands::teams::set_project_team,
             commands::teams::get_departments_config,

@@ -57,8 +57,8 @@ fn get_expected_files_from_config(config: &TeamConfig) -> (Vec<String>, Vec<Stri
         }
     }
 
-    // Add coordinator's output file
-    let coordinator_file = config.coordinator_output_file();
+    // Add coordinator's output file (default to NOTES.md if not configured)
+    let coordinator_file = config.coordinator_output_file().unwrap_or_else(|_| "NOTES.md".to_string());
     let coordinator_file = if coordinator_file.ends_with(".md") {
         coordinator_file
     } else {
@@ -494,7 +494,10 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
         };
 
         // Parse status from coordinator's output file
-        let coordinator_file = team_config.coordinator_output_file();
+        let coordinator_file = match team_config.coordinator_output_file() {
+            Ok(f) => f,
+            Err(_) => continue, // Skip projects with invalid coordinator config
+        };
         let coordinator_path = path.join(&coordinator_file);
         let (status, status_detail) = if coordinator_path.exists() {
             match fs::read_to_string(&coordinator_path) {
@@ -621,7 +624,7 @@ pub async fn list_project_files(project_name: String) -> Result<Vec<ProjectFile>
     let team_config = load_project_team(&canonical_path)
         .map_err(|e| format!("Failed to load team config: {}", e))?;
     let (expected_files, _) = get_expected_files_from_config(&team_config);
-    let coordinator_file = team_config.coordinator_output_file();
+    let coordinator_file = team_config.coordinator_output_file()?;
 
     let mut files = Vec::new();
     let mut existing_names: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -920,7 +923,7 @@ pub async fn create_project(project_name: String, team_name: Option<String>) -> 
     let team = team_name.unwrap_or_else(|| "default".to_string());
     let team_config = TeamConfig::load(&team)
         .map_err(|e| format!("Failed to load team config '{}': {}", team, e))?;
-    let coordinator_file = team_config.coordinator_output_file();
+    let coordinator_file = team_config.coordinator_output_file()?;
     let coordinator_name = team_config.coordinator();
 
     // Get workflow files from team config to store in .team
@@ -1000,7 +1003,7 @@ pub async fn update_project_status(project_name: String, status: String) -> Resu
     // Load team config to get coordinator file
     let team_config = load_project_team(&project_path)
         .map_err(|e| format!("Failed to load team config: {}", e))?;
-    let coordinator_file = team_config.coordinator_output_file();
+    let coordinator_file = team_config.coordinator_output_file()?;
     let coordinator_path = project_path.join(&coordinator_file);
 
     // Read existing content or create new

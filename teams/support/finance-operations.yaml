@@ -1,42 +1,58 @@
 team:
-  id: "finance-operations"
-  name: "Finance Operations"
-  prefix: "FO"
-  pillar: null  # Support
-  department: "Specialized Operations"
-  mission: "Financial tracking, budget management, and cost reporting"
-
-  ownership:
-    milestones: []  # Support function, no specific milestone
-    directories: []  # No code ownership
-    file_patterns: []
-
+  name: finance-operations
+  description: "Manages financial tracking, cost analysis, and budget reporting"
+  version: "1.0.0"
   agents:
-    - name: "FO-Coordinator"
-      role_template: "coordinator"
-      model: "opus"
-      description: "Orchestrates finance operations workflow"
-
-    - name: "FO-Analyst"
-      role_template: "financial-analyst"
-      model: "sonnet"
-      description: "Analyzes costs and budgets"
-
-    - name: "FO-Reporter"
-      role_template: "researcher"
-      model: "sonnet"
-      description: "Generates financial reports"
-
-    - name: "FO-Auditor"
-      role_template: "auditor"
-      model: "sonnet"
-      description: "Audits financial compliance"
-
+    - name: fo-coordinator
+      output_file: NOTES.md
+      required_sections:
+        - Current Assignment
+        - Handoff Log
+      file_permissions: restricted
+      workflow_participant: false
+    - name: fo-analyst
+      output_file: research.md
+      required_sections:
+        - Problem
+        - Findings
+        - Recommendations
+      file_permissions: restricted
+      workflow_participant: true
+    - name: fo-reporter
+      output_file: report.md
+      required_sections:
+        - Summary
+        - Metrics
+        - Recommendations
+      file_permissions: restricted
+      workflow_participant: true
+    - name: fo-auditor
+      output_file: implementation-audit.md
+      required_sections:
+        - Summary
+        - Findings
+        - Recommendation
+      file_permissions: restricted
+      workflow_participant: true
   workflow:
+    coordinator: fo-coordinator
     phases:
-      - research
-      - plan
-      - review
-      - audit
-
-  policy: "default"
+      - name: research
+        owner: fo-analyst
+        output: research.md
+        requires: []
+      - name: analyze
+        owner: fo-analyst
+        output: analysis.md
+        requires:
+          - research.md
+      - name: report
+        owner: fo-reporter
+        output: report.md
+        requires:
+          - analysis.md
+      - name: implementation-audit
+        owner: fo-auditor
+        output: implementation-audit.md
+        requires:
+          - report.md

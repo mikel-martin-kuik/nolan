@@ -1,44 +1,58 @@
 team:
-  id: "talent-operations"
-  name: "Talent Operations"
-  prefix: "TO"
-  pillar: null  # Support
-  department: "Specialized Operations"
-  mission: "Agent recruitment, capability assessment, and team composition"
-
-  ownership:
-    milestones: []  # Support function
-    directories:
-      - "app/agents/"
-    file_patterns:
-      - "**/agents/*/CLAUDE.md"
-      - "**/agents/*/agent.json"
-
+  name: talent-operations
+  description: "Manages agent recruitment, assessment, and training processes"
+  version: "1.0.0"
   agents:
-    - name: "TO-Coordinator"
-      role_template: "coordinator"
-      model: "opus"
-      description: "Orchestrates talent operations workflow"
-
-    - name: "TO-Recruiter"
-      role_template: "recruiter"
-      model: "sonnet"
-      description: "Sources and assesses agent capabilities"
-
-    - name: "TO-Assessor"
-      role_template: "reviewer"
-      model: "sonnet"
-      description: "Evaluates agent performance"
-
-    - name: "TO-Trainer"
-      role_template: "planner"
-      model: "sonnet"
-      description: "Designs agent onboarding plans"
-
+    - name: to-coordinator
+      output_file: NOTES.md
+      required_sections:
+        - Current Assignment
+        - Handoff Log
+      file_permissions: restricted
+      workflow_participant: false
+    - name: to-recruiter
+      output_file: research.md
+      required_sections:
+        - Problem
+        - Findings
+        - Recommendations
+      file_permissions: restricted
+      workflow_participant: true
+    - name: to-assessor
+      output_file: assessment.md
+      required_sections:
+        - Candidates
+        - Evaluation
+        - Recommendation
+      file_permissions: restricted
+      workflow_participant: true
+    - name: to-trainer
+      output_file: implementation-audit.md
+      required_sections:
+        - Summary
+        - Findings
+        - Recommendation
+      file_permissions: restricted
+      workflow_participant: true
   workflow:
+    coordinator: to-coordinator
     phases:
-      - research
-      - plan
-      - review
-
-  policy: "default"
+      - name: research
+        owner: to-recruiter
+        output: research.md
+        requires: []
+      - name: plan
+        owner: to-recruiter
+        output: plan.md
+        requires:
+          - research.md
+      - name: assess
+        owner: to-assessor
+        output: assessment.md
+        requires:
+          - plan.md
+      - name: implementation-audit
+        owner: to-trainer
+        output: implementation-audit.md
+        requires:
+          - assessment.md

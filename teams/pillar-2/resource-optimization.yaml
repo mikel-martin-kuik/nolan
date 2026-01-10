@@ -1,49 +1,63 @@
 team:
-  id: "resource-optimization"
-  name: "Resource Optimization"
-  prefix: "RO"
-  pillar: "autonomous-operations"
-  department: "Specialized Operations"
-  mission: "Optimize costs, resource allocation, and self-improvement metrics"
-
-  ownership:
-    milestones:
-      - "V2.3"  # Resource Management
-      - "V2.4"  # Self-Improvement
-    directories:
-      - "src-tauri/src/usage/"
-      - "src-tauri/src/optimization/"
-    file_patterns:
-      - "**/usage/**"
-      - "**/optimization/**"
-      - "**/metrics/**"
-
+  name: resource-optimization
+  description: "Optimizes resource allocation, usage tracking, and efficiency improvements"
+  version: "1.0.0"
   agents:
-    - name: "RO-Coordinator"
-      role_template: "coordinator"
-      model: "opus"
-      description: "Orchestrates resource optimization workflow"
-
-    - name: "RO-DataEngineer"
-      role_template: "data-engineer"
-      model: "sonnet"
-      description: "Builds usage analytics pipelines"
-
-    - name: "RO-Analyst"
-      role_template: "financial-analyst"
-      model: "sonnet"
-      description: "Analyzes resource usage patterns"
-
-    - name: "RO-Implementer"
-      role_template: "implementer"
-      model: "sonnet"
-      description: "Implements optimization algorithms"
-
+    - name: ro-coordinator
+      output_file: NOTES.md
+      required_sections:
+        - Current Assignment
+        - Handoff Log
+      file_permissions: restricted
+      workflow_participant: false
+    - name: ro-dataengineer
+      output_file: research.md
+      required_sections:
+        - Problem
+        - Findings
+        - Recommendations
+      file_permissions: restricted
+      workflow_participant: true
+    - name: ro-analyst
+      output_file: plan.md
+      required_sections:
+        - Overview
+        - Tasks
+        - Risks
+      file_permissions: restricted
+      workflow_participant: true
+    - name: ro-implementer
+      output_file: progress.md
+      required_sections:
+        - Status
+        - Changes
+        - Next Steps
+      file_permissions: permissive
+      workflow_participant: true
   workflow:
+    coordinator: ro-coordinator
     phases:
-      - research
-      - plan
-      - implement
-      - review
-
-  policy: "pillar-2"
+      - name: research
+        owner: ro-dataengineer
+        output: research.md
+        requires: []
+      - name: analyze
+        owner: ro-analyst
+        output: analysis.md
+        requires:
+          - research.md
+      - name: plan
+        owner: ro-analyst
+        output: plan.md
+        requires:
+          - analysis.md
+      - name: implement
+        owner: ro-implementer
+        output: progress.md
+        requires:
+          - plan.md
+      - name: implementation-audit
+        owner: ro-coordinator
+        output: implementation-audit.md
+        requires:
+          - progress.md

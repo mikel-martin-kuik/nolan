@@ -1,54 +1,71 @@
 team:
-  id: "governance"
-  name: "Governance"
-  prefix: "GV"
-  pillar: "organizational-intelligence"
-  department: "Structure & Governance"
-  mission: "Define and enforce organizational policies and approval workflows"
-
-  ownership:
-    milestones:
-      - "V1.3"  # Governance Framework
-      - "V3.3"  # Value Alignment (Approval Workflows)
-    directories:
-      - "policies/"
-      - "src-tauri/src/governance/"
-    file_patterns:
-      - "**/policies/**"
-      - "**/governance/**"
-
+  name: governance
+  description: "Establishes policies, compliance frameworks, and governance rules for the organization"
+  version: "1.0.0"
   agents:
-    - name: "GV-Coordinator"
-      role_template: "coordinator"
-      model: "opus"
-      description: "Orchestrates governance workflow"
-
-    - name: "GV-PolicyArchitect"
-      role_template: "architect"
-      model: "opus"
-      description: "Designs policy frameworks and enforcement rules"
-
-    - name: "GV-Implementer"
-      role_template: "implementer"
-      model: "sonnet"
-      description: "Implements policy enforcement mechanisms"
-
-    - name: "GV-Auditor"
-      role_template: "auditor"
-      model: "opus"
-      description: "Audits policy compliance across organization"
-
-    - name: "GV-Reviewer"
-      role_template: "reviewer"
-      model: "sonnet"
-      description: "Reviews policy changes for consistency"
-
+    - name: gv-coordinator
+      output_file: NOTES.md
+      required_sections:
+        - Current Assignment
+        - Handoff Log
+      file_permissions: restricted
+      workflow_participant: false
+    - name: gv-policyarchitect
+      output_file: research.md
+      required_sections:
+        - Problem
+        - Findings
+        - Recommendations
+      file_permissions: restricted
+      workflow_participant: true
+    - name: gv-implementer
+      output_file: progress.md
+      required_sections:
+        - Status
+        - Changes
+        - Next Steps
+      file_permissions: permissive
+      workflow_participant: true
+    - name: gv-auditor
+      output_file: audit.md
+      required_sections:
+        - Compliance Status
+        - Violations
+        - Remediation
+      file_permissions: restricted
+      workflow_participant: true
+    - name: gv-reviewer
+      output_file: implementation-audit.md
+      required_sections:
+        - Summary
+        - Findings
+        - Recommendation
+      file_permissions: restricted
+      workflow_participant: true
   workflow:
+    coordinator: gv-coordinator
     phases:
-      - research
-      - plan
-      - implement
-      - review
-      - audit
-
-  policy: "pillar-1"
+      - name: research
+        owner: gv-policyarchitect
+        output: research.md
+        requires: []
+      - name: plan
+        owner: gv-policyarchitect
+        output: plan.md
+        requires:
+          - research.md
+      - name: implement
+        owner: gv-implementer
+        output: progress.md
+        requires:
+          - plan.md
+      - name: audit
+        owner: gv-auditor
+        output: audit.md
+        requires:
+          - progress.md
+      - name: implementation-audit
+        owner: gv-reviewer
+        output: implementation-audit.md
+        requires:
+          - audit.md

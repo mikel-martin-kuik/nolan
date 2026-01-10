@@ -16,8 +16,19 @@ pub struct Team {
     pub description: Option<String>,
     #[serde(default)]
     pub version: Option<String>,
+    #[serde(default)]
     pub agents: Vec<AgentConfig>,
+    #[serde(default)]
     pub workflow: WorkflowConfig,
+}
+
+impl Default for WorkflowConfig {
+    fn default() -> Self {
+        WorkflowConfig {
+            coordinator: String::new(),
+            phases: vec![],
+        }
+    }
 }
 
 /// Agent configuration
@@ -25,9 +36,13 @@ pub struct Team {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
     pub name: String,
+    #[serde(default)]
     pub output_file: Option<String>,
+    #[serde(default)]
     pub required_sections: Vec<String>,
+    #[serde(default = "default_file_permissions")]
     pub file_permissions: String,
+    #[serde(default = "default_true")]
     pub workflow_participant: bool,
     #[serde(default)]
     pub awaits_qa: bool,
@@ -35,22 +50,93 @@ pub struct AgentConfig {
     pub qa_passes: Option<i32>,
 }
 
+fn default_file_permissions() -> String {
+    "restricted".to_string()
+}
+
+fn default_true() -> bool {
+    true
+}
+
 /// Workflow configuration with phases
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowConfig {
+    #[serde(default)]
     pub coordinator: String,
+    #[serde(default, deserialize_with = "deserialize_phases_or_default")]
     pub phases: Vec<PhaseConfig>,
+}
+
+/// Deserialize phases, handling missing field
+fn deserialize_phases_or_default<'de, D>(deserializer: D) -> Result<Vec<PhaseConfig>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    deserialize_phases(deserializer)
 }
 
 /// Individual workflow phase
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PhaseConfig {
     pub name: String,
+    #[serde(default)]
     pub owner: String,
+    #[serde(default)]
     pub output: String,
+    #[serde(default)]
     pub requires: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub template: Option<String>,
+}
+
+/// Deserialize phases from either strings or full structs
+fn deserialize_phases<'de, D>(deserializer: D) -> Result<Vec<PhaseConfig>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, SeqAccess, Visitor};
+
+    struct PhasesVisitor;
+
+    impl<'de> Visitor<'de> for PhasesVisitor {
+        type Value = Vec<PhaseConfig>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a sequence of phase configs or phase names")
+        }
+
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            let mut phases = Vec::new();
+
+            while let Some(value) = seq.next_element::<serde_yaml::Value>()? {
+                let phase = match value {
+                    serde_yaml::Value::String(name) => {
+                        // Simple string format: just the phase name
+                        PhaseConfig {
+                            name: name.clone(),
+                            owner: String::new(),
+                            output: format!("{}.md", name),
+                            requires: vec![],
+                            template: None,
+                        }
+                    }
+                    serde_yaml::Value::Mapping(_) => {
+                        // Full struct format
+                        serde_yaml::from_value(value).map_err(de::Error::custom)?
+                    }
+                    _ => return Err(de::Error::custom("expected string or mapping for phase")),
+                };
+                phases.push(phase);
+            }
+
+            Ok(phases)
+        }
+    }
+
+    deserializer.deserialize_seq(PhasesVisitor)
 }
 
 /// Department configuration for grouping teams
@@ -132,6 +218,20 @@ pub struct OrganizationDefaults {
     pub file_permissions: Option<String>,
     #[serde(default)]
     pub escalation_timeout: Option<String>,
+}
+
+// =============================================================================
+// Team Info (for hierarchical team listing)
+// =============================================================================
+
+/// Team information with path/group metadata for hierarchical display
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TeamInfo {
+    pub id: String,             // Team identifier (e.g., "structure-engineering")
+    pub name: String,           // Display name from team config
+    pub group: String,          // Directory group (e.g., "pillar-1", "foundation", "")
+    pub pillar: Option<String>, // Pillar from org schema if applicable
+    pub path: String,           // Relative path from teams/ (e.g., "pillar-1/structure-engineering.yaml")
 }
 
 // =============================================================================
@@ -427,42 +527,64 @@ impl DepartmentsConfig {
 }
 
 impl TeamConfig {
-    /// Load team configuration from YAML file with DoS protection
-    ///
-    /// Security measures:
-    /// - File size limit: 1MB max
-    /// - YAML depth checked implicitly by serde_yaml recursion limits
-    /// - File permissions validated against allowed values
-    pub fn load(team_name: &str) -> Result<Self, String> {
+    /// Resolve team name to filesystem path
+    /// Checks root first (backward compat), then pillar-1/, pillar-2/, pillar-3/, foundation/, support/
+    pub fn resolve_team_path(team_name: &str) -> Result<PathBuf, String> {
         let nolan_root = std::env::var("NOLAN_ROOT")
             .map_err(|_| "NOLAN_ROOT not set".to_string())?;
+        let teams_dir = PathBuf::from(&nolan_root).join("teams");
 
-        let config_path = PathBuf::from(nolan_root)
-            .join("teams")
-            .join(format!("{}.yaml", team_name));
+        // Check root first (backward compatible)
+        let root_path = teams_dir.join(format!("{}.yaml", team_name));
+        if root_path.exists() {
+            return Ok(root_path);
+        }
 
+        // Check subdirectories in order
+        for subdir in &["pillar-1", "pillar-2", "pillar-3", "foundation", "support"] {
+            let subdir_path = teams_dir.join(subdir).join(format!("{}.yaml", team_name));
+            if subdir_path.exists() {
+                return Ok(subdir_path);
+            }
+        }
+
+        // Not found
+        Err(format!("Team config not found: {} (checked root and subdirectories)", team_name))
+    }
+
+    /// Load team from resolved path
+    pub fn load_from_path(config_path: &Path) -> Result<Self, String> {
         if !config_path.exists() {
             return Err(format!("Team config not found: {}", config_path.display()));
         }
 
-        // Check file size (1MB max) - DoS protection
-        let metadata = fs::metadata(&config_path)
+        // Size check (DoS protection)
+        let metadata = fs::metadata(config_path)
             .map_err(|e| format!("Failed to read file metadata: {}", e))?;
-
         if metadata.len() > 1_048_576 {
             return Err(format!("Team config too large: {} bytes (max 1MB)", metadata.len()));
         }
 
-        let contents = fs::read_to_string(&config_path)
+        let contents = fs::read_to_string(config_path)
             .map_err(|e| format!("Failed to read config: {}", e))?;
 
         let config: TeamConfig = serde_yaml::from_str(&contents)
             .map_err(|e| format!("Failed to parse YAML: {}", e))?;
 
-        // Validate file permissions for all agents
         config.validate()?;
-
         Ok(config)
+    }
+
+    /// Load team configuration by name (with path resolution)
+    ///
+    /// Security measures:
+    /// - File size limit: 1MB max
+    /// - YAML depth checked implicitly by serde_yaml recursion limits
+    /// - File permissions validated against allowed values
+    /// - Path resolution only checks predefined subdirectories (no path traversal)
+    pub fn load(team_name: &str) -> Result<Self, String> {
+        let config_path = Self::resolve_team_path(team_name)?;
+        Self::load_from_path(&config_path)
     }
 
     /// Validate team configuration constraints
@@ -491,18 +613,18 @@ impl TeamConfig {
             }
         }
 
-        // Validate coordinator exists in agents list
+        // Validate coordinator exists in agents list (skip if empty - allows "headless" teams)
         let coordinator = &self.team.workflow.coordinator;
-        if !seen_names.contains(coordinator.as_str()) {
+        if !coordinator.is_empty() && !seen_names.contains(coordinator.as_str()) {
             return Err(format!(
                 "Coordinator '{}' not found in agents list for team '{}'",
                 coordinator, self.team.name
             ));
         }
 
-        // Validate all phase owners exist in agents list
+        // Validate all phase owners exist in agents list (skip empty owners - allows simplified phase lists)
         for phase in &self.team.workflow.phases {
-            if !seen_names.contains(phase.owner.as_str()) {
+            if !phase.owner.is_empty() && !seen_names.contains(phase.owner.as_str()) {
                 return Err(format!(
                     "Phase '{}' owner '{}' not found in agents list for team '{}'",
                     phase.name, phase.owner, self.team.name
@@ -539,12 +661,17 @@ impl TeamConfig {
     }
 
     /// Get coordinator's output file from team config
-    pub fn coordinator_output_file(&self) -> String {
+    /// Returns Result to allow graceful error handling if coordinator lacks output_file
+    pub fn coordinator_output_file(&self) -> Result<String, String> {
         self.team.agents.iter()
             .find(|a| a.name == self.team.workflow.coordinator)
             .and_then(|a| a.output_file.as_ref())
             .map(|s| s.to_string())
-            .expect("Coordinator must have output_file defined in team config")
+            .ok_or_else(|| format!(
+                "Coordinator '{}' must have output_file defined in team config '{}'",
+                self.team.workflow.coordinator,
+                self.team.name
+            ))
     }
 
     /// Check if an agent is a workflow participant

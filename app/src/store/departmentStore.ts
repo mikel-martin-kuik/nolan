@@ -1,30 +1,37 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { invoke } from '@/lib/api';
-import type { DepartmentsConfig, DepartmentGroup } from '../types';
+import type { DepartmentsConfig, DepartmentGroup, TeamInfo, PillarGroup } from '../types';
 
 interface DepartmentState {
   // Data from backend
   departments: DepartmentsConfig | null;
+  teamInfos: TeamInfo[];
 
   // UI state (persisted to localStorage)
   collapsedDepartments: string[];
+  collapsedPillars: string[];
 
   // Actions
   loadDepartments: () => Promise<void>;
+  loadTeamInfos: () => Promise<void>;
   saveDepartments: (config: DepartmentsConfig) => Promise<void>;
   toggleDepartmentCollapsed: (departmentName: string) => void;
   setDepartmentCollapsed: (departmentName: string, collapsed: boolean) => void;
+  togglePillarCollapsed: (pillarId: string) => void;
 
-  // Computed helper
+  // Computed helpers
   getGroupedTeams: (availableTeams: string[]) => DepartmentGroup[];
+  getGroupedByPillar: () => PillarGroup[];
 }
 
 export const useDepartmentStore = create<DepartmentState>()(
   persist(
     (set, get) => ({
       departments: null,
+      teamInfos: [],
       collapsedDepartments: [],
+      collapsedPillars: [],
 
       loadDepartments: async () => {
         try {
@@ -33,6 +40,16 @@ export const useDepartmentStore = create<DepartmentState>()(
         } catch (error) {
           console.error('Failed to load departments:', error);
           set({ departments: { departments: [] } });
+        }
+      },
+
+      loadTeamInfos: async () => {
+        try {
+          const infos = await invoke<TeamInfo[]>('list_teams_info');
+          set({ teamInfos: infos });
+        } catch (error) {
+          console.error('Failed to load team infos:', error);
+          set({ teamInfos: [] });
         }
       },
 
@@ -54,6 +71,14 @@ export const useDepartmentStore = create<DepartmentState>()(
           collapsedDepartments: collapsed
             ? [...new Set([...state.collapsedDepartments, departmentName])]
             : state.collapsedDepartments.filter(d => d !== departmentName),
+        }));
+      },
+
+      togglePillarCollapsed: (pillarId: string) => {
+        set((state) => ({
+          collapsedPillars: state.collapsedPillars.includes(pillarId)
+            ? state.collapsedPillars.filter(p => p !== pillarId)
+            : [...state.collapsedPillars, pillarId],
         }));
       },
 
@@ -108,12 +133,77 @@ export const useDepartmentStore = create<DepartmentState>()(
 
         return groups;
       },
+
+      getGroupedByPillar: (): PillarGroup[] => {
+        const { teamInfos } = get();
+
+        if (teamInfos.length === 0) {
+          return [];
+        }
+
+        // Define pillar order and display names
+        const pillarOrder = [
+          { id: 'organizational-intelligence', name: 'Organizational Intelligence', group: 'pillar-1' },
+          { id: 'autonomous-operations', name: 'Autonomous Operations', group: 'pillar-2' },
+          { id: 'human-ai-collaboration', name: 'Human-AI Collaboration', group: 'pillar-3' },
+          { id: 'foundation', name: 'Foundation', group: 'foundation' },
+          { id: 'support', name: 'Support', group: 'support' },
+        ];
+
+        const groups: PillarGroup[] = [];
+        const assignedTeams = new Set<string>();
+
+        // Group teams by pillar/group
+        for (const pillar of pillarOrder) {
+          const pillarTeams = teamInfos.filter(t =>
+            t.group === pillar.group || t.pillar === pillar.id
+          );
+
+          if (pillarTeams.length > 0) {
+            pillarTeams.forEach(t => assignedTeams.add(t.id));
+
+            // Create department groups within pillar
+            const deptGroups: DepartmentGroup[] = [{
+              name: pillar.name,
+              order: 0,
+              teams: pillarTeams.map(t => t.id),
+              isOther: false,
+            }];
+
+            groups.push({
+              id: pillar.id,
+              name: pillar.name,
+              departments: deptGroups,
+              isOther: false,
+            });
+          }
+        }
+
+        // Add root-level teams (like "default") as "Teams" group
+        const rootTeams = teamInfos.filter(t => !assignedTeams.has(t.id));
+        if (rootTeams.length > 0) {
+          groups.unshift({
+            id: 'root',
+            name: 'Teams',
+            departments: [{
+              name: 'Teams',
+              order: 0,
+              teams: rootTeams.map(t => t.id),
+              isOther: true,
+            }],
+            isOther: true,
+          });
+        }
+
+        return groups;
+      },
     }),
     {
       name: 'nolan-departments',
       partialize: (state) => ({
         // Only persist the UI state, not the data from backend
         collapsedDepartments: state.collapsedDepartments,
+        collapsedPillars: state.collapsedPillars,
       }),
     }
   )

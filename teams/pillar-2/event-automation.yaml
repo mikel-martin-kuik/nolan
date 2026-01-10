@@ -1,54 +1,71 @@
 team:
-  id: "event-automation"
-  name: "Event & Automation"
-  prefix: "EA"
-  pillar: "autonomous-operations"
-  department: "Scheduled Operations"
-  mission: "Enable event-driven execution beyond cron scheduling"
-
-  ownership:
-    milestones:
-      - "V2.1"  # Event-Driven Orchestration
-    directories:
-      - "src-tauri/src/cronos/"
-      - "src-tauri/src/events/"
-      - "cronos/"
-    file_patterns:
-      - "**/cronos/**"
-      - "**/events/**"
-
+  name: event-automation
+  description: "Automates event-driven workflows and scheduled task management"
+  version: "1.0.0"
   agents:
-    - name: "EA-Coordinator"
-      role_template: "coordinator"
-      model: "opus"
-      description: "Orchestrates event automation workflow"
-
-    - name: "EA-Architect"
-      role_template: "architect"
-      model: "opus"
-      description: "Designs event-driven architecture"
-
-    - name: "EA-DevOps"
-      role_template: "devops-engineer"
-      model: "sonnet"
-      description: "Implements automation pipelines"
-
-    - name: "EA-Implementer"
-      role_template: "implementer"
-      model: "sonnet"
-      description: "Implements event handlers and triggers"
-
-    - name: "EA-Tester"
-      role_template: "qa-automation"
-      model: "sonnet"
-      description: "Tests automation reliability"
-
+    - name: ea-coordinator
+      output_file: NOTES.md
+      required_sections:
+        - Current Assignment
+        - Handoff Log
+      file_permissions: restricted
+      workflow_participant: false
+    - name: ea-architect
+      output_file: research.md
+      required_sections:
+        - Problem
+        - Findings
+        - Recommendations
+      file_permissions: restricted
+      workflow_participant: true
+    - name: ea-devops
+      output_file: plan.md
+      required_sections:
+        - Overview
+        - Tasks
+        - Risks
+      file_permissions: restricted
+      workflow_participant: true
+    - name: ea-implementer
+      output_file: progress.md
+      required_sections:
+        - Status
+        - Changes
+        - Next Steps
+      file_permissions: permissive
+      workflow_participant: true
+    - name: ea-tester
+      output_file: test-results.md
+      required_sections:
+        - Summary
+        - Findings
+        - Recommendation
+      file_permissions: restricted
+      workflow_participant: true
   workflow:
+    coordinator: ea-coordinator
     phases:
-      - research
-      - plan
-      - implement
-      - review
-      - audit
-
-  policy: "pillar-2"
+      - name: research
+        owner: ea-architect
+        output: research.md
+        requires: []
+      - name: plan
+        owner: ea-devops
+        output: plan.md
+        requires:
+          - research.md
+      - name: implement
+        owner: ea-implementer
+        output: progress.md
+        requires:
+          - plan.md
+      - name: test
+        owner: ea-tester
+        output: test-results.md
+        requires:
+          - progress.md
+      - name: implementation-audit
+        owner: ea-tester
+        output: implementation-audit.md
+        requires:
+          - test-results.md

@@ -1,60 +1,80 @@
 team:
-  id: "platform-engineering"
-  name: "Platform Engineering"
-  prefix: "PE"
-  pillar: null  # Foundation, not pillar-aligned
-  department: "Infrastructure"
-  mission: "Maintain core Nolan platform (Tauri, React, Rust)"
-
-  ownership:
-    milestones: []  # Core platform, not specific milestone
-    directories:
-      - "src-tauri/src/core/"
-      - "src/components/core/"
-      - "src-tauri/src/commands/"
-      - "src-tauri/src/api/"
-    file_patterns:
-      - "src-tauri/src/*.rs"
-      - "src/App.tsx"
-      - "src/main.tsx"
-
+  name: platform-engineering
+  description: "Builds and maintains the core Nolan platform infrastructure and tooling"
+  version: "1.0.0"
   agents:
-    - name: "PE-Coordinator"
-      role_template: "coordinator"
-      model: "opus"
-      description: "Orchestrates platform engineering workflow"
-
-    - name: "PE-Architect"
-      role_template: "architect"
-      model: "opus"
-      description: "Designs platform architecture"
-
-    - name: "PE-FrontendDev"
-      role_template: "implementer"
-      model: "sonnet"
-      description: "Implements React/TypeScript frontend"
-
-    - name: "PE-BackendDev"
-      role_template: "implementer"
-      model: "sonnet"
-      description: "Implements Rust/Tauri backend"
-
-    - name: "PE-DevOps"
-      role_template: "devops-engineer"
-      model: "sonnet"
-      description: "Manages build and deployment"
-
-    - name: "PE-Reviewer"
-      role_template: "reviewer"
-      model: "sonnet"
-      description: "Reviews platform changes"
-
+    - name: pe-coordinator
+      output_file: NOTES.md
+      required_sections:
+        - Current Assignment
+        - Handoff Log
+      file_permissions: restricted
+      workflow_participant: false
+    - name: pe-architect
+      output_file: research.md
+      required_sections:
+        - Problem
+        - Findings
+        - Recommendations
+      file_permissions: restricted
+      workflow_participant: true
+    - name: pe-frontenddev
+      output_file: frontend-progress.md
+      required_sections:
+        - Status
+        - Changes
+        - Next Steps
+      file_permissions: permissive
+      workflow_participant: true
+    - name: pe-backenddev
+      output_file: backend-progress.md
+      required_sections:
+        - Status
+        - Changes
+        - Next Steps
+      file_permissions: permissive
+      workflow_participant: true
+    - name: pe-devops
+      output_file: plan.md
+      required_sections:
+        - Overview
+        - Tasks
+        - Risks
+      file_permissions: restricted
+      workflow_participant: true
+    - name: pe-reviewer
+      output_file: implementation-audit.md
+      required_sections:
+        - Summary
+        - Findings
+        - Recommendation
+      file_permissions: restricted
+      workflow_participant: true
   workflow:
+    coordinator: pe-coordinator
     phases:
-      - research
-      - plan
-      - implement
-      - review
-      - audit
-
-  policy: "default"
+      - name: research
+        owner: pe-architect
+        output: research.md
+        requires: []
+      - name: plan
+        owner: pe-devops
+        output: plan.md
+        requires:
+          - research.md
+      - name: implement-frontend
+        owner: pe-frontenddev
+        output: frontend-progress.md
+        requires:
+          - plan.md
+      - name: implement-backend
+        owner: pe-backenddev
+        output: backend-progress.md
+        requires:
+          - plan.md
+      - name: implementation-audit
+        owner: pe-reviewer
+        output: implementation-audit.md
+        requires:
+          - frontend-progress.md
+          - backend-progress.md

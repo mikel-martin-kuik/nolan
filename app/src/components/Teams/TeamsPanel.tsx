@@ -29,7 +29,19 @@ interface ContextMenuState {
 
 export const TeamsPanel: React.FC = () => {
   const { availableTeams, loadAvailableTeams, loadTeam } = useTeamStore();
-  const { departments, loadDepartments, saveDepartments, collapsedDepartments, toggleDepartmentCollapsed, getGroupedTeams } = useDepartmentStore();
+  const {
+    departments,
+    loadDepartments,
+    saveDepartments,
+    collapsedDepartments,
+    toggleDepartmentCollapsed,
+    getGroupedTeams,
+    // New: pillar grouping
+    loadTeamInfos,
+    collapsedPillars,
+    togglePillarCollapsed,
+    getGroupedByPillar,
+  } = useDepartmentStore();
   const { success, error: showError } = useToastStore();
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [teamConfig, setTeamConfig] = useState<TeamConfig | null>(null);
@@ -92,10 +104,15 @@ export const TeamsPanel: React.FC = () => {
     loadAvailableTeams();
     fetchAgentInfos();
     loadDepartments();
-  }, [loadAvailableTeams, fetchAgentInfos, loadDepartments]);
+    loadTeamInfos();  // Load hierarchical team info
+  }, [loadAvailableTeams, fetchAgentInfos, loadDepartments, loadTeamInfos]);
 
-  // Get teams grouped by department
+  // Get teams grouped by department (flat view)
   const departmentGroups = getGroupedTeams(availableTeams);
+
+  // Get teams grouped by pillar (hierarchical view)
+  const pillarGroups = getGroupedByPillar();
+  const showPillarView = pillarGroups.length > 0 && pillarGroups.some(p => !p.isOther);
 
   const handleSelectTeam = async (teamName: string) => {
     setSelectedTeam(teamName);
@@ -490,60 +507,125 @@ export const TeamsPanel: React.FC = () => {
             </Button>
           </div>
           <div className="flex-1 overflow-auto px-2 pb-4 space-y-3">
-            {departmentGroups.map((group) => {
-              const isCollapsed = collapsedDepartments.includes(group.name);
+            {showPillarView ? (
+              // Hierarchical pillar view
+              pillarGroups.map((pillar) => {
+                const isPillarCollapsed = collapsedPillars.includes(pillar.id);
 
-              return (
-                <div key={group.name}>
-                  {/* Department Header */}
-                  <button
-                    onClick={() => toggleDepartmentCollapsed(group.name)}
-                    className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-secondary/30 rounded-lg transition-colors"
-                  >
-                    {isCollapsed ? (
-                      <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
-                    ) : (
-                      <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                return (
+                  <div key={pillar.id} className="mb-2">
+                    {/* Pillar Header */}
+                    {!pillar.isOther && (
+                      <button
+                        onClick={() => togglePillarCollapsed(pillar.id)}
+                        className="w-full flex items-center gap-2 px-2 py-2 text-left hover:bg-secondary/30 rounded-lg transition-colors border-l-2 border-primary/50"
+                      >
+                        {isPillarCollapsed ? (
+                          <ChevronRight className="w-4 h-4 text-primary" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-primary" />
+                        )}
+                        <span className="text-sm font-semibold text-foreground">
+                          {pillar.name}
+                        </span>
+                        <span className="text-xs text-muted-foreground/60 ml-auto">
+                          {pillar.departments.reduce((sum, d) => sum + d.teams.length, 0)}
+                        </span>
+                      </button>
                     )}
-                    <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      {group.name}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground/60 ml-auto">
-                      {group.teams.length}
-                    </span>
-                  </button>
 
-                  {/* Team List (collapsible) */}
-                  {!isCollapsed && (
-                    <div className="mt-1 space-y-1">
-                      {group.teams.map((teamName) => (
-                        <button
-                          key={teamName}
-                          onClick={() => handleSelectTeam(teamName)}
-                          onContextMenu={(e) => openContextMenu(e, 'team', teamName)}
-                          className={`w-full text-left p-2.5 rounded-lg transition-colors flex items-center gap-2 ${
-                            selectedTeam === teamName
-                              ? 'bg-primary/10 border border-primary/30 text-foreground'
-                              : 'bg-secondary/30 border border-border hover:bg-secondary/50 text-foreground'
-                          }`}
-                        >
-                          <FileText className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                          <span className="font-medium text-sm truncate">{teamName}</span>
-                          {teamName === 'default' && (
-                            <Badge variant="secondary" className="ml-auto text-[10px]">
-                              Default
-                            </Badge>
-                          )}
-                          {selectedTeam === teamName && (
-                            <Check className="w-3.5 h-3.5 text-primary ml-auto flex-shrink-0" />
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+                    {/* Teams within pillar */}
+                    {(!isPillarCollapsed || pillar.isOther) && (
+                      <div className={pillar.isOther ? '' : 'ml-2 mt-1'}>
+                        {pillar.departments.map((dept) => (
+                          <div key={dept.name} className="space-y-1">
+                            {dept.teams.map((teamName) => (
+                              <button
+                                key={teamName}
+                                onClick={() => handleSelectTeam(teamName)}
+                                onContextMenu={(e) => openContextMenu(e, 'team', teamName)}
+                                className={`w-full text-left p-2.5 rounded-lg transition-colors flex items-center gap-2 ${
+                                  selectedTeam === teamName
+                                    ? 'bg-primary/10 border border-primary/30 text-foreground'
+                                    : 'bg-secondary/30 border border-border hover:bg-secondary/50 text-foreground'
+                                }`}
+                              >
+                                <FileText className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                                <span className="font-medium text-sm truncate">{teamName}</span>
+                                {teamName === 'default' && (
+                                  <Badge variant="secondary" className="ml-auto text-[10px]">
+                                    Default
+                                  </Badge>
+                                )}
+                                {selectedTeam === teamName && (
+                                  <Check className="w-3.5 h-3.5 text-primary ml-auto flex-shrink-0" />
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            ) : (
+              // Fallback to flat department view (backward compatible)
+              departmentGroups.map((group) => {
+                const isCollapsed = collapsedDepartments.includes(group.name);
+
+                return (
+                  <div key={group.name}>
+                    {/* Department Header */}
+                    <button
+                      onClick={() => toggleDepartmentCollapsed(group.name)}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-secondary/30 rounded-lg transition-colors"
+                    >
+                      {isCollapsed ? (
+                        <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                      )}
+                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                        {group.name}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground/60 ml-auto">
+                        {group.teams.length}
+                      </span>
+                    </button>
+
+                    {/* Team List (collapsible) */}
+                    {!isCollapsed && (
+                      <div className="mt-1 space-y-1">
+                        {group.teams.map((teamName) => (
+                          <button
+                            key={teamName}
+                            onClick={() => handleSelectTeam(teamName)}
+                            onContextMenu={(e) => openContextMenu(e, 'team', teamName)}
+                            className={`w-full text-left p-2.5 rounded-lg transition-colors flex items-center gap-2 ${
+                              selectedTeam === teamName
+                                ? 'bg-primary/10 border border-primary/30 text-foreground'
+                                : 'bg-secondary/30 border border-border hover:bg-secondary/50 text-foreground'
+                            }`}
+                          >
+                            <FileText className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                            <span className="font-medium text-sm truncate">{teamName}</span>
+                            {teamName === 'default' && (
+                              <Badge variant="secondary" className="ml-auto text-[10px]">
+                                Default
+                              </Badge>
+                            )}
+                            {selectedTeam === teamName && (
+                              <Check className="w-3.5 h-3.5 text-primary ml-auto flex-shrink-0" />
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
             {availableTeams.length === 0 && (
               <p className="text-xs text-muted-foreground text-center py-4">
                 No teams found. Create your first team.

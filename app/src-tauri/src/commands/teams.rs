@@ -1,6 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
-use crate::config::{TeamConfig, DepartmentsConfig};
+use walkdir::WalkDir;
+use crate::config::{TeamConfig, DepartmentsConfig, TeamInfo};
 
 /// Get team configuration by name
 #[tauri::command]
@@ -50,35 +51,107 @@ pub async fn save_team_config(team_name: String, config: TeamConfig) -> Result<(
     Ok(())
 }
 
-/// List all available team configurations
+/// Recursively scan a directory for team YAML files
+/// Returns tuples of (team_id, group, relative_path)
+fn scan_teams_recursive(teams_dir: &std::path::Path) -> Result<Vec<(String, String, String)>, String> {
+    let mut teams = Vec::new();
+
+    for entry in WalkDir::new(teams_dir)
+        .max_depth(2)  // Root (depth 0), immediate children dirs (depth 1), files in subdirs (depth 2)
+        .into_iter()
+        .filter_map(|e| e.ok())
+    {
+        let path = entry.path();
+
+        // Skip directories and non-yaml files
+        if !path.is_file() || path.extension().and_then(|s| s.to_str()) != Some("yaml") {
+            continue;
+        }
+
+        // Skip departments.yaml
+        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+            if stem == "departments" {
+                continue;
+            }
+
+            // Get relative path from teams_dir
+            let relative = path.strip_prefix(teams_dir)
+                .map_err(|_| "Failed to get relative path")?;
+
+            // Determine group (parent directory name, or "" for root)
+            let group = relative.parent()
+                .and_then(|p| p.to_str())
+                .unwrap_or("")
+                .to_string();
+
+            let relative_str = relative.to_str()
+                .ok_or("Invalid path encoding")?
+                .to_string();
+
+            teams.push((stem.to_string(), group, relative_str));
+        }
+    }
+
+    Ok(teams)
+}
+
+/// Map directory group to pillar ID
+fn group_to_pillar(group: &str) -> Option<String> {
+    match group {
+        "pillar-1" => Some("organizational-intelligence".to_string()),
+        "pillar-2" => Some("autonomous-operations".to_string()),
+        "pillar-3" => Some("human-ai-collaboration".to_string()),
+        _ => None,
+    }
+}
+
+/// List all available team configurations (backward compatible - returns just IDs)
 #[tauri::command]
 pub async fn list_teams() -> Result<Vec<String>, String> {
+    // Backward compatible: return just team IDs
+    let infos = list_teams_info().await?;
+    Ok(infos.into_iter().map(|t| t.id).collect())
+}
+
+/// List all teams with full metadata (new endpoint for hierarchical display)
+#[tauri::command]
+pub async fn list_teams_info() -> Result<Vec<TeamInfo>, String> {
     let nolan_root = std::env::var("NOLAN_ROOT")
         .map_err(|_| "NOLAN_ROOT not set".to_string())?;
     let teams_dir = PathBuf::from(nolan_root).join("teams");
 
     if !teams_dir.exists() {
-        return Ok(vec![]); // Return empty list if teams directory doesn't exist yet
+        return Ok(vec![]);
     }
 
-    let mut teams = Vec::new();
-    for entry in fs::read_dir(&teams_dir)
-        .map_err(|e| format!("Failed to read teams directory: {}", e))? {
-        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
-        let path = entry.path();
+    // Scan recursively
+    let team_entries = scan_teams_recursive(&teams_dir)?;
 
-        if path.extension().and_then(|s| s.to_str()) == Some("yaml") {
-            if let Some(name) = path.file_stem().and_then(|s| s.to_str()) {
-                // Exclude departments.yaml from team list
-                if name != "departments" {
-                    teams.push(name.to_string());
-                }
+    let mut teams: Vec<TeamInfo> = team_entries.into_iter()
+        .map(|(id, group, path)| {
+            // Try to load team name from config, fall back to id
+            let name = TeamConfig::load_from_path(&teams_dir.join(&path))
+                .map(|c| c.team.name.clone())
+                .unwrap_or_else(|_| id.clone());
+
+            TeamInfo {
+                id: id.clone(),
+                name,
+                group: group.clone(),
+                pillar: group_to_pillar(&group),
+                path,
             }
-        }
-    }
+        })
+        .collect();
 
-    // Sort alphabetically
-    teams.sort();
+    // Sort: root teams first, then by group, then by id
+    teams.sort_by(|a, b| {
+        match (a.group.is_empty(), b.group.is_empty()) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.group.cmp(&b.group).then(a.id.cmp(&b.id)),
+        }
+    });
 
     Ok(teams)
 }
@@ -104,6 +177,7 @@ pub async fn get_project_team(project_name: String) -> Result<String, String> {
 ///
 /// This renames both the file and updates the team name inside the YAML content.
 /// Security: Validates both names to prevent path traversal attacks
+/// Supports teams in subdirectories - renamed team stays in same directory
 #[tauri::command]
 pub async fn rename_team_config(old_name: String, new_name: String) -> Result<(), String> {
     // Validate old_name doesn't contain path traversal
@@ -130,20 +204,21 @@ pub async fn rename_team_config(old_name: String, new_name: String) -> Result<()
         return Ok(());
     }
 
-    let nolan_root = std::env::var("NOLAN_ROOT")
-        .map_err(|_| "NOLAN_ROOT not set".to_string())?;
-    let teams_dir = PathBuf::from(nolan_root).join("teams");
+    // Resolve old path (checks root and subdirectories)
+    let old_path = TeamConfig::resolve_team_path(&old_name)
+        .map_err(|_| format!("Team '{}' does not exist", old_name))?;
 
-    let old_path = teams_dir.join(format!("{}.yaml", old_name));
-    let new_path = teams_dir.join(format!("{}.yaml", new_name));
+    // New path should be in the same directory as old path (keep team in its pillar)
+    let parent_dir = old_path.parent()
+        .ok_or_else(|| "Failed to get parent directory".to_string())?;
+    let new_path = parent_dir.join(format!("{}.yaml", new_name));
 
-    // Check old file exists
-    if !old_path.exists() {
-        return Err(format!("Team '{}' does not exist", old_name));
-    }
-
-    // Check new file doesn't already exist
+    // Check new file doesn't already exist (in same directory or anywhere)
     if new_path.exists() {
+        return Err(format!("Team '{}' already exists in this directory", new_name));
+    }
+    // Also check if team exists elsewhere
+    if TeamConfig::resolve_team_path(&new_name).is_ok() {
         return Err(format!("Team '{}' already exists", new_name));
     }
 
@@ -200,6 +275,7 @@ pub async fn set_project_team(project_name: String, team_name: String) -> Result
 ///
 /// Security: Validates team name to prevent path traversal attacks
 /// Prevents deletion of the "default" team
+/// Supports teams in subdirectories (pillar-1/, pillar-2/, etc.)
 #[tauri::command]
 pub async fn delete_team(team_name: String) -> Result<(), String> {
     // Prevent deletion of the default team
@@ -212,16 +288,9 @@ pub async fn delete_team(team_name: String) -> Result<(), String> {
         return Err("Invalid team name: path traversal not allowed".to_string());
     }
 
-    let nolan_root = std::env::var("NOLAN_ROOT")
-        .map_err(|_| "NOLAN_ROOT not set".to_string())?;
-    let teams_dir = PathBuf::from(nolan_root).join("teams");
-
-    let config_path = teams_dir.join(format!("{}.yaml", team_name));
-
-    // Check file exists
-    if !config_path.exists() {
-        return Err(format!("Team '{}' does not exist", team_name));
-    }
+    // Resolve team path (checks root and subdirectories)
+    let config_path = TeamConfig::resolve_team_path(&team_name)
+        .map_err(|_| format!("Team '{}' does not exist", team_name))?;
 
     // Delete the file
     fs::remove_file(&config_path)

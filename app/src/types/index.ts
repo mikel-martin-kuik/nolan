@@ -62,6 +62,9 @@ export interface Department {
   name: string;
   order: number;
   teams: string[];
+  pillar?: string;         // Parent pillar ID (for hierarchical display)
+  parent?: string;         // Parent department (for nesting)
+  description?: string;
 }
 
 export interface DepartmentsConfig {
@@ -72,6 +75,23 @@ export interface DepartmentGroup {
   name: string;
   order: number;
   teams: string[];
+  isOther: boolean;
+}
+
+// Team info with hierarchical metadata (from list_teams_info backend)
+export interface TeamInfo {
+  id: string;             // Team identifier
+  name: string;           // Display name from config
+  group: string;          // Directory group ("pillar-1", "foundation", "")
+  pillar: string | null;  // Pillar ID if applicable
+  path: string;           // Relative path from teams/
+}
+
+// Pillar group for hierarchical display
+export interface PillarGroup {
+  id: string;
+  name: string;
+  departments: DepartmentGroup[];
   isOther: boolean;
 }
 

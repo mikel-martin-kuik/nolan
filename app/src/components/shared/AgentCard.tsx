@@ -215,7 +215,8 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   const handleEditClaudeMd = async () => {
     setContextMenu(null);
     try {
-      const content = await invoke<string>('read_agent_claude_md', { agent: agent.name });
+      const result = await invoke<string | { content: string }>('read_agent_claude_md', { agent: agent.name });
+      const content = typeof result === 'string' ? result : result?.content ?? '';
       setClaudeMdContent(content);
       setShowClaudeMdDialog(true);
     } catch (error) {

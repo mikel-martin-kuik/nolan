@@ -76,6 +76,7 @@ pub async fn read_file(
 /// Write file request
 #[derive(Deserialize)]
 pub struct WriteFileRequest {
+    #[serde(alias = "file_path", alias = "filePath")]
     path: String,
     content: String,
 }
@@ -113,6 +114,52 @@ pub async fn set_team(
     Json(req): Json<SetTeamRequest>,
 ) -> Result<Json<serde_json::Value>, impl IntoResponse> {
     match teams::set_project_team(name, req.team_name).await {
+        Ok(()) => Ok(Json(serde_json::json!({ "success": true }))),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+/// Read roadmap.md
+pub async fn read_roadmap() -> Result<Json<String>, impl IntoResponse> {
+    match projects::read_roadmap().await {
+        Ok(content) => Ok(Json(content)),
+        Err(e) => Err(error_response(StatusCode::NOT_FOUND, e)),
+    }
+}
+
+/// Update project status request
+#[derive(Deserialize)]
+pub struct UpdateStatusRequest {
+    status: String,
+}
+
+/// Update project status marker
+pub async fn update_status(
+    Path(name): Path<String>,
+    Json(req): Json<UpdateStatusRequest>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match projects::update_project_status(name, req.status).await {
+        Ok(()) => Ok(Json(serde_json::json!({ "success": true }))),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+/// Update file marker request
+#[derive(Deserialize)]
+pub struct UpdateFileMarkerRequest {
+    #[serde(alias = "file_path", alias = "filePath")]
+    file_path: String,
+    completed: bool,
+    #[serde(alias = "agent_name", alias = "agentName")]
+    agent_name: Option<String>,
+}
+
+/// Update HANDOFF marker in a workflow file
+pub async fn update_file_marker(
+    Path(name): Path<String>,
+    Json(req): Json<UpdateFileMarkerRequest>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match projects::update_file_marker(name, req.file_path, req.completed, req.agent_name).await {
         Ok(()) => Ok(Json(serde_json::json!({ "success": true }))),
         Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
     }

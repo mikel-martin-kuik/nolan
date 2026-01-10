@@ -264,7 +264,8 @@ export const CronosPanel: React.FC = () => {
   // Handle edit instructions (CLAUDE.md)
   const handleEditInstructions = useCallback(async (name: string) => {
     try {
-      const content = await invoke<string>('read_cron_agent_claude_md', { name });
+      const result = await invoke<string | { content: string }>('read_cron_agent_claude_md', { name });
+      const content = typeof result === 'string' ? result : result?.content ?? '';
       setInstructionsContent(content);
       setInstructionsAgent(name);
     } catch (err) {

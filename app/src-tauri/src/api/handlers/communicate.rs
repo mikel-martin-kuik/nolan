@@ -1,6 +1,7 @@
 //! Communication HTTP handlers
 
 use axum::{
+    extract::Query,
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -86,6 +87,23 @@ pub async fn broadcast_all(
 ) -> Result<Json<serde_json::Value>, impl IntoResponse> {
     match communicator::broadcast_all(req.team_name, req.message).await {
         Ok(result) => Ok(Json(serde_json::json!({ "result": result }))),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+/// Get available targets query params
+#[derive(Deserialize)]
+pub struct GetTargetsQuery {
+    team: Option<String>,
+}
+
+/// Get available message targets
+pub async fn get_targets(
+    Query(query): Query<GetTargetsQuery>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    let team_name = query.team.unwrap_or_else(|| "default".to_string());
+    match communicator::get_available_targets(team_name).await {
+        Ok(targets) => Ok(Json(serde_json::json!(targets))),
         Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
     }
 }

@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback, useState, useEffect } from 'react';
-import { MessageCircle, Activity, Bot, ChevronDown, ChevronRight } from 'lucide-react';
+import { MessageCircle, Activity, Bot, ChevronDown, ChevronRight, Users } from 'lucide-react';
 import { useTeamStore } from '../../store/teamStore';
 import { useDepartmentStore } from '../../store/departmentStore';
 import { useAgentStore } from '../../store/agentStore';
@@ -201,29 +201,37 @@ export const ChatView: React.FC = () => {
 
   // Render tab switcher
   const renderTabSwitcher = () => (
-    <div className="flex border-b border-border">
-      <button
-        onClick={() => handleTabChange('teams')}
-        className={cn(
-          'flex-1 px-4 py-2.5 text-sm font-medium transition-colors',
-          chatMode === 'teams'
-            ? 'text-primary border-b-2 border-primary bg-primary/5'
-            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-        )}
-      >
-        Teams
-      </button>
-      <button
-        onClick={() => handleTabChange('agents')}
-        className={cn(
-          'flex-1 px-4 py-2.5 text-sm font-medium transition-colors',
-          chatMode === 'agents'
-            ? 'text-primary border-b-2 border-primary bg-primary/5'
-            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
-        )}
-      >
-        Free Agents
-      </button>
+    <div className="flex items-center gap-1 p-2">
+      <div className="flex items-center gap-1 p-1 glass-card rounded-lg flex-1">
+        <button
+          onClick={() => handleTabChange('teams')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded text-xs font-medium transition-all',
+            chatMode === 'teams' && 'bg-foreground/10 text-foreground',
+            chatMode !== 'teams' && 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span>Teams</span>
+          {hasTeams && (
+            <span className="text-[10px] px-1 rounded bg-foreground/10">{availableTeams.length}</span>
+          )}
+        </button>
+        <button
+          onClick={() => handleTabChange('agents')}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded text-xs font-medium transition-all',
+            chatMode === 'agents' && 'bg-foreground/10 text-foreground',
+            chatMode !== 'agents' && 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          <Bot className="w-3.5 h-3.5" />
+          <span>Free Agents</span>
+          {hasFreeAgents && (
+            <span className="text-[10px] px-1 rounded bg-foreground/10">{freeAgents.length}</span>
+          )}
+        </button>
+      </div>
     </div>
   );
 

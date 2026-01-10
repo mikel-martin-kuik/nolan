@@ -14,6 +14,13 @@ use crate::commands::agents::{
     self, AgentDirectoryInfo, AgentMetadata,
 };
 
+/// Get agent template query params
+#[derive(Deserialize)]
+pub struct GetTemplateQuery {
+    name: String,
+    role: String,
+}
+
 /// Error response
 #[derive(Serialize)]
 struct ErrorResponse {
@@ -140,6 +147,16 @@ pub async fn update_claude_md(
 ) -> Result<Json<serde_json::Value>, impl IntoResponse> {
     match crate::commands::lifecycle::write_agent_claude_md(name, req.content).await {
         Ok(result) => Ok(Json(serde_json::json!({ "success": true, "result": result }))),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+/// Get agent template
+pub async fn get_template(
+    Query(query): Query<GetTemplateQuery>,
+) -> Result<Json<String>, impl IntoResponse> {
+    match agents::get_agent_template(query.name, query.role).await {
+        Ok(template) => Ok(Json(template)),
         Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
     }
 }

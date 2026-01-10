@@ -1,4 +1,16 @@
-export type ProjectStatus = 'complete' | 'inprogress' | 'pending';
+export type ProjectStatus = 'complete' | 'inprogress' | 'pending' | 'delegated' | 'archived';
+
+/** Display metadata for project statuses */
+export const PROJECT_STATUS_META: Record<ProjectStatus, { label: string; color: string }> = {
+  inprogress: { label: 'In Progress', color: 'text-blue-500' },
+  pending: { label: 'Pending', color: 'text-yellow-500' },
+  delegated: { label: 'Delegated', color: 'text-purple-500' },
+  complete: { label: 'Complete', color: 'text-green-500' },
+  archived: { label: 'Archived', color: 'text-muted-foreground' },
+};
+
+/** All valid status values in display order */
+export const PROJECT_STATUS_OPTIONS: ProjectStatus[] = ['inprogress', 'pending', 'delegated', 'complete', 'archived'];
 
 /** Completion status for a workflow file based on HANDOFF markers */
 export interface FileCompletion {

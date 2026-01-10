@@ -41,11 +41,13 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({
     setLoading(true);
     try {
       // Load CLAUDE.md
-      const fileContent = await invoke<string>('get_agent_role_file', {
+      const fileContent = await invoke<string | { content: string }>('get_agent_role_file', {
         agentName
       });
-      setContent(fileContent);
-      setOriginalContent(fileContent);
+      // Handle both raw string (HTTP API) and wrapped object (legacy)
+      const contentStr = typeof fileContent === 'string' ? fileContent : fileContent?.content ?? '';
+      setContent(contentStr);
+      setOriginalContent(contentStr);
 
       // Load agent metadata (role and model)
       try {
@@ -237,7 +239,7 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({
             <span> to close</span>
           </div>
           <div className="text-xs text-muted-foreground">
-            {content.split('\n').length} lines • {content.length} characters
+            {(content || '').split('\n').length} lines • {(content || '').length} characters
           </div>
         </div>
       </div>

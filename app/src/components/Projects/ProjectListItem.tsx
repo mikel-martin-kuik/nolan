@@ -6,6 +6,8 @@ import { ProjectInfo, ProjectFile } from '@/types/projects';
 import { getWorkflowSteps, getFileOrder } from '@/types';
 import { useTeamStore } from '@/store/teamStore';
 import { cn } from '@/lib/utils';
+import { ProjectStatusDropdown } from './ProjectStatusDropdown';
+import { FileMarkerCheckbox } from './FileMarkerCheckbox';
 
 interface ProjectListItemProps {
   project: ProjectInfo;
@@ -33,7 +35,7 @@ export const ProjectListItem = memo(function ProjectListItem({
     queryFn: async () => invoke<ProjectFile[]>('list_project_files', {
       projectName: project.name
     }),
-    enabled: isExpanded,
+    enabled: isExpanded && !!project.name,
     // Increased refetch interval from 10s to 30s for better performance
     refetchInterval: isExpanded ? 30000 : false,
   });
@@ -102,6 +104,12 @@ export const ProjectListItem = memo(function ProjectListItem({
           {project.name}
         </span>
 
+        {/* Status Dropdown */}
+        <ProjectStatusDropdown
+          projectName={project.name}
+          currentStatus={project.status}
+        />
+
         {/* Step Progress - 4 Dots */}
         <div className="flex items-center gap-0.5">
           {stepCompletion.map((step) => (
@@ -124,6 +132,15 @@ export const ProjectListItem = memo(function ProjectListItem({
         <div className="ml-5 mt-0.5 space-y-0.5">
           {sortedFiles.map(file => {
             const isPrompt = file.file_type === 'prompt';
+            // Workflow files are files that can have HANDOFF markers (not prompt, not coordinator)
+            const coordinatorType = projectTeamConfig?.team.workflow.coordinator || 'coordinator';
+            const isCoordinator = file.file_type === coordinatorType || file.file_type === 'coordinator';
+            const isWorkflowFile = !isPrompt && !isCoordinator && !file.is_placeholder;
+
+            // Find completion info for this file
+            const completion = project.file_completions.find(f =>
+              f.file === file.name || f.file === file.file_type
+            );
 
             return (
               <button
@@ -139,8 +156,16 @@ export const ProjectListItem = memo(function ProjectListItem({
                   !file.is_placeholder && !(isSelected && selectedFile === file.relative_path) && "text-muted-foreground hover:text-foreground hover:bg-accent/50"
                 )}
               >
-                {/* Prompt has no icon, workflow files have FileText/Circle */}
-                {!isPrompt && (
+                {/* Workflow files get checkbox, prompt has no icon, others have FileText/Circle */}
+                {isWorkflowFile ? (
+                  <FileMarkerCheckbox
+                    projectName={project.name}
+                    filePath={file.relative_path}
+                    isCompleted={completion?.completed ?? false}
+                    completedBy={completion?.completed_by}
+                    completedAt={completion?.completed_at}
+                  />
+                ) : !isPrompt && (
                   file.is_placeholder ? (
                     <Circle className="w-3 h-3 flex-shrink-0" />
                   ) : (

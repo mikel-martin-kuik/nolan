@@ -76,10 +76,11 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
   const fetchProjectPrompt = async (projectName: string) => {
     setLoadingPrompt(true);
     try {
-      const content = await invoke<string>('read_project_file', {
+      const result = await invoke<string | { content: string }>('read_project_file', {
         projectName,
         filePath: 'prompt.md',
       });
+      const content = typeof result === 'string' ? result : result?.content ?? '';
       setOriginalPrompt(content);
       setSavedOriginalPrompt(content);
     } catch {

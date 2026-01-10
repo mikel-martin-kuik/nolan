@@ -27,6 +27,29 @@ pub fn run() {
         // Non-fatal - continue startup
     }
 
+    // Attempt to recover orphaned agent sessions (from crash/restart)
+    // This finds both:
+    // - Ralph directories that exist but have no running tmux session
+    // - Team sessions that were in the registry but are no longer running
+    // and restarts them with --continue to resume the Claude conversation
+    match runtime.block_on(commands::lifecycle_core::recover_all_sessions()) {
+        Ok(result) => {
+            if !result.is_empty() {
+                eprintln!("Session recovery: {}", result.summary());
+                for msg in &result.recovered {
+                    eprintln!("  {}", msg);
+                }
+                for err in &result.errors {
+                    eprintln!("  Error: {}", err);
+                }
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: Failed to recover orphaned sessions: {}", e);
+            // Non-fatal - continue startup
+        }
+    }
+
     // Initialize Cronos scheduler
     if let Err(e) = runtime.block_on(cronos::commands::init_cronos()) {
         eprintln!("Warning: Failed to initialize Cronos scheduler: {}", e);
@@ -68,6 +91,8 @@ pub fn run() {
             kill_instance,
             kill_all_instances,
             get_agent_status,
+            recover_sessions,
+            list_orphaned_sessions,
             launch_terminal,
             open_agent_terminal,
             open_team_terminals,

@@ -1,7 +1,7 @@
 import React from 'react';
 import { ArrowDown, ArrowRight, Play, XCircle, LayoutGrid, ChevronRight, ChevronDown } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { invoke } from '@/lib/api';
+import { invoke, isBrowserMode } from '@/lib/api';
 import { Card } from '@/components/ui/card';
 import { Tooltip } from '@/components/ui/tooltip';
 import { AgentCard } from './AgentCard';
@@ -270,19 +270,22 @@ export const TeamCard: React.FC<TeamCardProps> = ({
                 <XCircle className="w-4 h-4" />
               </button>
             </Tooltip>
-            <Tooltip content="Terminals" side="bottom">
-              <button
-                onClick={onShowTerminals}
-                disabled={loading || !anyActive || !onShowTerminals}
-                className="w-9 h-9 rounded-xl flex items-center justify-center
-                  bg-secondary/50 border border-border text-muted-foreground
-                  hover:bg-accent hover:border-border hover:text-foreground
-                  active:scale-95 transition-all duration-200
-                  disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
-              >
-                <LayoutGrid className="w-4 h-4" />
-              </button>
-            </Tooltip>
+            {/* Terminals button - only show in Tauri app (can't open gnome-terminal in browser) */}
+            {!isBrowserMode() && (
+              <Tooltip content="Terminals" side="bottom">
+                <button
+                  onClick={onShowTerminals}
+                  disabled={loading || !anyActive || !onShowTerminals}
+                  className="w-9 h-9 rounded-xl flex items-center justify-center
+                    bg-secondary/50 border border-border text-muted-foreground
+                    hover:bg-accent hover:border-border hover:text-foreground
+                    active:scale-95 transition-all duration-200
+                    disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-secondary/50 disabled:hover:border-border disabled:hover:text-muted-foreground"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+              </Tooltip>
+            )}
 
             {/* Project info inline with buttons */}
             {anyActive && (

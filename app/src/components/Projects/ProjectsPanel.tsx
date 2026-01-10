@@ -56,12 +56,21 @@ export function ProjectsPanel() {
     loadRoadmapSummary();
   }, []);
 
-  // Group projects by status
+  // Group projects by status (mapping 5 statuses to 3 tabs)
+  // Active tab: inprogress, delegated
+  // Queued tab: pending
+  // Done tab: complete, archived
   const groupedProjects = useMemo(() => {
     if (!projects) return { inprogress: [], pending: [], complete: [] };
 
     return projects.reduce((acc, project) => {
-      acc[project.status].push(project);
+      // Map status to tab
+      const tabKey =
+        project.status === 'complete' || project.status === 'archived' ? 'complete' :
+        project.status === 'pending' ? 'pending' :
+        'inprogress'; // inprogress and delegated both go to Active tab
+
+      acc[tabKey].push(project);
       return acc;
     }, { inprogress: [] as ProjectInfo[], pending: [] as ProjectInfo[], complete: [] as ProjectInfo[] });
   }, [projects]);

@@ -1727,3 +1727,60 @@ pub async fn resize_terminal(session: String, cols: u32, rows: u32) -> Result<St
 
     Ok(format!("Resized {} to {}x{}", session, cols, rows))
 }
+
+/// Response from session recovery operation
+#[derive(Serialize)]
+pub struct RecoverSessionsResponse {
+    pub recovered: Vec<String>,
+    pub errors: Vec<String>,
+    pub summary: String,
+}
+
+/// Recover orphaned agent sessions after a crash
+///
+/// This finds agent directories that exist but have no running tmux session,
+/// and restarts them with --continue to resume the Claude conversation.
+///
+/// Supports both Ralph ephemeral instances and team agent sessions.
+#[tauri::command]
+pub async fn recover_sessions(app_handle: AppHandle) -> Result<RecoverSessionsResponse, String> {
+    use crate::commands::lifecycle_core::recover_all_sessions;
+
+    let result = recover_all_sessions().await?;
+
+    for msg in &result.recovered {
+        eprintln!("Session recovery: {}", msg);
+    }
+    for err in &result.errors {
+        eprintln!("Session recovery error: {}", err);
+    }
+
+    let summary = result.summary();
+
+    // Emit status change event so UI updates
+    emit_status_change(&app_handle).await;
+
+    Ok(RecoverSessionsResponse {
+        recovered: result.recovered,
+        errors: result.errors,
+        summary,
+    })
+}
+
+/// List orphaned agent sessions that can be recovered
+#[tauri::command]
+pub async fn list_orphaned_sessions() -> Result<Vec<String>, String> {
+    use crate::commands::lifecycle_core::{find_orphaned_ralph_instances, find_orphaned_team_sessions};
+
+    let mut sessions = Vec::new();
+
+    // Ralph instances
+    let ralph_orphaned = find_orphaned_ralph_instances()?;
+    sessions.extend(ralph_orphaned.into_iter().map(|i| i.session));
+
+    // Team sessions
+    let team_orphaned = find_orphaned_team_sessions()?;
+    sessions.extend(team_orphaned.into_iter().map(|s| s.session));
+
+    Ok(sessions)
+}

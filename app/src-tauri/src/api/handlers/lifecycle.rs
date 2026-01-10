@@ -196,3 +196,53 @@ pub async fn list_sessions() -> Result<Json<Vec<String>>, impl IntoResponse> {
         Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
     }
 }
+
+/// Recovery response
+#[derive(Serialize)]
+pub struct RecoveryResponse {
+    recovered: Vec<String>,
+    errors: Vec<String>,
+    summary: String,
+}
+
+/// List orphaned sessions that can be recovered
+/// Includes both Ralph instances and team agent sessions.
+pub async fn list_orphaned_sessions() -> Result<Json<Vec<String>>, impl IntoResponse> {
+    let mut sessions = Vec::new();
+
+    // Ralph instances
+    match lifecycle_core::find_orphaned_ralph_instances() {
+        Ok(instances) => {
+            sessions.extend(instances.into_iter().map(|i| i.session));
+        }
+        Err(e) => return Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+
+    // Team sessions
+    match lifecycle_core::find_orphaned_team_sessions() {
+        Ok(team_sessions) => {
+            sessions.extend(team_sessions.into_iter().map(|s| s.session));
+        }
+        Err(e) => return Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+
+    Ok(Json(sessions))
+}
+
+/// Recover orphaned sessions
+/// Finds agent directories that exist but have no running tmux session,
+/// and restarts them with --continue to resume the Claude conversation.
+/// Supports both Ralph instances and team agent sessions.
+pub async fn recover_sessions() -> Result<Json<RecoveryResponse>, impl IntoResponse> {
+    match lifecycle_core::recover_all_sessions().await {
+        Ok(result) => {
+            let summary = result.summary();
+            Ok(Json(RecoveryResponse {
+                recovered: result.recovered,
+                errors: result.errors,
+                summary,
+            }))
+        }
+        Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}

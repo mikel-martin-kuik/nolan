@@ -1,7 +1,7 @@
 //! Cronos (cron agents) HTTP handlers
 
 use axum::{
-    extract::Path,
+    extract::{Path, Query},
     http::StatusCode,
     response::IntoResponse,
     Json,
@@ -55,11 +55,9 @@ pub async fn create_agent(
     }
 }
 
-/// Update cron agent request (matches frontend invoke args)
+/// Update cron agent request
 #[derive(Deserialize)]
 pub struct UpdateCronAgentRequest {
-    #[serde(default)]
-    name: Option<String>,  // May be in URL path instead
     config: CronAgentConfig,
 }
 
@@ -126,6 +124,22 @@ pub async fn get_run_history(
     Path(name): Path<String>,
 ) -> Result<Json<serde_json::Value>, impl IntoResponse> {
     match commands::get_cron_run_history(Some(name), None).await {
+        Ok(history) => Ok(Json(serde_json::json!(history))),
+        Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+/// Get all run history query params
+#[derive(Deserialize)]
+pub struct AllHistoryQuery {
+    limit: Option<usize>,
+}
+
+/// Get run history for all cron agents
+pub async fn get_all_run_history(
+    Query(query): Query<AllHistoryQuery>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::get_cron_run_history(None, query.limit).await {
         Ok(history) => Ok(Json(serde_json::json!(history))),
         Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
     }

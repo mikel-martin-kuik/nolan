@@ -11,6 +11,11 @@ static RE_HANDOFF: Lazy<Option<Regex>> = Lazy::new(|| {
     Regex::new(r"<!-- HANDOFF:(\d{4}-\d{2}-\d{2} \d{2}:\d{2}):(\w+):COMPLETE -->").ok()
 });
 
+// Cached regex pattern for PROJECT:STATUS markers
+static RE_PROJECT_STATUS: Lazy<Option<Regex>> = Lazy::new(|| {
+    Regex::new(r"<!-- PROJECT:STATUS:[A-Z]+:\d{4}-\d{2}-\d{2} -->").ok()
+});
+
 /// Project status derived from coordinator's output file
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -18,7 +23,12 @@ pub enum ProjectStatus {
     Complete,
     InProgress,
     Pending,
+    Delegated,
+    Archived,
 }
+
+/// Valid status values for update_project_status
+const VALID_STATUSES: &[&str] = &["COMPLETE", "INPROGRESS", "PENDING", "DELEGATED", "ARCHIVED"];
 
 /// Get expected workflow files from team config
 /// Returns: (all_expected_files, workflow_files_with_handoff_tracking)
@@ -100,9 +110,11 @@ pub struct ProjectFile {
 ///
 /// Markers:
 /// - `<!-- PROJECT:STATUS:COMPLETE:date -->` → Complete
-/// - `<!-- PROJECT:STATUS:CLOSED:date -->` → Complete
-/// - `<!-- PROJECT:STATUS:ARCHIVED:date -->` → Complete
+/// - `<!-- PROJECT:STATUS:CLOSED:date -->` → Complete (alias)
+/// - `<!-- PROJECT:STATUS:ARCHIVED:date -->` → Archived
 /// - `<!-- PROJECT:STATUS:INPROGRESS:date -->` → InProgress
+/// - `<!-- PROJECT:STATUS:DELEGATED:date -->` → Delegated
+/// - `<!-- PROJECT:STATUS:PENDING:date -->` → Pending
 /// - No marker → Pending
 fn parse_project_status(coordinator_content: &str) -> (ProjectStatus, Option<String>) {
     for line in coordinator_content.lines() {
@@ -115,13 +127,25 @@ fn parse_project_status(coordinator_content: &str) -> (ProjectStatus, Option<Str
         if trimmed.contains("<!-- PROJECT:STATUS:CLOSED") {
             return (ProjectStatus::Complete, Some(trimmed.to_string()));
         }
+
+        // Archived marker (distinct from Complete)
         if trimmed.contains("<!-- PROJECT:STATUS:ARCHIVED") {
-            return (ProjectStatus::Complete, Some(trimmed.to_string()));
+            return (ProjectStatus::Archived, Some(trimmed.to_string()));
         }
 
         // In Progress marker
         if trimmed.contains("<!-- PROJECT:STATUS:INPROGRESS") {
             return (ProjectStatus::InProgress, Some(trimmed.to_string()));
+        }
+
+        // Delegated marker
+        if trimmed.contains("<!-- PROJECT:STATUS:DELEGATED") {
+            return (ProjectStatus::Delegated, Some(trimmed.to_string()));
+        }
+
+        // Pending marker (explicit)
+        if trimmed.contains("<!-- PROJECT:STATUS:PENDING") {
+            return (ProjectStatus::Pending, Some(trimmed.to_string()));
         }
     }
 
@@ -758,4 +782,143 @@ Project created via Nolan Dashboard.
         .map_err(|e| format!("Failed to create {}: {}", coordinator_file, e))?;
 
     Ok(project_path.to_string_lossy().to_string())
+}
+
+/// Update project status marker in coordinator file
+/// Replaces existing PROJECT:STATUS marker or appends at end of file
+#[tauri::command]
+pub async fn update_project_status(project_name: String, status: String) -> Result<(), String> {
+    // Validate project_name - no path traversal
+    if project_name.contains("..") || project_name.contains('/') || project_name.contains('\\') {
+        return Err("Invalid project name: path traversal not allowed".to_string());
+    }
+
+    // Validate status
+    let status_upper = status.to_uppercase();
+    if !VALID_STATUSES.contains(&status_upper.as_str()) {
+        return Err(format!(
+            "Invalid status '{}'. Valid values: {}",
+            status,
+            VALID_STATUSES.join(", ")
+        ));
+    }
+
+    let projects_dir = get_projects_dir()?;
+    let project_path = projects_dir.join(&project_name);
+
+    if !project_path.exists() {
+        return Err(format!("Project '{}' not found", project_name));
+    }
+
+    // Load team config to get coordinator file
+    let team_config = load_project_team(&project_path)
+        .map_err(|e| format!("Failed to load team config: {}", e))?;
+    let coordinator_file = team_config.coordinator_output_file();
+    let coordinator_path = project_path.join(&coordinator_file);
+
+    // Read existing content or create new
+    let content = if coordinator_path.exists() {
+        fs::read_to_string(&coordinator_path)
+            .map_err(|e| format!("Failed to read coordinator file: {}", e))?
+    } else {
+        String::new()
+    };
+
+    // Build new marker
+    let now = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let new_marker = format!("<!-- PROJECT:STATUS:{}:{} -->", status_upper, now);
+
+    // Replace existing marker or append
+    let new_content = if let Some(re) = RE_PROJECT_STATUS.as_ref() {
+        if re.is_match(&content) {
+            re.replace(&content, new_marker.as_str()).to_string()
+        } else {
+            // Append at end of file with newline
+            format!("{}\n\n{}\n", content.trim_end(), new_marker)
+        }
+    } else {
+        // Regex failed to compile, just append
+        format!("{}\n\n{}\n", content.trim_end(), new_marker)
+    };
+
+    fs::write(&coordinator_path, new_content)
+        .map_err(|e| format!("Failed to write coordinator file: {}", e))?;
+
+    Ok(())
+}
+
+/// Update HANDOFF marker in a workflow file
+/// Adds or removes the HANDOFF marker based on `completed` flag
+#[tauri::command]
+pub async fn update_file_marker(
+    project_name: String,
+    file_path: String,
+    completed: bool,
+    agent_name: Option<String>,
+) -> Result<(), String> {
+    // Validate inputs
+    if project_name.contains("..") || project_name.contains('/') || project_name.contains('\\') {
+        return Err("Invalid project name: path traversal not allowed".to_string());
+    }
+    if !file_path.ends_with(".md") {
+        return Err("Invalid file: only markdown files allowed".to_string());
+    }
+    if file_path.contains("..") {
+        return Err("Invalid file path: path traversal not allowed".to_string());
+    }
+
+    let projects_dir = get_projects_dir()?;
+    let project_path = projects_dir.join(&project_name);
+    let full_path = project_path.join(&file_path);
+
+    if !project_path.exists() {
+        return Err(format!("Project '{}' not found", project_name));
+    }
+
+    // Read file content (file must exist to toggle marker)
+    if !full_path.exists() {
+        return Err(format!("File '{}' not found", file_path));
+    }
+
+    let content = fs::read_to_string(&full_path)
+        .map_err(|e| format!("Failed to read file: {}", e))?;
+
+    let agent = agent_name.unwrap_or_else(|| "user".to_string());
+
+    // Build HANDOFF marker
+    let now = chrono::Utc::now().format("%Y-%m-%d %H:%M").to_string();
+    let new_marker = format!("<!-- HANDOFF:{}:{}:COMPLETE -->", now, agent);
+
+    let new_content = if completed {
+        // Add marker if not present, or replace existing
+        if let Some(re) = RE_HANDOFF.as_ref() {
+            if re.is_match(&content) {
+                re.replace(&content, new_marker.as_str()).to_string()
+            } else {
+                // Append at end of file
+                format!("{}\n\n{}\n", content.trim_end(), new_marker)
+            }
+        } else {
+            // Regex failed, just append
+            format!("{}\n\n{}\n", content.trim_end(), new_marker)
+        }
+    } else {
+        // Remove marker(s)
+        if let Some(re) = RE_HANDOFF.as_ref() {
+            let without_marker = re.replace_all(&content, "").to_string();
+            // Clean up extra newlines left behind
+            let cleaned = without_marker
+                .lines()
+                .collect::<Vec<_>>()
+                .join("\n");
+            format!("{}\n", cleaned.trim_end())
+        } else {
+            content
+        }
+    };
+
+    fs::write(&full_path, new_content)
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+
+    Ok(())
 }

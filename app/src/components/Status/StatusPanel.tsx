@@ -31,7 +31,7 @@ export const StatusPanel: React.FC = () => {
     loading,
     setupEventListeners
   } = useAgentStore();
-  const { error: showError } = useToastStore();
+  const { error: showError, success: showSuccess } = useToastStore();
   const { currentTeam, availableTeams, teamConfigs, loadAvailableTeams, loadAllTeams } = useTeamStore();
   const { loadDepartments, collapsedDepartments, toggleDepartmentCollapsed, getGroupedTeams } = useDepartmentStore();
 
@@ -294,12 +294,19 @@ export const StatusPanel: React.FC = () => {
       }
 
       // Open terminal for each session
+      const failures: string[] = [];
       for (const session of ralphSessions) {
         try {
           await invoke('open_agent_terminal', { session });
         } catch (terminalError) {
           console.error(`Failed to open terminal for ${session}:`, terminalError);
+          failures.push(`${session}: ${terminalError}`);
         }
+      }
+      if (failures.length > 0) {
+        showError(`Failed to open some terminals:\n${failures.join('\n')}`);
+      } else {
+        showSuccess(`Opened ${ralphSessions.length} terminal${ralphSessions.length > 1 ? 's' : ''}`);
       }
     } catch (error) {
       console.error(`Failed to open ${ralphDisplayName} terminals:`, error);

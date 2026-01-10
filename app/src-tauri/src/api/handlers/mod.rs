@@ -8,6 +8,7 @@ pub mod lifecycle;
 pub mod projects;
 pub mod teams;
 pub mod terminal;
+pub mod usage;
 
 use axum::Json;
 use serde::Serialize;

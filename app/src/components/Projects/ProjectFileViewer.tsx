@@ -41,10 +41,11 @@ export function ProjectFileViewer({ project, file }: ProjectFileViewerProps) {
     setLoading(true);
     setError(null);
     try {
-      const fileContent = await invoke<string>('read_project_file', {
+      const result = await invoke<string | { content: string }>('read_project_file', {
         projectName: project,
         filePath: file
       });
+      const fileContent = typeof result === 'string' ? result : result?.content ?? '';
       setContent(fileContent);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

@@ -37,6 +37,7 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   save_agent_role_file: { method: 'PUT', path: (args) => `/api/agents/${getArg(args, 'agent_name')}/role` },
   read_agent_claude_md: { method: 'GET', path: (args) => `/api/agents/${args.agent}/claude-md` },
   write_agent_claude_md: { method: 'PUT', path: (args) => `/api/agents/${args.agent}/claude-md` },
+  get_agent_template: { method: 'GET', path: (args) => `/api/agents/template?name=${encodeURIComponent(getArg(args, 'agent_name') as string)}&role=${encodeURIComponent(args.role as string)}` },
 
   // Teams
   list_teams: { method: 'GET', path: '/api/teams' },
@@ -66,15 +67,19 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   send_agent_command: { method: 'POST', path: '/api/communicate/command' },
   broadcast_team: { method: 'POST', path: '/api/communicate/broadcast-team' },
   broadcast_all: { method: 'POST', path: '/api/communicate/broadcast-all' },
+  get_available_targets: { method: 'GET', path: (args) => `/api/communicate/targets?team=${encodeURIComponent(getArg(args, 'team_name') as string || 'default')}` },
 
   // Projects
   list_projects: { method: 'GET', path: '/api/projects' },
   create_project: { method: 'POST', path: '/api/projects' },
-  list_project_files: { method: 'GET', path: (args) => `/api/projects/${args.name}/files` },
-  read_project_file: { method: 'GET', path: (args) => `/api/projects/${args.name}/file?path=${encodeURIComponent(args.relative_path as string)}` },
-  write_project_file: { method: 'PUT', path: (args) => `/api/projects/${args.name}/file` },
+  list_project_files: { method: 'GET', path: (args) => `/api/projects/${getArg(args, 'project_name') || args.name}/files` },
+  read_project_file: { method: 'GET', path: (args) => `/api/projects/${getArg(args, 'project_name') || args.name}/file?path=${encodeURIComponent((getArg(args, 'file_path') || args.relative_path) as string)}` },
+  write_project_file: { method: 'PUT', path: (args) => `/api/projects/${getArg(args, 'project_name') || args.name}/file` },
   get_project_team: { method: 'GET', path: (args) => `/api/projects/${getArg(args, 'project_name')}/team` },
   set_project_team: { method: 'PUT', path: (args) => `/api/projects/${getArg(args, 'project_name')}/team` },
+  update_project_status: { method: 'PUT', path: (args) => `/api/projects/${getArg(args, 'project_name')}/status` },
+  update_file_marker: { method: 'PUT', path: (args) => `/api/projects/${getArg(args, 'project_name')}/file-marker` },
+  read_roadmap: { method: 'GET', path: '/api/projects/roadmap' },
 
   // Terminal
   start_terminal_stream: { method: 'POST', path: '/api/terminal/start' },
@@ -96,6 +101,21 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
     return `/api/history/active?activeSessions=${encodeURIComponent(sessions)}&hours=${hours}`;
   }},
 
+  // Usage stats
+  get_usage_stats: { method: 'GET', path: (args) => {
+    const days = args?.days;
+    return days ? `/api/usage/stats?days=${days}` : '/api/usage/stats';
+  }},
+  get_session_stats: { method: 'GET', path: (args) => {
+    const params = new URLSearchParams();
+    if (args?.since) params.set('since', args.since as string);
+    if (args?.until) params.set('until', args.until as string);
+    if (args?.order) params.set('order', args.order as string);
+    const qs = params.toString();
+    return qs ? `/api/usage/sessions?${qs}` : '/api/usage/sessions';
+  }},
+  get_usage_by_date_range: { method: 'GET', path: (args) => `/api/usage/range?startDate=${encodeURIComponent(getArg(args, 'start_date') as string)}&endDate=${encodeURIComponent(getArg(args, 'end_date') as string)}` },
+
   // Cronos (cron agents)
   list_cron_agents: { method: 'GET', path: '/api/cronos/agents' },
   get_cron_agent: { method: 'GET', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}` },
@@ -105,7 +125,14 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   toggle_cron_agent: { method: 'POST', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/toggle` },
   test_cron_agent: { method: 'POST', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/test` },
   trigger_cron_agent: { method: 'POST', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/trigger` },
-  get_cron_run_history: { method: 'GET', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/history` },
+  get_cron_run_history: { method: 'GET', path: (args) => {
+    const name = getArg(args, 'name') || getArg(args, 'agent_name');
+    const limit = args?.limit;
+    if (name) {
+      return limit ? `/api/cronos/agents/${name}/history?limit=${limit}` : `/api/cronos/agents/${name}/history`;
+    }
+    return limit ? `/api/cronos/history?limit=${limit}` : '/api/cronos/history';
+  }},
   get_cron_run_log: { method: 'GET', path: (args) => `/api/cronos/runs/${getArg(args, 'run_id')}/log` },
   read_cron_agent_claude_md: { method: 'GET', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/claude-md` },
   write_cron_agent_claude_md: { method: 'PUT', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/claude-md` },

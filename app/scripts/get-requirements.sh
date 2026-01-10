@@ -19,12 +19,12 @@ fi
 AGENT_NAME="$1"
 TEAM_NAME="${2:-default}"
 
-# Find team config
+# Find team config (supports subdirectories)
 NOLAN_ROOT="${NOLAN_ROOT:-$(cd "$(dirname "$0")/../.." && pwd)}"
-CONFIG_PATH="$NOLAN_ROOT/teams/${TEAM_NAME}.yaml"
+CONFIG_PATH=$(find "$NOLAN_ROOT/teams" -name "${TEAM_NAME}.yaml" -type f 2>/dev/null | head -1)
 
-if [[ ! -f "$CONFIG_PATH" ]]; then
-    echo "Team config not found: $CONFIG_PATH" >&2
+if [[ -z "$CONFIG_PATH" ]] || [[ ! -f "$CONFIG_PATH" ]]; then
+    echo "Team config not found: $TEAM_NAME" >&2
     exit 1
 fi
 

@@ -31,7 +31,17 @@ from pathlib import Path
 nolan_root = os.environ["HOOK_NOLAN_ROOT"]
 team_name = os.environ["HOOK_TEAM_NAME"]
 
-config_path = Path(nolan_root) / "teams" / f"{team_name}.yaml"
+# Search for team config in teams directory (supports subdirectories)
+teams_dir = Path(nolan_root) / "teams"
+config_path = None
+for path in teams_dir.rglob(f"{team_name}.yaml"):
+    config_path = path
+    break
+
+if config_path is None:
+    print(f"Error: Team config not found for {team_name}", file=__import__("sys").stderr)
+    exit(1)
+
 config = yaml.safe_load(config_path.read_text())
 coordinator = config["team"]["workflow"]["coordinator"]
 for agent in config["team"]["agents"]:
@@ -70,7 +80,17 @@ from pathlib import Path
 nolan_root = os.environ["HOOK_NOLAN_ROOT"]
 team_name = os.environ["HOOK_TEAM_NAME"]
 
-config_path = Path(nolan_root) / "teams" / f"{team_name}.yaml"
+# Search for team config in teams directory (supports subdirectories)
+teams_dir = Path(nolan_root) / "teams"
+config_path = None
+for path in teams_dir.rglob(f"{team_name}.yaml"):
+    config_path = path
+    break
+
+if config_path is None:
+    print(f"Error: Team config not found for {team_name}", file=__import__("sys").stderr)
+    exit(1)
+
 config = yaml.safe_load(config_path.read_text())
 print(config["team"]["workflow"]["coordinator"])
 '

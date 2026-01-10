@@ -124,8 +124,12 @@ try:
         if not nolan_root:
             sys.exit(0)  # Can't validate without NOLAN_ROOT
 
-        config_path = nolan_root / 'teams' / f'{team_name}.yaml'
-        if not config_path.exists():
+        # Search for team config in teams directory (supports subdirectories)
+        config_path = None
+        for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+            config_path = path
+            break
+        if config_path is None:
             sys.exit(0)  # Team config not found
 
         config = yaml.safe_load(config_path.read_text())

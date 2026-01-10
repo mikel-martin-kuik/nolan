@@ -52,12 +52,13 @@ if [[ -z "${NOLAN_ROOT:-}" ]]; then
     echo "This must be configured in your launch environment."
     exit 0
 fi
-TEAM_CONFIG="$NOLAN_ROOT/teams/${CURRENT_TEAM}.yaml"
+# Search for team config in teams directory (supports subdirectories)
+TEAM_CONFIG=$(find "$NOLAN_ROOT/teams" -name "${CURRENT_TEAM}.yaml" -type f 2>/dev/null | head -1)
 
-if [[ ! -f "$TEAM_CONFIG" ]]; then
+if [[ -z "$TEAM_CONFIG" ]] || [[ ! -f "$TEAM_CONFIG" ]]; then
     echo "## Nolan Team Status"
     echo ""
-    echo "⚠️  WARNING: Team config not found: $TEAM_CONFIG"
+    echo "⚠️  WARNING: Team config not found for team: $CURRENT_TEAM"
     echo ""
     exit 0
 fi

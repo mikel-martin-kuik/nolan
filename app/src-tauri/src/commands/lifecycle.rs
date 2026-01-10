@@ -8,7 +8,6 @@ use crate::config::TeamConfig;
 use crate::constants::{
     PROTECTED_SESSIONS,
     RE_AGENT_SESSION,
-    RE_CORE_AGENT,
     RE_RALPH_SESSION,
     parse_ralph_session,
 };
@@ -1280,18 +1279,19 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
         }
 
         // Check for team-scoped agent: agent-{team}-{name} (base session)
-        if let Some(caps) = RE_CORE_AGENT.captures(session) {
-            let team_name = caps[1].to_string();
-            let agent_name = caps[2].to_string();
-
-            // Validate against team config - all agents in config are team agents
-            if let Some(team_config) = team_configs.get(&team_name) {
-                if team_config.agent_names().contains(&agent_name.as_str()) {
+        // Use config-based lookup to support hyphenated agent names (e.g., ea-architect)
+        let mut matched = false;
+        for (team_name, team_config) in &team_configs {
+            let prefix = format!("agent-{}-", team_name);
+            if session.starts_with(&prefix) {
+                let agent_name = &session[prefix.len()..];
+                // Validate agent exists in team config
+                if team_config.agent_names().contains(&agent_name) {
                     if let Ok(info) = crate::tmux::session::get_session_info(session) {
                         let statusline = parse_statusline(session);
                         team_agents.push(AgentStatus {
-                            name: agent_name,
-                            team: team_name,
+                            name: agent_name.to_string(),
+                            team: team_name.clone(),
                             active: true,
                             session: session.clone(),
                             attached: info.attached,
@@ -1300,8 +1300,12 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
                             created_at: Some(info.created_at * 1000),
                         });
                     }
+                    matched = true;
+                    break;
                 }
             }
+        }
+        if matched {
             continue;
         }
     }

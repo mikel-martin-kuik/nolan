@@ -121,10 +121,15 @@ def load_team_config(project_path: Path) -> dict:
     if not nolan_root:
         raise EnvironmentError("NOLAN_ROOT environment variable not set")
 
-    config_path = Path(nolan_root) / 'teams' / f'{team_name}.yaml'
+    # Search for team config in teams directory (supports subdirectories)
+    teams_dir = Path(nolan_root) / 'teams'
+    config_path = None
+    for path in teams_dir.rglob(f'{team_name}.yaml'):
+        config_path = path
+        break
 
-    if not config_path.exists():
-        raise FileNotFoundError(f"Team config not found: {config_path}")
+    if config_path is None:
+        raise FileNotFoundError(f"Team config not found: {team_name}")
 
     # DoS protection: Check file size (1MB max)
     if config_path.stat().st_size > 1_048_576:

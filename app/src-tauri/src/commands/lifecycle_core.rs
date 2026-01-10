@@ -9,24 +9,54 @@ use crate::config::TeamConfig;
 use crate::tmux::session;
 use crate::constants::RALPH_NAMES;
 
-/// Kill a tmux session
+/// Kill a tmux session and clean up ephemeral directory for Ralph instances
 pub fn kill_session(session_name: &str) -> Result<String, String> {
-    if !session::session_exists(session_name)? {
+    use std::fs;
+    use crate::constants::parse_ralph_session;
+
+    // Track whether session existed for response message
+    let session_existed = session::session_exists(session_name)?;
+
+    // Kill the session if it exists
+    if session_existed {
+        let output = Command::new("tmux")
+            .args(&["kill-session", "-t", session_name])
+            .output()
+            .map_err(|e| format!("Failed to kill session: {}", e))?;
+
+        if !output.status.success() {
+            return Err(format!(
+                "Failed to kill session: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+    }
+
+    // For ephemeral Ralph agents, ALWAYS delete the agent directory (agent-ralph-{name})
+    // This runs regardless of session existence to handle orphaned directories
+    let mut dir_deleted = false;
+    if let Some(instance_id) = parse_ralph_session(session_name) {
+        if let Ok(agents_dir) = crate::utils::paths::get_agents_dir() {
+            let agent_path = agents_dir.join(format!("agent-ralph-{}", instance_id));
+            if agent_path.exists() {
+                if let Err(e) = fs::remove_dir_all(&agent_path) {
+                    eprintln!("Warning: Failed to delete ephemeral agent directory: {}", e);
+                } else {
+                    dir_deleted = true;
+                }
+            }
+        }
+    }
+
+    // If session didn't exist and no directory was deleted, return error
+    if !session_existed && !dir_deleted {
         return Err(format!("Session '{}' does not exist", session_name));
     }
 
-    let output = Command::new("tmux")
-        .args(&["kill-session", "-t", session_name])
-        .output()
-        .map_err(|e| format!("Failed to kill session: {}", e))?;
-
-    if output.status.success() {
+    if session_existed {
         Ok(format!("Killed session: {}", session_name))
     } else {
-        Err(format!(
-            "Failed to kill session: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ))
+        Ok(format!("Cleaned up orphaned directory for: {}", session_name))
     }
 }
 

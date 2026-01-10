@@ -1,0 +1,13 @@
+{
+  "run_id": "ec0f5c72",
+  "agent_name": "cron-git",
+  "started_at": "2026-01-10T01:17:55.338447588+00:00",
+  "completed_at": "2026-01-10T01:18:05.487024487+00:00",
+  "status": "success",
+  "duration_secs": 10,
+  "exit_code": 0,
+  "output_file": "/home/mmartin/Proyectos/nolan/cronos/runs/2026-01-10/cron-git-011755.log",
+  "error": null,
+  "attempt": 1,
+  "trigger": "manual"
+}

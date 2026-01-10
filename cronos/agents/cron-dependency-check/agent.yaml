@@ -1,23 +1,20 @@
-name: cron-git
-description: Nolan Repo git commit agent
+name: cron-dependency-check
+description: Check dependencies
 model: haiku
-timeout: 300
+timeout: 600
 enabled: true
 schedule:
-  cron: 0 */4 * * *
+  cron: 0 0 * * *
   timezone: null
 guardrails:
   allowed_tools:
   - Read
-  - Write
-  - Edit
   - Glob
-  - Grep
+  - Bash
   forbidden_paths:
   - '**/.env'
   - '**/secrets/**'
-  - '**/*.key'
-  max_file_edits: 10
+  max_file_edits: 0
 context:
   working_directory: null
 concurrency:

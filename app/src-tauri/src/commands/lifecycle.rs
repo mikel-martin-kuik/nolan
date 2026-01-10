@@ -841,23 +841,16 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
             .map_err(|e| format!("Failed to create agent directory: {}", e))?;
 
         // Create symlink to .claude so Claude Code loads settings
+        // For Ralph, use ralph-specific settings (no team hooks) from agents/ralph/.claude
         #[cfg(unix)]
         {
-            let app_claude = crate::utils::paths::get_nolan_app_root()
-                .ok()
-                .and_then(|root| {
-                    let path = root.join(".claude");
-                    if path.exists() {
-                        Some(path)
-                    } else {
-                        None
-                    }
-                });
+            let base_agent_dir = agents_dir.join(&agent);
+            let ralph_claude = base_agent_dir.join(".claude");
 
-            if let Some(claude_path) = app_claude {
+            if ralph_claude.exists() {
                 let claude_link = agent_dir.join(".claude");
                 if !claude_link.exists() && !claude_link.is_symlink() {
-                    if let Err(e) = symlink(&claude_path, &claude_link) {
+                    if let Err(e) = symlink(&ralph_claude, &claude_link) {
                         eprintln!("Warning: Failed to create .claude symlink: {}", e);
                     }
                 }
@@ -898,6 +891,21 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
         .args(&["new-session", "-d", "-s", &session, "-c", agent_dir_str.as_ref(), &cmd])
         .output()
         .map_err(|e| format!("Failed to create tmux session: {}", e))?;
+
+    // Set tmux session environment variables so they're available to all processes (including hooks)
+    // This supplements the shell export and ensures hooks can access AGENT_DIR
+    let env_vars = [
+        ("AGENT_NAME", agent.as_str()),
+        ("TEAM_NAME", ""),
+        ("NOLAN_ROOT", nolan_root_str.as_ref()),
+        ("PROJECTS_DIR", projects_dir_str.as_ref()),
+        ("AGENT_DIR", agent_dir_str.as_ref()),
+    ];
+    for (key, value) in &env_vars {
+        let _ = Command::new("tmux")
+            .args(&["set-environment", "-t", &session, key, value])
+            .output();
+    }
 
     if !output.status.success() {
         return Err(format!(

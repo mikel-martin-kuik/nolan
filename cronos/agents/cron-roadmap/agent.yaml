@@ -1,10 +1,10 @@
-name: cron-git
-description: Nolan Repo git commit agent
-model: haiku
+name: cron-roadmap
+description: Updates Nolan Roadmap
+model: opus
 timeout: 300
-enabled: true
+enabled: false
 schedule:
-  cron: 0 */4 * * *
+  cron: 0 9 * * *
   timezone: null
 guardrails:
   allowed_tools:

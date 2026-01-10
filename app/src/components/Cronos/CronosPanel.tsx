@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { invoke } from '@/lib/api';
-import { listen } from '@tauri-apps/api/event';
+import { invoke, isBrowserMode } from '@/lib/api';
 import {
   Plus, RefreshCw, Play, Settings, Trash2, Code, Clock, History,
   Wrench, Square, Activity, AlertTriangle, CheckCircle, XCircle,
@@ -182,16 +181,72 @@ export const CronosPanel: React.FC = () => {
 
   const { error: showError, success: showSuccess } = useToastStore();
 
-  // Subscribe to real-time output events
+  // Subscribe to real-time output events (Tauri only)
   useEffect(() => {
-    const unsubscribe = listen<CronOutputEvent>('cronos:output', (event) => {
-      setLiveOutput(prev => [...prev.slice(-500), event.payload]);
-    });
+    if (isBrowserMode()) {
+      // In browser mode, real-time streaming is not available
+      return;
+    }
+
+    let cleanup: (() => void) | undefined;
+
+    (async () => {
+      try {
+        const { listen } = await import('@tauri-apps/api/event');
+        const unsubscribe = await listen<CronOutputEvent>('cronos:output', (event) => {
+          setLiveOutput(prev => [...prev.slice(-500), event.payload]);
+        });
+        cleanup = unsubscribe;
+      } catch (err) {
+        console.warn('[CronosPanel] Failed to setup event listener:', err);
+      }
+    })();
 
     return () => {
-      unsubscribe.then(fn => fn());
+      cleanup?.();
     };
   }, []);
+
+  // Browser mode: Poll for agent status and auto-refresh when running
+  useEffect(() => {
+    if (!showLiveOutput) return;
+
+    // Poll for updates while live output is shown
+    const pollInterval = setInterval(async () => {
+      try {
+        const updatedAgents = await invoke<CronAgentInfo[]>('list_cron_agents');
+        const agent = updatedAgents.find(a => a.name === showLiveOutput);
+
+        if (agent) {
+          // Update agents list
+          setAgents(updatedAgents);
+
+          // If agent finished running, fetch the log and show it
+          if (!agent.is_running && agent.last_run) {
+            try {
+              const logContent = await invoke<string>('get_cron_run_log', { runId: agent.last_run.run_id });
+              // Parse and add to live output
+              const lines = logContent.split('\n').filter(Boolean);
+              const events: CronOutputEvent[] = lines.map((line) => ({
+                run_id: agent.last_run!.run_id,
+                agent_name: showLiveOutput,
+                event_type: 'stdout' as const,
+                content: line,
+                timestamp: new Date().toISOString(),
+              }));
+              setLiveOutput(events);
+            } catch {
+              // Log might not be ready yet
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[CronosPanel] Poll error:', err);
+      }
+    }, 2000);
+
+    return () => clearInterval(pollInterval);
+  }, [showLiveOutput]);
 
   // Fetch agents list
   const fetchAgents = useCallback(async () => {
@@ -1078,28 +1133,75 @@ export const CronosPanel: React.FC = () => {
         <DialogContent className="max-w-4xl max-h-[80vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              Live Output - {showLiveOutput}
+              {agents.find(a => a.name === showLiveOutput)?.is_running ? (
+                <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+              ) : (
+                <CheckCircle className="w-4 h-4 text-green-500" />
+              )}
+              Output - {showLiveOutput}
             </DialogTitle>
             <DialogDescription>
-              Real-time output from the running agent
+              {agents.find(a => a.name === showLiveOutput)?.is_running
+                ? 'Agent is running... (polling for updates)'
+                : 'Run completed'}
             </DialogDescription>
           </DialogHeader>
           <ScrollArea className="h-[500px] border rounded-md bg-muted/50">
             <pre className="p-4 text-sm font-mono whitespace-pre-wrap">
               {liveOutput
                 .filter(e => e.agent_name === showLiveOutput)
-                .map((e, i) => (
-                  <div key={i} className={e.event_type === 'stderr' ? 'text-red-400' : ''}>
-                    {e.content}
-                  </div>
-                ))}
+                .map((e, i) => {
+                  // Try to parse JSON log entries for nicer display
+                  try {
+                    const parsed = JSON.parse(e.content);
+                    if (parsed.type === 'assistant' && parsed.message?.content) {
+                      return parsed.message.content.map((block: { type: string; text?: string; name?: string }, j: number) => {
+                        if (block.type === 'text' && block.text) {
+                          return <div key={`${i}-${j}`} className="text-foreground mb-2">{block.text}</div>;
+                        }
+                        if (block.type === 'tool_use' && block.name) {
+                          return <div key={`${i}-${j}`} className="text-blue-400">Tool: {block.name}</div>;
+                        }
+                        return null;
+                      });
+                    }
+                    if (parsed.type === 'result') {
+                      return (
+                        <div key={i} className="text-green-400 mt-2 pt-2 border-t border-border">
+                          {parsed.result || 'Completed'}
+                          {parsed.duration_ms && <span className="text-muted-foreground ml-2">({(parsed.duration_ms / 1000).toFixed(1)}s)</span>}
+                        </div>
+                      );
+                    }
+                    // Skip system init messages
+                    if (parsed.type === 'system') return null;
+                    // For other JSON, show raw
+                    return null;
+                  } catch {
+                    // Not JSON, show as-is
+                    return (
+                      <div key={i} className={e.event_type === 'stderr' ? 'text-red-400' : ''}>
+                        {e.content}
+                      </div>
+                    );
+                  }
+                })}
               {liveOutput.filter(e => e.agent_name === showLiveOutput).length === 0 && (
-                <span className="text-muted-foreground">Waiting for output...</span>
+                <span className="text-muted-foreground">
+                  {agents.find(a => a.name === showLiveOutput)?.is_running
+                    ? 'Starting agent...'
+                    : 'No output available'}
+                </span>
               )}
             </pre>
           </ScrollArea>
           <DialogFooter>
+            {agents.find(a => a.name === showLiveOutput)?.is_running && (
+              <Button variant="destructive" onClick={() => showLiveOutput && handleCancel(showLiveOutput)}>
+                <Square className="w-4 h-4 mr-1" />
+                Cancel
+              </Button>
+            )}
             <Button onClick={() => setShowLiveOutput(null)}>Close</Button>
           </DialogFooter>
         </DialogContent>

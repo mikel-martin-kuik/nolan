@@ -1,0 +1,23 @@
+{
+  "agents": {
+    "cron-git": {
+      "last_run": "2026-01-10T01:18:05.487208407+00:00",
+      "last_status": "success",
+      "next_scheduled": null,
+      "consecutive_failures": 0,
+      "total_runs": 1,
+      "total_successes": 1,
+      "total_failures": 0
+    },
+    "cron-dependency-check": {
+      "last_run": "2026-01-10T01:26:35.439925844+00:00",
+      "last_status": "success",
+      "next_scheduled": null,
+      "consecutive_failures": 0,
+      "total_runs": 1,
+      "total_successes": 1,
+      "total_failures": 0
+    }
+  },
+  "last_updated": "2026-01-10T01:26:35.439937458+00:00"
+}

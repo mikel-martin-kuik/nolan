@@ -140,6 +140,14 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   write_cron_agent_claude_md: { method: 'PUT', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/claude-md` },
   init_cronos: { method: 'POST', path: '/api/cronos/init' },
   shutdown_cronos: { method: 'POST', path: '/api/cronos/shutdown' },
+  // New cronos commands
+  cancel_cron_agent: { method: 'POST', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/cancel` },
+  get_running_agents: { method: 'GET', path: '/api/cronos/running' },
+  get_cronos_health: { method: 'GET', path: '/api/cronos/health' },
+  get_agent_stats: { method: 'GET', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/stats` },
+  subscribe_cron_output: { method: 'POST', path: '/api/noop' },  // WebSocket only - no-op in REST
+  get_cron_next_runs: { method: 'GET', path: (args) => `/api/cronos/cron/next?expression=${encodeURIComponent(getArg(args, 'expression') as string)}&count=${args.count || 5}` },
+  describe_cron_expression: { method: 'GET', path: (args) => `/api/cronos/cron/describe?expression=${encodeURIComponent(getArg(args, 'expression') as string)}` },
 };
 
 /**

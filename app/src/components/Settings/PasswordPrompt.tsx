@@ -43,18 +43,9 @@ export function PasswordPrompt({ onSubmit, onCancel, isSetup }: PasswordPromptPr
     <div className="fixed inset-0 bg-background flex items-center justify-center">
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-4 w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-            {isSetup ? <KeyRound className="h-6 w-6 text-primary" /> : <Lock className="h-6 w-6 text-primary" />}
-          </div>
-          <CardTitle>
-            {isSetup ? 'Set Up Server Password' : 'Authentication Required'}
+          <CardTitle className="text-3xl font-bold tracking-tight">
+            {isSetup ? 'Welcome to NOLAN' : 'NOLAN'}
           </CardTitle>
-          <CardDescription>
-            {isSetup
-              ? 'Create a password to secure your Nolan server'
-              : 'Enter the server password to continue'
-            }
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -64,7 +55,6 @@ export function PasswordPrompt({ onSubmit, onCancel, isSetup }: PasswordPromptPr
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter password"
                 autoFocus
               />
             </div>
@@ -76,7 +66,6 @@ export function PasswordPrompt({ onSubmit, onCancel, isSetup }: PasswordPromptPr
                   type="password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm password"
                 />
               </div>
             )}

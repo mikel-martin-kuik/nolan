@@ -1,7 +1,11 @@
 use serde::{Deserialize, Serialize};
+use ts_rs::TS;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 /// Cron agent configuration (stored in cronos/agents/{name}/agent.yaml)
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 pub struct CronAgentConfig {
     pub name: String,
     pub description: String,
@@ -24,7 +28,8 @@ pub struct CronAgentConfig {
 }
 
 /// Cron agent group definition (stored in cronos/groups.yaml)
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 pub struct CronAgentGroup {
     pub id: String,
     pub name: String,
@@ -33,32 +38,37 @@ pub struct CronAgentGroup {
 }
 
 /// Groups configuration file structure
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 pub struct GroupsConfig {
     #[serde(default)]
     pub groups: Vec<CronAgentGroup>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 pub struct CronSchedule {
     pub cron: String,           // Cron expression: "0 0 9 * * 1" (with seconds)
     pub timezone: Option<String>, // Default: system timezone
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 pub struct CronGuardrails {
     pub allowed_tools: Vec<String>,       // ["Read", "Edit", "Glob"]
     pub forbidden_paths: Option<Vec<String>>, // ["**/.env", "**/secrets/**"]
     pub max_file_edits: Option<u32>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 pub struct CronContext {
     pub working_directory: Option<String>,  // Where to run from
 }
 
 /// Concurrency control policy
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 pub struct ConcurrencyPolicy {
     #[serde(default)]
     pub allow_parallel: bool,  // Default: false - don't allow parallel runs
@@ -67,7 +77,8 @@ pub struct ConcurrencyPolicy {
 }
 
 /// Retry policy for failed runs
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 pub struct RetryPolicy {
     #[serde(default)]
     pub enabled: bool,
@@ -94,7 +105,8 @@ fn default_max_retries() -> u32 { 3 }
 fn default_retry_delay() -> u32 { 60 }
 
 /// Catch-up policy for missed runs
-#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 #[serde(rename_all = "snake_case")]
 pub enum CatchUpPolicy {
     #[default]
@@ -104,7 +116,8 @@ pub enum CatchUpPolicy {
 }
 
 /// Run log entry (stored in cronos/runs/{date}/{name}-{timestamp}.json)
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 pub struct CronRunLog {
     pub run_id: String,
     pub agent_name: String,
@@ -127,7 +140,8 @@ pub struct CronRunLog {
     pub run_dir: Option<String>,       // ephemeral working directory
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 #[serde(rename_all = "lowercase")]
 pub enum CronRunStatus {
     Running,
@@ -141,7 +155,8 @@ pub enum CronRunStatus {
 }
 
 /// How a run was triggered
-#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 #[serde(rename_all = "snake_case")]
 pub enum RunTrigger {
     #[default]
@@ -152,14 +167,16 @@ pub enum RunTrigger {
 }
 
 /// Persistent scheduler state (stored in .state/scheduler/state.json)
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 pub struct SchedulerState {
     pub agents: std::collections::HashMap<String, AgentState>,
     pub last_updated: Option<String>,
 }
 
 /// Per-agent persistent state
-#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+#[derive(Clone, Debug, Serialize, Deserialize, Default, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 pub struct AgentState {
     pub last_run: Option<String>,           // ISO 8601
     pub last_status: Option<CronRunStatus>,
@@ -224,7 +241,8 @@ impl CronRecoveryResult {
 }
 
 /// Schedule registry entry (in schedules.yaml)
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 pub struct ScheduleEntry {
     pub agent_name: String,
     pub cron: String,
@@ -234,7 +252,8 @@ pub struct ScheduleEntry {
 }
 
 /// API response types for frontend
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 pub struct CronAgentInfo {
     pub name: String,
     pub description: String,
@@ -255,13 +274,15 @@ pub struct CronAgentInfo {
 }
 
 /// Agent health status
-#[derive(Clone, Debug, Serialize, Default)]
+#[derive(Clone, Debug, Serialize, Default, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 pub struct AgentHealth {
     pub status: HealthStatus,
     pub message: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Default, PartialEq)]
+#[derive(Clone, Debug, Serialize, Default, PartialEq, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 #[serde(rename_all = "lowercase")]
 pub enum HealthStatus {
     #[default]
@@ -272,7 +293,8 @@ pub enum HealthStatus {
 }
 
 /// Agent statistics
-#[derive(Clone, Debug, Serialize, Default)]
+#[derive(Clone, Debug, Serialize, Default, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 pub struct AgentStats {
     pub total_runs: u32,
     pub success_count: u32,
@@ -281,7 +303,8 @@ pub struct AgentStats {
     pub avg_duration_secs: Option<f32>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 pub struct TestRunResult {
     pub success: bool,
     pub output: String,
@@ -289,7 +312,8 @@ pub struct TestRunResult {
 }
 
 /// Real-time output event for streaming
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 pub struct CronOutputEvent {
     pub run_id: String,
     pub agent_name: String,
@@ -298,7 +322,8 @@ pub struct CronOutputEvent {
     pub timestamp: String,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Serialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 #[serde(rename_all = "snake_case")]
 pub enum OutputEventType {
     Stdout,
@@ -308,7 +333,8 @@ pub enum OutputEventType {
 }
 
 /// Health summary for dashboard
-#[derive(Clone, Debug, Serialize, Default)]
+#[derive(Clone, Debug, Serialize, Default, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
 pub struct CronosHealthSummary {
     pub total_agents: u32,
     pub active_agents: u32,

@@ -7,6 +7,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
 use tauri::command;
+use ts_rs::TS;
 use uuid::Uuid;
 
 use crate::utils::paths::get_feedback_dir;
@@ -15,7 +16,8 @@ use crate::utils::paths::get_feedback_dir;
 // Data Structures
 // ============================================================================
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "../../src/types/generated/feedback/")]
 #[serde(rename_all = "lowercase")]
 pub enum FeatureRequestStatus {
     New,
@@ -58,7 +60,8 @@ impl std::str::FromStr for FeatureRequestStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/feedback/")]
 pub struct FeatureRequest {
     pub id: String,
     pub title: String,
@@ -71,7 +74,8 @@ pub struct FeatureRequest {
     pub author: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/feedback/")]
 pub struct VoteRecord {
     pub request_id: String,
     pub user_id: String,
@@ -79,7 +83,8 @@ pub struct VoteRecord {
     pub timestamp: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "../../src/types/generated/feedback/")]
 #[serde(rename_all = "lowercase")]
 pub enum IdeaStatus {
     Active,
@@ -104,7 +109,8 @@ impl std::str::FromStr for IdeaStatus {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/feedback/")]
 pub struct Idea {
     pub id: String,
     pub title: String,
@@ -117,7 +123,8 @@ pub struct Idea {
     pub created_by: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/feedback/")]
 pub struct FeedbackStats {
     pub total_requests: usize,
     pub by_status: HashMap<String, usize>,
@@ -531,7 +538,8 @@ pub fn get_user_votes() -> Result<HashMap<String, String>, String> {
 // Idea Reviews (from cron-inbox-digest agent)
 // ============================================================================
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/feedback/")]
 #[serde(rename_all = "snake_case")]
 pub enum IdeaReviewStatus {
     Draft,
@@ -540,7 +548,8 @@ pub enum IdeaReviewStatus {
     Rejected,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/feedback/")]
 #[serde(rename_all = "lowercase")]
 pub enum IdeaComplexity {
     Low,
@@ -548,7 +557,8 @@ pub enum IdeaComplexity {
     High,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/feedback/")]
 pub struct IdeaProposal {
     pub title: String,
     pub summary: String,
@@ -560,7 +570,8 @@ pub struct IdeaProposal {
     pub implementation_hints: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/feedback/")]
 pub struct IdeaGap {
     pub id: String,
     pub label: String,
@@ -572,7 +583,8 @@ pub struct IdeaGap {
     pub required: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/feedback/")]
 pub struct IdeaReview {
     pub item_id: String,
     pub item_type: String,
@@ -672,7 +684,8 @@ pub fn accept_review(item_id: String) -> Result<IdeaReview, String> {
 }
 
 /// Result of accepting and routing an idea
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/feedback/")]
 pub struct AcceptAndRouteResult {
     pub review: IdeaReview,
     pub route: String,

@@ -23,8 +23,8 @@ context:
   working_directory: null
 group: feedback
 concurrency:
-  allow_parallel: false
-  queue_if_running: true
+  allow_parallel: true
+  queue_if_running: false
 retry:
   enabled: true
   max_retries: 2

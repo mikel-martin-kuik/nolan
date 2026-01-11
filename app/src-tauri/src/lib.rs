@@ -239,3 +239,60 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+#[cfg(test)]
+mod tests {
+    //! Tests for TypeScript type generation.
+    //! Run `cargo test` to generate TypeScript bindings in src/types/generated/
+
+    use ts_rs::TS;
+
+    #[test]
+    fn export_cronos_types() {
+        use crate::cronos::types::*;
+
+        // Export all cronos types
+        CronAgentConfig::export_all().expect("Failed to export CronAgentConfig");
+        CronAgentGroup::export_all().expect("Failed to export CronAgentGroup");
+        GroupsConfig::export_all().expect("Failed to export GroupsConfig");
+        CronSchedule::export_all().expect("Failed to export CronSchedule");
+        CronGuardrails::export_all().expect("Failed to export CronGuardrails");
+        CronContext::export_all().expect("Failed to export CronContext");
+        ConcurrencyPolicy::export_all().expect("Failed to export ConcurrencyPolicy");
+        RetryPolicy::export_all().expect("Failed to export RetryPolicy");
+        CatchUpPolicy::export_all().expect("Failed to export CatchUpPolicy");
+        CronRunLog::export_all().expect("Failed to export CronRunLog");
+        CronRunStatus::export_all().expect("Failed to export CronRunStatus");
+        RunTrigger::export_all().expect("Failed to export RunTrigger");
+        SchedulerState::export_all().expect("Failed to export SchedulerState");
+        AgentState::export_all().expect("Failed to export AgentState");
+        ScheduleEntry::export_all().expect("Failed to export ScheduleEntry");
+        CronAgentInfo::export_all().expect("Failed to export CronAgentInfo");
+        AgentHealth::export_all().expect("Failed to export AgentHealth");
+        HealthStatus::export_all().expect("Failed to export HealthStatus");
+        AgentStats::export_all().expect("Failed to export AgentStats");
+        TestRunResult::export_all().expect("Failed to export TestRunResult");
+        CronOutputEvent::export_all().expect("Failed to export CronOutputEvent");
+        OutputEventType::export_all().expect("Failed to export OutputEventType");
+        CronosHealthSummary::export_all().expect("Failed to export CronosHealthSummary");
+    }
+
+    #[test]
+    fn export_feedback_types() {
+        use crate::commands::feedback::*;
+
+        // Export all feedback types
+        FeatureRequestStatus::export_all().expect("Failed to export FeatureRequestStatus");
+        FeatureRequest::export_all().expect("Failed to export FeatureRequest");
+        VoteRecord::export_all().expect("Failed to export VoteRecord");
+        IdeaStatus::export_all().expect("Failed to export IdeaStatus");
+        Idea::export_all().expect("Failed to export Idea");
+        FeedbackStats::export_all().expect("Failed to export FeedbackStats");
+        IdeaReviewStatus::export_all().expect("Failed to export IdeaReviewStatus");
+        IdeaComplexity::export_all().expect("Failed to export IdeaComplexity");
+        IdeaProposal::export_all().expect("Failed to export IdeaProposal");
+        IdeaGap::export_all().expect("Failed to export IdeaGap");
+        IdeaReview::export_all().expect("Failed to export IdeaReview");
+        AcceptAndRouteResult::export_all().expect("Failed to export AcceptAndRouteResult");
+    }
+}

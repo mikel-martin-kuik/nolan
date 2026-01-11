@@ -286,11 +286,18 @@ impl CronosManager {
                     }
                 }
             } else {
-                // Session died - mark as interrupted
+                // Session ended - determine if completed or was interrupted
                 match self.finalize_interrupted_run(&session).await {
-                    Ok(_) => {
+                    Ok(status) => {
+                        let status_str = match status {
+                            CronRunStatus::Success => "Recovered as success",
+                            CronRunStatus::Failed => "Recovered as failed",
+                            CronRunStatus::Interrupted => "Marked as interrupted",
+                            _ => "Finalized",
+                        };
                         result.interrupted.push(format!(
-                            "Marked as interrupted: {} (run_id: {})",
+                            "{}: {} (run_id: {})",
+                            status_str,
                             session.run_log.agent_name,
                             session.run_log.run_id
                         ));
@@ -421,8 +428,12 @@ impl CronosManager {
         Ok(())
     }
 
-    /// Mark an interrupted run as failed
-    async fn finalize_interrupted_run(&self, session: &OrphanedCronSession) -> Result<(), String> {
+    /// Finalize an orphaned run where the tmux session no longer exists
+    ///
+    /// Checks for exit_code file to determine if the job completed naturally
+    /// before the app crashed, or if it was truly interrupted.
+    /// Returns the final status so recovery can report accurately.
+    async fn finalize_interrupted_run(&self, session: &OrphanedCronSession) -> Result<CronRunStatus, String> {
         let run_log = &session.run_log;
         let completed_at = Utc::now();
 
@@ -431,16 +442,38 @@ impl CronosManager {
             .map(|dt| (completed_at - dt.with_timezone(&Utc)).num_seconds() as u32)
             .unwrap_or(0);
 
+        // Check if the job actually completed by looking for exit_code file
+        // This file is written by the shell command after Claude exits
+        let (status, exit_code, error) = if let Some(ref run_dir) = run_log.run_dir {
+            let exit_code_path = std::path::Path::new(run_dir).join("exit_code");
+            if let Ok(content) = std::fs::read_to_string(&exit_code_path) {
+                let code = content.trim().parse::<i32>().ok();
+                if code == Some(0) {
+                    // Job completed successfully before app crashed
+                    (CronRunStatus::Success, code, None)
+                } else {
+                    // Job failed with non-zero exit code
+                    (CronRunStatus::Failed, code, Some("Non-zero exit code".to_string()))
+                }
+            } else {
+                // No exit_code file - job was truly interrupted
+                (CronRunStatus::Interrupted, None, Some("Process interrupted by app restart".to_string()))
+            }
+        } else {
+            // No run_dir - can't check, assume interrupted
+            (CronRunStatus::Interrupted, None, Some("Process interrupted by app restart".to_string()))
+        };
+
         let final_log = CronRunLog {
             run_id: run_log.run_id.clone(),
             agent_name: run_log.agent_name.clone(),
             started_at: run_log.started_at.clone(),
             completed_at: Some(completed_at.to_rfc3339()),
-            status: CronRunStatus::Interrupted,
+            status: status.clone(),
             duration_secs: Some(duration),
-            exit_code: None,
+            exit_code,
             output_file: run_log.output_file.clone(),
-            error: Some("Process interrupted by app restart".to_string()),
+            error,
             attempt: run_log.attempt,
             trigger: run_log.trigger.clone(),
             session_name: run_log.session_name.clone(),
@@ -452,12 +485,12 @@ impl CronosManager {
         std::fs::write(&session.json_file, json)
             .map_err(|e| format!("Failed to write: {}", e))?;
 
-        // Cleanup run directory for interrupted runs
+        // Cleanup run directory (for both successful and interrupted runs)
         if let Some(ref run_dir) = run_log.run_dir {
             let _ = std::fs::remove_dir_all(run_dir);
         }
 
-        Ok(())
+        Ok(status)
     }
 
     // ========================

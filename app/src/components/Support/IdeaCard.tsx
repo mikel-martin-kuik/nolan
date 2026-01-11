@@ -145,7 +145,7 @@ export function IdeaCard({ idea, review, onClick, isDragging, isDragOverlay }: I
             className={cn(
               'w-full text-left px-2.5 py-2 glass-card rounded-lg transition-all duration-200',
               'focus:outline-none focus:ring-1 focus:ring-ring',
-              'touch-none cursor-grab active:cursor-grabbing',
+              'touch-none cursor-pointer',
               isArchived && 'opacity-50',
               isDragging && 'opacity-30',
               isDragOverlay && 'shadow-lg ring-2 ring-primary/50'

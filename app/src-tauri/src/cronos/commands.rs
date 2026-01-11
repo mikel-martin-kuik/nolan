@@ -1087,6 +1087,19 @@ r#"# {}
             std::fs::write(&spec_path, spec_content)
                 .map_err(|e| format!("Failed to write SPEC.md: {}", e))?;
 
+            // Auto-launch team and start workflow for high complexity ideas
+            let team_name = "default".to_string();
+            let project_name_for_launch = project_name.clone();
+
+            tokio::spawn(async move {
+                // Small delay to let project files settle
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+                if let Err(e) = launch_team_and_start_workflow(&team_name, &project_name_for_launch).await {
+                    eprintln!("Failed to auto-launch team for project {}: {}", project_name_for_launch, e);
+                }
+            });
+
             Ok(RouteResult {
                 idea_id,
                 route: "project".to_string(),
@@ -1094,6 +1107,91 @@ r#"# {}
             })
         }
     }
+}
+
+/// Launch team agents and start the workflow for a high-complexity idea project
+/// This ensures the team is running before assigning the first phase
+async fn launch_team_and_start_workflow(team_name: &str, project_name: &str) -> Result<(), String> {
+    use crate::commands::lifecycle_core;
+    use crate::config::TeamConfig;
+    use std::process::Command;
+
+    // Load team config
+    let team = TeamConfig::load(team_name)
+        .map_err(|e| format!("Failed to load team config '{}': {}", team_name, e))?;
+
+    // Get paths
+    let nolan_root = crate::utils::paths::get_nolan_root()?;
+    let projects_dir = crate::utils::paths::get_projects_dir()?;
+    let project_path = projects_dir.join(project_name);
+
+    // Write team state: store the active project for agents to inherit
+    let state_dir = crate::utils::paths::get_state_dir()?;
+    let team_state_dir = state_dir.join(team_name);
+    std::fs::create_dir_all(&team_state_dir)
+        .map_err(|e| format!("Failed to create team state dir: {}", e))?;
+
+    let active_project_file = team_state_dir.join("active_project");
+    std::fs::write(&active_project_file, project_path.to_string_lossy().to_string())
+        .map_err(|e| format!("Failed to write team state: {}", e))?;
+
+    // Launch all workflow participants
+    let mut launched = Vec::new();
+    for agent in team.workflow_participants() {
+        match lifecycle_core::start_agent_core(team_name, agent).await {
+            Ok(session) => {
+                println!("[auto-launch] Started agent {}: {}", agent, session);
+                launched.push(agent.to_string());
+            }
+            Err(e) => {
+                // Skip already running agents (not an error)
+                if e.contains("already exists") {
+                    println!("[auto-launch] Agent {} already running", agent);
+                    launched.push(agent.to_string());
+                } else {
+                    eprintln!("[auto-launch] Failed to start agent {}: {}", agent, e);
+                }
+            }
+        }
+    }
+
+    if launched.is_empty() {
+        return Err("No agents were launched".to_string());
+    }
+
+    // Get first workflow phase to assign
+    let first_phase = team.get_phase(0)
+        .ok_or("Team has no workflow phases defined")?;
+
+    let phase_name = first_phase.name.clone();
+    let phase_owner = first_phase.owner.clone();
+
+    println!("[auto-launch] Assigning first phase '{}' to {} for project {}",
+             phase_name, phase_owner, project_name);
+
+    // Wait for agents to initialize
+    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+
+    // Call assign.sh to formally assign the first phase
+    let assign_script = nolan_root.join("app").join("scripts").join("assign.sh");
+    let nolan_data_root = crate::utils::paths::get_nolan_data_root()?;
+
+    let output = Command::new(&assign_script)
+        .env("NOLAN_ROOT", nolan_root.to_string_lossy().to_string())
+        .env("NOLAN_DATA_ROOT", nolan_data_root.to_string_lossy().to_string())
+        .args(&[project_name, &phase_name, "Start working on this project. Review the SPEC.md file for the complete specification."])
+        .output()
+        .map_err(|e| format!("Failed to run assign.sh: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        eprintln!("[auto-launch] assign.sh failed: {}", stderr);
+        // Don't fail - team is launched, just assignment didn't work
+    } else {
+        println!("[auto-launch] Successfully assigned {} phase to {}", phase_name, phase_owner);
+    }
+
+    Ok(())
 }
 
 /// Dispatch unprocessed ideas via HTTP API (no AppHandle required)

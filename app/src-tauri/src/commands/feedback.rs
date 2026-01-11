@@ -771,6 +771,31 @@ pub fn accept_review(item_id: String) -> Result<IdeaReview, String> {
     Ok(updated)
 }
 
+#[command]
+pub fn unaccept_review(item_id: String) -> Result<IdeaReview, String> {
+    let path = get_inbox_reviews_file()?;
+    let mut reviews: Vec<IdeaReview> = read_jsonl(&path)?;
+
+    let review = reviews
+        .iter_mut()
+        .find(|r| r.item_id == item_id)
+        .ok_or_else(|| format!("Review not found for item: {}", item_id))?;
+
+    // Only unaccept if currently accepted
+    if review.accepted_at.is_none() {
+        return Err("Review is not accepted".to_string());
+    }
+
+    // Clear acceptance, keeping status as Ready (but will show in Ready column now)
+    review.accepted_at = None;
+    review.updated_at = Some(Utc::now().to_rfc3339());
+
+    let updated = review.clone();
+    write_jsonl(&path, &reviews)?;
+
+    Ok(updated)
+}
+
 /// Result of accepting and routing an idea
 #[derive(Debug, Clone, Serialize, TS)]
 #[ts(export, export_to = "../../src/types/generated/feedback/")]

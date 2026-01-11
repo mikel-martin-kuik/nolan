@@ -374,9 +374,8 @@ export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
                         </div>
                         <p className="text-[10px] text-muted-foreground">{gap.description}</p>
                         <Textarea
-                          value={gap.value || ''}
+                          value={gap.value ?? gap.placeholder ?? ''}
                           onChange={(e) => handleGapChange(gap.id, e.target.value)}
-                          placeholder={gap.placeholder}
                           rows={2}
                           className="text-xs"
                           disabled={isReady || isRejected}

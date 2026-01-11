@@ -1,14 +1,11 @@
-import React, { useState, useCallback, useMemo } from 'react';
-import { invoke } from '@/lib/api';
+import React, { useState, useCallback } from 'react';
 import { CronAgentCard } from './CronAgentCard';
 import { CronAgentDetailPage } from './CronAgentDetailPage';
 import { CronGroupEditor } from './CronGroupEditor';
 import { TaskMonitoringDashboard } from './TaskMonitoringDashboard';
-import { useToastStore } from '../../store/toastStore';
 import { useCronOutputStore } from '../../store/cronOutputStore';
 import { useCollapsedCronGroupsStore } from '../../store/collapsedCronGroupsStore';
-import { useFetchData } from '../../hooks/useFetchData';
-import { usePollingEffect } from '../../hooks/usePollingEffect';
+import { useCronosAgents } from '../../hooks';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -29,37 +26,24 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { ChevronDown, ChevronRight, Settings2 } from 'lucide-react';
-import type { CronAgentInfo, CronAgentConfig, CronAgentGroup } from '@/types';
+import type { CronAgentInfo, CronAgentConfig } from '@/types';
 import { CRON_PRESETS, CRON_MODELS, AGENT_TEMPLATES, createDefaultCronAgentConfig } from '@/types/cronos';
 
 export const CronosPanel: React.FC = () => {
-  // Data fetching with custom hooks
+  // Data fetching with custom hook
   const {
-    data: agents,
+    agents,
+    groups,
+    groupedAgents,
     loading,
-    refresh: fetchAgents,
-  } = useFetchData({
-    fetcher: () => invoke<CronAgentInfo[]>('list_cron_agents'),
-    defaultValue: [],
-    errorMessage: 'Failed to load cron agents',
-    init: () => invoke('init_cronos'),
-  });
-
-  const {
-    data: groups,
-    refresh: fetchGroups,
-  } = useFetchData({
-    fetcher: () => invoke<CronAgentGroup[]>('list_cron_groups'),
-    defaultValue: [],
-    errorMessage: 'Failed to load cron groups',
-  });
-
-  // Auto-refresh when there are running agents
-  usePollingEffect({
-    interval: 3000,
-    enabled: agents.some(a => a.is_running),
-    callback: fetchAgents,
-  });
+    hasRunningAgents,
+    refreshAgents,
+    refreshGroups,
+    createAgent,
+    deleteAgent,
+    triggerAgent,
+    toggleAgentEnabled,
+  } = useCronosAgents();
 
   // Collapsed groups state (persisted)
   const { isCollapsed, toggleCollapsed } = useCollapsedCronGroupsStore();
@@ -79,90 +63,36 @@ export const CronosPanel: React.FC = () => {
   const [newAgentConfig, setNewAgentConfig] = useState<CronAgentConfig | null>(null);
   const [newAgentGroup, setNewAgentGroup] = useState<string>('');
 
-  const { error: showError, success: showSuccess } = useToastStore();
-
-  // Group agents by their group ID
-  const groupedAgents = useMemo(() => {
-    const grouped: Record<string, CronAgentInfo[]> = {};
-    const ungrouped: CronAgentInfo[] = [];
-
-    for (const agent of agents) {
-      if (agent.group) {
-        if (!grouped[agent.group]) {
-          grouped[agent.group] = [];
-        }
-        grouped[agent.group].push(agent);
-      } else {
-        ungrouped.push(agent);
-      }
-    }
-
-    return { grouped, ungrouped };
-  }, [agents]);
-
   // Handle agent creation
   const handleCreate = useCallback(async () => {
-    if (!newAgentName.trim()) {
-      showError('Agent name is required');
-      return;
-    }
-
-    const name = newAgentName.startsWith('cron-') ? newAgentName : `cron-${newAgentName}`;
-    const config = newAgentConfig || createDefaultCronAgentConfig(name, newAgentGroup || undefined);
-    config.name = name;
-    config.group = newAgentGroup || undefined;
-
-    try {
-      await invoke('create_cron_agent', { config });
-      showSuccess(`Created cron agent: ${name}`);
+    const success = await createAgent(newAgentName, newAgentConfig, newAgentGroup);
+    if (success) {
       setCreatorOpen(false);
       setNewAgentName('');
       setNewAgentConfig(null);
       setNewAgentGroup('');
-      fetchAgents();
-    } catch (err) {
-      showError(`Failed to create agent: ${err}`);
     }
-  }, [newAgentName, newAgentConfig, newAgentGroup, showError, showSuccess, fetchAgents]);
+  }, [newAgentName, newAgentConfig, newAgentGroup, createAgent]);
 
   // Handle agent delete
   const handleDelete = useCallback(async () => {
     if (!deleteConfirm) return;
-
-    try {
-      await invoke('delete_cron_agent', { name: deleteConfirm });
-      showSuccess(`Deleted ${deleteConfirm}`);
+    const success = await deleteAgent(deleteConfirm);
+    if (success) {
       setDeleteConfirm(null);
       setSelectedAgentPage(null);
-      fetchAgents();
-    } catch (err) {
-      showError(`Failed to delete agent: ${err}`);
     }
-  }, [deleteConfirm, showError, showSuccess, fetchAgents]);
+  }, [deleteConfirm, deleteAgent]);
 
   // Handle trigger run
   const handleTrigger = useCallback(async (name: string) => {
-    try {
-      await invoke('trigger_cron_agent', { name });
-      showSuccess(`Triggered ${name}`);
-      // Open output panel on dashboard to show the running agent
-      openOutput(name);
-      setTimeout(fetchAgents, 500);
-    } catch (err) {
-      showError(`Failed to trigger agent: ${err}`);
-    }
-  }, [showError, showSuccess, fetchAgents, openOutput]);
+    await triggerAgent(name);
+  }, [triggerAgent]);
 
   // Handle toggle enabled
   const handleToggleEnabled = useCallback(async (name: string, enabled: boolean) => {
-    try {
-      await invoke('toggle_cron_agent', { name, enabled });
-      showSuccess(`${name} ${enabled ? 'enabled' : 'disabled'}`);
-      fetchAgents();
-    } catch (err) {
-      showError(`Failed to toggle agent: ${err}`);
-    }
-  }, [showError, showSuccess, fetchAgents]);
+    await toggleAgentEnabled(name, enabled);
+  }, [toggleAgentEnabled]);
 
   // Handle card click - navigate to detail page (and open output panel if running)
   const handleCardClick = useCallback((name: string) => {
@@ -220,7 +150,7 @@ export const CronosPanel: React.FC = () => {
           agentName={selectedAgentPage}
           onBack={() => {
             setSelectedAgentPage(null);
-            fetchAgents();
+            refreshAgents();
           }}
           onTrigger={handleTrigger}
           onDelete={(name) => {
@@ -279,7 +209,7 @@ export const CronosPanel: React.FC = () => {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => { fetchGroups(); fetchAgents(); }}
+            onClick={() => { refreshGroups(); refreshAgents(); }}
             disabled={loading}
           >
             {loading ? 'Refreshing...' : 'Refresh'}
@@ -290,7 +220,7 @@ export const CronosPanel: React.FC = () => {
 
         {/* Task Monitoring Dashboard */}
         <div className="mb-4">
-          <TaskMonitoringDashboard refreshInterval={agents.some(a => a.is_running) ? 3000 : 15000} />
+          <TaskMonitoringDashboard refreshInterval={hasRunningAgents ? 3000 : 15000} />
         </div>
 
         {/* Agent Cards - Grouped */}
@@ -529,8 +459,8 @@ export const CronosPanel: React.FC = () => {
         onOpenChange={setGroupEditorOpen}
         groups={groups}
         agents={agents}
-        onGroupsChange={fetchGroups}
-        onAgentsChange={fetchAgents}
+        onGroupsChange={refreshGroups}
+        onAgentsChange={refreshAgents}
       />
 
       {/* Delete Confirmation */}

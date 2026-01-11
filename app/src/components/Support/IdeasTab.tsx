@@ -16,6 +16,9 @@ import {
   DragStartEvent,
   DragEndEvent,
   useDroppable,
+  PointerSensor,
+  useSensor,
+  useSensors,
 } from '@dnd-kit/core';
 import {
   AlertDialog,
@@ -141,6 +144,15 @@ export function IdeasTab() {
   const toast = useToastStore();
   const queryClient = useQueryClient();
 
+  // Configure drag sensor with distance constraint so clicks work
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // 8px movement required before drag activates
+      },
+    })
+  );
+
   const toggleSection = (key: string) => {
     setCollapsedSections((prev) => {
       const next = new Set(prev);
@@ -222,6 +234,18 @@ export function IdeasTab() {
     },
     onError: (error) => {
       toast.error(`Failed to reset: ${error}`);
+    },
+  });
+
+  // Unaccept review (for done → ready, moves accepted idea back)
+  const unacceptMutation = useMutation({
+    mutationFn: (itemId: string) => invoke<IdeaReview>('unaccept_review', { itemId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['idea-reviews'] });
+      toast.success('Idea moved back to Ready');
+    },
+    onError: (error) => {
+      toast.error(`Failed to unaccept: ${error}`);
     },
   });
 
@@ -331,6 +355,17 @@ export function IdeasTab() {
       return;
     }
 
+    // done → ready: unaccept the review (for accepted but not implemented ideas)
+    if (from === 'done' && to === 'ready') {
+      if (review?.accepted_at) {
+        unacceptMutation.mutate(idea.id);
+        return;
+      }
+      // If in done without accepted_at, it's rejected - can't move to ready
+      toast.error('Cannot move rejected ideas to Ready');
+      return;
+    }
+
     // any → done (archive): allowed per user preference
     if (to === 'done') {
       archiveMutation.mutate(idea.id);
@@ -365,8 +400,9 @@ export function IdeasTab() {
     // Same column = no action
     if (currentColumn === targetColumn) return;
 
-    // done → anywhere: archived items stay archived
-    if (currentColumn === 'done') {
+    // Only truly archived items (idea.status === 'archived') cannot be moved
+    // Accepted ideas in Done column (with accepted_at but active status) can be moved back
+    if (idea.status === 'archived') {
       toast.error('Archived items cannot be moved');
       return;
     }
@@ -446,6 +482,7 @@ export function IdeasTab() {
 
       {/* Kanban Board with Drag and Drop */}
       <DndContext
+        sensors={sensors}
         collisionDetection={closestCenter}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}

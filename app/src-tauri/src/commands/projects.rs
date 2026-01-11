@@ -20,6 +20,12 @@ static RE_PROJECT_STATUS: Lazy<Option<Regex>> = Lazy::new(|| {
     Regex::new(r"<!-- PROJECT:STATUS:[A-Z]+(?::\d{4}-\d{2}-\d{2})? -->").ok()
 });
 
+// Regex to extract idea_id from SPEC.md footer
+// Matches: *Generated from accepted idea: UUID*
+static RE_IDEA_SOURCE: Lazy<Option<Regex>> = Lazy::new(|| {
+    Regex::new(r"\*Generated from accepted idea: ([a-f0-9-]+)\*").ok()
+});
+
 /// Project status derived from NOTES.md
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
@@ -1056,7 +1062,112 @@ pub async fn update_project_status(project_name: String, status: String) -> Resu
     fs::write(&notes_path, new_content)
         .map_err(|e| format!("Failed to write NOTES.md: {}", e))?;
 
+    // When project is COMPLETE or ARCHIVED, archive the source idea if one exists
+    if status_upper == "COMPLETE" || status_upper == "ARCHIVED" {
+        if let Err(e) = archive_source_idea(&project_path) {
+            // Log but don't fail - project status update already succeeded
+            eprintln!("Warning: Failed to archive source idea: {}", e);
+        }
+    }
+
     Ok(())
+}
+
+/// Archive the source idea that generated this project (if any)
+/// Looks for idea_id in SPEC.md footer and archives the corresponding idea
+fn archive_source_idea(project_path: &std::path::Path) -> Result<(), String> {
+    let spec_path = project_path.join("SPEC.md");
+    if !spec_path.exists() {
+        return Ok(()); // No SPEC.md, nothing to do
+    }
+
+    let spec_content = fs::read_to_string(&spec_path)
+        .map_err(|e| format!("Failed to read SPEC.md: {}", e))?;
+
+    // Extract idea_id from footer
+    let idea_id = match RE_IDEA_SOURCE.as_ref() {
+        Some(re) => {
+            re.captures(&spec_content)
+                .and_then(|caps| caps.get(1))
+                .map(|m| m.as_str().to_string())
+        }
+        None => None,
+    };
+
+    let idea_id = match idea_id {
+        Some(id) => id,
+        None => return Ok(()), // No idea source found, nothing to do
+    };
+
+    // Archive the idea using the feedback command
+    crate::commands::feedback::update_idea_status(idea_id.clone(), "archived".to_string())?;
+
+    eprintln!("Archived source idea {} for completed project", idea_id);
+    Ok(())
+}
+
+/// Sync all completed/archived projects with their source ideas
+/// Archives any ideas whose projects are already complete
+/// Returns count of ideas archived
+#[tauri::command]
+pub async fn sync_project_idea_status() -> Result<SyncResult, String> {
+    let projects_dir = get_projects_dir()?;
+    let mut archived_count = 0;
+    let mut skipped_count = 0;
+    let mut error_count = 0;
+
+    // Iterate all project directories
+    let entries = fs::read_dir(&projects_dir)
+        .map_err(|e| format!("Failed to read projects directory: {}", e))?;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+
+        // Check if project is complete or archived
+        let notes_path = path.join("NOTES.md");
+        if !notes_path.exists() {
+            continue;
+        }
+
+        let notes_content = match fs::read_to_string(&notes_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        // Check for COMPLETE or ARCHIVED status
+        let is_finished = notes_content.contains("PROJECT:STATUS:COMPLETE")
+            || notes_content.contains("PROJECT:STATUS:ARCHIVED");
+
+        if !is_finished {
+            skipped_count += 1;
+            continue;
+        }
+
+        // Try to archive source idea
+        match archive_source_idea(&path) {
+            Ok(()) => archived_count += 1,
+            Err(e) => {
+                eprintln!("Failed to archive idea for {}: {}", path.display(), e);
+                error_count += 1;
+            }
+        }
+    }
+
+    Ok(SyncResult {
+        archived: archived_count,
+        skipped: skipped_count,
+        errors: error_count,
+    })
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SyncResult {
+    pub archived: usize,
+    pub skipped: usize,
+    pub errors: usize,
 }
 
 /// Update HANDOFF marker in a workflow file

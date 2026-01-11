@@ -900,6 +900,8 @@ struct ReviewForRouting {
     #[serde(default)]
     complexity: Option<String>,
     proposal: Option<ProposalForRouting>,
+    #[serde(default)]
+    gaps: Vec<GapForRouting>,
 }
 
 #[derive(Clone, Debug, serde::Deserialize)]
@@ -912,6 +914,14 @@ struct ProposalForRouting {
     scope: Option<String>,
     #[serde(default)]
     implementation_hints: Option<String>,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct GapForRouting {
+    label: String,
+    description: String,
+    #[serde(default)]
+    value: Option<String>,
 }
 
 /// Result of routing an accepted idea
@@ -1009,6 +1019,22 @@ pub async fn route_accepted_idea(idea_id: String) -> Result<RouteResult, String>
                 None, // Use default team
             ).await?;
 
+            // Build Q&A section from answered gaps
+            let qa_section = {
+                let answered_gaps: Vec<_> = review.gaps.iter()
+                    .filter(|g| g.value.is_some())
+                    .collect();
+                if answered_gaps.is_empty() {
+                    String::new()
+                } else {
+                    let mut qa = String::from("\n## Requirements\n\n");
+                    for gap in answered_gaps {
+                        qa.push_str(&format!("**{}**: {}\n\n", gap.label, gap.value.as_ref().unwrap()));
+                    }
+                    qa
+                }
+            };
+
             // Write spec file with proposal content
             let spec_content = format!(
 r#"# {}
@@ -1024,7 +1050,7 @@ r#"# {}
 ## Solution
 
 {}
-{}{}
+{}{}{}
 ---
 *Generated from accepted idea: {}*
 "#,
@@ -1034,6 +1060,7 @@ r#"# {}
                 proposal.solution,
                 proposal.scope.as_ref().map(|s| format!("\n## Scope\n\n{}\n", s)).unwrap_or_default(),
                 proposal.implementation_hints.as_ref().map(|h| format!("\n## Implementation Hints\n\n{}\n", h)).unwrap_or_default(),
+                qa_section,
                 idea_id
             );
 

@@ -117,10 +117,10 @@ pub fn get_nolan_root() -> Result<PathBuf, String> {
 /// Get Nolan data root directory for user-specific data
 /// Priority:
 /// 1. NOLAN_DATA_ROOT environment variable
-/// 2. Fall back to NOLAN_ROOT (backward compatibility)
+/// 2. Default to ~/.nolan
 /// Returns: directory for user data (agents, projects, teams, .state)
 pub fn get_nolan_data_root() -> Result<PathBuf, String> {
-    // Priority 1: Check NOLAN_DATA_ROOT
+    // Priority 1: Check NOLAN_DATA_ROOT environment variable
     if let Ok(data_root) = env::var("NOLAN_DATA_ROOT") {
         let path = PathBuf::from(&data_root);
         if path.exists() {
@@ -132,8 +132,13 @@ pub fn get_nolan_data_root() -> Result<PathBuf, String> {
         return Ok(path);
     }
 
-    // Priority 2: Fall back to NOLAN_ROOT for backward compatibility
-    get_nolan_root()
+    // Priority 2: Default to ~/.nolan
+    let default_path = get_home_dir()?.join(".nolan");
+    if !default_path.exists() {
+        std::fs::create_dir_all(&default_path)
+            .map_err(|e| format!("Failed to create ~/.nolan: {}", e))?;
+    }
+    Ok(default_path)
 }
 
 /// Get the consolidated state directory path (user data)

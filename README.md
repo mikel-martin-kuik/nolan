@@ -17,22 +17,12 @@ That's it. The app auto-builds on first run.
 - Node.js 18+
 - Rust ([rustup.rs](https://rustup.rs))
 - tmux
-
-## The Team
-
-| Agent | Role |
-|-------|------|
-| Dan | Scrum Master - coordinates team |
-| Ana | Research - gathers requirements |
-| Bill | Planning - designs solutions |
-| Carl | Implementation - writes code |
-| Enzo | QA - validates quality |
+- ollama (optional)
 
 ## Development
 
 ```bash
-cd app
-./scripts/start-gui.sh --dev   # Dev mode with hot reload
+bash app/start.sh --dev   # Dev mode with hot reload
 ```
 
 ## Terminal Access
@@ -60,7 +50,10 @@ Nolan provides multiple ways to interact with agent terminals:
 
 ```
 nolan/
-├── app/        # The application (run setup.sh and start.sh here)
-├── services/   # Backend services (transcript-service)
-└── projects/   # Your work (created automatically)
+  app/.claude        (claude settings)
+  app/src/           (frontend)
+  app/src-tauri/     (backend)
+  app/scripts/       (shell scripts)
+  cronos/agents/     (cron agent definitions)
+  docs/              (documentation)
 ```

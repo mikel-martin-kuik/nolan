@@ -187,6 +187,9 @@ pub struct AgentState {
     pub total_failures: u32,
 }
 
+/// Cancellation token for stopping running processes
+pub type CancellationToken = Arc<RwLock<bool>>;
+
 /// Running process info (in-memory tracking, recoverable via tmux session)
 #[derive(Clone, Debug)]
 pub struct RunningProcess {
@@ -198,6 +201,7 @@ pub struct RunningProcess {
     pub json_file: std::path::PathBuf,
     pub session_name: Option<String>,  // tmux session name for recovery
     pub run_dir: Option<std::path::PathBuf>,  // ephemeral working directory
+    pub cancellation_token: Option<CancellationToken>,  // For stopping the process
 }
 
 /// Orphaned cron session detected on startup (for recovery)

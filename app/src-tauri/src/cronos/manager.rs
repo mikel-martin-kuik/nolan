@@ -149,7 +149,7 @@ impl CronosManager {
         log_file: PathBuf,
         json_file: PathBuf,
     ) {
-        self.register_running_with_session(run_id, agent_name, pid, log_file, json_file, None, None).await;
+        self.register_running_with_session(run_id, agent_name, pid, log_file, json_file, None, None, None).await;
     }
 
     /// Register a running process with tmux session info for recovery
@@ -162,6 +162,7 @@ impl CronosManager {
         json_file: PathBuf,
         session_name: Option<String>,
         run_dir: Option<PathBuf>,
+        cancellation_token: Option<CancellationToken>,
     ) {
         let mut running = self.running.write().await;
         running.insert(agent_name.to_string(), RunningProcess {
@@ -173,6 +174,7 @@ impl CronosManager {
             json_file,
             session_name,
             run_dir,
+            cancellation_token,
         });
     }
 
@@ -301,6 +303,9 @@ impl CronosManager {
     async fn reattach_cron_session(&self, session: &OrphanedCronSession) -> Result<(), String> {
         let run_log = &session.run_log;
 
+        // Create a new cancellation token for this recovered session
+        let cancel_token = Arc::new(RwLock::new(false));
+
         // Re-register in running processes
         self.register_running_with_session(
             &run_log.run_id,
@@ -310,6 +315,7 @@ impl CronosManager {
             session.json_file.clone(),
             run_log.session_name.clone(),
             run_log.run_dir.as_ref().map(PathBuf::from),
+            Some(cancel_token.clone()),
         ).await;
 
         // Spawn a task to monitor for completion
@@ -329,23 +335,34 @@ impl CronosManager {
             loop {
                 tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 
+                // Check cancellation token first (for user-initiated cancel)
+                let was_cancelled = {
+                    let cancelled = cancel_token.read().await;
+                    *cancelled
+                };
+
                 // Check if session still exists
                 let session_exists = crate::tmux::session::session_exists(&session_name)
                     .unwrap_or(false);
 
-                if !session_exists {
-                    // Session ended - finalize the run log
+                if was_cancelled || !session_exists {
+                    // Session ended or was cancelled - finalize the run log
                     let completed_at = Utc::now();
 
-                    // Try to read exit code
-                    let exit_code = run_dir.as_ref()
-                        .and_then(|d| std::fs::read_to_string(d.join("exit_code")).ok())
-                        .and_then(|s| s.trim().parse::<i32>().ok());
-
-                    let status = if exit_code == Some(0) {
-                        CronRunStatus::Success
+                    let (status, exit_code, error) = if was_cancelled {
+                        // User cancelled - don't retry
+                        (CronRunStatus::Cancelled, None, Some("Cancelled by user".to_string()))
                     } else {
-                        CronRunStatus::Failed
+                        // Natural completion - check exit code
+                        let exit_code = run_dir.as_ref()
+                            .and_then(|d| std::fs::read_to_string(d.join("exit_code")).ok())
+                            .and_then(|s| s.trim().parse::<i32>().ok());
+
+                        if exit_code == Some(0) {
+                            (CronRunStatus::Success, exit_code, None)
+                        } else {
+                            (CronRunStatus::Failed, exit_code, Some("Non-zero exit code".to_string()))
+                        }
                     };
 
                     // Parse started_at to calculate duration
@@ -362,11 +379,7 @@ impl CronosManager {
                         duration_secs: Some(duration),
                         exit_code,
                         output_file: output_file.clone(),
-                        error: if exit_code != Some(0) {
-                            Some("Non-zero exit code".to_string())
-                        } else {
-                            None
-                        },
+                        error,
                         attempt,
                         trigger: trigger.clone(),
                         session_name: Some(session_name.clone()),

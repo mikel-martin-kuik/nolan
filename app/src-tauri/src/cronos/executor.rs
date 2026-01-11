@@ -13,8 +13,7 @@ use super::manager::CronosManager;
 use crate::utils::paths;
 use crate::tmux::session;
 
-/// Cancellation token for running processes
-pub type CancellationToken = Arc<RwLock<bool>>;
+// CancellationToken is now defined in types.rs
 
 /// Output event sender for real-time streaming
 pub type OutputSender = broadcast::Sender<CronOutputEvent>;
@@ -188,6 +187,9 @@ async fn execute_single_run(
 
     // Generate tmux session name
     let session_name = format!("cron-{}-{}", config.name, &run_id);
+
+    // Create or use cancellation token (needed for cancel_cron_agent to signal cancellation)
+    let cancel_token = cancellation.unwrap_or_else(|| Arc::new(RwLock::new(false)));
 
     // Emit start event
     if let Some(ref sender) = output_sender {
@@ -365,7 +367,7 @@ async fn execute_single_run(
         eprintln!("Warning: Failed to register cron session: {}", e);
     }
 
-    // Register as running in manager
+    // Register as running in manager (with cancellation token for cancel_cron_agent)
     manager.register_running_with_session(
         &run_id,
         &config.name,
@@ -374,6 +376,7 @@ async fn execute_single_run(
         json_file.clone(),
         Some(session_name.clone()),
         Some(run_dir.clone()),
+        Some(cancel_token.clone()),
     ).await;
 
     // Wait for completion with timeout and cancellation
@@ -382,7 +385,7 @@ async fn execute_single_run(
         &session_name,
         &run_dir,
         timeout_duration,
-        cancellation,
+        Some(cancel_token.clone()),
     ).await;
 
     // Unregister from running
@@ -528,7 +531,15 @@ pub async fn cancel_cron_agent(manager: &CronosManager, agent_name: &str) -> Res
     let process = manager.get_running_process(agent_name).await
         .ok_or_else(|| format!("Agent '{}' is not running", agent_name))?;
 
-    // Kill the tmux session if we have one
+    // CRITICAL: Set the cancellation token BEFORE killing tmux session
+    // This ensures wait_for_tmux_completion sees the cancel signal first
+    // and returns Cancelled instead of Completed (which would trigger retry)
+    if let Some(ref token) = process.cancellation_token {
+        let mut cancelled = token.write().await;
+        *cancelled = true;
+    }
+
+    // Kill the tmux session
     if let Some(ref session_name) = process.session_name {
         let _ = std::process::Command::new("tmux")
             .args(&["kill-session", "-t", session_name])
@@ -544,37 +555,12 @@ pub async fn cancel_cron_agent(manager: &CronosManager, agent_name: &str) -> Res
         }
     }
 
-    // Update run log to show cancelled
-    let now = Utc::now();
-    let run_log = CronRunLog {
-        run_id: process.run_id.clone(),
-        agent_name: agent_name.to_string(),
-        started_at: process.started_at.to_rfc3339(),
-        completed_at: Some(now.to_rfc3339()),
-        status: CronRunStatus::Cancelled,
-        duration_secs: Some((now - process.started_at).num_seconds() as u32),
-        exit_code: None,
-        output_file: process.log_file.to_string_lossy().to_string(),
-        error: Some("Cancelled by user".to_string()),
-        attempt: 1,
-        trigger: RunTrigger::Manual,
-        session_name: process.session_name.clone(),
-        run_dir: process.run_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
-    };
-
-    // Write updated JSON
-    let json = serde_json::to_string_pretty(&run_log)
-        .map_err(|e| format!("Failed to serialize run log: {}", e))?;
-    std::fs::write(&process.json_file, json)
-        .map_err(|e| format!("Failed to write run log: {}", e))?;
-
-    // Delete ephemeral directory to prevent recovery
-    if let Some(ref run_dir) = process.run_dir {
-        let _ = std::fs::remove_dir_all(run_dir);
-    }
-
-    // Unregister
-    manager.unregister_running(agent_name).await;
+    // Note: The execution loop (execute_single_run) will handle:
+    // - Writing the final JSON with Cancelled status
+    // - Cleaning up the run directory
+    // - Unregistering from running processes
+    // This avoids race conditions where both cancel and execution loop
+    // try to write to the same JSON file.
 
     Ok(())
 }

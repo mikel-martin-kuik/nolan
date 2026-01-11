@@ -1,9 +1,9 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
+import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { Copy, Check, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { HistoryEntry } from '../../types';
-import { useLiveOutputStore } from '../../store/liveOutputStore';
 import { cn } from '../../lib/utils';
 import { AskUserQuestionDisplay } from '../Chat/AskUserQuestionDisplay';
 
@@ -132,41 +132,15 @@ export const LiveMessageList: React.FC<LiveMessageListProps> = ({
   session,
 }) => {
   const isFullHeight = maxHeight === '100%';
-  const { autoScroll } = useLiveOutputStore();
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Debounced auto-scroll to prevent excessive updates
-  useEffect(() => {
-    if (!autoScroll || !scrollRef.current) return;
-
-    // Clear existing timeout
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
-    }
-
-    // Debounce scroll to avoid jank during rapid updates
-    scrollTimeoutRef.current = setTimeout(() => {
-      if (scrollRef.current) {
-        scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      }
-    }, 50);
-
-    return () => {
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, [entries.length, autoScroll]);
 
   const handleCopy = useCallback(async (entry: HistoryEntry) => {
     if (entry.message) {
       await navigator.clipboard.writeText(entry.message);
     }
 
-    // Clear any existing timeout
     if (copyTimeoutRef.current) {
       clearTimeout(copyTimeoutRef.current);
     }
@@ -176,42 +150,33 @@ export const LiveMessageList: React.FC<LiveMessageListProps> = ({
     copyTimeoutRef.current = setTimeout(() => setCopiedId(null), 2000);
   }, []);
 
-  // Cleanup copy timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (copyTimeoutRef.current) {
-        clearTimeout(copyTimeoutRef.current);
-      }
-    };
-  }, []);
-
   return (
-    <div
-      ref={scrollRef}
-      className={cn(
-        'overflow-y-auto space-y-1 p-2',
-        isFullHeight && 'h-full'
-      )}
-      style={isFullHeight ? undefined : { maxHeight }}
-    >
-      {entries.map((entry, index) => {
+    <Virtuoso
+      ref={virtuosoRef}
+      data={entries}
+      followOutput="smooth"
+      overscan={30}
+      className={cn('p-2', isFullHeight && 'h-full')}
+      style={isFullHeight ? { height: '100%' } : { height: maxHeight }}
+      itemContent={(index, entry) => {
         const id = entry.uuid || `${entry.timestamp}-${index}`;
         const isCopied = copiedId === id;
         const isLast = index === entries.length - 1;
 
         return (
-          <MessageEntry
-            key={id}
-            entry={entry}
-            index={index}
-            isCopied={isCopied}
-            onCopy={handleCopy}
-            session={session}
-            isLast={isLast}
-          />
+          <div className="pb-1">
+            <MessageEntry
+              entry={entry}
+              index={index}
+              isCopied={isCopied}
+              onCopy={handleCopy}
+              session={session}
+              isLast={isLast}
+            />
+          </div>
         );
-      })}
-    </div>
+      }}
+    />
   );
 };
 

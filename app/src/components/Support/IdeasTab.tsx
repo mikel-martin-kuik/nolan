@@ -46,10 +46,19 @@ function getIdeaColumn(idea: Idea, review?: IdeaReview): WorkflowColumn {
     return 'new';
   }
 
+  // Check for unanswered required gaps
+  const hasUnansweredRequiredGaps = review.gaps?.some(
+    (gap) => gap.required && !gap.value
+  );
+
   // Map review status to column
   switch (review.review_status) {
     case 'draft':
-      // Draft proposals are complete and ready for user acceptance
+      // Draft proposals with unanswered required gaps need user input first
+      if (hasUnansweredRequiredGaps) {
+        return 'analysis';
+      }
+      // Draft proposals with all required gaps answered are ready for acceptance
       return 'ready';
     case 'needs_input':
       // Needs user to fill in gaps

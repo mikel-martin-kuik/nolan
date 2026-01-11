@@ -53,7 +53,13 @@ def detect_rejection_marker(filepath: Path) -> Optional[str]:
 def call_workflow_router(project_path: Path, phase: str, decision: str = "approved") -> dict:
     """Call workflow-router.py and return parsed result."""
     import subprocess
-    router_path = Path(__file__).parent.parent.parent / "scripts" / "workflow-router.py"
+
+    # Use NOLAN_ROOT to find scripts (hooks may be copied to agent directories)
+    nolan_root = os.environ.get('NOLAN_ROOT')
+    if not nolan_root:
+        return {"action": "escalate", "reason": "NOLAN_ROOT not set"}
+
+    router_path = Path(nolan_root) / "app" / "scripts" / "workflow-router.py"
 
     try:
         result = subprocess.run(
@@ -76,12 +82,20 @@ def call_workflow_router(project_path: Path, phase: str, decision: str = "approv
 def call_assign(project_name: str, phase: str, task: str) -> bool:
     """Call assign.sh to assign next phase."""
     import subprocess
-    assign_path = Path(__file__).parent.parent.parent / "scripts" / "assign.sh"
+
+    # Use NOLAN_ROOT to find scripts (hooks may be copied to agent directories)
+    nolan_root = os.environ.get('NOLAN_ROOT')
+    if not nolan_root:
+        log_stderr("NOLAN_ROOT not set - cannot call assign.sh")
+        return False
+
+    assign_path = Path(nolan_root) / "app" / "scripts" / "assign.sh"
 
     try:
         result = subprocess.run(
             [str(assign_path), project_name, phase, task],
-            capture_output=True, text=True, timeout=30
+            capture_output=True, text=True, timeout=30,
+            env={**os.environ, 'NOLAN_ROOT': nolan_root}  # Ensure env is passed
         )
         return result.returncode == 0
     except Exception as e:

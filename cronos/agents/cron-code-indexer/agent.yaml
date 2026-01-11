@@ -1,0 +1,34 @@
+name: cron-code-indexer
+description: Maintains searchable codebase index for faster agent context retrieval
+model: haiku
+timeout: 300
+enabled: false
+schedule:
+  cron: 0 */2 * * *
+  timezone: null
+guardrails:
+  allowed_tools:
+  - Read
+  - Glob
+  - Grep
+  - Bash
+  - Write
+  forbidden_paths:
+  - '**/.env'
+  - '**/secrets/**'
+  - '**/*.key'
+  - '**/node_modules/**'
+  - '**/target/**'
+  max_file_edits: 1
+context:
+  working_directory: null
+group: maintenance
+concurrency:
+  allow_parallel: false
+  queue_if_running: false
+retry:
+  enabled: false
+  max_retries: 1
+  delay_secs: 60
+  exponential_backoff: false
+catch_up: skip

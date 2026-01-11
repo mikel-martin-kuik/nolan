@@ -1,33 +1,68 @@
 #!/bin/bash
 #
-# Coordinator Heartbeat - Periodically ACKs pending handoffs
+# Handoff Heartbeat - Periodically ACKs pending handoffs
 #
 # Usage:
 #   coordinator-heartbeat.sh                    # Single run
 #   coordinator-heartbeat.sh --daemon           # Run continuously
 #   coordinator-heartbeat.sh --daemon --interval 30  # Custom interval
 #
-# RESTRICTED: Coordinator-only tool
+# RESTRICTED: Note-taker and support agents only (not workflow participants)
 
 set -e
 
-# Check if caller is coordinator or support (security check)
-check_coordinator_access() {
+# Check if caller is note_taker or support (security check)
+check_heartbeat_access() {
     local agent_name="${AGENT_NAME:-}"
+    local team_name="${TEAM_NAME:-default}"
 
-    # Workflow agents cannot use this script
-    # Note: Ralph IS allowed - support agents can manage heartbeat for debugging
-    local workflow_agents="ana bill carl enzo frank"
-    for wa in $workflow_agents; do
-        if [[ "$agent_name" == "$wa" ]]; then
-            echo "ERROR: This tool is restricted." >&2
-            exit 2
-        fi
-    done
+    # Ralph agents are always allowed (support)
+    if [[ "$agent_name" == "ralph" ]] || [[ "$agent_name" =~ ^ralph- ]]; then
+        return 0
+    fi
+
+    # Query team config for workflow participants (dynamically)
+    # Workflow participants cannot use this script - only note_taker and support
+    local is_workflow_agent
+    is_workflow_agent=$(python3 -c "
+import yaml, sys
+from pathlib import Path
+import os
+
+nolan_root = Path(os.environ.get('NOLAN_ROOT', ''))
+team_name = os.environ.get('TEAM_NAME', 'default')
+agent_name = os.environ.get('AGENT_NAME', '').lower()
+
+if not nolan_root or not agent_name:
+    sys.exit(0)  # Allow if can't determine
+
+# Search for team config
+config_path = None
+for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+    config_path = path
+    break
+
+if not config_path:
+    sys.exit(0)  # Allow if config not found
+
+config = yaml.safe_load(config_path.read_text())
+agents = config.get('team', {}).get('agents', [])
+
+for agent in agents:
+    if agent.get('name', '').lower() == agent_name:
+        if agent.get('workflow_participant', False):
+            print('yes')
+        break
+" 2>/dev/null)
+
+    if [[ "$is_workflow_agent" == "yes" ]]; then
+        echo "ERROR: This tool is restricted." >&2
+        exit 2
+    fi
 }
 
 # Run access check
-check_coordinator_access
+check_heartbeat_access
 
 # Required environment variables (no hardcoded defaults)
 if [[ -z "${NOLAN_ROOT:-}" ]]; then
@@ -187,7 +222,7 @@ check_heartbeat_stale() {
 
 # Single heartbeat run
 single_run() {
-    log_info "Coordinator heartbeat - single run"
+    log_info "Handoff heartbeat - single run"
     ack_all_handoffs
     update_heartbeat
 }
@@ -196,7 +231,7 @@ single_run() {
 daemon_mode() {
     local interval=${1:-$DEFAULT_INTERVAL}
 
-    log_info "Coordinator heartbeat daemon starting (interval: ${interval}s)"
+    log_info "Handoff heartbeat daemon starting (interval: ${interval}s)"
     log_info "Press Ctrl+C to stop"
 
     # Trap SIGINT and SIGTERM for clean shutdown
@@ -260,7 +295,7 @@ case "${1:-}" in
         show_status
         ;;
     --help|-h)
-        echo "Coordinator Heartbeat - ACKs pending handoffs"
+        echo "Handoff Heartbeat - ACKs pending handoffs"
         echo ""
         echo "Usage:"
         echo "  coordinator-heartbeat.sh                    # Single run"

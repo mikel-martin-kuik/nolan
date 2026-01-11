@@ -926,8 +926,8 @@ pub struct RouteResult {
 }
 
 /// Route an accepted idea based on complexity
-/// - High/Medium complexity → Create project
-/// - Low complexity → Trigger cron-idea-implementer
+/// - High complexity → Create project
+/// - Low/Medium complexity → Trigger cron-idea-implementer
 pub async fn route_accepted_idea(idea_id: String) -> Result<RouteResult, String> {
     let nolan_root = crate::utils::paths::get_nolan_root()?;
     let feedback_dir = nolan_root.join(".state/feedback");
@@ -950,7 +950,7 @@ pub async fn route_accepted_idea(idea_id: String) -> Result<RouteResult, String>
     let complexity = review.complexity.as_deref().unwrap_or("medium");
 
     match complexity {
-        "low" => {
+        "low" | "medium" => {
             // Trigger cron-idea-implementer
             let guard = CRONOS.read().await;
             let manager = guard.as_ref().ok_or("Cronos not initialized")?;
@@ -987,7 +987,7 @@ pub async fn route_accepted_idea(idea_id: String) -> Result<RouteResult, String>
             })
         }
         _ => {
-            // High or medium complexity → Create project
+            // High complexity → Create project
             let proposal = review.proposal.as_ref()
                 .ok_or("Review has no proposal")?;
 

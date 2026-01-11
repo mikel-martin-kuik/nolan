@@ -60,6 +60,18 @@ export default {
   				warning: 'rgb(234, 179, 8)',     // yellow-500
   				degraded: 'rgb(249, 115, 22)',   // orange-500
   				unknown: 'rgb(107, 114, 128)',   // gray-500
+  			},
+  			// Semantic text hierarchy tokens
+  			text: {
+  				high: 'hsl(var(--text-high))',
+  				normal: 'hsl(var(--text-normal))',
+  				low: 'hsl(var(--text-low))'
+  			},
+  			// Semantic background tokens
+  			bg: {
+  				panel: 'hsl(var(--bg-panel))',
+  				surface: 'hsl(var(--bg-surface))',
+  				overlay: 'var(--bg-overlay)'
   			}
   		}
   	}

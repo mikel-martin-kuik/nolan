@@ -64,7 +64,7 @@ export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
 
   const updateProposalMutation = useMutation({
     mutationFn: (updatedProposal: IdeaProposal) =>
-      invoke<IdeaReview>('update_review_proposal', { item_id: idea.id, proposal: updatedProposal }),
+      invoke<IdeaReview>('update_review_proposal', { itemId: idea.id, proposal: updatedProposal }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['idea-reviews'] });
       setEditingProposal(false);
@@ -73,7 +73,7 @@ export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
 
   const updateGapsMutation = useMutation({
     mutationFn: (updatedGaps: IdeaGap[]) =>
-      invoke<IdeaReview>('update_review_gaps', { item_id: idea.id, gaps: updatedGaps }),
+      invoke<IdeaReview>('update_review_gaps', { itemId: idea.id, gaps: updatedGaps }),
     onSuccess: (result) => {
       lastSavedGapsRef.current = JSON.stringify(result.gaps);
       setSaveStatus('saved');
@@ -90,7 +90,7 @@ export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
   const acceptMutation = useMutation({
     mutationFn: async () => {
       // Save gaps first to ensure they're persisted before accepting
-      await invoke<IdeaReview>('update_review_gaps', { item_id: idea.id, gaps });
+      await invoke<IdeaReview>('update_review_gaps', { itemId: idea.id, gaps });
       return invoke<{ review: IdeaReview; route: string; route_detail: string }>('accept_and_route_review', { itemId: idea.id });
     },
     onSuccess: (result) => {

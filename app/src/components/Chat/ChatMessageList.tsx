@@ -1,4 +1,5 @@
-import React, { memo, useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import React, { memo, useRef, useState, useMemo } from 'react';
+import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { ArrowDown, MessageSquare, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { HistoryEntry } from '../../types';
@@ -6,18 +7,6 @@ import { useMessageClassifier, isWaitingForInput, isWarmupMessage } from './useM
 import { ChatMessage } from './ChatMessage';
 import { CollapsedActivity } from './CollapsedActivity';
 import { ChatActivityIndicator } from './ChatActivityIndicator';
-
-// Debounce helper for scroll handling
-function debounce<T extends (...args: Parameters<T>) => void>(
-  fn: T,
-  delay: number
-): (...args: Parameters<T>) => void {
-  let timeoutId: ReturnType<typeof setTimeout>;
-  return (...args: Parameters<T>) => {
-    clearTimeout(timeoutId);
-    timeoutId = setTimeout(() => fn(...args), delay);
-  };
-}
 
 // Helper to extract display text from message (removes MSG_ID prefix)
 function getDisplayText(message: string): string {
@@ -108,8 +97,7 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = memo(({
   session,
   agentInfo,
 }) => {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [autoScroll, setAutoScroll] = useState(true);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
   // Classify and group messages (pass isActive to collapse intermediate messages)
@@ -139,40 +127,17 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = memo(({
   const lastToolEntry = [...entries].reverse().find(e => e.entry_type === 'tool_use');
   const lastToolName = lastToolEntry?.tool_name;
 
-  // Handle scroll position (debounced to reduce state updates)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const handleScroll = useCallback(
-    debounce(() => {
-      const container = containerRef.current;
-      if (!container) return;
-
-      const { scrollTop, scrollHeight, clientHeight } = container;
-      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-
-      setAutoScroll(isNearBottom);
-      setShowScrollButton(!isNearBottom);
-    }, 100),
-    []
-  );
-
-  // Auto-scroll to bottom on new messages
-  useEffect(() => {
-    if (autoScroll && containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight;
-    }
-  }, [entries, autoScroll]);
-
-  const scrollToBottom = () => {
-    if (containerRef.current) {
-      containerRef.current.scrollTop = containerRef.current.scrollHeight;
-      setAutoScroll(true);
-      setShowScrollButton(false);
-    }
-  };
-
   // Count primary messages for "needs response" logic
   const primaryMessages = groups.filter(g => g.type === 'primary');
   const lastPrimaryIdx = primaryMessages.length - 1;
+
+  const scrollToBottom = () => {
+    virtuosoRef.current?.scrollToIndex({
+      index: groups.length - 1,
+      align: 'end',
+      behavior: 'smooth',
+    });
+  };
 
   return (
     <div className="relative flex-1 overflow-hidden flex flex-col">
@@ -182,23 +147,27 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = memo(({
         lastMessage={lastUserMessage}
       />
 
-      <div
-        ref={containerRef}
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-4 py-4 space-y-4"
-      >
-        {groups.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-            No messages yet
-          </div>
-        ) : (
-          groups.map((group) => {
+      {groups.length === 0 ? (
+        <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+          No messages yet
+        </div>
+      ) : (
+        <Virtuoso
+          ref={virtuosoRef}
+          data={groups}
+          followOutput="smooth"
+          atBottomStateChange={(atBottom) => setShowScrollButton(!atBottom)}
+          overscan={30}
+          className="flex-1"
+          itemContent={(_index, group) => {
             if (group.type === 'collapsed') {
               return (
-                <CollapsedActivity
-                  key={group.id}
-                  group={group}
-                />
+                <div className="px-4 py-2">
+                  <CollapsedActivity
+                    key={group.id}
+                    group={group}
+                  />
+                </div>
               );
             }
 
@@ -211,26 +180,32 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = memo(({
             const msgAgentInfo = agentInfo?.get(entryIndex);
 
             return (
-              <ChatMessage
-                key={group.id}
-                message={msg}
-                isLast={isPrimaryLast}
-                showNeedsResponse={waitingForInput}
-                session={session}
-                agentName={msgAgentInfo?.agentName}
-                agentColor={msgAgentInfo?.agentColor}
-              />
+              <div className="px-4 py-2">
+                <ChatMessage
+                  key={group.id}
+                  message={msg}
+                  isLast={isPrimaryLast}
+                  showNeedsResponse={waitingForInput}
+                  session={session}
+                  agentName={msgAgentInfo?.agentName}
+                  agentColor={msgAgentInfo?.agentColor}
+                />
+              </div>
             );
-          })
-        )}
-
-        {/* Activity indicator at bottom */}
-        <ChatActivityIndicator
-          isActive={isActive}
-          agentName={agentName}
-          lastToolName={lastToolName}
+          }}
+          components={{
+            Footer: () => (
+              <div className="px-4 pb-4">
+                <ChatActivityIndicator
+                  isActive={isActive}
+                  agentName={agentName}
+                  lastToolName={lastToolName}
+                />
+              </div>
+            ),
+          }}
         />
-      </div>
+      )}
 
       {/* Scroll to bottom button */}
       {showScrollButton && (

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { Virtuoso, VirtuosoHandle } from 'react-virtuoso';
 import { invoke, isBrowserMode } from '@/lib/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -147,8 +148,24 @@ const LogEntryRenderer: React.FC<{ entry: ParsedLogEntry }> = ({ entry }) => {
 
 const LogRenderer: React.FC<{ content: string }> = ({ content }) => {
   const entries = useMemo(() => parseLogEntries(content), [content]);
+  const virtuosoRef = useRef<VirtuosoHandle>(null);
+
   if (entries.length === 0) return <div className="text-muted-foreground text-sm p-4">No output</div>;
-  return <div className="space-y-1 p-2">{entries.map((entry, i) => <LogEntryRenderer key={i} entry={entry} />)}</div>;
+
+  return (
+    <Virtuoso
+      ref={virtuosoRef}
+      data={entries}
+      followOutput="smooth"
+      overscan={40}
+      className="flex-1"
+      itemContent={(_index, entry) => (
+        <div className="px-2 py-0.5">
+          <LogEntryRenderer entry={entry} />
+        </div>
+      )}
+    />
+  );
 };
 
 interface CronAgentOutputModalProps {
@@ -164,8 +181,6 @@ export const CronAgentOutputModal: React.FC<CronAgentOutputModalProps> = ({
 }) => {
   const [agent, setAgent] = useState<CronAgentInfo | null>(null);
   const [liveOutput, setLiveOutput] = useState<CronOutputEvent[]>([]);
-  const [liveOutputAutoScroll, setLiveOutputAutoScroll] = useState(true);
-  const liveOutputRef = useRef<HTMLDivElement>(null);
   const { error: showError } = useToastStore();
 
   const fetchAgent = useCallback(async () => {
@@ -229,17 +244,6 @@ export const CronAgentOutputModal: React.FC<CronAgentOutputModalProps> = ({
     return () => clearInterval(poll);
   }, [agentName, agent?.current_run_id, agent?.last_run?.run_id, fetchAgent]);
 
-  useEffect(() => {
-    if (liveOutputAutoScroll && liveOutputRef.current) {
-      liveOutputRef.current.scrollTop = liveOutputRef.current.scrollHeight;
-    }
-  }, [liveOutput, liveOutputAutoScroll]);
-
-  const handleScroll = () => {
-    const c = liveOutputRef.current;
-    if (c) setLiveOutputAutoScroll(c.scrollHeight - c.scrollTop - c.clientHeight < 100);
-  };
-
   if (!agentName) return null;
 
   const combinedContent = liveOutput.map(e => e.content).join('\n');
@@ -277,11 +281,7 @@ export const CronAgentOutputModal: React.FC<CronAgentOutputModalProps> = ({
         </div>
 
         {/* Output */}
-        <div
-          ref={liveOutputRef}
-          onScroll={handleScroll}
-          className="flex-1 overflow-y-auto"
-        >
+        <div className="flex-1 overflow-hidden">
           {liveOutput.length === 0 ? (
             <div className="text-muted-foreground text-sm p-8 h-full flex items-center justify-center">
               {isRunning ? 'Starting agent...' : 'No output available'}

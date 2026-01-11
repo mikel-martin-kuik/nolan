@@ -680,8 +680,8 @@ pub struct AcceptAndRouteResult {
 }
 
 /// Accept a review and route it based on complexity (async version for Tauri)
-/// - High/Medium complexity → Create project
-/// - Low complexity → Trigger cron-idea-implementer
+/// - High complexity → Create project
+/// - Low/Medium complexity → Trigger cron-idea-implementer
 #[command]
 pub async fn accept_and_route_review(item_id: String) -> Result<AcceptAndRouteResult, String> {
     // First accept the review

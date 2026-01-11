@@ -29,6 +29,14 @@
     --chart-4: 0 0% 50%;
     --chart-5: 0 0% 30%;
     --radius: 0.5rem;
+    /* Semantic text hierarchy */
+    --text-high: 0 0% 7%;
+    --text-normal: 0 0% 20%;
+    --text-low: 0 0% 40%;
+    /* Semantic backgrounds */
+    --bg-panel: 0 0% 98%;
+    --bg-surface: 0 0% 96%;
+    --bg-overlay: rgba(0, 0, 0, 0.5);
     /* Glassmorphism - Light mode */
     --glass-bg: rgba(255, 255, 255, 0.6);
     --glass-bg-hover: rgba(255, 255, 255, 0.75);
@@ -64,6 +72,14 @@
     --chart-3: 157 55% 25%;
     --chart-4: 0 0% 60%;
     --chart-5: 0 0% 40%;
+    /* Semantic text hierarchy */
+    --text-high: 0 0% 98%;
+    --text-normal: 0 0% 80%;
+    --text-low: 0 0% 65%;
+    /* Semantic backgrounds */
+    --bg-panel: 0 0% 12%;
+    --bg-surface: 0 0% 19%;
+    --bg-overlay: rgba(0, 0, 0, 0.7);
     /* Glassmorphism - Dark mode */
     --glass-bg: rgba(255, 255, 255, 0.05);
     --glass-bg-hover: rgba(255, 255, 255, 0.08);

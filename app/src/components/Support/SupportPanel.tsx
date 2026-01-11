@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { invoke } from '@/lib/api';
-import { FeedbackStats } from '@/types';
+import { FeedbackStats, Idea, IdeaReview } from '@/types';
 import { FeatureRequestsTab } from './FeatureRequestsTab';
 import { IdeasTab } from './IdeasTab';
 import { IdeaForm } from './IdeaForm';
@@ -32,6 +32,42 @@ export function SupportPanel() {
     queryFn: () => invoke<FeedbackStats>('get_feedback_stats'),
     refetchInterval: 30000,
   });
+
+  const { data: ideas = [] } = useQuery({
+    queryKey: ['ideas'],
+    queryFn: () => invoke<Idea[]>('list_ideas'),
+    refetchInterval: 30000,
+  });
+
+  const { data: reviews = [] } = useQuery({
+    queryKey: ['idea-reviews'],
+    queryFn: () => invoke<IdeaReview[]>('list_idea_reviews'),
+    refetchInterval: 30000,
+  });
+
+  // Count ideas that are not in "done" column
+  const pendingIdeasCount = useMemo(() => {
+    const reviewMap = new Map<string, IdeaReview>();
+    reviews.forEach((review) => {
+      if (review.item_type === 'idea') {
+        reviewMap.set(review.item_id, review);
+      }
+    });
+
+    return ideas.filter((idea) => {
+      // Archived ideas are done
+      if (idea.status === 'archived') return false;
+
+      const review = reviewMap.get(idea.id);
+      if (!review) return true; // No review = not done
+
+      // Check if done based on review status
+      if (review.review_status === 'rejected') return false;
+      if (review.review_status === 'ready' && review.accepted_at) return false;
+
+      return true;
+    }).length;
+  }, [ideas, reviews]);
 
   return (
     <div className="h-full flex flex-col gap-4">
@@ -67,9 +103,9 @@ export function SupportPanel() {
             )}
           >
             <span>Ideas</span>
-            {(stats?.total_ideas ?? 0) > 0 && (
+            {pendingIdeasCount > 0 && (
               <span className="text-[10px] px-1 rounded bg-foreground/10">
-                {stats?.total_ideas}
+                {pendingIdeasCount}
               </span>
             )}
           </button>

@@ -1,6 +1,6 @@
 name: cron-idea-implementer
-description: Implements low-complexity accepted ideas directly (triggered on idea acceptance)
-model: sonnet
+description: Implements low and medium-complexity accepted ideas directly (triggered on idea acceptance)
+model: opus
 timeout: 600
 enabled: true
 schedule:

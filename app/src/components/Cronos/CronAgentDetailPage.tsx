@@ -8,12 +8,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
 import { useToastStore } from '@/store/toastStore';
 import { useOllamaStore } from '@/store/ollamaStore';
+import { useCronOutputStore } from '@/store/cronOutputStore';
 import { Tooltip } from '@/components/ui/tooltip';
 import { Sparkles, Loader2 } from 'lucide-react';
 import { CRON_PRESETS, CRON_MODELS } from '@/types/cronos';
+import { CronAgentOutputPanel } from './CronAgentOutputPanel';
 import type { CronAgentInfo, CronAgentConfig, CronRunLog } from '@/types';
 
 interface CronAgentDetailPageProps {
@@ -29,8 +31,9 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
   onBack,
   onTrigger: _onTrigger,
   onDelete: _onDelete,
-  onViewOutput,
+  onViewOutput: _onViewOutput,
 }) => {
+  const { selectedAgent, selectedRunId, openOutput } = useCronOutputStore();
   const [agent, setAgent] = useState<CronAgentInfo | null>(null);
   const [config, setConfig] = useState<CronAgentConfig | null>(null);
   const [runHistory, setRunHistory] = useState<CronRunLog[]>([]);
@@ -170,22 +173,42 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
         </div>
       </div>
 
-      {/* Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-        <TabsList className="grid w-full grid-cols-2 mb-4">
-          <TabsTrigger value="status">Status</TabsTrigger>
-          <TabsTrigger value="schedule">Config</TabsTrigger>
-        </TabsList>
+      {/* Tab Bar */}
+      <div className="flex items-center gap-1 p-1 glass-card rounded-lg w-fit mb-4">
+        <button
+          onClick={() => setActiveTab('status')}
+          className={cn(
+            "flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all",
+            activeTab === 'status' && "bg-foreground/10 text-foreground",
+            activeTab !== 'status' && "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <span>Status</span>
+        </button>
+        <button
+          onClick={() => setActiveTab('schedule')}
+          className={cn(
+            "flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all",
+            activeTab === 'schedule' && "bg-foreground/10 text-foreground",
+            activeTab !== 'schedule' && "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          <span>Config</span>
+        </button>
+      </div>
 
+      {/* Tab Content */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {/* Schedule Tab */}
-        <TabsContent value="schedule" className="flex-1 overflow-auto">
-          <div className="grid grid-cols-2 gap-6">
+        {activeTab === 'schedule' && (
+          <div className="h-full overflow-hidden">
+          <div className="grid grid-cols-2 gap-6 h-full">
             {/* Config */}
-            <Card>
-              <CardHeader>
+            <Card className="flex flex-col h-full overflow-hidden">
+              <CardHeader className="flex-shrink-0">
                 <CardTitle className="text-base">Configuration</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="flex-1 overflow-auto space-y-4">
                 <div>
                   <label className="text-sm font-medium">Description</label>
                   <Input className="mt-1" value={config.description} onChange={(e) => updateConfig({ description: e.target.value })} />
@@ -237,8 +260,8 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
             </Card>
 
             {/* Instructions */}
-            <Card className="flex flex-col">
-              <CardHeader>
+            <Card className="flex flex-col h-full overflow-hidden">
+              <CardHeader className="flex-shrink-0">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-base">Instructions (CLAUDE.md)</CardTitle>
                   {ollamaStatus === 'connected' && (
@@ -262,57 +285,99 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
                   )}
                 </div>
               </CardHeader>
-              <CardContent className="flex-1 flex flex-col">
+              <CardContent className="flex-1 flex flex-col overflow-hidden">
                 <Textarea
-                  className="flex-1 min-h-[300px] font-mono text-sm resize-none"
+                  className="flex-1 font-mono text-sm resize-none"
                   value={instructionsContent}
                   onChange={(e) => setInstructionsContent(e.target.value)}
                   disabled={generatingInstructions}
                 />
-                <Button onClick={handleSaveInstructions} disabled={saving} className="w-full mt-3">
+                <Button onClick={handleSaveInstructions} disabled={saving} className="w-full mt-3 flex-shrink-0">
                   {saving ? 'Saving...' : 'Save Instructions'}
                 </Button>
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
+          </div>
+        )}
 
-        {/* Status Tab - Combined Run History + Health */}
-        <TabsContent value="status" className="flex-1 overflow-hidden">
-          <div className="grid grid-cols-2 gap-6 h-full">
+        {/* Status Tab - Health on top, Run History + Logs side by side */}
+        {activeTab === 'status' && (
+          <div className="h-full overflow-hidden flex flex-col gap-4">
+          {/* Health Summary - Compact horizontal layout */}
+          <Card className="flex-shrink-0">
+            <CardContent className="py-4">
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">Health:</span>
+                  <span className="text-sm font-medium">{agent.health.status}</span>
+                </div>
+                <div className="flex items-center gap-2 flex-1 max-w-xs">
+                  <span className="text-sm text-muted-foreground">Success:</span>
+                  <Progress value={agent.stats.success_rate * 100} className="h-2 flex-1" />
+                  <span className="text-sm font-medium">{(agent.stats.success_rate * 100).toFixed(0)}%</span>
+                </div>
+                <div className="flex items-center gap-4 text-center">
+                  <div>
+                    <p className="text-lg font-bold">{agent.stats.success_count}</p>
+                    <p className="text-[10px] text-muted-foreground">Success</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold">{agent.stats.failure_count}</p>
+                    <p className="text-[10px] text-muted-foreground">Failed</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold">{agent.stats.total_runs}</p>
+                    <p className="text-[10px] text-muted-foreground">Total</p>
+                  </div>
+                  {agent.stats.avg_duration_secs != null && (
+                    <div>
+                      <p className="text-lg font-bold">{agent.stats.avg_duration_secs.toFixed(1)}s</p>
+                      <p className="text-[10px] text-muted-foreground">Avg Time</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+              {agent.health.message && <p className="text-xs text-muted-foreground mt-2">{agent.health.message}</p>}
+            </CardContent>
+          </Card>
+
+          {/* Run History + Output Logs side by side */}
+          <div className="grid grid-cols-2 gap-4 flex-1 min-h-0">
             {/* Run History */}
-            <Card className="flex flex-col">
-              <CardHeader>
-                <CardTitle className="text-base">Run History</CardTitle>
+            <Card className="flex flex-col h-full overflow-hidden">
+              <CardHeader className="py-3 flex-shrink-0">
+                <CardTitle className="text-sm">Run History</CardTitle>
               </CardHeader>
               <CardContent className="flex-1 overflow-hidden p-0">
-                <ScrollArea className="h-full px-6 pb-6">
+                <ScrollArea className="h-full px-4 pb-4">
                   {runHistory.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
-                      <p>No run history yet</p>
+                      <p className="text-sm">No run history yet</p>
                     </div>
                   ) : (
                     <div className="space-y-2">
                       {runHistory.map((run) => {
                         const isFailed = run.status !== 'success' && run.status !== 'running';
+                        const isSelected = selectedRunId === run.run_id;
                         return (
                           <Card
                             key={run.run_id}
-                            className={`p-3 cursor-pointer hover:border-primary/50 transition-colors ${isFailed ? 'border-red-500/50' : ''}`}
-                            onClick={() => onViewOutput(run.run_id)}
+                            className={`p-2 cursor-pointer hover:border-primary/50 transition-colors ${isFailed ? 'border-red-500/50' : ''} ${isSelected ? 'border-primary' : ''}`}
+                            onClick={() => openOutput(agentName, run.run_id)}
                           >
                             <div className="flex items-center justify-between">
                               <div>
-                                <p className="text-sm">
+                                <p className="text-xs">
                                   {new Date(run.started_at).toLocaleString()}
                                   {run.attempt > 1 && ` (attempt ${run.attempt})`}
-                                  <span className="text-muted-foreground ml-2">{run.status}</span>
                                 </p>
-                                {run.trigger !== 'scheduled' && (
-                                  <p className="text-xs text-muted-foreground capitalize">{run.trigger}</p>
-                                )}
+                                <p className="text-xs text-muted-foreground">
+                                  {run.status}
+                                  {run.trigger !== 'scheduled' && ` · ${run.trigger}`}
+                                </p>
                               </div>
-                              <div className="text-sm text-muted-foreground">
+                              <div className="text-xs text-muted-foreground">
                                 {run.duration_secs !== undefined && <span>{run.duration_secs}s</span>}
                               </div>
                             </div>
@@ -326,45 +391,27 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
               </CardContent>
             </Card>
 
-            {/* Health Summary */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Health: {agent.health.status}</CardTitle>
+            {/* Output Logs */}
+            <Card className="flex flex-col h-full overflow-hidden">
+              <CardHeader className="py-3 flex-shrink-0">
+                <CardTitle className="text-sm">Output Logs</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-4">
-                {agent.health.message && <p className="text-sm text-muted-foreground">{agent.health.message}</p>}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm">Success Rate</span>
-                    <span className="text-sm font-medium">{(agent.stats.success_rate * 100).toFixed(0)}%</span>
+              <CardContent className="flex-1 overflow-hidden p-0">
+                {selectedAgent === agentName ? (
+                  <div className="h-full">
+                    <CronAgentOutputPanel embedded />
                   </div>
-                  <Progress value={agent.stats.success_rate * 100} className="h-2" />
-                </div>
-                <div className="grid grid-cols-3 gap-4 pt-4 border-t text-center">
-                  <div>
-                    <p className="text-2xl font-bold">{agent.stats.success_count}</p>
-                    <p className="text-xs text-muted-foreground">Successful</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{agent.stats.failure_count}</p>
-                    <p className="text-xs text-muted-foreground">Failed</p>
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{agent.stats.total_runs}</p>
-                    <p className="text-xs text-muted-foreground">Total</p>
-                  </div>
-                </div>
-                {agent.stats.avg_duration_secs != null && (
-                  <div className="pt-4 border-t">
-                    <p className="text-xs text-muted-foreground">Average Duration</p>
-                    <p className="text-lg font-medium">{agent.stats.avg_duration_secs.toFixed(1)}s</p>
+                ) : (
+                  <div className="flex items-center justify-center h-full text-muted-foreground">
+                    <p className="text-sm">Select a run to view logs</p>
                   </div>
                 )}
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
-      </Tabs>
+          </div>
+        )}
+      </div>
     </div>
   );
 };

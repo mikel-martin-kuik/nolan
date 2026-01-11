@@ -208,8 +208,13 @@ pub fn run() {
             create_idea,
             update_idea_status,
             delete_idea,
+            update_idea,
             get_feedback_stats,
             get_user_votes,
+            list_idea_reviews,
+            update_review_gaps,
+            update_review_proposal,
+            accept_review,
             // Ollama commands
             ollama_status,
             ollama_models,

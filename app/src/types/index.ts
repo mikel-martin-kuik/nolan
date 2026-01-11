@@ -48,9 +48,6 @@ export interface AgentConfig {
 }
 
 export interface WorkflowConfig {
-  // Schema v2: coordinator role is deprecated - workflow is now event-driven
-  // Keep for backward compatibility with v1 configs
-  coordinator?: string;       // @deprecated - use note_taker instead (v1 compat only)
   note_taker?: string;        // Agent that documents workflow progress (maintains NOTES.md)
   exception_handler?: string; // Agent that handles workflow exceptions (escalates to human)
   phases: PhaseConfig[];
@@ -380,11 +377,11 @@ export function getWorkflowSteps(team: TeamConfig | null): WorkflowStep[] {
     });
   }
 
-  // Add "close" step at the end (represents PROJECT:STATUS:COMPLETE marker in coordinator file)
+  // Add "close" step at the end (represents PROJECT:STATUS:COMPLETE marker in NOTES.md)
   steps.push({
     key: 'close',
     label: 'Close',
-    owner: team.team.workflow.coordinator,
+    owner: team.team.workflow.note_taker,
   });
 
   return steps;
@@ -392,8 +389,8 @@ export function getWorkflowSteps(team: TeamConfig | null): WorkflowStep[] {
 
 /**
  * Get file order mapping for sorting project files
- * Order: prompt -> coordinator file -> phase outputs (in workflow order)
- * (Coordinator file is created early, even though it's closed last)
+ * Order: prompt -> NOTES.md -> phase outputs (in workflow order)
+ * (NOTES.md is created early by note-taker, even though it's closed last)
  * Requires team config - throws if null
  */
 export function getFileOrder(team: TeamConfig | null): Record<string, number> {
@@ -406,11 +403,11 @@ export function getFileOrder(team: TeamConfig | null): Record<string, number> {
   // prompt.md is always first (user input)
   order['prompt'] = 0;
 
-  // Coordinator file second (created early by coordinator)
-  const coordinatorAgent = team.team.agents.find(a => a.name === team.team.workflow.coordinator);
-  if (coordinatorAgent?.output_file) {
-    const coordKey = coordinatorAgent.output_file.replace(/\.md$/, '');
-    order[coordKey] = 1;
+  // NOTES.md second (created early by note-taker)
+  const noteTakerAgent = team.team.agents.find(a => a.name === team.team.workflow.note_taker);
+  if (noteTakerAgent?.output_file) {
+    const notesKey = noteTakerAgent.output_file.replace(/\.md$/, '');
+    order[notesKey] = 1;
   }
 
   // Then each phase output in workflow order

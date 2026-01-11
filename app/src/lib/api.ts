@@ -260,8 +260,16 @@ export function getApiBase(): string {
 
 /**
  * Get WebSocket URL for a given endpoint
+ * Includes session token as query parameter for authentication
  */
 export function getWebSocketUrl(endpoint: string): string {
   const base = API_BASE.replace(/^http/, 'ws');
-  return `${base}${endpoint}`;
+  const sessionToken = typeof window !== 'undefined'
+    ? localStorage.getItem('nolan-session-token')
+    : null;
+
+  const separator = endpoint.includes('?') ? '&' : '?';
+  const authParam = sessionToken ? `${separator}token=${encodeURIComponent(sessionToken)}` : '';
+
+  return `${base}${endpoint}${authParam}`;
 }

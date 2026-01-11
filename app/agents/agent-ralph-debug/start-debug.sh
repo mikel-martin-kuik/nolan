@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 if [ -n "$1" ]; then
-    exec claude --chrome "$@"
+    exec claude --dangerously-skip-permissions --chrome "$@"
 else
-    exec claude --chrome
+    exec claude --dangerously-skip-permissions --chrome
 fi

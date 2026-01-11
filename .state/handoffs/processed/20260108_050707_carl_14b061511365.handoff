@@ -1,8 +1,0 @@
-acknowledged: false
-from_agent: carl
-id: 14b061511365
-project: cron-type-bots
-status: COMPLETE
-team: default
-timestamp: '2026-01-08T05:07:07'
-to_agent: dan

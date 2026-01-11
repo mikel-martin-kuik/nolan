@@ -63,7 +63,6 @@ team:
     workflow_participant: false
     awaits_qa: false
   workflow:
-    coordinator: dan
     note_taker: dan
     exception_handler: guardian
     phases:

@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Trash2, CheckCircle2, XCircle } from 'lucide-react';
+import { Trash2, XCircle } from 'lucide-react';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import type { AgentDirectoryInfo } from '@/types';
 import { cn } from '../../lib/utils';
 
@@ -109,75 +110,58 @@ export const AgentCard: React.FC<AgentCardProps> = ({
 
   return (
     <>
-    <div
+    <Card
       onClick={handleCardClick}
       onContextMenu={handleContextMenu}
       className={cn(
-        'group relative rounded-xl border border-border bg-card p-4 transition-all',
-        has_claude_md && 'cursor-pointer hover:border-primary/50',
-        isComplete && 'shadow-sm shadow-green-500/20 hover:shadow-md hover:shadow-green-500/30',
-        needsAttention && 'shadow-sm shadow-orange-500/30 hover:shadow-md hover:shadow-orange-500/40',
-        isMissingDir && 'shadow-sm shadow-red-500/30 hover:shadow-md hover:shadow-red-500/40'
+        'glass-card transition-all duration-200 rounded-xl h-full',
+        has_claude_md && 'cursor-pointer hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.98] active:translate-y-0',
+        needsAttention && 'border-orange-500/50',
+        isMissingDir && 'border-red-500/50 opacity-60'
       )}
     >
-      {/* Header */}
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex-1">
-          <div className="flex items-center gap-2 mb-1">
-            <h3 className="text-base font-semibold text-foreground">
-              {name}
-            </h3>
-            {/* Status indicator */}
-            {isComplete && (
-              <span title="Complete">
-                <CheckCircle2 className="w-4 h-4 text-green-500" />
-              </span>
-            )}
-            {needsAttention && (
-              <span title="Missing files">
-                <XCircle className="w-4 h-4 text-orange-500" />
-              </span>
-            )}
-            {isMissingDir && (
-              <span title="Directory not found">
-                <XCircle className="w-4 h-4 text-destructive" />
-              </span>
-            )}
-          </div>
-
-          {/* Role from agent.json */}
-          {agentInfo.role ? (
-            <p className="text-sm text-muted-foreground">
-              {agentInfo.role}
-            </p>
-          ) : (
-            <p className="text-sm text-muted-foreground italic">No role defined</p>
+      <CardHeader className="p-2 sm:p-3 pb-1 sm:pb-2">
+        <CardTitle className="flex items-center gap-2 text-xs sm:text-sm">
+          <span className={cn(
+            'truncate',
+            isComplete ? 'text-foreground font-medium' : 'text-muted-foreground'
+          )}>
+            {name}
+          </span>
+          {/* Status indicator - only show for issues */}
+          {needsAttention && (
+            <XCircle className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
           )}
-        </div>
+          {isMissingDir && (
+            <XCircle className="w-3.5 h-3.5 text-destructive flex-shrink-0" />
+          )}
+        </CardTitle>
 
-      </div>
+        <CardDescription className="text-[10px] sm:text-xs line-clamp-1 text-muted-foreground">
+          {agentInfo.role || 'No role defined'}
+        </CardDescription>
+      </CardHeader>
 
-      {/* Details */}
-      <div className="space-y-2 text-xs">
+      <CardContent className="p-2 sm:p-3 pt-0 text-[10px] sm:text-xs">
         {/* Actions for missing files */}
         {needsAttention && (
-          <div className="pt-2 border-t border-border/50 flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-1.5">
             {!has_claude_md && (
               <button
                 onClick={handleCreateClaudeMd}
                 disabled={isCreatingClaudeMd}
-                className="text-xs px-2 py-1 rounded bg-orange-500/20 text-orange-600 dark:text-orange-400 hover:bg-orange-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-600 dark:text-orange-400 hover:bg-orange-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isCreatingClaudeMd ? 'Creating...' : 'Create CLAUDE.md'}
+                {isCreatingClaudeMd ? '...' : '+ CLAUDE.md'}
               </button>
             )}
             {!has_agent_json && (
               <button
                 onClick={handleCreateAgentJson}
                 disabled={isCreatingAgentJson}
-                className="text-xs px-2 py-1 rounded bg-orange-500/20 text-orange-600 dark:text-orange-400 hover:bg-orange-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="text-[10px] px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-600 dark:text-orange-400 hover:bg-orange-500/30 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isCreatingAgentJson ? 'Creating...' : 'Create agent.json'}
+                {isCreatingAgentJson ? '...' : '+ agent.json'}
               </button>
             )}
           </div>
@@ -185,21 +169,17 @@ export const AgentCard: React.FC<AgentCardProps> = ({
 
         {/* Error for missing directory */}
         {isMissingDir && (
-          <div className="pt-2 border-t border-border/50">
-            <span className="text-xs text-destructive">Directory not found</span>
+          <span className="text-[10px] text-destructive">Directory not found</span>
+        )}
+
+        {/* Model display for complete agents */}
+        {isComplete && agentInfo.model && (
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span className="text-[9px] text-muted-foreground/70">{agentInfo.model}</span>
           </div>
         )}
-      </div>
-
-      {/* Model bubble - bottom right */}
-      {has_agent_json && agentInfo.model && (
-        <div className="absolute bottom-3 right-3">
-          <span className="px-2 py-1 rounded-full text-xs bg-muted/50 text-muted-foreground">
-            {agentInfo.model}
-          </span>
-        </div>
-      )}
-    </div>
+      </CardContent>
+    </Card>
 
     {/* Context menu dropdown */}
     {contextMenu && (

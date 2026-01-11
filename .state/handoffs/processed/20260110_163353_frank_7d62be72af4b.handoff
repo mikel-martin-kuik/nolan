@@ -1,8 +1,0 @@
-acknowledged: false
-from_agent: frank
-id: 7d62be72af4b
-project: rework-nolan-teams
-status: COMPLETE
-team: default
-timestamp: '2026-01-10T16:33:53'
-to_agent: dan

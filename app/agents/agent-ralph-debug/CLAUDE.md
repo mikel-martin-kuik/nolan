@@ -13,16 +13,6 @@ This agent has access to Chrome browser automation tools:
 - **Browser interaction**: Navigate, click, type, take screenshots
 - **JavaScript execution**: Run JS in page context for debugging
 
-## Launch Requirements
-
-**IMPORTANT**: This agent must be launched with Chrome integration enabled:
-
-```bash
-claude --chrome
-```
-
-Without the `--chrome` flag, the browser tools will not be available.
-
 ## Usage Guidelines
 
 1. **Start by getting tab context**: Always call `tabs_context_mcp` first to see available browser tabs

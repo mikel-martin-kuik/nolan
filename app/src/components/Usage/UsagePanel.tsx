@@ -278,15 +278,15 @@ export const UsagePanel: React.FC = () => {
               </div>
 
               {/* Tab Navigation */}
-              <div className="flex gap-1 p-1 bg-secondary/30 rounded-lg w-fit">
+              <div className="flex items-center gap-1 p-1 glass-card rounded-lg w-fit">
                 {tabs.map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
-                      'px-4 py-2 text-sm font-medium rounded-md transition-all',
+                      'flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all',
                       activeTab === tab.id
-                        ? 'bg-background text-foreground shadow-sm'
+                        ? 'bg-foreground/10 text-foreground'
                         : 'text-muted-foreground hover:text-foreground'
                     )}
                   >

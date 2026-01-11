@@ -5,3 +5,4 @@ export { FeatureRequestForm } from './FeatureRequestForm';
 export { IdeasTab } from './IdeasTab';
 export { IdeaCard } from './IdeaCard';
 export { IdeaForm } from './IdeaForm';
+export { IdeaDetailPage } from './IdeaDetailPage';

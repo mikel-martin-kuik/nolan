@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback, useState, useEffect } from 'react';
-import { MessageCircle, Activity, Bot, ChevronDown, ChevronRight, Users } from 'lucide-react';
+import { MessageCircle, Activity, Bot, ChevronDown, ChevronRight } from 'lucide-react';
 import { useTeamStore } from '../../store/teamStore';
 import { useDepartmentStore } from '../../store/departmentStore';
 import { useAgentStore } from '../../store/agentStore';
@@ -211,7 +211,6 @@ export const ChatView: React.FC = () => {
             chatMode !== 'teams' && 'text-muted-foreground hover:text-foreground'
           )}
         >
-          <Users className="w-3.5 h-3.5" />
           <span>Teams</span>
           {hasTeams && (
             <span className="text-[10px] px-1 rounded bg-foreground/10">{availableTeams.length}</span>
@@ -225,7 +224,6 @@ export const ChatView: React.FC = () => {
             chatMode !== 'agents' && 'text-muted-foreground hover:text-foreground'
           )}
         >
-          <Bot className="w-3.5 h-3.5" />
           <span>Free Agents</span>
           {hasFreeAgents && (
             <span className="text-[10px] px-1 rounded bg-foreground/10">{freeAgents.length}</span>
@@ -261,9 +259,9 @@ export const ChatView: React.FC = () => {
       );
     }
 
-    // Get coordinator session for sending messages
-    const coordinatorSession = teamState.coordinator
-      ? `agent-${activeTeam}-${teamState.coordinator}`
+    // Get note-taker session for sending messages
+    const noteTakerSession = teamState.noteTaker
+      ? `agent-${activeTeam}-${teamState.noteTaker}`
       : null;
 
     return (
@@ -281,13 +279,13 @@ export const ChatView: React.FC = () => {
           entries={entries}
           isActive={teamState.isAnyAgentWorking}
           agentName={teamState.teamName}
-          session={coordinatorSession ?? undefined}
+          session={noteTakerSession ?? undefined}
           agentInfo={agentInfoMap}
         />
 
         {/* Input bar */}
         <ChatInput
-          session={coordinatorSession ?? ''}
+          session={noteTakerSession ?? ''}
           disabled={!isAnyTeamAgentActive}
           placeholder={
             isAnyTeamAgentActive

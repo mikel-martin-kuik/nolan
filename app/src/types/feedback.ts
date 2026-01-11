@@ -23,6 +23,7 @@ export interface Idea {
   description: string;
   status: IdeaStatus;
   created_at: string;
+  updated_at?: string;
   created_by?: string;
 }
 
@@ -53,4 +54,71 @@ export const STATUS_COLORS: Record<FeatureRequestStatus, string> = {
 export const IDEA_STATUS_LABELS: Record<IdeaStatus, string> = {
   active: 'Active',
   archived: 'Archived',
+};
+
+// Idea review types (from cron-inbox-digest agent)
+export type IdeaReviewStatus = 'draft' | 'needs_input' | 'ready' | 'rejected';
+export type IdeaComplexity = 'low' | 'medium' | 'high';
+
+// Agent's proposed enhanced version of the idea
+export interface IdeaProposal {
+  title: string;
+  summary: string;
+  problem: string;
+  solution: string;
+  scope?: string;
+  implementation_hints?: string;
+}
+
+// A gap that needs user input
+export interface IdeaGap {
+  id: string;
+  label: string;
+  description: string;
+  placeholder?: string;
+  value?: string;
+  required: boolean;
+}
+
+export interface IdeaReview {
+  item_id: string;
+  item_type: 'idea' | 'request';
+  review_status: IdeaReviewStatus;
+  // Agent's enhanced proposal
+  proposal: IdeaProposal;
+  // Identified gaps that need user input
+  gaps: IdeaGap[];
+  // Agent's analysis notes
+  analysis: string;
+  complexity?: IdeaComplexity;
+  reviewed_at: string;
+  updated_at?: string;
+  // User accepted the proposal
+  accepted_at?: string;
+}
+
+export const REVIEW_STATUS_LABELS: Record<IdeaReviewStatus, string> = {
+  draft: 'Draft Proposal',
+  needs_input: 'Needs Your Input',
+  ready: 'Ready',
+  rejected: 'Not Feasible',
+};
+
+export const REVIEW_STATUS_COLORS: Record<IdeaReviewStatus, string> = {
+  draft: 'bg-slate-500/10 text-slate-500 border-slate-500/20',
+  needs_input: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+  ready: 'bg-green-500/10 text-green-500 border-green-500/20',
+  rejected: 'bg-red-500/10 text-red-500 border-red-500/20',
+};
+
+export const COMPLEXITY_LABELS: Record<IdeaComplexity, string> = {
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+};
+
+export const COMPLEXITY_COLORS: Record<IdeaComplexity, string> = {
+  low: 'text-green-500',
+  medium: 'text-yellow-500',
+  high: 'text-red-500',
 };

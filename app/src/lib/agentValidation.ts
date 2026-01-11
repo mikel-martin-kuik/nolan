@@ -56,15 +56,12 @@ export function getWorkflowParticipants(): string[] {
 }
 
 /**
- * Get the coordinator agent name from current team
+ * Get the note-taker agent name from current team
  */
-/**
- * @deprecated Coordinator role is deprecated - use getAuditor() instead
- */
-export function getCoordinator(): string | null {
+export function getNoteTaker(): string | null {
   const team = useTeamStore.getState().currentTeam;
   if (!team) return null;
-  return team.team.workflow.coordinator ?? null;
+  return team.team.workflow.note_taker ?? null;
 }
 
 /**
@@ -76,9 +73,9 @@ export function isWorkflowParticipant(name: string): boolean {
 }
 
 /**
- * Check if an agent is the coordinator
+ * Check if an agent is the note-taker
  */
-export function isCoordinator(name: string): boolean {
-  const coordinator = getCoordinator();
-  return coordinator === name;
+export function isNoteTaker(name: string): boolean {
+  const noteTaker = getNoteTaker();
+  return noteTaker === name;
 }

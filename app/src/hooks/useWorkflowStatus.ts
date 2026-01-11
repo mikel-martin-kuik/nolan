@@ -163,7 +163,7 @@ export function useWorkflowStatus(): WorkflowStatusResult {
     const workflowParticipants = currentTeam
       ? currentTeam.team.agents.filter(a => a.workflow_participant).map(a => a.name)
       : [];
-    const coordinator = currentTeam?.team.workflow.coordinator || 'dan';
+    const noteTaker = currentTeam?.team.workflow.note_taker || 'dan';
 
     // Helper: Check if an agent is actively working (streaming)
     const isActivelyWorking = (name: string) => {
@@ -181,23 +181,23 @@ export function useWorkflowStatus(): WorkflowStatusResult {
       }
     }
 
-    // Special handling for coordinator: blocked by any actively working team member
-    const coordinatorAgent = computed.find(a => a.agent.name === coordinator);
-    if (coordinatorAgent && coordinatorAgent.agent.active && coordinatorAgent.state.status === 'waiting_input') {
+    // Special handling for note-taker: blocked by any actively working team member
+    const noteTakerAgent = computed.find(a => a.agent.name === noteTaker);
+    if (noteTakerAgent && noteTakerAgent.agent.active && noteTakerAgent.state.status === 'waiting_input') {
       const workingTeamMember = computed.find(
         a => workflowParticipants.includes(a.agent.name) && a.agent.active && a.isStreaming
       );
 
       if (workingTeamMember) {
-        coordinatorAgent.state = {
-          ...coordinatorAgent.state,
+        noteTakerAgent.state = {
+          ...noteTakerAgent.state,
           status: 'blocked',
           statusLabel: 'Blocked',
           statusColor: 'bg-red-500',
           blockedBy: workingTeamMember.agent.name as AgentName,
         };
-        coordinatorAgent.group = getWorkflowGroup('blocked');
-        coordinatorAgent.turnGroup = getTurnGroup(coordinatorAgent.state.turnCategory, 'blocked');
+        noteTakerAgent.group = getWorkflowGroup('blocked');
+        noteTakerAgent.turnGroup = getTurnGroup(noteTakerAgent.state.turnCategory, 'blocked');
       }
     }
 

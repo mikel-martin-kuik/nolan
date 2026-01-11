@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Button } from '@/components/ui/button';
 import {
   Select,
   SelectContent,
@@ -11,13 +10,11 @@ import {
 import { invoke } from '@/lib/api';
 import { FeatureRequest, FeatureRequestStatus, STATUS_LABELS } from '@/types';
 import { FeatureRequestCard } from './FeatureRequestCard';
-import { FeatureRequestForm } from './FeatureRequestForm';
 import { Loader2 } from 'lucide-react';
 
 type SortOption = 'votes' | 'newest' | 'oldest';
 
 export function FeatureRequestsTab() {
-  const [formOpen, setFormOpen] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('votes');
   const [filterStatus, setFilterStatus] = useState<FeatureRequestStatus | 'all'>('all');
 
@@ -58,10 +55,6 @@ export function FeatureRequestsTab() {
     <div className="space-y-3">
       {/* Toolbar */}
       <div className="flex items-center gap-2">
-        <Button size="sm" onClick={() => setFormOpen(true)}>
-          New Request
-        </Button>
-
         <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
           <SelectTrigger className="h-8 w-[120px] text-xs">
             <SelectValue />
@@ -113,8 +106,6 @@ export function FeatureRequestsTab() {
           ))}
         </div>
       )}
-
-      <FeatureRequestForm open={formOpen} onOpenChange={setFormOpen} />
     </div>
   );
 }

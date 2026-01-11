@@ -1,8 +1,0 @@
-acknowledged: false
-from_agent: enzo
-id: HO_20260111_124638_enzo_a0c4d0
-project: ollama-nolan-integration
-status: COMPLETE
-team: default
-timestamp: '2026-01-11T12:46:38'
-to_agent: dan

@@ -19,7 +19,7 @@ static RE_PROJECT_STATUS: Lazy<Option<Regex>> = Lazy::new(|| {
     Regex::new(r"<!-- PROJECT:STATUS:[A-Z]+:\d{4}-\d{2}-\d{2} -->").ok()
 });
 
-/// Project status derived from coordinator's output file
+/// Project status derived from NOTES.md
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectStatus {
@@ -57,15 +57,10 @@ fn get_expected_files_from_config(config: &TeamConfig) -> (Vec<String>, Vec<Stri
         }
     }
 
-    // Add coordinator's output file (default to NOTES.md if not configured)
-    let coordinator_file = config.coordinator_output_file().unwrap_or_else(|_| "NOTES.md".to_string());
-    let coordinator_file = if coordinator_file.ends_with(".md") {
-        coordinator_file
-    } else {
-        format!("{}.md", coordinator_file)
-    };
-    if !expected.contains(&coordinator_file) {
-        expected.push(coordinator_file);
+    // Add note-taker's output file (NOTES.md)
+    let notes_file = "NOTES.md".to_string();
+    if !expected.contains(&notes_file) {
+        expected.push(notes_file);
     }
 
     (expected, workflow)
@@ -147,7 +142,7 @@ pub struct ProjectFile {
     pub is_recent: bool,
 }
 
-/// Parse project status from coordinator's output file content
+/// Parse project status from NOTES.md content
 /// MARKER-ONLY: Single source of truth via structured markers
 /// No heuristics, no legacy pattern matching
 ///
@@ -159,8 +154,8 @@ pub struct ProjectFile {
 /// - `<!-- PROJECT:STATUS:DELEGATED:date -->` → Delegated
 /// - `<!-- PROJECT:STATUS:PENDING:date -->` → Pending
 /// - No marker → Pending
-fn parse_project_status(coordinator_content: &str) -> (ProjectStatus, Option<String>) {
-    for line in coordinator_content.lines() {
+fn parse_project_status(notes_content: &str) -> (ProjectStatus, Option<String>) {
+    for line in notes_content.lines() {
         let trimmed = line.trim();
 
         // Complete markers
@@ -482,7 +477,7 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
         };
         let team = project_team_file.team.clone();
 
-        // Load team config (required for coordinator file and fallback workflow files)
+        // Load team config (required for fallback workflow files)
         let team_config = match load_project_team(&path) {
             Ok(config) => config,
             Err(_) => {
@@ -491,14 +486,10 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
             }
         };
 
-        // Parse status from coordinator's output file
-        let coordinator_file = match team_config.coordinator_output_file() {
-            Ok(f) => f,
-            Err(_) => continue, // Skip projects with invalid coordinator config
-        };
-        let coordinator_path = path.join(&coordinator_file);
-        let (status, status_detail) = if coordinator_path.exists() {
-            match fs::read_to_string(&coordinator_path) {
+        // Parse status from NOTES.md
+        let notes_path = path.join("NOTES.md");
+        let (status, status_detail) = if notes_path.exists() {
+            match fs::read_to_string(&notes_path) {
                 Ok(content) => parse_project_status(&content),
                 Err(_) => (ProjectStatus::Pending, None),
             }
@@ -621,7 +612,7 @@ pub async fn list_project_files(project_name: String) -> Result<Vec<ProjectFile>
     let team_config = load_project_team(&canonical_path)
         .map_err(|e| format!("Failed to load team config: {}", e))?;
     let (expected_files, _) = get_expected_files_from_config(&team_config);
-    let coordinator_file = team_config.coordinator_output_file()?;
+    let notes_file = "NOTES.md".to_string();
 
     let mut files = Vec::new();
     let mut existing_names: std::collections::HashSet<String> = std::collections::HashSet::new();
@@ -645,7 +636,7 @@ pub async fn list_project_files(project_name: String) -> Result<Vec<ProjectFile>
         }
     }
 
-    // Sort: coordinator file first, placeholders last, then alphabetically
+    // Sort: NOTES.md first, placeholders last, then alphabetically
     files.sort_by(|a, b| {
         // Placeholders go last
         if a.is_placeholder && !b.is_placeholder {
@@ -655,9 +646,9 @@ pub async fn list_project_files(project_name: String) -> Result<Vec<ProjectFile>
             return std::cmp::Ordering::Less;
         }
 
-        if a.name == coordinator_file {
+        if a.name == notes_file {
             std::cmp::Ordering::Less
-        } else if b.name == coordinator_file {
+        } else if b.name == notes_file {
             std::cmp::Ordering::Greater
         } else {
             a.name.cmp(&b.name)
@@ -919,7 +910,7 @@ pub async fn write_project_file(
     Ok(())
 }
 
-/// Create a new project directory with initial coordinator file and .team file
+/// Create a new project directory with initial NOTES.md file and .team file
 #[tauri::command]
 pub async fn create_project(project_name: String, team_name: Option<String>) -> Result<String, String> {
     // Validate project name: only lowercase letters, numbers, and hyphens
@@ -943,15 +934,12 @@ pub async fn create_project(project_name: String, team_name: Option<String>) -> 
     }
 
     // Load team config first to get note-taker's output file and workflow phases
-    // Note: coordinator is deprecated, using note_taker (falls back to coordinator for v1 compat)
     let team = team_name.unwrap_or_else(|| "default".to_string());
     let team_config = TeamConfig::load(&team)
         .map_err(|e| format!("Failed to load team config '{}': {}", team, e))?;
 
-    // Get note-taker name (or coordinator for v1 compat)
-    #[allow(deprecated)]
+    // Get note-taker name
     let note_taker_name = team_config.note_taker()
-        .or_else(|| team_config.coordinator())
         .unwrap_or("dan");
 
     // Get note-taker's output file (defaults to NOTES.md)
@@ -1009,7 +997,7 @@ Project created via Nolan Dashboard.
     Ok(project_path.to_string_lossy().to_string())
 }
 
-/// Update project status marker in coordinator file
+/// Update project status marker in NOTES.md
 /// Replaces existing PROJECT:STATUS marker or appends at end of file
 #[tauri::command]
 pub async fn update_project_status(project_name: String, status: String) -> Result<(), String> {
@@ -1035,16 +1023,12 @@ pub async fn update_project_status(project_name: String, status: String) -> Resu
         return Err(format!("Project '{}' not found", project_name));
     }
 
-    // Load team config to get coordinator file
-    let team_config = load_project_team(&project_path)
-        .map_err(|e| format!("Failed to load team config: {}", e))?;
-    let coordinator_file = team_config.coordinator_output_file()?;
-    let coordinator_path = project_path.join(&coordinator_file);
+    let notes_path = project_path.join("NOTES.md");
 
     // Read existing content or create new
-    let content = if coordinator_path.exists() {
-        fs::read_to_string(&coordinator_path)
-            .map_err(|e| format!("Failed to read coordinator file: {}", e))?
+    let content = if notes_path.exists() {
+        fs::read_to_string(&notes_path)
+            .map_err(|e| format!("Failed to read NOTES.md: {}", e))?
     } else {
         String::new()
     };
@@ -1066,8 +1050,8 @@ pub async fn update_project_status(project_name: String, status: String) -> Resu
         format!("{}\n\n{}\n", content.trim_end(), new_marker)
     };
 
-    fs::write(&coordinator_path, new_content)
-        .map_err(|e| format!("Failed to write coordinator file: {}", e))?;
+    fs::write(&notes_path, new_content)
+        .map_err(|e| format!("Failed to write NOTES.md: {}", e))?;
 
     Ok(())
 }

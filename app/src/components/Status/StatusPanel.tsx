@@ -152,8 +152,8 @@ export const StatusPanel: React.FC = () => {
       }
 
       // Launch team with project context (team-scoped)
-      // For new projects: pass initialPrompt (written to prompt.md and sent to coordinator)
-      // For existing projects: pass updatedOriginalPrompt (only written if modified) and followupPrompt (sent to coordinator)
+      // For new projects: pass initialPrompt (written to prompt.md and sent to first phase owner)
+      // For existing projects: pass updatedOriginalPrompt (only written if modified) and followupPrompt (sent to note-taker)
       await launchTeam(targetTeam, projectName, initialPrompt, updatedOriginalPrompt, followupPrompt);
 
       // Open team terminals after successful launch

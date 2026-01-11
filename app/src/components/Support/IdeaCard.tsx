@@ -1,17 +1,16 @@
+import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 import { invoke } from '@/lib/api';
-import { Idea } from '@/types';
-import { MoreVertical } from 'lucide-react';
+import { Idea, IdeaReview } from '@/types';
+import { cn } from '@/lib/utils';
+import { IdeaEditDialog } from './IdeaEditDialog';
 
 function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -21,23 +20,32 @@ function formatRelativeTime(dateStr: string): string {
   const diffHours = Math.floor(diffMs / 3600000);
   const diffDays = Math.floor(diffMs / 86400000);
 
-  if (diffMins < 1) return 'just now';
-  if (diffMins < 60) return `${diffMins}m ago`;
-  if (diffHours < 24) return `${diffHours}h ago`;
-  if (diffDays < 7) return `${diffDays}d ago`;
-  return date.toLocaleDateString();
+  if (diffMins < 1) return 'now';
+  if (diffMins < 60) return `${diffMins}m`;
+  if (diffHours < 24) return `${diffHours}h`;
+  if (diffDays < 7) return `${diffDays}d`;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 interface IdeaCardProps {
   idea: Idea;
+  review?: IdeaReview;
+  onClick?: () => void;
 }
 
-export function IdeaCard({ idea }: IdeaCardProps) {
+export function IdeaCard({ idea, review, onClick }: IdeaCardProps) {
   const queryClient = useQueryClient();
+  const [editOpen, setEditOpen] = useState(false);
 
-  const statusMutation = useMutation({
-    mutationFn: (status: string) =>
-      invoke<Idea>('update_idea_status', { id: idea.id, status }),
+  const acceptMutation = useMutation({
+    mutationFn: () => invoke<IdeaReview>('accept_review', { item_id: idea.id }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['idea-reviews'] });
+    },
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: () => invoke<Idea>('update_idea_status', { id: idea.id, status: 'archived' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ideas'] });
       queryClient.invalidateQueries({ queryKey: ['feedback-stats'] });
@@ -54,56 +62,101 @@ export function IdeaCard({ idea }: IdeaCardProps) {
 
   const createdAt = formatRelativeTime(idea.created_at);
   const isArchived = idea.status === 'archived';
+  const isReady = review?.review_status === 'ready' && !review.accepted_at;
+  const isAccepted = review?.accepted_at;
+  const needsInput = review?.review_status === 'needs_input';
+  const gapsCount = review?.gaps?.filter((g) => g.required && !g.value?.trim()).length || 0;
+
+  const handleAccept = () => {
+    if (review && !review.accepted_at) {
+      acceptMutation.mutate();
+    }
+  };
+
+  const handleReject = () => {
+    setEditOpen(true);
+  };
+
+  const handleDelete = () => {
+    if (confirm('Delete this idea?')) {
+      deleteMutation.mutate();
+    }
+  };
+
+  const handleArchive = () => {
+    archiveMutation.mutate();
+  };
+
+  // Can accept if there's a review that's ready and all gaps are filled
+  const canAccept = review && !review.accepted_at && review.review_status !== 'rejected';
+  const allGapsFilled = !review?.gaps?.some((g) => g.required && !g.value?.trim());
 
   return (
-    <Card className={isArchived ? 'opacity-50' : undefined}>
-      <CardContent className="p-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-medium truncate">{idea.title}</h3>
-              {isArchived && (
-                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                  Archived
-                </Badge>
-              )}
+    <>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          <button
+            onClick={onClick}
+            className={cn(
+              'w-full text-left px-2.5 py-2 glass-card rounded-lg transition-all duration-200',
+              'focus:outline-none focus:ring-1 focus:ring-ring',
+              isArchived && 'opacity-50'
+            )}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <span className="text-xs font-medium truncate flex-1">
+                {idea.title}
+              </span>
+              <span className="text-[10px] text-muted-foreground shrink-0">
+                {createdAt}
+              </span>
             </div>
-            <p className="text-xs text-muted-foreground mt-1 whitespace-pre-wrap line-clamp-3">
-              {idea.description}
-            </p>
-            <div className="text-[10px] text-muted-foreground mt-1.5">
-              {createdAt}
-            </div>
-          </div>
+            {/* Subtle status indicator */}
+            {needsInput && gapsCount > 0 && (
+              <div className="text-[10px] text-muted-foreground mt-0.5">
+                {gapsCount} gap{gapsCount > 1 ? 's' : ''}
+              </div>
+            )}
+            {isReady && (
+              <div className="text-[10px] text-muted-foreground mt-0.5">
+                Ready to accept
+              </div>
+            )}
+            {isAccepted && (
+              <div className="text-[10px] text-muted-foreground mt-0.5">
+                Accepted
+              </div>
+            )}
+          </button>
+        </ContextMenuTrigger>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                <MoreVertical className="h-3.5 w-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem
-                onClick={() => statusMutation.mutate(isArchived ? 'active' : 'archived')}
-                className="text-xs"
-              >
-                {isArchived ? 'Restore' : 'Archive'}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-xs text-destructive"
-                onClick={() => {
-                  if (confirm('Delete this idea?')) {
-                    deleteMutation.mutate();
-                  }
-                }}
-              >
-                Delete
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </CardContent>
-    </Card>
+        <ContextMenuContent>
+          {canAccept && (
+            <ContextMenuItem
+              onClick={handleAccept}
+              disabled={!allGapsFilled}
+              className="text-xs"
+            >
+              Accept
+              {!allGapsFilled && <span className="ml-auto text-[10px] text-muted-foreground">fill gaps</span>}
+            </ContextMenuItem>
+          )}
+          <ContextMenuItem onClick={handleReject} className="text-xs">
+            {review ? 'Reject & Edit' : 'Edit'}
+          </ContextMenuItem>
+          {!isArchived && (
+            <ContextMenuItem onClick={handleArchive} className="text-xs">
+              Archive
+            </ContextMenuItem>
+          )}
+          <ContextMenuSeparator />
+          <ContextMenuItem onClick={handleDelete} className="text-xs text-destructive">
+            Delete
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+
+      <IdeaEditDialog idea={idea} open={editOpen} onOpenChange={setEditOpen} />
+    </>
   );
 }

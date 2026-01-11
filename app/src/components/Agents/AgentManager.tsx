@@ -183,17 +183,18 @@ Outline communication style and guidelines.
 
       {/* Agent grid */}
       {!loading && agentDirs.length > 0 && (
-        <div className="flex-1 overflow-auto -mx-1 px-1">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 py-1">
+        <div className="flex-1 overflow-auto">
+          <div className="flex flex-wrap gap-2 lg:gap-3 pt-2">
             {agentDirs.map((agentDir) => (
-              <AgentCard
-                key={agentDir.name}
-                agentInfo={agentDir}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-                onCreateClaudeMd={handleCreateClaudeMd}
-                onCreateAgentJson={handleCreateAgentJson}
-              />
+              <div key={agentDir.name} className="w-[clamp(180px,calc(100%/4-12px),220px)]">
+                <AgentCard
+                  agentInfo={agentDir}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                  onCreateClaudeMd={handleCreateClaudeMd}
+                  onCreateAgentJson={handleCreateAgentJson}
+                />
+              </div>
             ))}
           </div>
         </div>

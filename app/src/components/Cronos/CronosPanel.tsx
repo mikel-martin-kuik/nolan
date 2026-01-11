@@ -2,8 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@/lib/api';
 import { CronAgentCard } from './CronAgentCard';
 import { CronAgentDetailPage } from './CronAgentDetailPage';
-import { CronAgentOutputModal } from './CronAgentOutputModal';
 import { useToastStore } from '../../store/toastStore';
+import { useCronOutputStore } from '../../store/cronOutputStore';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,7 +27,7 @@ export const CronosPanel: React.FC = () => {
 
   // Navigation state
   const [selectedAgentPage, setSelectedAgentPage] = useState<string | null>(null);
-  const [outputModalAgent, setOutputModalAgent] = useState<string | null>(null);
+  const { openOutput } = useCronOutputStore();
 
   // Dialog states
   const [creatorOpen, setCreatorOpen] = useState(false);
@@ -117,24 +117,13 @@ export const CronosPanel: React.FC = () => {
     try {
       await invoke('trigger_cron_agent', { name });
       showSuccess(`Triggered ${name}`);
-      // Open output modal to show the running agent
-      setOutputModalAgent(name);
+      // Open output panel on dashboard to show the running agent
+      openOutput(name);
       setTimeout(fetchAgents, 500);
     } catch (err) {
       showError(`Failed to trigger agent: ${err}`);
     }
-  }, [showError, showSuccess, fetchAgents]);
-
-  // Handle cancel run
-  const handleCancel = useCallback(async (name: string) => {
-    try {
-      await invoke('cancel_cron_agent', { name });
-      showSuccess(`Cancelled ${name}`);
-      fetchAgents();
-    } catch (err) {
-      showError(`Failed to cancel agent: ${err}`);
-    }
-  }, [showError, showSuccess, fetchAgents]);
+  }, [showError, showSuccess, fetchAgents, openOutput]);
 
   // Handle toggle enabled
   const handleToggleEnabled = useCallback(async (name: string, enabled: boolean) => {
@@ -147,24 +136,24 @@ export const CronosPanel: React.FC = () => {
     }
   }, [showError, showSuccess, fetchAgents]);
 
-  // Handle card click - show output modal if running, otherwise show detail page
+  // Handle card click - show output panel if running, otherwise show detail page
   const handleCardClick = useCallback((name: string) => {
     const agent = agents.find(a => a.name === name);
     if (agent?.is_running) {
-      setOutputModalAgent(name);
+      openOutput(name);
     } else {
       setSelectedAgentPage(name);
     }
-  }, [agents]);
+  }, [agents, openOutput]);
 
   // Handle viewing output from audit log (in detail page)
   const handleViewOutput = useCallback(async (_runId: string) => {
-    // Open the output modal for the selected agent
-    // TODO: Pass runId to modal to load specific run's output
+    // Open the output panel for the selected agent
+    // TODO: Pass runId to panel to load specific run's output
     if (selectedAgentPage) {
-      setOutputModalAgent(selectedAgentPage);
+      openOutput(selectedAgentPage);
     }
-  }, [selectedAgentPage]);
+  }, [selectedAgentPage, openOutput]);
 
   // Handle template selection
   const handleSelectTemplate = useCallback((templateId: string) => {
@@ -196,12 +185,6 @@ export const CronosPanel: React.FC = () => {
           onViewOutput={handleViewOutput}
         />
 
-        {/* Output Modal - can be opened from detail page */}
-        <CronAgentOutputModal
-          agentName={outputModalAgent}
-          onClose={() => setOutputModalAgent(null)}
-          onCancel={handleCancel}
-        />
 
         {/* Delete Confirmation */}
         <AlertDialog open={!!deleteConfirm} onOpenChange={(open) => !open && setDeleteConfirm(null)}>
@@ -227,34 +210,28 @@ export const CronosPanel: React.FC = () => {
     <div className="h-full">
       <div className="w-full h-full flex flex-col">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-4">
-          <div className="flex gap-1.5">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={fetchAgents}
-              disabled={loading}
-              className="text-xs h-7 px-2"
-            >
-              {loading ? 'Refreshing...' : 'Refresh'}
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setTemplateSelectorOpen(true)}
-              className="text-xs h-7 px-2"
-            >
-              Templates
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setCreatorOpen(true)}
-              className="text-xs h-7 px-2"
-            >
-              New Agent
-            </Button>
-          </div>
+        <div className="flex items-center gap-2 mb-4">
+          <Button
+            size="sm"
+            onClick={() => setCreatorOpen(true)}
+          >
+            New
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setTemplateSelectorOpen(true)}
+          >
+            Templates
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={fetchAgents}
+            disabled={loading}
+          >
+            {loading ? 'Refreshing...' : 'Refresh'}
+          </Button>
 
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/30 border border-border/40 ml-auto">
             <span className="text-xs text-muted-foreground uppercase tracking-wider">Scheduled Agents</span>
@@ -290,12 +267,6 @@ export const CronosPanel: React.FC = () => {
           )}
         </div>
 
-        {/* Output Modal - for running agents */}
-        <CronAgentOutputModal
-          agentName={outputModalAgent}
-          onClose={() => setOutputModalAgent(null)}
-          onCancel={handleCancel}
-        />
 
         {/* Template Selector Dialog */}
         <Dialog open={templateSelectorOpen} onOpenChange={setTemplateSelectorOpen}>

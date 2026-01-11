@@ -4,7 +4,7 @@ import { invoke } from '@/lib/api';
 import { useTeamStore } from '../../store/teamStore';
 import { useDepartmentStore } from '../../store/departmentStore';
 import { useToastStore } from '../../store/toastStore';
-import { Users, Plus, Edit2, Check, FileText, Trash2, Settings2, X, Save, ChevronDown, ChevronRight } from 'lucide-react';
+import { Users, Plus, Check, FileText, Trash2, X, Save, ChevronDown, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -171,7 +171,7 @@ export const TeamsPanel: React.FC = () => {
           version: '1.0.0',
           agents: [firstAgent],
           workflow: {
-            coordinator: newTeamFirstAgent,
+            note_taker: newTeamFirstAgent,
             phases: [{
               name: 'Initial Phase',
               owner: newTeamFirstAgent,
@@ -289,10 +289,10 @@ export const TeamsPanel: React.FC = () => {
       return;
     }
 
-    // Update coordinator if removed
-    let newCoordinator = teamConfig.team.workflow.coordinator;
-    if (newCoordinator === agentName) {
-      newCoordinator = newAgents[0].name;
+    // Update note_taker if removed
+    let newNoteTaker = teamConfig.team.workflow.note_taker;
+    if (newNoteTaker === agentName) {
+      newNoteTaker = newAgents[0].name;
     }
 
     // Update phase owners if removed
@@ -305,7 +305,7 @@ export const TeamsPanel: React.FC = () => {
       team: {
         ...teamConfig.team,
         agents: newAgents,
-        workflow: { ...teamConfig.team.workflow, coordinator: newCoordinator, phases: newPhases }
+        workflow: { ...teamConfig.team.workflow, note_taker: newNoteTaker, phases: newPhases }
       }
     };
 
@@ -514,6 +514,24 @@ export const TeamsPanel: React.FC = () => {
         <Button size="sm" onClick={openCreateTeamModal}>
           New Team
         </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => {
+            const depts = (departments?.departments || []).map((d, i) => ({
+              name: d.name,
+              code: d.code,
+              directory: d.directory,
+              teams: d.teams || [],
+              _editIndex: i,
+            }));
+            setEditedDepartments(depts);
+            setNewDepartmentName('');
+            setDepartmentsModal(true);
+          }}
+        >
+          New Department
+        </Button>
       </div>
 
       {/* Team List and Details */}
@@ -524,27 +542,6 @@ export const TeamsPanel: React.FC = () => {
             <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
               Available Teams ({availableTeams.length})
             </h2>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6"
-              onClick={() => {
-                // Transform departments to include _editIndex for internal tracking
-                const depts = (departments?.departments || []).map((d, i) => ({
-                  name: d.name,
-                  code: d.code,
-                  directory: d.directory,
-                  teams: d.teams || [],
-                  _editIndex: i,
-                }));
-                setEditedDepartments(depts);
-                setNewDepartmentName('');
-                setDepartmentsModal(true);
-              }}
-              title="Configure Departments"
-            >
-              <Settings2 className="w-3.5 h-3.5 text-muted-foreground" />
-            </Button>
           </div>
           <div className="flex-1 overflow-auto px-2 pb-4 space-y-3">
             {showPillarView ? (
@@ -686,7 +683,6 @@ export const TeamsPanel: React.FC = () => {
                 <div>
                   <h2 className="text-lg font-semibold text-foreground group-hover:text-primary transition-colors">
                     {teamConfig.team.name}
-                    <Edit2 className="w-3.5 h-3.5 inline ml-2 opacity-0 group-hover:opacity-50 transition-opacity" />
                   </h2>
                   <p className="text-sm text-muted-foreground">
                     {teamConfig.team.description || `${teamConfig.team.agents.length} agents configured`}
@@ -713,7 +709,6 @@ export const TeamsPanel: React.FC = () => {
                           <span className="font-medium text-foreground capitalize group-hover:text-primary transition-colors">
                             {agent.name}
                           </span>
-                          <Settings2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity ml-auto" />
                         </div>
                         <p className="text-xs text-muted-foreground">{info?.role || 'No role'}</p>
                         <p className="text-xs text-muted-foreground/70 mt-1">
@@ -763,7 +758,6 @@ export const TeamsPanel: React.FC = () => {
                         <span className="text-sm text-muted-foreground capitalize">{phase.owner}</span>
                       </div>
                       <span className="text-xs text-muted-foreground font-mono">{phase.output}</span>
-                      <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity" />
                     </div>
                   ))}
                 </div>
@@ -791,7 +785,6 @@ export const TeamsPanel: React.FC = () => {
                       <span className="text-sm text-muted-foreground">
                         documents workflow progress
                       </span>
-                      <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity ml-auto" />
                     </div>
                   </div>
 
@@ -808,7 +801,6 @@ export const TeamsPanel: React.FC = () => {
                       <span className="text-sm text-muted-foreground">
                         escalates issues to human
                       </span>
-                      <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity ml-auto" />
                     </div>
                   </div>
                 </div>

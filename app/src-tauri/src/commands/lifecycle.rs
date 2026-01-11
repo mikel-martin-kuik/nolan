@@ -246,11 +246,9 @@ fn determine_needed_agents(docs_path: &std::path::Path, team: &TeamConfig) -> Op
     use std::fs;
     use std::collections::HashSet;
 
-    // Get note-taker (auditor field, or coordinator for v1 compat) - maintains NOTES.md
-    #[allow(deprecated)]
+    // Get note-taker - maintains NOTES.md
     let note_taker = team.note_taker()
-        .or_else(|| team.coordinator())
-        .unwrap_or("dan")
+        .unwrap_or("notary")
         .to_string();
 
     // Get exception handler (escalates issues to humans)
@@ -506,15 +504,13 @@ fn get_docs_path_from_team_context(team_name: &str) -> Result<String, String> {
     let team = TeamConfig::load(team_name)
         .map_err(|e| format!("Failed to load team config '{}': {}", team_name, e))?;
 
-    // Priority order: auditor first (best context), then others
-    // Note: coordinator is deprecated, using auditor (falls back to coordinator for v1 compat)
-    #[allow(deprecated)]
-    let auditor = team.note_taker().or_else(|| team.coordinator());
+    // Priority order: note-taker first (best context), then others
+    let note_taker = team.note_taker();
     let mut agent_priority: Vec<&str> = Vec::new();
-    if let Some(a) = auditor {
+    if let Some(a) = note_taker {
         agent_priority.push(a);
     }
-    agent_priority.extend(team.workflow_participants().iter().filter(|&&a| Some(a) != auditor));
+    agent_priority.extend(team.workflow_participants().iter().filter(|&&a| Some(a) != note_taker));
 
     for &agent_name in &agent_priority {
         // Team-scoped session naming
@@ -558,9 +554,9 @@ fn get_docs_path_from_team_context(team_name: &str) -> Result<String, String> {
 /// Launch team agents with project context
 ///
 /// Parameters:
-/// - `initial_prompt`: For new projects - written to prompt.md and sent to coordinator
+/// - `initial_prompt`: For new projects - written to prompt.md and sent to first phase owner
 /// - `updated_original_prompt`: For existing projects - only written to prompt.md if provided (meaning it was modified)
-/// - `followup_prompt`: For existing projects - sent to coordinator to resume work
+/// - `followup_prompt`: For existing projects - sent to note-taker to resume work
 #[tauri::command]
 pub async fn launch_team(
     app_handle: AppHandle,
@@ -633,7 +629,7 @@ pub async fn launch_team(
         // New project - launch all team agents
         team.agent_names().iter().map(|s| s.to_string()).collect()
     } else {
-        // Existing project - determine needed agents from coordinator's output file phase status
+        // Existing project - determine needed agents from NOTES.md phase status
         determine_needed_agents(&docs_path, &team)
             .unwrap_or_else(|| team.agent_names().iter().map(|s| s.to_string()).collect())
     };
@@ -713,57 +709,42 @@ pub async fn launch_team(
         emit_status_change(&app_clone).await;
     });
 
-    // Determine who should receive the initial prompt based on schema version
-    // v2+ (auto-progression): Send to first incomplete phase owner (supports resume)
-    // v1 (legacy): Send to coordinator (Dan)
+    // Determine who should receive the initial prompt
+    // Send to first incomplete phase owner (supports resume)
     if let Some(prompt) = effective_prompt {
-        let uses_auto_progression = team.uses_auto_progression();
         let target_agent: String;
         let target_session: String;
         let prompt_with_context: String;
 
-        if uses_auto_progression {
-            // Schema v2: Detect current phase and assign to appropriate owner
-            // Check which phases are already complete to support resume
-            let target_phase_index = detect_current_phase(&docs_path, &team)
-                .unwrap_or(0); // Default to first phase if all complete
+        // Detect current phase and assign to appropriate owner
+        // Check which phases are already complete to support resume
+        let target_phase_index = detect_current_phase(&docs_path, &team)
+            .unwrap_or(0); // Default to first phase if all complete
 
-            if let Some(target_phase) = team.get_phase(target_phase_index) {
-                target_agent = target_phase.owner.clone();
-                target_session = format!("agent-{}-{}", team_name, target_agent);
-                prompt_with_context = format!("[Project: {}] {}", project_name, prompt);
+        if let Some(target_phase) = team.get_phase(target_phase_index) {
+            target_agent = target_phase.owner.clone();
+            target_session = format!("agent-{}-{}", team_name, target_agent);
+            prompt_with_context = format!("[Project: {}] {}", project_name, prompt);
 
-                // Call assign.sh to formally assign the detected phase
-                let assign_script = nolan_root.join("app").join("scripts").join("assign.sh");
-                let phase_name = target_phase.name.clone();
-                let project_name_clone = project_name.clone();
-                let nolan_root_clone = nolan_root.clone();
+            // Call assign.sh to formally assign the detected phase
+            let assign_script = nolan_root.join("app").join("scripts").join("assign.sh");
+            let phase_name = target_phase.name.clone();
+            let project_name_clone = project_name.clone();
+            let nolan_root_clone = nolan_root.clone();
 
-                tokio::spawn(async move {
-                    // Small delay to let agents initialize
-                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            tokio::spawn(async move {
+                // Small delay to let agents initialize
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
-                    let _ = Command::new(&assign_script)
-                        .env("NOLAN_ROOT", nolan_root_clone.to_string_lossy().to_string())
-                        .args(&[&project_name_clone, &phase_name, &format!("Phase assignment: {}", prompt)])
-                        .output();
-                });
-            } else {
-                // No phases defined, fall back to auditor (or coordinator for v1 compat)
-                #[allow(deprecated)]
-                let fallback_agent = team.note_taker()
-                    .or_else(|| team.coordinator())
-                    .unwrap_or("dan");
-                target_agent = fallback_agent.to_string();
-                target_session = format!("agent-{}-{}", team_name, target_agent);
-                prompt_with_context = format!("[Project: {}] {}", project_name, prompt);
-            }
+                let _ = Command::new(&assign_script)
+                    .env("NOLAN_ROOT", nolan_root_clone.to_string_lossy().to_string())
+                    .args(&[&project_name_clone, &phase_name, &format!("Phase assignment: {}", prompt)])
+                    .output();
+            });
         } else {
-            // Schema v1 (legacy): Send to auditor/coordinator
-            #[allow(deprecated)]
+            // No phases defined, fall back to note-taker
             let fallback_agent = team.note_taker()
-                .or_else(|| team.coordinator())
-                .unwrap_or("dan");
+                .unwrap_or("notary");
             target_agent = fallback_agent.to_string();
             target_session = format!("agent-{}-{}", team_name, target_agent);
             prompt_with_context = format!("[Project: {}] {}", project_name, prompt);
@@ -1246,9 +1227,11 @@ pub async fn kill_all_instances(app_handle: AppHandle, _team_name: String, agent
     for session in &sessions {
         if let Some(instance_id) = parse_ralph_session(session) {
             if crate::tmux::session::kill_session(session).is_ok() {
-                // Delete the ephemeral agent directory (agent-ralph-{name})
+                // Only delete ephemeral agent directories (where .claude is a symlink)
+                // Pre-defined agents like agent-ralph-debug have a real .claude directory
                 let agent_path = agents_dir.join(format!("agent-ralph-{}", instance_id));
-                if agent_path.exists() {
+                let claude_path = agent_path.join(".claude");
+                if agent_path.exists() && claude_path.is_symlink() {
                     let _ = fs::remove_dir_all(&agent_path);
                 }
                 killed.push(session.to_string());
@@ -1256,8 +1239,9 @@ pub async fn kill_all_instances(app_handle: AppHandle, _team_name: String, agent
         }
     }
 
-    // Also clean up orphaned directories (no running session)
+    // Also clean up orphaned ephemeral directories (no running session)
     // These can occur if the session crashed or was killed externally
+    // Only delete directories where .claude is a symlink (ephemeral, not pre-defined)
     if agents_dir.exists() {
         if let Ok(entries) = fs::read_dir(&agents_dir) {
             for entry in entries.flatten() {
@@ -1265,11 +1249,14 @@ pub async fn kill_all_instances(app_handle: AppHandle, _team_name: String, agent
                 if name.starts_with("agent-ralph-") {
                     // Check if there's a running session for this directory
                     if !sessions.contains(&name) {
-                        // No session running, this is an orphaned directory
-                        if let Err(e) = fs::remove_dir_all(entry.path()) {
-                            eprintln!("Warning: Failed to delete orphaned directory {}: {}", name, e);
-                        } else {
-                            cleaned.push(name);
+                        // Only delete ephemeral directories (where .claude is a symlink)
+                        let claude_path = entry.path().join(".claude");
+                        if claude_path.is_symlink() {
+                            if let Err(e) = fs::remove_dir_all(entry.path()) {
+                                eprintln!("Warning: Failed to delete orphaned directory {}: {}", name, e);
+                            } else {
+                                cleaned.push(name);
+                            }
                         }
                     }
                 }

@@ -1,8 +1,0 @@
-acknowledged: false
-from_agent: dl-dataengineer
-id: b3a39e8f4626
-project: decision-logging
-status: COMPLETE
-team: decision-logging
-timestamp: '2026-01-10T22:13:01'
-to_agent: dan

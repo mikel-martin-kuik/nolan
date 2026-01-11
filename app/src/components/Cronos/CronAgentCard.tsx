@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
 import type { CronAgentInfo } from '@/types';
 
 interface CronAgentCardProps {
@@ -110,13 +111,13 @@ export const CronAgentCard: React.FC<CronAgentCardProps> = ({
   return (
     <>
       <Card
-        className={`
-          transition-all duration-200 rounded-xl h-full
-          ${isClickable ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.98] active:translate-y-0' : ''}
-          ${disabled ? 'cursor-not-allowed opacity-60' : ''}
-          ${agent.enabled ? 'glass-card' : 'bg-muted/30 border-border/50'}
-          ${hasFailed ? 'border-red-500/50' : ''}
-        `}
+        className={cn(
+          'glass-card transition-all duration-200 rounded-xl h-full',
+          'cursor-pointer hover:-translate-y-0.5 active:scale-[0.98] active:translate-y-0',
+          agent.enabled ? 'glass-active' : 'opacity-80 hover:opacity-100',
+          disabled && 'cursor-not-allowed opacity-60',
+          hasFailed && 'border-red-500/50'
+        )}
         onClick={isClickable ? handleCardClick : undefined}
         onKeyDown={isClickable ? handleKeyDown : undefined}
         onContextMenu={handleContextMenu}
@@ -126,16 +127,22 @@ export const CronAgentCard: React.FC<CronAgentCardProps> = ({
         aria-disabled={disabled}
       >
         <CardHeader className="p-2 sm:p-3 pb-1 sm:pb-2">
-          <CardTitle className="flex items-center gap-1.5 text-xs sm:text-sm">
-            <span className={`truncate ${agent.enabled ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+          <CardTitle className="flex items-center gap-2 text-xs sm:text-sm">
+            <span className={cn(
+              'truncate',
+              agent.enabled ? 'text-foreground font-medium' : 'text-muted-foreground'
+            )}>
               {agent.name.replace(/^cron-/, '')}
             </span>
             {agent.is_running && (
-              <span className="text-[9px] text-primary animate-pulse">running</span>
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
             )}
           </CardTitle>
 
-          <CardDescription className={`text-[10px] sm:text-xs line-clamp-1 ${agent.enabled ? 'text-muted-foreground' : 'text-muted-foreground/60'}`}>
+          <CardDescription className={cn(
+            'text-[10px] sm:text-xs line-clamp-1',
+            agent.enabled ? 'text-muted-foreground' : 'text-muted-foreground/60'
+          )}>
             {agent.description || 'No description'}
           </CardDescription>
         </CardHeader>

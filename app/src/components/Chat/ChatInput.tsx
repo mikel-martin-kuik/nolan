@@ -4,6 +4,7 @@ import { invoke } from '@/lib/api';
 import { useToastStore } from '../../store/toastStore';
 import { useTeamStore } from '../../store/teamStore';
 import { useOllamaStore } from '../../store/ollamaStore';
+import { useChatDraftStore } from '../../store/chatDraftStore';
 import { Tooltip } from '@/components/ui/tooltip';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -18,7 +19,9 @@ export const ChatInput: React.FC<ChatInputProps> = memo(({
   disabled = false,
   placeholder = 'Type your response...',
 }) => {
-  const [value, setValue] = useState('');
+  const { getDraft, setDraft, clearDraft } = useChatDraftStore();
+  const value = getDraft(session);
+  const setValue = useCallback((text: string) => setDraft(session, text), [session, setDraft]);
   const [sending, setSending] = useState(false);
   const [generating, setGenerating] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -73,14 +76,14 @@ export const ChatInput: React.FC<ChatInputProps> = memo(({
         target: targetAgent,
         message: trimmed,
       });
-      setValue('');
+      clearDraft(session);
     } catch (err) {
       console.error('Failed to send message:', err);
       showError(`Failed to send: ${err}`);
     } finally {
       setSending(false);
     }
-  }, [value, disabled, sending, targetAgent, currentTeam, showError]);
+  }, [value, disabled, sending, targetAgent, currentTeam, showError, clearDraft, session]);
 
   const handleInterrupt = useCallback(async () => {
     try {

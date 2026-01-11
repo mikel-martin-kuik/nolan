@@ -220,8 +220,8 @@ function determineTurnCategory(
     return 'not_involved';
   }
 
-  // Check if agent is the coordinator (not in workflow but manages it)
-  if (agentName === team.team.workflow.coordinator) {
+  // Check if agent is the note-taker (not in workflow but documents it)
+  if (agentName === team.team.workflow.note_taker) {
     return 'not_involved';
   }
 
@@ -344,8 +344,8 @@ export function computeWorkflowState(
     }
   }
 
-  // Special case: Coordinator agent (e.g., Dan)
-  if (agentName === team.team.workflow.coordinator) {
+  // Special case: Note-taker agent (e.g., Dan)
+  if (agentName === team.team.workflow.note_taker) {
     if (agent.active && agent.current_project && agent.current_project !== 'VIBING') {
       status = isStreaming ? 'working' : (hasMessages ? 'waiting_input' : 'ready');
     }

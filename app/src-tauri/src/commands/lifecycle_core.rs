@@ -32,13 +32,17 @@ pub fn kill_session(session_name: &str) -> Result<String, String> {
         }
     }
 
-    // For ephemeral Ralph agents, ALWAYS delete the agent directory (agent-ralph-{name})
+    // For ephemeral Ralph agents, delete the agent directory (agent-ralph-{name})
+    // Only delete if .claude is a symlink (ephemeral), not a real directory (pre-defined)
     // This runs regardless of session existence to handle orphaned directories
     let mut dir_deleted = false;
     if let Some(instance_id) = parse_ralph_session(session_name) {
         if let Ok(agents_dir) = crate::utils::paths::get_agents_dir() {
             let agent_path = agents_dir.join(format!("agent-ralph-{}", instance_id));
-            if agent_path.exists() {
+            let claude_path = agent_path.join(".claude");
+            // Only delete ephemeral directories (where .claude is a symlink)
+            // Pre-defined agents like agent-ralph-debug have a real .claude directory
+            if agent_path.exists() && claude_path.is_symlink() {
                 if let Err(e) = fs::remove_dir_all(&agent_path) {
                     eprintln!("Warning: Failed to delete ephemeral agent directory: {}", e);
                 } else {
@@ -125,8 +129,7 @@ pub async fn start_agent_core(team_name: &str, agent: &str) -> Result<String, St
     // Validate agent is in team (can be workflow participant, note-taker, or exception handler)
     let participants = team.workflow_participants();
     let is_participant = participants.iter().any(|p| p == &agent);
-    #[allow(deprecated)]
-    let is_note_taker = team.note_taker() == Some(agent) || team.coordinator() == Some(agent);
+    let is_note_taker = team.note_taker() == Some(agent);
     let is_exception_handler = team.exception_handler() == Some(agent);
 
     if !is_participant && !is_note_taker && !is_exception_handler {
@@ -336,9 +339,10 @@ pub fn find_orphaned_ralph_instances() -> Result<Vec<OrphanedRalphInstance>, Str
 
         // Directory exists but session is not running
         if agent_dir.exists() && !running_sessions.contains(&session_name) {
-            // Verify it's actually a Ralph ephemeral directory (has .claude symlink)
+            // Only consider ephemeral directories (where .claude is a symlink, not a real directory)
+            // Pre-defined agents like agent-ralph-debug have a real .claude directory
             let claude_link = agent_dir.join(".claude");
-            if claude_link.exists() || claude_link.is_symlink() {
+            if claude_link.is_symlink() {
                 orphaned.push(OrphanedRalphInstance {
                     name: name.to_string(),
                     session: session_name,
@@ -364,8 +368,10 @@ pub fn find_orphaned_ralph_instances() -> Result<Vec<OrphanedRalphInstance>, Str
                 let agent_dir = entry.path();
 
                 if agent_dir.is_dir() && !running_sessions.contains(&session_name) {
+                    // Only consider ephemeral directories (where .claude is a symlink)
+                    // Pre-defined agents have a real .claude directory
                     let claude_link = agent_dir.join(".claude");
-                    if claude_link.exists() || claude_link.is_symlink() {
+                    if claude_link.is_symlink() {
                         orphaned.push(OrphanedRalphInstance {
                             name: name.to_string(),
                             session: session_name,

@@ -1,21 +1,39 @@
 {
   "agents": {
     "cron-workflow-monitor": {
-      "last_run": "2026-01-11T12:45:08.244764600+00:00",
-      "last_status": "success",
-      "next_scheduled": null,
-      "consecutive_failures": 0,
-      "total_runs": 1,
-      "total_successes": 1,
-      "total_failures": 0
-    },
-    "cron-git": {
-      "last_run": "2026-01-11T12:09:37.310733688+00:00",
+      "last_run": "2026-01-11T15:45:08.719684578+00:00",
       "last_status": "success",
       "next_scheduled": null,
       "consecutive_failures": 0,
       "total_runs": 11,
       "total_successes": 11,
+      "total_failures": 0
+    },
+    "cron-inbox-digest": {
+      "last_run": "2026-01-11T15:13:43.474401694+00:00",
+      "last_status": "success",
+      "next_scheduled": null,
+      "consecutive_failures": 0,
+      "total_runs": 3,
+      "total_successes": 3,
+      "total_failures": 0
+    },
+    "cron-git": {
+      "last_run": "2026-01-11T13:11:39.619286048+00:00",
+      "last_status": "success",
+      "next_scheduled": null,
+      "consecutive_failures": 0,
+      "total_runs": 12,
+      "total_successes": 12,
+      "total_failures": 0
+    },
+    "cron-dependency-check": {
+      "last_run": "2026-01-10T01:50:38.893888621+00:00",
+      "last_status": "success",
+      "next_scheduled": null,
+      "consecutive_failures": 0,
+      "total_runs": 2,
+      "total_successes": 2,
       "total_failures": 0
     },
     "cron-roadmap": {
@@ -26,16 +44,7 @@
       "total_runs": 3,
       "total_successes": 2,
       "total_failures": 1
-    },
-    "cron-dependency-check": {
-      "last_run": "2026-01-10T01:50:38.893888621+00:00",
-      "last_status": "success",
-      "next_scheduled": null,
-      "consecutive_failures": 0,
-      "total_runs": 2,
-      "total_successes": 2,
-      "total_failures": 0
     }
   },
-  "last_updated": "2026-01-11T12:45:08.244778022+00:00"
+  "last_updated": "2026-01-11T15:45:08.719707764+00:00"
 }

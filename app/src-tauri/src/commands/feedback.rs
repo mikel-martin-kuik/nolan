@@ -112,6 +112,8 @@ pub struct Idea {
     pub status: IdeaStatus,
     pub created_at: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub created_by: Option<String>,
 }
 
@@ -417,6 +419,7 @@ pub fn create_idea(
         description,
         status: IdeaStatus::Active,
         created_at: Utc::now().to_rfc3339(),
+        updated_at: None,
         created_by,
     };
 
@@ -424,6 +427,26 @@ pub fn create_idea(
     append_jsonl(&path, &idea)?;
 
     Ok(idea)
+}
+
+#[command]
+pub fn update_idea(id: String, title: String, description: String) -> Result<Idea, String> {
+    let path = get_ideas_file()?;
+    let mut ideas: Vec<Idea> = read_jsonl(&path)?;
+
+    let idea = ideas
+        .iter_mut()
+        .find(|i| i.id == id)
+        .ok_or_else(|| format!("Idea not found: {}", id))?;
+
+    idea.title = title;
+    idea.description = description;
+    idea.updated_at = Some(Utc::now().to_rfc3339());
+
+    let updated = idea.clone();
+    write_jsonl(&path, &ideas)?;
+
+    Ok(updated)
 }
 
 #[command]
@@ -439,6 +462,7 @@ pub fn update_idea_status(id: String, status: String) -> Result<Idea, String> {
         .ok_or_else(|| format!("Idea not found: {}", id))?;
 
     idea.status = new_status;
+    idea.updated_at = Some(Utc::now().to_rfc3339());
 
     let updated = idea.clone();
     write_jsonl(&path, &ideas)?;
@@ -501,4 +525,148 @@ pub fn get_user_votes() -> Result<HashMap<String, String>, String> {
         .collect();
 
     Ok(user_votes)
+}
+
+// ============================================================================
+// Idea Reviews (from cron-inbox-digest agent)
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IdeaReviewStatus {
+    Draft,
+    NeedsInput,
+    Ready,
+    Rejected,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum IdeaComplexity {
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IdeaProposal {
+    pub title: String,
+    pub summary: String,
+    pub problem: String,
+    pub solution: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub implementation_hints: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IdeaGap {
+    pub id: String,
+    pub label: String,
+    pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub placeholder: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub value: Option<String>,
+    pub required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IdeaReview {
+    pub item_id: String,
+    pub item_type: String,
+    pub review_status: IdeaReviewStatus,
+    pub proposal: IdeaProposal,
+    #[serde(default)]
+    pub gaps: Vec<IdeaGap>,
+    pub analysis: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub complexity: Option<IdeaComplexity>,
+    pub reviewed_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accepted_at: Option<String>,
+}
+
+fn get_inbox_reviews_file() -> Result<PathBuf, String> {
+    Ok(ensure_feedback_dir()?.join("inbox-reviews.jsonl"))
+}
+
+#[command]
+pub fn list_idea_reviews() -> Result<Vec<IdeaReview>, String> {
+    let path = get_inbox_reviews_file()?;
+    let reviews: Vec<IdeaReview> = read_jsonl(&path)?;
+    Ok(reviews)
+}
+
+#[command]
+pub fn update_review_gaps(item_id: String, gaps: Vec<IdeaGap>) -> Result<IdeaReview, String> {
+    let path = get_inbox_reviews_file()?;
+    let mut reviews: Vec<IdeaReview> = read_jsonl(&path)?;
+
+    let review = reviews
+        .iter_mut()
+        .find(|r| r.item_id == item_id)
+        .ok_or_else(|| format!("Review not found for item: {}", item_id))?;
+
+    review.gaps = gaps;
+    review.updated_at = Some(Utc::now().to_rfc3339());
+
+    // Check if all required gaps are filled
+    let all_filled = review.gaps.iter().all(|g| !g.required || g.value.is_some());
+    if all_filled && matches!(review.review_status, IdeaReviewStatus::NeedsInput) {
+        review.review_status = IdeaReviewStatus::Draft;
+    }
+
+    let updated = review.clone();
+    write_jsonl(&path, &reviews)?;
+
+    Ok(updated)
+}
+
+#[command]
+pub fn update_review_proposal(item_id: String, proposal: IdeaProposal) -> Result<IdeaReview, String> {
+    let path = get_inbox_reviews_file()?;
+    let mut reviews: Vec<IdeaReview> = read_jsonl(&path)?;
+
+    let review = reviews
+        .iter_mut()
+        .find(|r| r.item_id == item_id)
+        .ok_or_else(|| format!("Review not found for item: {}", item_id))?;
+
+    review.proposal = proposal;
+    review.updated_at = Some(Utc::now().to_rfc3339());
+
+    let updated = review.clone();
+    write_jsonl(&path, &reviews)?;
+
+    Ok(updated)
+}
+
+#[command]
+pub fn accept_review(item_id: String) -> Result<IdeaReview, String> {
+    let path = get_inbox_reviews_file()?;
+    let mut reviews: Vec<IdeaReview> = read_jsonl(&path)?;
+
+    let review = reviews
+        .iter_mut()
+        .find(|r| r.item_id == item_id)
+        .ok_or_else(|| format!("Review not found for item: {}", item_id))?;
+
+    // Check if all required gaps are filled
+    let all_filled = review.gaps.iter().all(|g| !g.required || g.value.is_some());
+    if !all_filled {
+        return Err("Cannot accept: some required gaps are not filled".to_string());
+    }
+
+    review.review_status = IdeaReviewStatus::Ready;
+    review.accepted_at = Some(Utc::now().to_rfc3339());
+    review.updated_at = Some(Utc::now().to_rfc3339());
+
+    let updated = review.clone();
+    write_jsonl(&path, &reviews)?;
+
+    Ok(updated)
 }

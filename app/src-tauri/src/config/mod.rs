@@ -27,9 +27,10 @@ pub struct Team {
 impl Default for WorkflowConfig {
     fn default() -> Self {
         WorkflowConfig {
-            coordinator: None,
             note_taker: None,
             exception_handler: None,
+            disable_note_taker: false,
+            disable_exception_handler: false,
             phases: vec![],
         }
     }
@@ -63,18 +64,26 @@ fn default_true() -> bool {
 }
 
 /// Workflow configuration with phases
-/// Schema v2: coordinator is deprecated - workflow is now event-driven via hooks
+/// Workflow is event-driven via hooks.
+///
+/// By default, note_taker (notary) and exception_handler (guardian) are mandatory.
+/// Use disable_note_taker/disable_exception_handler to opt out if absolutely necessary.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowConfig {
-    /// @deprecated - use note_taker instead (v1 backward compat only)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub coordinator: Option<String>,
     /// Agent that documents workflow progress (maintains NOTES.md)
-    #[serde(default, skip_serializing_if = "Option::is_none", alias = "auditor")]
+    /// Defaults to "notary" if not specified and not disabled
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note_taker: Option<String>,
     /// Agent that handles workflow exceptions (escalates to human)
+    /// Defaults to "guardian" if not specified and not disabled
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exception_handler: Option<String>,
+    /// Force disable note_taker role (not recommended - breaks audit trail)
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub disable_note_taker: bool,
+    /// Force disable exception_handler role (not recommended - breaks escalation)
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub disable_exception_handler: bool,
     #[serde(default, deserialize_with = "deserialize_phases_or_default")]
     pub phases: Vec<PhaseConfig>,
 }
@@ -597,11 +606,28 @@ impl TeamConfig {
         let contents = fs::read_to_string(config_path)
             .map_err(|e| format!("Failed to read config: {}", e))?;
 
-        let config: TeamConfig = serde_yaml::from_str(&contents)
+        let mut config: TeamConfig = serde_yaml::from_str(&contents)
             .map_err(|e| format!("Failed to parse YAML: {}", e))?;
+
+        // Apply defaults for mandatory agents (note_taker and exception_handler)
+        config.apply_defaults();
 
         config.validate()?;
         Ok(config)
+    }
+
+    /// Apply default values for mandatory agents.
+    /// Sets note_taker to "notary" and exception_handler to "guardian" unless explicitly disabled.
+    pub fn apply_defaults(&mut self) {
+        // Default note_taker to "notary" (project tracker) unless disabled
+        if self.team.workflow.note_taker.is_none() && !self.team.workflow.disable_note_taker {
+            self.team.workflow.note_taker = Some("notary".to_string());
+        }
+
+        // Default exception_handler to "guardian" (escalates issues to humans) unless disabled
+        if self.team.workflow.exception_handler.is_none() && !self.team.workflow.disable_exception_handler {
+            self.team.workflow.exception_handler = Some("guardian".to_string());
+        }
     }
 
     /// Load team configuration by name (with path resolution)
@@ -642,33 +668,49 @@ impl TeamConfig {
             }
         }
 
-        // Validate coordinator exists in agents list if specified (deprecated field, for v1 compat)
-        if let Some(ref coordinator) = self.team.workflow.coordinator {
-            if !coordinator.is_empty() && !seen_names.contains(coordinator.as_str()) {
-                return Err(format!(
-                    "Coordinator '{}' not found in agents list for team '{}'",
-                    coordinator, self.team.name
-                ));
+        // Validate note_taker: mandatory unless explicitly disabled
+        // Note-taker (notary) maintains NOTES.md for audit trail
+        if !self.team.workflow.disable_note_taker {
+            match &self.team.workflow.note_taker {
+                Some(note_taker) if !note_taker.is_empty() => {
+                    if !seen_names.contains(note_taker.as_str()) {
+                        return Err(format!(
+                            "Note-taker '{}' not found in agents list for team '{}'. \
+                            Add the agent or set disable_note_taker: true to opt out.",
+                            note_taker, self.team.name
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(format!(
+                        "Team '{}' requires a note_taker agent (defaults to 'notary'). \
+                        Set disable_note_taker: true to opt out (not recommended).",
+                        self.team.name
+                    ));
+                }
             }
         }
 
-        // Validate note_taker exists in agents list if specified
-        if let Some(ref note_taker) = self.team.workflow.note_taker {
-            if !note_taker.is_empty() && !seen_names.contains(note_taker.as_str()) {
-                return Err(format!(
-                    "Note-taker '{}' not found in agents list for team '{}'",
-                    note_taker, self.team.name
-                ));
-            }
-        }
-
-        // Validate exception_handler exists in agents list if specified
-        if let Some(ref handler) = self.team.workflow.exception_handler {
-            if !handler.is_empty() && !seen_names.contains(handler.as_str()) {
-                return Err(format!(
-                    "Exception handler '{}' not found in agents list for team '{}'",
-                    handler, self.team.name
-                ));
+        // Validate exception_handler: mandatory unless explicitly disabled
+        // Exception handler (guardian) escalates issues to humans
+        if !self.team.workflow.disable_exception_handler {
+            match &self.team.workflow.exception_handler {
+                Some(handler) if !handler.is_empty() => {
+                    if !seen_names.contains(handler.as_str()) {
+                        return Err(format!(
+                            "Exception handler '{}' not found in agents list for team '{}'. \
+                            Add the agent or set disable_exception_handler: true to opt out.",
+                            handler, self.team.name
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(format!(
+                        "Team '{}' requires an exception_handler agent (defaults to 'guardian'). \
+                        Set disable_exception_handler: true to opt out (not recommended).",
+                        self.team.name
+                    ));
+                }
             }
         }
 
@@ -705,15 +747,16 @@ impl TeamConfig {
             .collect()
     }
 
-    /// Get coordinator agent name (deprecated - use note_taker() instead)
-    #[deprecated(note = "coordinator role is deprecated, use note_taker() instead")]
-    pub fn coordinator(&self) -> Option<&str> {
-        self.team.workflow.coordinator.as_deref()
-    }
-
     /// Get note-taker agent name (maintains NOTES.md)
     pub fn note_taker(&self) -> Option<&str> {
         self.team.workflow.note_taker.as_deref()
+    }
+
+    /// Get coordinator agent name (deprecated - use note_taker instead)
+    /// Returns note_taker for backward compatibility
+    #[deprecated(note = "coordinator role is deprecated, use note_taker() instead")]
+    pub fn coordinator(&self) -> Option<&str> {
+        self.note_taker()
     }
 
     /// Get exception handler agent name
@@ -721,22 +764,11 @@ impl TeamConfig {
         self.team.workflow.exception_handler.as_deref()
     }
 
-    /// Get coordinator's output file from team config (deprecated)
-    /// Returns Result to allow graceful error handling if coordinator lacks output_file
+    /// Get coordinator's output file (deprecated - always returns NOTES.md)
     #[deprecated(note = "coordinator role is deprecated")]
     pub fn coordinator_output_file(&self) -> Result<String, String> {
-        let coordinator = self.team.workflow.coordinator.as_ref()
-            .ok_or_else(|| format!("No coordinator defined for team '{}'", self.team.name))?;
-
-        self.team.agents.iter()
-            .find(|a| a.name == *coordinator)
-            .and_then(|a| a.output_file.as_ref())
-            .map(|s| s.to_string())
-            .ok_or_else(|| format!(
-                "Coordinator '{}' must have output_file defined in team config '{}'",
-                coordinator,
-                self.team.name
-            ))
+        // Always return NOTES.md as the standard workflow tracking file
+        Ok("NOTES.md".to_string())
     }
 
     /// Check if an agent is a workflow participant

@@ -30,7 +30,7 @@ export interface TeamChatState {
   totalAgentCount: number;
   lastActivity: number;
   isAnyAgentWorking: boolean;
-  coordinator: string | null;
+  noteTaker: string | null;
 }
 
 function getAgentDisplayName(agent: AgentStatus): string {
@@ -103,7 +103,7 @@ export function useTeamMessages(teamName: string | null): TeamChatState | null {
       totalAgentCount: teamAgentsList.length,
       lastActivity,
       isAnyAgentWorking: isAnyWorking,
-      coordinator: teamConfig?.team.workflow.coordinator ?? null,
+      noteTaker: teamConfig?.team.workflow.note_taker ?? null,
     };
   }, [teamName, agentOutputs, teamAgents, teamConfigs]);
 }

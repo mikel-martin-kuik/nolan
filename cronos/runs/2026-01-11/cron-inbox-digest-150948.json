@@ -1,0 +1,15 @@
+{
+  "run_id": "302c7f81",
+  "agent_name": "cron-inbox-digest",
+  "started_at": "2026-01-11T15:09:48.718455643+00:00",
+  "completed_at": "2026-01-11T15:13:43.473481979+00:00",
+  "status": "success",
+  "duration_secs": 234,
+  "exit_code": 0,
+  "output_file": "/home/mmartin/Proyectos/nolan/cronos/runs/2026-01-11/cron-inbox-digest-150948.log",
+  "error": null,
+  "attempt": 1,
+  "trigger": "manual",
+  "session_name": "cron-cron-inbox-digest-302c7f81",
+  "run_dir": "/home/mmartin/Proyectos/nolan/cronos/runs/2026-01-11/cron-inbox-digest-302c7f81"
+}

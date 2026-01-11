@@ -1,8 +1,0 @@
-acknowledged: false
-from_agent: frank
-id: HO_20260111_021815_frank_676b54
-project: nolan-repo-cleanup
-status: COMPLETE
-team: default
-timestamp: '2026-01-11T02:18:15'
-to_agent: dan

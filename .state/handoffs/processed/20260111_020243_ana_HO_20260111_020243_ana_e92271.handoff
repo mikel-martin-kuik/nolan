@@ -1,8 +1,0 @@
-acknowledged: false
-from_agent: ana
-id: HO_20260111_020243_ana_e92271
-project: nolan-repo-cleanup
-status: COMPLETE
-team: default
-timestamp: '2026-01-11T02:02:43'
-to_agent: dan

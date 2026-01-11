@@ -1,8 +1,0 @@
-acknowledged: false
-from_agent: bill
-id: HO_20260111_020611_bill_b8553c
-project: nolan-repo-cleanup
-status: COMPLETE
-team: default
-timestamp: '2026-01-11T02:06:11'
-to_agent: dan

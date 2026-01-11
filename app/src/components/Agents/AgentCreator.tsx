@@ -28,7 +28,7 @@ interface AgentCreatorProps {
 export const AgentCreator: React.FC<AgentCreatorProps> = ({ onSave, onCancel }) => {
   const [name, setName] = useState('');
   const [role, setRole] = useState('');
-  const [model, setModel] = useState<ClaudeModel>('sonnet');
+  const [model, setModel] = useState<ClaudeModel>('opus');
   const [creating, setCreating] = useState(false);
   const { error: showError } = useToastStore();
 

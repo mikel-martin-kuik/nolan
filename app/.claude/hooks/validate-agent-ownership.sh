@@ -87,11 +87,24 @@ try:
                 project_path = Path(projects_dir) / project_name
                 team_file = project_path / '.team'
                 if team_file.exists():
-                    team_name = team_file.read_text().strip()
+                    # Parse team name (supports YAML and plain text formats)
+                    team_content = team_file.read_text()
+                    try:
+                        data = yaml.safe_load(team_content)
+                        if isinstance(data, dict) and 'team' in data:
+                            team_name = data['team']
+                        else:
+                            team_name = team_content.strip()
+                    except:
+                        team_name = team_content.strip()
                     nolan_root = Path(os.environ.get('NOLAN_ROOT', ''))
                     if nolan_root:
-                        config_path = Path(nolan_root) / 'teams' / f'{team_name}.yaml'
-                        if config_path.exists():
+                        # Search for team config in teams directory (supports subdirectories)
+                        config_path = None
+                        for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+                            config_path = path
+                            break
+                        if config_path and config_path.exists():
                             config = yaml.safe_load(config_path.read_text())
                             # Build protected files list from agent output_files
                             protected = [a['output_file'] for a in config['team']['agents'] if a.get('output_file')]
@@ -120,7 +133,16 @@ try:
         if not team_file.exists():
             sys.exit(0)  # Skip projects without .team file
 
-        team_name = team_file.read_text().strip()
+        # Parse team name (supports YAML and plain text formats)
+        team_content = team_file.read_text()
+        try:
+            data = yaml.safe_load(team_content)
+            if isinstance(data, dict) and 'team' in data:
+                team_name = data['team']
+            else:
+                team_name = team_content.strip()
+        except:
+            team_name = team_content.strip()
         nolan_root = Path(os.environ.get('NOLAN_ROOT', ''))
         if not nolan_root:
             sys.exit(0)  # Can't validate without NOLAN_ROOT

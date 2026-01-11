@@ -2,11 +2,39 @@
 # Shared helper functions for hooks
 # Source this file: source "$(dirname "$0")/_lib.sh"
 
+# Get team name from project path
+# Supports both YAML format (team: name) and plain text format
+# Usage: team=$(get_team_name "/path/to/project")
+get_team_name() {
+    local project_path="$1"
+    local team_file="$project_path/.team"
+
+    if [[ ! -f "$team_file" ]]; then
+        echo "Error: .team file not found at $team_file" >&2
+        return 1
+    fi
+
+    # Parse team name (supports YAML and plain text)
+    python3 -c "
+import yaml
+from pathlib import Path
+
+content = Path('$team_file').read_text()
+try:
+    data = yaml.safe_load(content)
+    if isinstance(data, dict) and 'team' in data:
+        print(data['team'])
+    else:
+        print(content.strip())
+except:
+    print(content.strip())
+" 2>/dev/null || cat "$team_file" | head -1
+}
+
 # Get coordinator's output file from team config
 # Usage: coordinator_file=$(get_coordinator_file "/path/to/project")
 get_coordinator_file() {
     local project_path="$1"
-    local team_file="$project_path/.team"
     local team_name
 
     # NOLAN_ROOT is required
@@ -15,12 +43,8 @@ get_coordinator_file() {
         return 1
     fi
 
-    # Read team name from .team file (required)
-    if [[ ! -f "$team_file" ]]; then
-        echo "Error: .team file not found at $team_file" >&2
-        return 1
-    fi
-    team_name=$(cat "$team_file")
+    # Get team name using YAML-aware parser
+    team_name=$(get_team_name "$project_path") || return 1
 
     # Query team config for coordinator's output file
     # Use environment variables to avoid shell injection
@@ -55,7 +79,6 @@ for agent in config["team"]["agents"]:
 # Usage: coordinator=$(get_coordinator_name "/path/to/project")
 get_coordinator_name() {
     local project_path="$1"
-    local team_file="$project_path/.team"
     local team_name
 
     # NOLAN_ROOT is required
@@ -64,12 +87,8 @@ get_coordinator_name() {
         return 1
     fi
 
-    # Read team name from .team file (required)
-    if [[ ! -f "$team_file" ]]; then
-        echo "Error: .team file not found at $team_file" >&2
-        return 1
-    fi
-    team_name=$(cat "$team_file")
+    # Get team name using YAML-aware parser
+    team_name=$(get_team_name "$project_path") || return 1
 
     # Query team config for coordinator name
     # Use environment variables to avoid shell injection
@@ -94,33 +113,4 @@ if config_path is None:
 config = yaml.safe_load(config_path.read_text())
 print(config["team"]["workflow"]["coordinator"])
 '
-}
-
-# Get team name from project path
-# Supports both YAML format (team: name) and plain text format
-# Usage: team=$(get_team_name "/path/to/project")
-get_team_name() {
-    local project_path="$1"
-    local team_file="$project_path/.team"
-
-    if [[ ! -f "$team_file" ]]; then
-        echo "Error: .team file not found at $team_file" >&2
-        return 1
-    fi
-
-    # Parse team name (supports YAML and plain text)
-    python3 -c "
-import yaml
-from pathlib import Path
-
-content = Path('$team_file').read_text()
-try:
-    data = yaml.safe_load(content)
-    if isinstance(data, dict) and 'team' in data:
-        print(data['team'])
-    else:
-        print(content.strip())
-except:
-    print(content.strip())
-" 2>/dev/null || cat "$team_file" | head -1
 }

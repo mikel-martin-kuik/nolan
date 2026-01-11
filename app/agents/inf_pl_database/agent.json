@@ -1,6 +1,6 @@
 {
   "role": "Database Admin",
-  "model": "sonnet",
+  "model": "opus",
   "team": "platform",
   "role_template": "database-admin",
   "department": "infrastructure"

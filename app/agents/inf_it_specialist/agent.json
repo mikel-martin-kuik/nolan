@@ -1,6 +1,6 @@
 {
   "role": "IT Specialist",
-  "model": "sonnet",
+  "model": "opus",
   "team": "it_support",
   "role_template": "it-specialist",
   "department": "infrastructure"

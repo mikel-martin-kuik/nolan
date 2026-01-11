@@ -68,9 +68,9 @@ fn scan_teams_recursive(teams_dir: &std::path::Path) -> Result<Vec<(String, Stri
             continue;
         }
 
-        // Skip departments.yaml
+        // Skip departments.yaml and template files (starting with _)
         if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-            if stem == "departments" {
+            if stem == "departments" || stem.starts_with('_') {
                 continue;
             }
 

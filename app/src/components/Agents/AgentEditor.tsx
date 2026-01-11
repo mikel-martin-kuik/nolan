@@ -29,8 +29,8 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({
   const [originalContent, setOriginalContent] = useState('');
   const [role, setRole] = useState('');
   const [originalRole, setOriginalRole] = useState('');
-  const [model, setModel] = useState('sonnet');
-  const [originalModel, setOriginalModel] = useState('sonnet');
+  const [model, setModel] = useState('opus');
+  const [originalModel, setOriginalModel] = useState('opus');
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
@@ -56,8 +56,8 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({
         if (agent) {
           setRole(agent.role || '');
           setOriginalRole(agent.role || '');
-          setModel(agent.model || 'sonnet');
-          setOriginalModel(agent.model || 'sonnet');
+          setModel(agent.model || 'opus');
+          setOriginalModel(agent.model || 'opus');
         }
       } catch {
         // Agent metadata may not exist

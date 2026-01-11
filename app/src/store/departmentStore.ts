@@ -89,7 +89,6 @@ export const useDepartmentStore = create<DepartmentState>()(
           // No departments configured - all teams in "Other"
           return [{
             name: 'Other',
-            order: 999,
             teams: availableTeams.sort(),
             isOther: true,
           }];
@@ -98,12 +97,11 @@ export const useDepartmentStore = create<DepartmentState>()(
         // Track which teams have been assigned to a department
         const assignedTeams = new Set<string>();
 
-        // Build department groups
+        // Build department groups (order is preserved from YAML array order)
         const groups: DepartmentGroup[] = departments.departments
-          .sort((a, b) => a.order - b.order)
           .map(dept => {
             // Filter to only include teams that actually exist
-            const existingTeams = dept.teams.filter(t => {
+            const existingTeams = (dept.teams || []).filter(t => {
               if (availableTeams.includes(t)) {
                 assignedTeams.add(t);
                 return true;
@@ -113,7 +111,8 @@ export const useDepartmentStore = create<DepartmentState>()(
 
             return {
               name: dept.name,
-              order: dept.order,
+              code: dept.code,
+              directory: dept.directory,
               teams: existingTeams,
               isOther: false,
             };
@@ -125,7 +124,6 @@ export const useDepartmentStore = create<DepartmentState>()(
         if (unassignedTeams.length > 0) {
           groups.push({
             name: 'Other',
-            order: 999,
             teams: unassignedTeams.sort(),
             isOther: true,
           });
@@ -165,7 +163,6 @@ export const useDepartmentStore = create<DepartmentState>()(
             // Create department groups within pillar
             const deptGroups: DepartmentGroup[] = [{
               name: pillar.name,
-              order: 0,
               teams: pillarTeams.map(t => t.id),
               isOther: false,
             }];
@@ -187,7 +184,6 @@ export const useDepartmentStore = create<DepartmentState>()(
             name: 'Teams',
             departments: [{
               name: 'Teams',
-              order: 0,
               teams: rootTeams.map(t => t.id),
               isOther: true,
             }],

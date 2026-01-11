@@ -1,6 +1,6 @@
 {
   "role": "Operations Analyst",
-  "model": "sonnet",
+  "model": "opus",
   "team": "operations",
   "role_template": "operations-analyst",
   "department": "admin"

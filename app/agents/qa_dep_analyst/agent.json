@@ -1,6 +1,6 @@
 {
   "role": "Dependency Analyst",
-  "model": "sonnet",
+  "model": "opus",
   "team": "dependencies_bugs",
   "role_template": "dependency-analyst",
   "department": "quality"

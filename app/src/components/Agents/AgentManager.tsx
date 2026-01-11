@@ -91,7 +91,7 @@ Outline communication style and guidelines.
       await invoke('save_agent_metadata', {
         agentName,
         role: 'Agent',
-        model: 'sonnet'
+        model: 'opus'
       });
       showSuccess(`agent.json created for ${agentName}`);
       handleRefresh();

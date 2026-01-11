@@ -1,7 +1,0 @@
-{
-  "role": "Estimation Analyst",
-  "model": "sonnet",
-  "role_template": "planner",
-  "team": "estimation_bidding",
-  "description": "Generates hour estimates with confidence intervals and risk analysis"
-}

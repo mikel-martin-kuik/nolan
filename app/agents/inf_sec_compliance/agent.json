@@ -1,6 +1,6 @@
 {
   "role": "Security Compliance",
-  "model": "sonnet",
+  "model": "opus",
   "team": "platform_security",
   "role_template": "security-compliance",
   "department": "infrastructure"

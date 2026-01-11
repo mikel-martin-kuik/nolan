@@ -143,9 +143,13 @@ where
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Department {
     pub name: String,
-    pub order: i32,
+    #[serde(default)]
+    pub code: Option<String>,             // Short code (e.g., "ADM", "DEV")
+    #[serde(default)]
+    pub directory: Option<String>,        // Directory name in teams/ folder
+    #[serde(default)]
     pub teams: Vec<String>,
-    // NEW: Hierarchical support (V1.1)
+    // Hierarchical support (V1.1)
     #[serde(default)]
     pub pillar: Option<String>,           // Parent pillar ID
     #[serde(default)]
@@ -154,6 +158,8 @@ pub struct Department {
     pub description: Option<String>,
     #[serde(default)]
     pub policies: Option<DepartmentPolicies>,
+    #[serde(default)]
+    pub notes: Option<String>,            // Optional notes field
 }
 
 /// Department-level policy overrides

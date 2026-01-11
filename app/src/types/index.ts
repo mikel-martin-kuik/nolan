@@ -60,11 +60,13 @@ export interface PhaseConfig {
 // Department grouping types
 export interface Department {
   name: string;
-  order: number;
+  code?: string;           // Short code (e.g., "ADM", "DEV")
+  directory?: string;      // Directory name in teams/ folder
   teams: string[];
   pillar?: string;         // Parent pillar ID (for hierarchical display)
   parent?: string;         // Parent department (for nesting)
   description?: string;
+  notes?: string;          // Optional notes field
 }
 
 export interface DepartmentsConfig {
@@ -73,7 +75,8 @@ export interface DepartmentsConfig {
 
 export interface DepartmentGroup {
   name: string;
-  order: number;
+  code?: string;           // Short code for display
+  directory?: string;      // Directory in teams/ folder
   teams: string[];
   isOther: boolean;
 }

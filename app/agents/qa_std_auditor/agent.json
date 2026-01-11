@@ -1,6 +1,6 @@
 {
   "role": "Quality Auditor",
-  "model": "sonnet",
+  "model": "opus",
   "team": "standards",
   "role_template": "quality-auditor",
   "department": "quality"

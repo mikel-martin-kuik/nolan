@@ -197,8 +197,8 @@ pub fn get_default_model(agent: &str) -> String {
         }
     }
 
-    // Default to sonnet if agent.json doesn't exist or doesn't have model
-    "sonnet".to_string()
+    // Default to opus if agent.json doesn't exist or doesn't have model
+    "opus".to_string()
 }
 
 /// Determine which agents are needed based on project phase status in coordinator's output file

@@ -1,6 +1,6 @@
 {
   "role": "Automation Maintenance",
-  "model": "sonnet",
+  "model": "opus",
   "team": "automation",
   "role_template": "automation-maintenance",
   "department": "quality"

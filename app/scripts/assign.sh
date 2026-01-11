@@ -71,12 +71,40 @@ except:
 "
 }
 
+# Load team config (searches subdirectories)
+# Usage: config_path=$(get_team_config_path "$team_name")
+get_team_config_path() {
+    local team_name="$1"
+    local nolan_root="${NOLAN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+
+    python3 -c "
+import sys
+from pathlib import Path
+
+team_name = '$team_name'
+nolan_root = Path('$nolan_root')
+teams_dir = nolan_root / 'teams'
+
+# Search for team config in teams directory (supports subdirectories)
+config_path = None
+for path in teams_dir.rglob(f'{team_name}.yaml'):
+    config_path = path
+    break
+
+if config_path is None:
+    print(f'ERROR: Team config not found: {team_name}', file=sys.stderr)
+    sys.exit(1)
+
+print(config_path)
+"
+}
+
 # Get coordinator from team config
 get_coordinator() {
     local project_path="$1"
 
     python3 -c "
-import yaml, os
+import yaml, os, sys
 from pathlib import Path
 
 project_path = Path('$project_path')
@@ -94,8 +122,23 @@ except:
     team_name = content.strip()
 
 nolan_root = Path(os.environ.get('NOLAN_ROOT', os.path.expanduser('~/nolan')))
-config = yaml.safe_load((nolan_root / 'teams' / f'{team_name}.yaml').read_text())
-print(config['team']['workflow']['coordinator'])
+
+# Search for team config in teams directory (supports subdirectories)
+config_path = None
+for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+    config_path = path
+    break
+
+if config_path is None:
+    print(f'ERROR: Team config not found: {team_name}', file=sys.stderr)
+    sys.exit(1)
+
+config = yaml.safe_load(config_path.read_text())
+coordinator = config.get('team', {}).get('workflow', {}).get('coordinator')
+if not coordinator:
+    print(f'ERROR: No coordinator defined in team config: {team_name}', file=sys.stderr)
+    sys.exit(1)
+print(coordinator)
 "
 }
 
@@ -104,7 +147,7 @@ get_coordinator_file() {
     local project_path="$1"
 
     python3 -c "
-import yaml, os
+import yaml, os, sys
 from pathlib import Path
 
 project_path = Path('$project_path')
@@ -122,8 +165,23 @@ except:
     team_name = content.strip()
 
 nolan_root = Path(os.environ.get('NOLAN_ROOT', os.path.expanduser('~/nolan')))
-config = yaml.safe_load((nolan_root / 'teams' / f'{team_name}.yaml').read_text())
-coordinator = config['team']['workflow']['coordinator']
+
+# Search for team config in teams directory (supports subdirectories)
+config_path = None
+for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+    config_path = path
+    break
+
+if config_path is None:
+    print(f'ERROR: Team config not found: {team_name}', file=sys.stderr)
+    sys.exit(1)
+
+config = yaml.safe_load(config_path.read_text())
+coordinator = config.get('team', {}).get('workflow', {}).get('coordinator')
+if not coordinator:
+    print(f'ERROR: No coordinator defined in team config: {team_name}', file=sys.stderr)
+    sys.exit(1)
+
 for agent in config['team']['agents']:
     if agent['name'] == coordinator:
         print(agent['output_file'])
@@ -153,7 +211,7 @@ get_output_file() {
     local project_path="$2"
 
     python3 -c "
-import yaml, os
+import yaml, os, sys
 from pathlib import Path
 
 project_path = Path('$project_path')
@@ -171,7 +229,18 @@ except:
     team_name = content.strip()
 
 nolan_root = Path(os.environ.get('NOLAN_ROOT', os.path.expanduser('~/nolan')))
-config = yaml.safe_load((nolan_root / 'teams' / f'{team_name}.yaml').read_text())
+
+# Search for team config in teams directory (supports subdirectories)
+config_path = None
+for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+    config_path = path
+    break
+
+if config_path is None:
+    print(f'ERROR: Team config not found: {team_name}', file=sys.stderr)
+    sys.exit(1)
+
+config = yaml.safe_load(config_path.read_text())
 
 for agent_config in config['team']['agents']:
     if agent_config['name'] == '$agent':

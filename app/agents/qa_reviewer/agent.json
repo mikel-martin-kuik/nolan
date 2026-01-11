@@ -1,7 +1,0 @@
-{
-  "role": "Reviewer",
-  "model": "sonnet",
-  "role_template": "reviewer",
-  "team": "quality_automation",
-  "description": "Reviews quality metrics and results"
-}

@@ -1,6 +1,6 @@
 {
   "role": "Recruiter",
-  "model": "sonnet",
+  "model": "opus",
   "team": "talent_acquisition",
   "role_template": "recruiter",
   "department": "human_resources"

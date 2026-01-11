@@ -1,6 +1,6 @@
 {
   "role": "Financial Controller",
-  "model": "sonnet",
+  "model": "opus",
   "team": "finance",
   "role_template": "controller",
   "department": "admin"

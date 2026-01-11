@@ -1,6 +1,6 @@
 {
   "role": "Platform Engineer",
-  "model": "sonnet",
+  "model": "opus",
   "team": "platform",
   "role_template": "platform-engineer",
   "department": "infrastructure"

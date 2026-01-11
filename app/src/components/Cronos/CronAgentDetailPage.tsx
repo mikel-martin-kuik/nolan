@@ -25,8 +25,8 @@ interface CronAgentDetailPageProps {
 export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
   agentName,
   onBack,
-  onTrigger,
-  onDelete,
+  onTrigger: _onTrigger,
+  onDelete: _onDelete,
   onViewOutput,
 }) => {
   const [agent, setAgent] = useState<CronAgentInfo | null>(null);

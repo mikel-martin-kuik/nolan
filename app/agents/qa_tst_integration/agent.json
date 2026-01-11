@@ -1,6 +1,6 @@
 {
   "role": "Integration Tester",
-  "model": "sonnet",
+  "model": "opus",
   "team": "testing",
   "role_template": "integration-tester",
   "department": "quality"

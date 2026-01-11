@@ -1,7 +1,0 @@
-{
-  "role": "Data Engineer",
-  "model": "sonnet",
-  "role_template": "data-engineer",
-  "team": "resource_optimization",
-  "description": "Builds usage analytics pipelines"
-}

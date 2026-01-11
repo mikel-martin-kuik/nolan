@@ -1,6 +1,6 @@
 {
   "role": "Systems Admin",
-  "model": "sonnet",
+  "model": "opus",
   "team": "it_support",
   "role_template": "systems-admin",
   "department": "infrastructure"

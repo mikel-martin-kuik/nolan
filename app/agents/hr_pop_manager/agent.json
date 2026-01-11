@@ -1,6 +1,6 @@
 {
   "role": "People Ops Manager",
-  "model": "sonnet",
+  "model": "opus",
   "team": "people_operations",
   "role_template": "people-ops-manager",
   "department": "human_resources"

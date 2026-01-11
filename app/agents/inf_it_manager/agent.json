@@ -1,6 +1,6 @@
 {
   "role": "IT Manager",
-  "model": "sonnet",
+  "model": "opus",
   "team": "it_support",
   "role_template": "it-manager",
   "department": "infrastructure"

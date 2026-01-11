@@ -1,7 +1,0 @@
-{
-  "role": "Coordinator",
-  "model": "opus",
-  "role_template": "coordinator",
-  "team": "resource_optimization",
-  "description": "Orchestrates resource optimization workflow"
-}

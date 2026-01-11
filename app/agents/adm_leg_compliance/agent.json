@@ -1,6 +1,6 @@
 {
   "role": "Compliance Officer",
-  "model": "sonnet",
+  "model": "opus",
   "team": "legal",
   "role_template": "compliance-officer",
   "department": "admin"

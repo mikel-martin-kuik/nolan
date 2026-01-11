@@ -1,13 +1,13 @@
 {
   "agents": {
-    "cron-git": {
-      "last_run": "2026-01-10T23:08:54.105835911+00:00",
+    "cron-roadmap": {
+      "last_run": "2026-01-10T20:08:15.623730775+00:00",
       "last_status": "success",
       "next_scheduled": null,
       "consecutive_failures": 0,
-      "total_runs": 8,
-      "total_successes": 8,
-      "total_failures": 0
+      "total_runs": 3,
+      "total_successes": 2,
+      "total_failures": 1
     },
     "cron-dependency-check": {
       "last_run": "2026-01-10T01:50:38.893888621+00:00",
@@ -18,15 +18,15 @@
       "total_successes": 2,
       "total_failures": 0
     },
-    "cron-roadmap": {
-      "last_run": "2026-01-10T20:08:15.623730775+00:00",
+    "cron-git": {
+      "last_run": "2026-01-11T00:13:41.485773003+00:00",
       "last_status": "success",
       "next_scheduled": null,
       "consecutive_failures": 0,
-      "total_runs": 3,
-      "total_successes": 2,
-      "total_failures": 1
+      "total_runs": 9,
+      "total_successes": 9,
+      "total_failures": 0
     }
   },
-  "last_updated": "2026-01-10T23:08:54.105845597+00:00"
+  "last_updated": "2026-01-11T00:13:41.485782509+00:00"
 }

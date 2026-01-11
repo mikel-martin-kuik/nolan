@@ -190,7 +190,7 @@ export function createDefaultCronAgentConfig(name: string): CronAgentConfig {
   return {
     name,
     description: '',
-    model: 'sonnet',
+    model: 'opus',
     timeout: 300,
     enabled: false,
     schedule: {

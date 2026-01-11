@@ -377,7 +377,7 @@ export const CronosPanel: React.FC = () => {
             <div>
               <label htmlFor="model" className="text-sm font-medium">Model</label>
               <Select
-                value={newAgentConfig?.model || 'sonnet'}
+                value={newAgentConfig?.model || 'opus'}
                 onValueChange={(value) => setNewAgentConfig({
                   ...createDefaultCronAgentConfig(`cron-${newAgentName}`),
                   ...newAgentConfig,

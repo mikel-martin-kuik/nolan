@@ -1,6 +1,6 @@
 {
   "role": "SRE Engineer",
-  "model": "sonnet",
+  "model": "opus",
   "team": "devops",
   "role_template": "sre-engineer",
   "department": "infrastructure"

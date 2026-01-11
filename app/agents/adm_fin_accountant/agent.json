@@ -1,6 +1,6 @@
 {
   "role": "Accountant",
-  "model": "sonnet",
+  "model": "opus",
   "team": "finance",
   "role_template": "accountant",
   "department": "admin"

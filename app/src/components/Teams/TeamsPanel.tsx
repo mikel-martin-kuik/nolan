@@ -73,8 +73,15 @@ export const TeamsPanel: React.FC = () => {
   const [newTeamDescription, setNewTeamDescription] = useState('');
   const [newTeamFirstAgent, setNewTeamFirstAgent] = useState('');
 
-  // Department editing state
-  const [editedDepartments, setEditedDepartments] = useState<{ name: string; order: number; teams: string[] }[]>([]);
+  // Department editing state (order is derived from array index for internal tracking)
+  // We use a local editing type that has _editIndex for identification during editing
+  const [editedDepartments, setEditedDepartments] = useState<{
+    name: string;
+    code?: string;
+    directory?: string;
+    teams: string[];
+    _editIndex: number;  // Internal tracking, not saved to YAML
+  }[]>([]);
   const [newDepartmentName, setNewDepartmentName] = useState('');
 
   // Saving state
@@ -497,7 +504,15 @@ export const TeamsPanel: React.FC = () => {
               size="icon"
               className="h-6 w-6"
               onClick={() => {
-                setEditedDepartments(departments?.departments || []);
+                // Transform departments to include _editIndex for internal tracking
+                const depts = (departments?.departments || []).map((d, i) => ({
+                  name: d.name,
+                  code: d.code,
+                  directory: d.directory,
+                  teams: d.teams || [],
+                  _editIndex: i,
+                }));
+                setEditedDepartments(depts);
                 setNewDepartmentName('');
                 setDepartmentsModal(true);
               }}
@@ -1261,10 +1276,10 @@ export const TeamsPanel: React.FC = () => {
                 <Button
                   onClick={() => {
                     if (!newDepartmentName.trim()) return;
-                    const maxOrder = editedDepartments.reduce((max, d) => Math.max(max, d.order), 0);
+                    const maxIndex = editedDepartments.reduce((max, d) => Math.max(max, d._editIndex), 0);
                     setEditedDepartments([
                       ...editedDepartments,
-                      { name: newDepartmentName.trim(), order: maxOrder + 1, teams: [] }
+                      { name: newDepartmentName.trim(), teams: [], _editIndex: maxIndex + 1 }
                     ]);
                     setNewDepartmentName('');
                   }}
@@ -1283,9 +1298,9 @@ export const TeamsPanel: React.FC = () => {
               ) : (
                 <div className="space-y-4">
                   {editedDepartments
-                    .sort((a, b) => a.order - b.order)
+                    .sort((a, b) => a._editIndex - b._editIndex)
                     .map((dept, index) => (
-                      <div key={dept.name} className="p-4 rounded-lg bg-secondary/20 border border-border">
+                      <div key={dept._editIndex} className="p-4 rounded-lg bg-secondary/20 border border-border">
                         <div className="flex items-center gap-3 mb-3">
                           {/* Order Controls */}
                           <div className="flex flex-col gap-0.5">
@@ -1293,11 +1308,11 @@ export const TeamsPanel: React.FC = () => {
                               className="p-0.5 hover:bg-secondary rounded disabled:opacity-30"
                               disabled={index === 0}
                               onClick={() => {
-                                const sorted = [...editedDepartments].sort((a, b) => a.order - b.order);
+                                const sorted = [...editedDepartments].sort((a, b) => a._editIndex - b._editIndex);
                                 if (index > 0) {
-                                  const temp = sorted[index].order;
-                                  sorted[index].order = sorted[index - 1].order;
-                                  sorted[index - 1].order = temp;
+                                  const temp = sorted[index]._editIndex;
+                                  sorted[index]._editIndex = sorted[index - 1]._editIndex;
+                                  sorted[index - 1]._editIndex = temp;
                                   setEditedDepartments([...sorted]);
                                 }
                               }}
@@ -1308,11 +1323,11 @@ export const TeamsPanel: React.FC = () => {
                               className="p-0.5 hover:bg-secondary rounded disabled:opacity-30"
                               disabled={index === editedDepartments.length - 1}
                               onClick={() => {
-                                const sorted = [...editedDepartments].sort((a, b) => a.order - b.order);
+                                const sorted = [...editedDepartments].sort((a, b) => a._editIndex - b._editIndex);
                                 if (index < sorted.length - 1) {
-                                  const temp = sorted[index].order;
-                                  sorted[index].order = sorted[index + 1].order;
-                                  sorted[index + 1].order = temp;
+                                  const temp = sorted[index]._editIndex;
+                                  sorted[index]._editIndex = sorted[index + 1]._editIndex;
+                                  sorted[index + 1]._editIndex = temp;
                                   setEditedDepartments([...sorted]);
                                 }
                               }}
@@ -1326,7 +1341,7 @@ export const TeamsPanel: React.FC = () => {
                             value={dept.name}
                             onChange={(e) => {
                               const updated = editedDepartments.map(d =>
-                                d.order === dept.order ? { ...d, name: e.target.value } : d
+                                d._editIndex === dept._editIndex ? { ...d, name: e.target.value } : d
                               );
                               setEditedDepartments(updated);
                             }}
@@ -1339,7 +1354,7 @@ export const TeamsPanel: React.FC = () => {
                             size="icon"
                             className="text-destructive hover:text-destructive"
                             onClick={() => {
-                              setEditedDepartments(editedDepartments.filter(d => d.order !== dept.order));
+                              setEditedDepartments(editedDepartments.filter(d => d._editIndex !== dept._editIndex));
                             }}
                           >
                             <Trash2 className="w-4 h-4" />
@@ -1355,7 +1370,7 @@ export const TeamsPanel: React.FC = () => {
                             {availableTeams.map((teamName) => {
                               const isAssigned = dept.teams.includes(teamName);
                               const isAssignedElsewhere = editedDepartments.some(
-                                d => d.order !== dept.order && d.teams.includes(teamName)
+                                d => d._editIndex !== dept._editIndex && d.teams.includes(teamName)
                               );
                               return (
                                 <button
@@ -1365,7 +1380,7 @@ export const TeamsPanel: React.FC = () => {
                                       // Move from other department to this one
                                       const updated = editedDepartments.map(d => ({
                                         ...d,
-                                        teams: d.order === dept.order
+                                        teams: d._editIndex === dept._editIndex
                                           ? [...d.teams, teamName]
                                           : d.teams.filter(t => t !== teamName)
                                       }));
@@ -1373,7 +1388,7 @@ export const TeamsPanel: React.FC = () => {
                                     } else if (isAssigned) {
                                       // Remove from this department
                                       const updated = editedDepartments.map(d =>
-                                        d.order === dept.order
+                                        d._editIndex === dept._editIndex
                                           ? { ...d, teams: d.teams.filter(t => t !== teamName) }
                                           : d
                                       );
@@ -1381,7 +1396,7 @@ export const TeamsPanel: React.FC = () => {
                                     } else {
                                       // Add to this department
                                       const updated = editedDepartments.map(d =>
-                                        d.order === dept.order
+                                        d._editIndex === dept._editIndex
                                           ? { ...d, teams: [...d.teams, teamName] }
                                           : d
                                       );
@@ -1422,7 +1437,11 @@ export const TeamsPanel: React.FC = () => {
                 onClick={async () => {
                   setSaving(true);
                   try {
-                    await saveDepartments({ departments: editedDepartments });
+                    // Sort by _editIndex and strip internal fields before saving
+                    const toSave = editedDepartments
+                      .sort((a, b) => a._editIndex - b._editIndex)
+                      .map(({ _editIndex, ...dept }) => dept);
+                    await saveDepartments({ departments: toSave });
                     success('Departments saved successfully');
                     setDepartmentsModal(false);
                   } catch (err) {

@@ -1,6 +1,6 @@
 {
   "role": "Technical Interviewer",
-  "model": "sonnet",
+  "model": "opus",
   "team": "talent_acquisition",
   "role_template": "technical-interviewer",
   "department": "human_resources"

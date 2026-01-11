@@ -1,6 +1,6 @@
 {
   "role": "Performance Tester",
-  "model": "sonnet",
+  "model": "opus",
   "team": "testing",
   "role_template": "performance-tester",
   "department": "quality"

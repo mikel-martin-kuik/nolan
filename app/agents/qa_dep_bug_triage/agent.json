@@ -1,6 +1,6 @@
 {
   "role": "Bug Triage Specialist",
-  "model": "sonnet",
+  "model": "opus",
   "team": "dependencies_bugs",
   "role_template": "bug-triage-specialist",
   "department": "quality"

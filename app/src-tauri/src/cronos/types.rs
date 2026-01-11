@@ -138,6 +138,9 @@ pub struct CronRunLog {
     pub session_name: Option<String>,  // tmux session name for recovery
     #[serde(default)]
     pub run_dir: Option<String>,       // ephemeral working directory
+    // Cost tracking (extracted from Claude output)
+    #[serde(default)]
+    pub total_cost_usd: Option<f32>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TS)]
@@ -305,6 +308,8 @@ pub struct AgentStats {
     pub failure_count: u32,
     pub success_rate: f32,      // 0.0 - 1.0
     pub avg_duration_secs: Option<f32>,
+    pub total_cost_usd: Option<f32>,
+    pub avg_cost_usd: Option<f32>,
 }
 
 #[derive(Clone, Debug, Serialize, TS)]
@@ -349,4 +354,5 @@ pub struct CronosHealthSummary {
     pub recent_runs: Vec<CronRunLog>,
     pub success_rate_7d: f32,
     pub success_rate_30d: f32,
+    pub total_cost_7d: f32,
 }

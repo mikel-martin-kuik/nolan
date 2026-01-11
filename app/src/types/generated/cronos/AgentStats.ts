@@ -3,4 +3,4 @@
 /**
  * Agent statistics
  */
-export type AgentStats = { total_runs: number, success_count: number, failure_count: number, success_rate: number, avg_duration_secs: number | null, };
+export type AgentStats = { total_runs: number, success_count: number, failure_count: number, success_rate: number, avg_duration_secs: number | null, total_cost_usd: number | null, avg_cost_usd: number | null, };

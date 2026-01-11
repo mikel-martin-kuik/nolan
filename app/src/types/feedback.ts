@@ -95,6 +95,10 @@ export interface IdeaReview {
   updated_at?: string;
   // User accepted the proposal
   accepted_at?: string;
+  // Route type when accepted: "project" or "implementer"
+  route?: string;
+  // Route detail: project name for "project", or "triggered" for "implementer"
+  route_detail?: string;
 }
 
 export const REVIEW_STATUS_LABELS: Record<IdeaReviewStatus, string> = {

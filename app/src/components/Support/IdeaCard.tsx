@@ -11,7 +11,10 @@ import { invoke } from '@/lib/api';
 import { Idea, IdeaReview } from '@/types';
 import { cn } from '@/lib/utils';
 import { IdeaEditDialog } from './IdeaEditDialog';
+import { TeamLaunchModal } from '@/components/shared/TeamLaunchModal';
 import { useToastStore } from '@/store/toastStore';
+import { useNavigationStore } from '@/store/navigationStore';
+import { useAgentStore } from '@/store/agentStore';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 
@@ -41,7 +44,12 @@ interface IdeaCardProps {
 export function IdeaCard({ idea, review, onClick, isDragging, isDragOverlay }: IdeaCardProps) {
   const queryClient = useQueryClient();
   const toast = useToastStore();
+  const { navigateTo } = useNavigationStore();
+  const { launchTeam } = useAgentStore();
   const [editOpen, setEditOpen] = useState(false);
+  const [teamLaunchOpen, setTeamLaunchOpen] = useState(false);
+  const [pendingProjectName, setPendingProjectName] = useState<string>('');
+  const [isLaunching, setIsLaunching] = useState(false);
 
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: idea.id,
@@ -60,7 +68,9 @@ export function IdeaCard({ idea, review, onClick, isDragging, isDragOverlay }: I
       queryClient.invalidateQueries({ queryKey: ['idea-reviews'] });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       if (result.route === 'project') {
-        toast.success(`Created project: ${result.route_detail}`);
+        // High complexity: show team selection modal
+        setPendingProjectName(result.route_detail);
+        setTeamLaunchOpen(true);
       } else {
         toast.success(`Idea accepted and queued for implementation`);
       }
@@ -69,6 +79,21 @@ export function IdeaCard({ idea, review, onClick, isDragging, isDragOverlay }: I
       toast.error(`Failed to accept idea: ${error}`);
     },
   });
+
+  const handleTeamLaunch = async (teamName: string) => {
+    setIsLaunching(true);
+    try {
+      await launchTeam(teamName, pendingProjectName);
+      toast.success(`Launched ${teamName} team for project: ${pendingProjectName}`);
+      setTeamLaunchOpen(false);
+      // Navigate to the project
+      navigateTo('projects', { projectName: pendingProjectName });
+    } catch (error) {
+      toast.error(`Failed to launch team: ${error}`);
+    } finally {
+      setIsLaunching(false);
+    }
+  };
 
   const archiveMutation = useMutation({
     mutationFn: () => invoke<Idea>('update_idea_status', { id: idea.id, status: 'archived' }),
@@ -132,6 +157,20 @@ export function IdeaCard({ idea, review, onClick, isDragging, isDragOverlay }: I
 
   const handleDispatch = () => {
     dispatchMutation.mutate();
+  };
+
+  // Navigate to project if route is 'project'
+  const handleGoToProject = () => {
+    if (review?.route === 'project' && review?.route_detail) {
+      navigateTo('projects', { projectName: review.route_detail });
+    }
+  };
+
+  // Navigate to implementer log if route is 'implementer'
+  const handleGoToImplementerLog = () => {
+    if (review?.route === 'implementer') {
+      navigateTo('cronos', { cronAgentName: 'cron-idea-implementer' });
+    }
   };
 
   return (
@@ -200,6 +239,16 @@ export function IdeaCard({ idea, review, onClick, isDragging, isDragOverlay }: I
               {!allGapsFilled && <span className="ml-auto text-[10px] text-muted-foreground">fill gaps</span>}
             </ContextMenuItem>
           )}
+          {review?.route === 'project' && review?.route_detail && (
+            <ContextMenuItem onClick={handleGoToProject} className="text-xs">
+              Go to Project
+            </ContextMenuItem>
+          )}
+          {review?.route === 'implementer' && (
+            <ContextMenuItem onClick={handleGoToImplementerLog} className="text-xs">
+              Go to Implementer Log
+            </ContextMenuItem>
+          )}
           <ContextMenuItem onClick={handleReject} className="text-xs">
             {review ? 'Reject & Edit' : 'Edit'}
           </ContextMenuItem>
@@ -216,6 +265,14 @@ export function IdeaCard({ idea, review, onClick, isDragging, isDragOverlay }: I
       </ContextMenu>
 
       <IdeaEditDialog idea={idea} open={editOpen} onOpenChange={setEditOpen} />
+
+      <TeamLaunchModal
+        open={teamLaunchOpen}
+        onOpenChange={setTeamLaunchOpen}
+        onLaunch={handleTeamLaunch}
+        projectName={pendingProjectName}
+        isLaunching={isLaunching}
+      />
     </>
   );
 }

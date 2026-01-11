@@ -1,99 +1,51 @@
-import { useState, useMemo, useEffect } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { invoke } from '@/lib/api';
+import { useEffect } from 'react';
 import { ProjectList } from './ProjectList';
 import { ProjectFileViewer } from './ProjectFileViewer';
-import { ProjectInfo } from '@/types/projects';
-import { useTeamStore } from '@/store/teamStore';
+import { useProjects } from '@/hooks';
+import { useNavigationStore } from '@/store/navigationStore';
 import { Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
-type TabType = 'inprogress' | 'pending' | 'complete';
-
 export function ProjectsPanel() {
-  const [selectedProject, setSelectedProject] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabType>('inprogress');
+  const {
+    stats,
+    isLoading,
+    error,
+    selectedProject,
+    selectedFile,
+    activeTab,
+    currentProjects,
+    groupedProjects,
+    selectedFileCompletion,
+    isWorkflowFile,
+    setActiveTab,
+    setSelectedProject,
+    handleFileSelect,
+  } = useProjects();
 
-  // Load team configs for per-project workflow steps
-  const { loadAvailableTeams, loadAllTeams } = useTeamStore();
+  const { context, clearContext } = useNavigationStore();
+
+  // Handle deep-linking from navigation context
   useEffect(() => {
-    const loadTeams = async () => {
-      await loadAvailableTeams();
-      await loadAllTeams();
-    };
-    loadTeams();
-  }, [loadAvailableTeams, loadAllTeams]);
+    if (context.projectName) {
+      // Find which tab contains the project
+      const projectName = context.projectName;
 
-  const { data: projects, isLoading, error } = useQuery({
-    queryKey: ['projects'],
-    queryFn: async () => invoke<ProjectInfo[]>('list_projects'),
-    refetchInterval: 30000,
-  });
+      // Check in each tab group
+      if (groupedProjects.inprogress.some(p => p.name === projectName)) {
+        setActiveTab('inprogress');
+      } else if (groupedProjects.pending.some(p => p.name === projectName)) {
+        setActiveTab('pending');
+      } else if (groupedProjects.complete.some(p => p.name === projectName)) {
+        setActiveTab('complete');
+      }
 
-
-  // Group projects by status (mapping 5 statuses to 3 tabs)
-  // Active tab: inprogress, delegated
-  // Queued tab: pending
-  // Done tab: complete, archived
-  const groupedProjects = useMemo(() => {
-    if (!projects) return { inprogress: [], pending: [], complete: [] };
-
-    return projects.reduce((acc, project) => {
-      // Map status to tab
-      const tabKey =
-        project.status === 'complete' || project.status === 'archived' ? 'complete' :
-        project.status === 'pending' ? 'pending' :
-        'inprogress'; // inprogress and delegated both go to Active tab
-
-      acc[tabKey].push(project);
-      return acc;
-    }, { inprogress: [] as ProjectInfo[], pending: [] as ProjectInfo[], complete: [] as ProjectInfo[] });
-  }, [projects]);
-
-  // Calculate stats
-  const stats = useMemo(() => ({
-    active: groupedProjects.inprogress.length,
-    queued: groupedProjects.pending.length,
-    done: groupedProjects.complete.length,
-  }), [groupedProjects]);
-
-  const handleFileSelect = (project: string, file: string) => {
-    setSelectedProject(project);
-    setSelectedFile(file);
-  };
-
-  const currentProjects = groupedProjects[activeTab] || [];
-
-  // Find file completion info for the selected file
-  const selectedFileCompletion = useMemo(() => {
-    if (!selectedProject || !selectedFile || !projects) return null;
-    const project = projects.find(p => p.name === selectedProject);
-    if (!project) return null;
-    // Get file name from path
-    const fileName = selectedFile.split('/').pop() || selectedFile;
-    const fileType = fileName.replace('.md', '');
-    return project.file_completions.find(f =>
-      f.file === fileName || f.file === fileType
-    ) || null;
-  }, [selectedProject, selectedFile, projects]);
-
-  // Determine if selected file is a workflow file (can have HANDOFF marker)
-  // Uses workflow_files stored in project at creation time
-  const isWorkflowFile = useMemo(() => {
-    if (!selectedFile || !selectedProject || !projects) return false;
-
-    // Get file name
-    const fileName = selectedFile.split('/').pop() || selectedFile;
-
-    // Find the project to get its stored workflow files
-    const project = projects.find(p => p.name === selectedProject);
-    if (!project) return false;
-
-    // Check if file matches any stored workflow file
-    return project.workflow_files.includes(fileName);
-  }, [selectedFile, selectedProject, projects]);
+      // Select the project
+      setSelectedProject(projectName);
+      clearContext();
+    }
+  }, [context.projectName, groupedProjects, setActiveTab, setSelectedProject, clearContext]);
 
   return (
     <div className="h-full flex flex-col gap-4">

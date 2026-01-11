@@ -1,5 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { invoke } from '@/lib/api';
+import React, { useState, useEffect } from 'react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -18,21 +17,26 @@ import {
   X
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { UsageStats, ProjectUsage } from '@/types/usage';
+import { useUsageStats, type DateRange } from '@/hooks';
 
 type TabType = 'overview' | 'models' | 'projects' | 'sessions' | 'timeline';
-type DateRange = 'all' | '7d' | '30d';
-
-// Cache for storing fetched data
-const dataCache = new Map<string, { data: unknown; timestamp: number }>();
-const CACHE_DURATION = 10 * 60 * 1000; // 10 minutes
 
 export const UsagePanel: React.FC = () => {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [stats, setStats] = useState<UsageStats | null>(null);
-  const [sessionStats, setSessionStats] = useState<ProjectUsage[] | null>(null);
-  const [selectedDateRange, setSelectedDateRange] = useState<DateRange>('7d');
+  const {
+    stats,
+    sessionStats,
+    loading,
+    error,
+    selectedDateRange,
+    timelineChartData,
+    setSelectedDateRange,
+    loadUsageStats,
+    formatCurrency,
+    formatNumber,
+    formatTokens,
+    getModelDisplayName,
+  } = useUsageStats();
+
   const [activeTab, setActiveTab] = useState<TabType>('overview');
 
   // Pagination states
@@ -43,155 +47,11 @@ export const UsagePanel: React.FC = () => {
   // Pricing modal state
   const [showPricingModal, setShowPricingModal] = useState(false);
 
-  // Formatters
-  const formatCurrency = useCallback((amount: number): string => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2
-    }).format(amount);
-  }, []);
-
-  const formatNumber = useCallback((num: number): string => {
-    return new Intl.NumberFormat('en-US').format(num);
-  }, []);
-
-  const formatTokens = useCallback((num: number): string => {
-    if (num >= 1_000_000) {
-      return `${(num / 1_000_000).toFixed(2)}M`;
-    } else if (num >= 1_000) {
-      return `${(num / 1_000).toFixed(1)}K`;
-    }
-    return formatNumber(num);
-  }, [formatNumber]);
-
-  const getModelDisplayName = useCallback((model: string): string => {
-    const modelMap: Record<string, string> = {
-      'claude-opus-4-20250514': 'Opus 4',
-      'claude-sonnet-4-20250514': 'Sonnet 4',
-      'claude-4-opus': 'Opus 4',
-      'claude-4-sonnet': 'Sonnet 4',
-      'claude-3.5-sonnet': 'Sonnet 3.5',
-      'claude-3-opus': 'Opus 3',
-    };
-    // Check for partial matches
-    for (const [key, value] of Object.entries(modelMap)) {
-      if (model.includes(key) || model.includes(key.replace('claude-', ''))) {
-        return value;
-      }
-    }
-    // Simplify model name if not found
-    return model.replace('claude-', '').replace(/-\d+$/, '');
-  }, []);
-
-  // Cache helpers
-  const getCachedData = useCallback((key: string) => {
-    const cached = dataCache.get(key);
-    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-      return cached.data;
-    }
-    return null;
-  }, []);
-
-  const setCachedData = useCallback((key: string, data: unknown) => {
-    dataCache.set(key, { data, timestamp: Date.now() });
-  }, []);
-
-  const loadUsageStats = useCallback(async () => {
-    const cacheKey = `usage-${selectedDateRange}`;
-
-    const cachedStats = getCachedData(`${cacheKey}-stats`) as UsageStats | null;
-    const cachedSessions = getCachedData(`${cacheKey}-sessions`) as ProjectUsage[] | null;
-
-    if (cachedStats && cachedSessions) {
-      setStats(cachedStats);
-      setSessionStats(cachedSessions);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      if (!stats && !sessionStats) {
-        setLoading(true);
-      }
-      setError(null);
-
-      let statsData: UsageStats;
-      let sessionData: ProjectUsage[] = [];
-
-      if (selectedDateRange === 'all') {
-        const [statsResult, sessionResult] = await Promise.all([
-          invoke<UsageStats>('get_usage_stats'),
-          invoke<ProjectUsage[]>('get_session_stats')
-        ]);
-        statsData = statsResult;
-        sessionData = sessionResult;
-      } else {
-        const endDate = new Date();
-        const startDate = new Date();
-        const days = selectedDateRange === '7d' ? 7 : 30;
-        startDate.setDate(startDate.getDate() - days);
-
-        const formatDateForApi = (date: Date) => {
-          const year = date.getFullYear();
-          const month = String(date.getMonth() + 1).padStart(2, '0');
-          const day = String(date.getDate()).padStart(2, '0');
-          return `${year}${month}${day}`;
-        };
-
-        const [statsResult, sessionResult] = await Promise.all([
-          invoke<UsageStats>('get_usage_by_date_range', {
-            startDate: startDate.toISOString(),
-            endDate: endDate.toISOString()
-          }),
-          invoke<ProjectUsage[]>('get_session_stats', {
-            since: formatDateForApi(startDate),
-            until: formatDateForApi(endDate),
-            order: 'desc'
-          })
-        ]);
-
-        statsData = statsResult;
-        sessionData = sessionResult;
-      }
-
-      setStats(statsData);
-      setSessionStats(sessionData);
-      setCachedData(`${cacheKey}-stats`, statsData);
-      setCachedData(`${cacheKey}-sessions`, sessionData);
-    } catch (err) {
-      console.error('Failed to load usage stats:', err);
-      setError('Failed to load usage statistics. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedDateRange, getCachedData, setCachedData, stats, sessionStats]);
-
+  // Reset pagination when date range changes
   useEffect(() => {
     setProjectsPage(1);
     setSessionsPage(1);
-    loadUsageStats();
-  }, [loadUsageStats]);
-
-  // Timeline chart data
-  const timelineChartData = useMemo(() => {
-    if (!stats?.by_date || stats.by_date.length === 0) return null;
-
-    const maxCost = Math.max(...stats.by_date.map(d => d.total_cost), 0);
-    const halfMaxCost = maxCost / 2;
-    const reversedData = stats.by_date.slice().reverse();
-
-    return {
-      maxCost,
-      halfMaxCost,
-      bars: reversedData.map(day => ({
-        ...day,
-        heightPercent: maxCost > 0 ? (day.total_cost / maxCost) * 100 : 0,
-        date: new Date(day.date.replace(/-/g, '/')),
-      }))
-    };
-  }, [stats?.by_date]);
+  }, [selectedDateRange]);
 
   const tabs: { id: TabType; label: string }[] = [
     { id: 'overview', label: 'Overview' },
@@ -215,7 +75,7 @@ export const UsagePanel: React.FC = () => {
                   key={range}
                   variant={selectedDateRange === range ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => setSelectedDateRange(range)}
+                  onClick={() => setSelectedDateRange(range as DateRange)}
                   disabled={loading}
                 >
                   {range === 'all' ? 'All Time' : range === '7d' ? '7 Days' : '30 Days'}

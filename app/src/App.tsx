@@ -26,6 +26,7 @@ import { useAuth } from './hooks/useAuth';
 import { useToastStore } from './store/toastStore';
 import { useLiveOutputStore } from './store/liveOutputStore';
 import { useTeamStore } from './store/teamStore';
+import { useNavigationStore } from './store/navigationStore';
 import { Tooltip } from './components/ui/tooltip';
 import { cn } from './lib/utils';
 import { HistoryEntry } from './types';
@@ -34,12 +35,26 @@ import './App.css';
 type Tab = 'status' | 'chat' | 'projects' | 'teams' | 'agents' | 'cronos' | 'usage' | 'support' | 'settings';
 
 function App() {
-  const [activeTab, setActiveTab] = useState<Tab>('status');
+  const [activeTab, setActiveTabLocal] = useState<Tab>('status');
   const { toasts, removeToast } = useToastStore();
   const { status: authStatus, loading: authLoading, login, logout, setupPassword } = useAuth();
+  const { activeTab: navStoreTab, setActiveTab: setNavStoreTab } = useNavigationStore();
 
   const addEntry = useLiveOutputStore((state) => state.addEntry);
   const loadTeam = useTeamStore((state) => state.loadTeam);
+
+  // Sync local state with navigation store
+  const setActiveTab = (tab: Tab) => {
+    setActiveTabLocal(tab);
+    setNavStoreTab(tab);
+  };
+
+  // Subscribe to navigation store changes
+  useEffect(() => {
+    if (navStoreTab !== activeTab) {
+      setActiveTabLocal(navStoreTab);
+    }
+  }, [navStoreTab]);
 
   // Check if we need to show auth prompt (browser mode only)
   const needsAuth = isBrowserMode() && authStatus?.authRequired && !authStatus?.authenticated;

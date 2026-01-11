@@ -5,4 +5,4 @@ import type { RunTrigger } from "./RunTrigger";
 /**
  * Run log entry (stored in cronos/runs/{date}/{name}-{timestamp}.json)
  */
-export type CronRunLog = { run_id: string, agent_name: string, started_at: string, completed_at: string | null, status: CronRunStatus, duration_secs: number | null, exit_code: number | null, output_file: string, error: string | null, attempt: number, trigger: RunTrigger, session_name: string | null, run_dir: string | null, };
+export type CronRunLog = { run_id: string, agent_name: string, started_at: string, completed_at: string | null, status: CronRunStatus, duration_secs: number | null, exit_code: number | null, output_file: string, error: string | null, attempt: number, trigger: RunTrigger, session_name: string | null, run_dir: string | null, total_cost_usd: number | null, };

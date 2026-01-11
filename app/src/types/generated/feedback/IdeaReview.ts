@@ -4,4 +4,12 @@ import type { IdeaGap } from "./IdeaGap";
 import type { IdeaProposal } from "./IdeaProposal";
 import type { IdeaReviewStatus } from "./IdeaReviewStatus";
 
-export type IdeaReview = { item_id: string, item_type: string, review_status: IdeaReviewStatus, proposal: IdeaProposal, gaps: Array<IdeaGap>, analysis: string, complexity: IdeaComplexity | null, reviewed_at: string, updated_at: string | null, accepted_at: string | null, };
+export type IdeaReview = { item_id: string, item_type: string, review_status: IdeaReviewStatus, proposal: IdeaProposal, gaps: Array<IdeaGap>, analysis: string, complexity: IdeaComplexity | null, reviewed_at: string, updated_at: string | null, accepted_at: string | null, 
+/**
+ * Route type when accepted: "project" or "implementer"
+ */
+route: string | null, 
+/**
+ * Route detail: project name for "project", or "triggered" for "implementer"
+ */
+route_detail: string | null, };

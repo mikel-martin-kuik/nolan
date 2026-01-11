@@ -7,11 +7,42 @@ use tokio::sync::{broadcast, RwLock};
 use tokio::time::{timeout, Duration};
 use chrono::Utc;
 use uuid::Uuid;
+use serde::Deserialize;
 
 use super::types::*;
 use super::manager::CronosManager;
 use crate::utils::paths;
 use crate::tmux::session;
+
+/// Extract total cost from Claude output log file
+/// The cost is in a JSON line with type: "result" and total_cost_usd field
+fn extract_cost_from_log(log_file: &PathBuf) -> Option<f32> {
+    extract_cost_from_log_file(&log_file.to_string_lossy())
+}
+
+/// Extract total cost from Claude output log file (public, takes string path)
+/// The cost is in a JSON line with type: "result" and total_cost_usd field
+pub fn extract_cost_from_log_file(log_path: &str) -> Option<f32> {
+    let content = std::fs::read_to_string(log_path).ok()?;
+
+    // Parse each line looking for result entry
+    #[derive(Deserialize)]
+    struct ResultEntry {
+        #[serde(rename = "type")]
+        entry_type: String,
+        total_cost_usd: Option<f32>,
+    }
+
+    for line in content.lines().rev() {  // Search from end (result is last)
+        if let Ok(entry) = serde_json::from_str::<ResultEntry>(line) {
+            if entry.entry_type == "result" {
+                return entry.total_cost_usd;
+            }
+        }
+    }
+
+    None
+}
 
 // CancellationToken is now defined in types.rs
 
@@ -71,6 +102,7 @@ pub async fn execute_cron_agent_with_env(
             trigger: trigger.clone(),
             session_name: None,
             run_dir: None,
+            total_cost_usd: None,
         };
 
         // Emit skip event
@@ -228,6 +260,7 @@ async fn execute_single_run(
             trigger,
             session_name: None,
             run_dir: None,
+            total_cost_usd: None,
         });
     }
 
@@ -332,6 +365,7 @@ async fn execute_single_run(
         trigger: trigger.clone(),
         session_name: Some(session_name.clone()),
         run_dir: Some(run_dir.to_string_lossy().to_string()),
+        total_cost_usd: None,
     };
 
     let json = serde_json::to_string_pretty(&initial_log)
@@ -426,6 +460,9 @@ async fn execute_single_run(
     let completed_at = Utc::now();
     let duration = (completed_at - started_at).num_seconds() as u32;
 
+    // Extract cost from output log
+    let total_cost_usd = extract_cost_from_log(&log_file);
+
     let run_log = CronRunLog {
         run_id: run_id.clone(),
         agent_name: config.name.clone(),
@@ -440,6 +477,7 @@ async fn execute_single_run(
         trigger,
         session_name: Some(session_name.clone()),
         run_dir: Some(run_dir.to_string_lossy().to_string()),
+        total_cost_usd,
     };
 
     // Write final JSON log
@@ -610,6 +648,7 @@ pub async fn execute_cron_agent_simple(
             trigger: RunTrigger::Manual,
             session_name: None,
             run_dir: None,
+            total_cost_usd: None,
         });
     }
 
@@ -707,6 +746,9 @@ pub async fn execute_cron_agent_simple(
     let completed_at = Utc::now();
     let duration = (completed_at - started_at).num_seconds() as u32;
 
+    // Extract cost from output log
+    let total_cost_usd = extract_cost_from_log(&log_file);
+
     let run_log = CronRunLog {
         run_id,
         agent_name: config.name.clone(),
@@ -721,6 +763,7 @@ pub async fn execute_cron_agent_simple(
         trigger: RunTrigger::Manual,
         session_name: None,  // Simple mode doesn't use tmux
         run_dir: None,
+        total_cost_usd,
     };
 
     let json = serde_json::to_string_pretty(&run_log)

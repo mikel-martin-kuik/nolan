@@ -1,10 +1,11 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { CronAgentCard } from './CronAgentCard';
 import { CronAgentDetailPage } from './CronAgentDetailPage';
 import { CronGroupEditor } from './CronGroupEditor';
 import { TaskMonitoringDashboard } from './TaskMonitoringDashboard';
 import { useCronOutputStore } from '../../store/cronOutputStore';
 import { useCollapsedCronGroupsStore } from '../../store/collapsedCronGroupsStore';
+import { useNavigationStore } from '../../store/navigationStore';
 import { useCronosAgents } from '../../hooks';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -48,9 +49,20 @@ export const CronosPanel: React.FC = () => {
   // Collapsed groups state (persisted)
   const { isCollapsed, toggleCollapsed } = useCollapsedCronGroupsStore();
 
+  // Navigation context for deep-linking
+  const { context, clearContext } = useNavigationStore();
+
   // Navigation state
   const [selectedAgentPage, setSelectedAgentPage] = useState<string | null>(null);
   const { openOutput } = useCronOutputStore();
+
+  // Handle deep-linking from navigation context
+  useEffect(() => {
+    if (context.cronAgentName) {
+      setSelectedAgentPage(context.cronAgentName);
+      clearContext();
+    }
+  }, [context.cronAgentName, clearContext]);
 
   // Dialog states
   const [creatorOpen, setCreatorOpen] = useState(false);

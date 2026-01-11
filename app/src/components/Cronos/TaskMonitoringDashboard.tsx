@@ -3,7 +3,7 @@ import { invoke } from '@/lib/api';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip } from '@/components/ui/tooltip';
-import { Activity, CheckCircle, XCircle, AlertTriangle, Clock, TrendingUp } from 'lucide-react';
+import { Activity, CheckCircle, XCircle, AlertTriangle, Clock, TrendingUp, DollarSign } from 'lucide-react';
 import type { CronosHealthSummary } from '@/types';
 
 interface TaskMonitoringDashboardProps {
@@ -131,6 +131,16 @@ export const TaskMonitoringDashboard: React.FC<TaskMonitoringDashboardProps> = (
               <Clock className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-medium">{health.recent_runs.length}</span>
               <span className="text-xs text-muted-foreground">recent</span>
+            </div>
+          </Tooltip>
+
+          {/* Total cost (7 days) */}
+          <div className="h-4 w-px bg-border" />
+          <Tooltip content="Total cost over the last 7 days" side="bottom">
+            <div className="flex items-center gap-1.5 cursor-default">
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">${(health.total_cost_7d || 0).toFixed(2)}</span>
+              <span className="text-xs text-muted-foreground">7d</span>
             </div>
           </Tooltip>
 

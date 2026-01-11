@@ -4,4 +4,4 @@ import type { CronRunLog } from "./CronRunLog";
 /**
  * Health summary for dashboard
  */
-export type CronosHealthSummary = { total_agents: number, active_agents: number, running_agents: number, healthy_agents: number, warning_agents: number, critical_agents: number, recent_runs: Array<CronRunLog>, success_rate_7d: number, success_rate_30d: number, };
+export type CronosHealthSummary = { total_agents: number, active_agents: number, running_agents: number, healthy_agents: number, warning_agents: number, critical_agents: number, recent_runs: Array<CronRunLog>, success_rate_7d: number, success_rate_30d: number, total_cost_7d: number, };

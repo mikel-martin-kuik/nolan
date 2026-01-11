@@ -168,6 +168,7 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
           <h1 className="text-lg font-semibold">{agent.name}</h1>
           <p className="text-xs text-muted-foreground">
             {agent.enabled ? 'Active' : 'Inactive'} · {agent.stats.total_runs} runs · {(agent.stats.success_rate * 100).toFixed(0)}% success
+            {agent.stats.total_cost_usd != null && ` · $${agent.stats.total_cost_usd.toFixed(2)}`}
             {agent.next_run && ` · Next: ${new Date(agent.next_run).toLocaleString()}`}
           </p>
         </div>
@@ -332,8 +333,20 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
                   </div>
                   {agent.stats.avg_duration_secs != null && (
                     <div>
-                      <p className="text-lg font-bold">{agent.stats.avg_duration_secs.toFixed(1)}s</p>
+                      <p className="text-lg font-bold">{(agent.stats.avg_duration_secs / 60).toFixed(1)}m</p>
                       <p className="text-[10px] text-muted-foreground">Avg Time</p>
+                    </div>
+                  )}
+                  {agent.stats.total_cost_usd != null && (
+                    <div>
+                      <p className="text-lg font-bold">${agent.stats.total_cost_usd.toFixed(2)}</p>
+                      <p className="text-[10px] text-muted-foreground">Total Cost</p>
+                    </div>
+                  )}
+                  {agent.stats.avg_cost_usd != null && (
+                    <div>
+                      <p className="text-lg font-bold">${agent.stats.avg_cost_usd.toFixed(2)}</p>
+                      <p className="text-[10px] text-muted-foreground">Avg Cost</p>
                     </div>
                   )}
                 </div>
@@ -377,8 +390,13 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
                                   {run.trigger !== 'scheduled' && ` · ${run.trigger}`}
                                 </p>
                               </div>
-                              <div className="text-xs text-muted-foreground">
-                                {run.duration_secs !== undefined && <span>{run.duration_secs}s</span>}
+                              <div className="text-xs text-muted-foreground text-right">
+                                {run.duration_secs !== undefined && run.duration_secs !== null && (
+                                  <span>{(run.duration_secs / 60).toFixed(1)}m</span>
+                                )}
+                                {run.total_cost_usd !== undefined && run.total_cost_usd !== null && (
+                                  <span className="ml-2">${run.total_cost_usd.toFixed(2)}</span>
+                                )}
                               </div>
                             </div>
                             {run.error && <p className="text-xs text-destructive mt-1 truncate">{run.error}</p>}

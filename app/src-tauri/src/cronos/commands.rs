@@ -552,7 +552,7 @@ pub async fn get_cronos_health() -> Result<CronosHealthSummary, String> {
         }
     }
 
-    // Calculate success rates
+    // Calculate success rates and costs
     let runs_7d: Vec<_> = recent_runs.iter()
         .filter(|r| {
             chrono::DateTime::parse_from_rfc3339(&r.started_at)
@@ -568,6 +568,21 @@ pub async fn get_cronos_health() -> Result<CronosHealthSummary, String> {
             / runs_7d.len() as f32
     };
 
+    // Calculate total cost for last 7 days - try JSON field first, then extract from output log
+    let total_cost_7d: f32 = runs_7d.iter()
+        .filter_map(|r| {
+            // First try the JSON field
+            if let Some(cost) = r.total_cost_usd {
+                return Some(cost);
+            }
+            // Fall back to extracting from output log file
+            if !r.output_file.is_empty() {
+                return executor::extract_cost_from_log_file(&r.output_file);
+            }
+            None
+        })
+        .sum();
+
     Ok(CronosHealthSummary {
         total_agents: configs.len() as u32,
         active_agents: configs.iter().filter(|c| c.enabled).count() as u32,
@@ -578,6 +593,7 @@ pub async fn get_cronos_health() -> Result<CronosHealthSummary, String> {
         recent_runs,
         success_rate_7d: success_7d,
         success_rate_30d: success_7d, // Simplified for now
+        total_cost_7d,
     })
 }
 
@@ -995,7 +1011,7 @@ pub async fn route_accepted_idea(idea_id: String) -> Result<RouteResult, String>
             })
         }
         _ => {
-            // High complexity → Create project
+            // High complexity → Create project (or use existing)
             let proposal = review.proposal.as_ref()
                 .ok_or("Review has no proposal")?;
 
@@ -1015,47 +1031,59 @@ pub async fn route_accepted_idea(idea_id: String) -> Result<RouteResult, String>
                 .trim_end_matches('-')
                 .to_string();
 
-            // Create project
-            let project_path = crate::commands::projects::create_project(
-                project_name.clone(),
-                None, // Use default team
-            ).await?;
+            // Check if project already exists
+            let projects_dir = crate::utils::paths::get_projects_dir()?;
+            let existing_project_path = projects_dir.join(&project_name);
+            let project_exists = existing_project_path.exists();
 
-            // Build Requirements section from gaps
-            let qa_section = {
-                let answered_gaps: Vec<_> = review.gaps.iter()
-                    .filter(|g| g.value.is_some())
-                    .collect();
-                let unanswered_required: Vec<_> = review.gaps.iter()
-                    .filter(|g| g.value.is_none() && g.required)
-                    .collect();
-
-                if answered_gaps.is_empty() && unanswered_required.is_empty() {
-                    String::new()
-                } else {
-                    let mut qa = String::from("\n## Requirements\n\n");
-
-                    // Add answered questions with descriptions
-                    for gap in answered_gaps {
-                        qa.push_str(&format!("**{}**: {}\n", gap.label, gap.value.as_ref().unwrap()));
-                        qa.push_str(&format!("*{}*\n\n", gap.description));
-                    }
-
-                    // Add unanswered required questions as TODOs
-                    if !unanswered_required.is_empty() {
-                        qa.push_str("### TODO: Unanswered Required Questions\n\n");
-                        for gap in unanswered_required {
-                            qa.push_str(&format!("- [ ] **{}**: {}\n", gap.label, gap.description));
-                        }
-                        qa.push('\n');
-                    }
-
-                    qa
-                }
+            // Create project only if it doesn't exist
+            let project_path = if project_exists {
+                eprintln!("Project '{}' already exists, launching team for existing project", project_name);
+                existing_project_path.to_string_lossy().to_string()
+            } else {
+                crate::commands::projects::create_project(
+                    project_name.clone(),
+                    None, // Use default team
+                ).await?
             };
 
-            // Write spec file with proposal content
-            let spec_content = format!(
+            // Only write SPEC.md for new projects
+            if !project_exists {
+                // Build Requirements section from gaps
+                let qa_section = {
+                    let answered_gaps: Vec<_> = review.gaps.iter()
+                        .filter(|g| g.value.is_some())
+                        .collect();
+                    let unanswered_required: Vec<_> = review.gaps.iter()
+                        .filter(|g| g.value.is_none() && g.required)
+                        .collect();
+
+                    if answered_gaps.is_empty() && unanswered_required.is_empty() {
+                        String::new()
+                    } else {
+                        let mut qa = String::from("\n## Requirements\n\n");
+
+                        // Add answered questions with descriptions
+                        for gap in answered_gaps {
+                            qa.push_str(&format!("**{}**: {}\n", gap.label, gap.value.as_ref().unwrap()));
+                            qa.push_str(&format!("*{}*\n\n", gap.description));
+                        }
+
+                        // Add unanswered required questions as TODOs
+                        if !unanswered_required.is_empty() {
+                            qa.push_str("### TODO: Unanswered Required Questions\n\n");
+                            for gap in unanswered_required {
+                                qa.push_str(&format!("- [ ] **{}**: {}\n", gap.label, gap.description));
+                            }
+                            qa.push('\n');
+                        }
+
+                        qa
+                    }
+                };
+
+                // Write spec file with proposal content
+                let spec_content = format!(
 r#"# {}
 
 ## Summary
@@ -1073,33 +1101,23 @@ r#"# {}
 ---
 *Generated from accepted idea: {}*
 "#,
-                proposal.title,
-                proposal.summary,
-                proposal.problem,
-                proposal.solution,
-                proposal.scope.as_ref().map(|s| format!("\n## Scope\n\n{}\n", s)).unwrap_or_default(),
-                proposal.implementation_hints.as_ref().map(|h| format!("\n## Implementation Hints\n\n{}\n", h)).unwrap_or_default(),
-                qa_section,
-                idea_id
-            );
+                    proposal.title,
+                    proposal.summary,
+                    proposal.problem,
+                    proposal.solution,
+                    proposal.scope.as_ref().map(|s| format!("\n## Scope\n\n{}\n", s)).unwrap_or_default(),
+                    proposal.implementation_hints.as_ref().map(|h| format!("\n## Implementation Hints\n\n{}\n", h)).unwrap_or_default(),
+                    qa_section,
+                    idea_id
+                );
 
-            let spec_path = std::path::Path::new(&project_path).join("SPEC.md");
-            std::fs::write(&spec_path, spec_content)
-                .map_err(|e| format!("Failed to write SPEC.md: {}", e))?;
+                let spec_path = std::path::Path::new(&project_path).join("SPEC.md");
+                std::fs::write(&spec_path, spec_content)
+                    .map_err(|e| format!("Failed to write SPEC.md: {}", e))?;
+            }
 
-            // Auto-launch team and start workflow for high complexity ideas
-            let team_name = "default".to_string();
-            let project_name_for_launch = project_name.clone();
-
-            tokio::spawn(async move {
-                // Small delay to let project files settle
-                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-
-                if let Err(e) = launch_team_and_start_workflow(&team_name, &project_name_for_launch).await {
-                    eprintln!("Failed to auto-launch team for project {}: {}", project_name_for_launch, e);
-                }
-            });
-
+            // Return project info - frontend will show team selection modal
+            // User selects team, then frontend calls launch_team with proper project context
             Ok(RouteResult {
                 idea_id,
                 route: "project".to_string(),
@@ -1107,91 +1125,6 @@ r#"# {}
             })
         }
     }
-}
-
-/// Launch team agents and start the workflow for a high-complexity idea project
-/// This ensures the team is running before assigning the first phase
-async fn launch_team_and_start_workflow(team_name: &str, project_name: &str) -> Result<(), String> {
-    use crate::commands::lifecycle_core;
-    use crate::config::TeamConfig;
-    use std::process::Command;
-
-    // Load team config
-    let team = TeamConfig::load(team_name)
-        .map_err(|e| format!("Failed to load team config '{}': {}", team_name, e))?;
-
-    // Get paths
-    let nolan_root = crate::utils::paths::get_nolan_root()?;
-    let projects_dir = crate::utils::paths::get_projects_dir()?;
-    let project_path = projects_dir.join(project_name);
-
-    // Write team state: store the active project for agents to inherit
-    let state_dir = crate::utils::paths::get_state_dir()?;
-    let team_state_dir = state_dir.join(team_name);
-    std::fs::create_dir_all(&team_state_dir)
-        .map_err(|e| format!("Failed to create team state dir: {}", e))?;
-
-    let active_project_file = team_state_dir.join("active_project");
-    std::fs::write(&active_project_file, project_path.to_string_lossy().to_string())
-        .map_err(|e| format!("Failed to write team state: {}", e))?;
-
-    // Launch all workflow participants
-    let mut launched = Vec::new();
-    for agent in team.workflow_participants() {
-        match lifecycle_core::start_agent_core(team_name, agent).await {
-            Ok(session) => {
-                println!("[auto-launch] Started agent {}: {}", agent, session);
-                launched.push(agent.to_string());
-            }
-            Err(e) => {
-                // Skip already running agents (not an error)
-                if e.contains("already exists") {
-                    println!("[auto-launch] Agent {} already running", agent);
-                    launched.push(agent.to_string());
-                } else {
-                    eprintln!("[auto-launch] Failed to start agent {}: {}", agent, e);
-                }
-            }
-        }
-    }
-
-    if launched.is_empty() {
-        return Err("No agents were launched".to_string());
-    }
-
-    // Get first workflow phase to assign
-    let first_phase = team.get_phase(0)
-        .ok_or("Team has no workflow phases defined")?;
-
-    let phase_name = first_phase.name.clone();
-    let phase_owner = first_phase.owner.clone();
-
-    println!("[auto-launch] Assigning first phase '{}' to {} for project {}",
-             phase_name, phase_owner, project_name);
-
-    // Wait for agents to initialize
-    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-
-    // Call assign.sh to formally assign the first phase
-    let assign_script = nolan_root.join("app").join("scripts").join("assign.sh");
-    let nolan_data_root = crate::utils::paths::get_nolan_data_root()?;
-
-    let output = Command::new(&assign_script)
-        .env("NOLAN_ROOT", nolan_root.to_string_lossy().to_string())
-        .env("NOLAN_DATA_ROOT", nolan_data_root.to_string_lossy().to_string())
-        .args(&[project_name, &phase_name, "Start working on this project. Review the SPEC.md file for the complete specification."])
-        .output()
-        .map_err(|e| format!("Failed to run assign.sh: {}", e))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        eprintln!("[auto-launch] assign.sh failed: {}", stderr);
-        // Don't fail - team is launched, just assignment didn't work
-    } else {
-        println!("[auto-launch] Successfully assigned {} phase to {}", phase_name, phase_owner);
-    }
-
-    Ok(())
 }
 
 /// Dispatch unprocessed ideas via HTTP API (no AppHandle required)

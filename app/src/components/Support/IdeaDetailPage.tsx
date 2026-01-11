@@ -12,7 +12,10 @@ import {
   COMPLEXITY_LABELS,
 } from '@/types';
 import { Loader2, Check } from 'lucide-react';
+import { TeamLaunchModal } from '@/components/shared/TeamLaunchModal';
 import { useToastStore } from '@/store/toastStore';
+import { useNavigationStore } from '@/store/navigationStore';
+import { useAgentStore } from '@/store/agentStore';
 
 interface IdeaDetailPageProps {
   idea: Idea;
@@ -23,10 +26,17 @@ interface IdeaDetailPageProps {
 export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
   const queryClient = useQueryClient();
   const toast = useToastStore();
+  const { navigateTo } = useNavigationStore();
+  const { launchTeam } = useAgentStore();
 
   // Editing states
   const [editingOriginal, setEditingOriginal] = useState(false);
   const [editingProposal, setEditingProposal] = useState(false);
+
+  // Team launch modal state
+  const [teamLaunchOpen, setTeamLaunchOpen] = useState(false);
+  const [pendingProjectName, setPendingProjectName] = useState<string>('');
+  const [isLaunching, setIsLaunching] = useState(false);
 
   // Form states
   const [originalTitle, setOriginalTitle] = useState(idea.title);
@@ -97,7 +107,9 @@ export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
       queryClient.invalidateQueries({ queryKey: ['idea-reviews'] });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       if (result.route === 'project') {
-        toast.success(`Created project: ${result.route_detail}`);
+        // High complexity: show team selection modal
+        setPendingProjectName(result.route_detail);
+        setTeamLaunchOpen(true);
       } else {
         toast.success(`Idea accepted and queued for implementation`);
       }
@@ -106,6 +118,21 @@ export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
       toast.error(`Failed to accept proposal: ${error}`);
     },
   });
+
+  const handleTeamLaunch = async (teamName: string) => {
+    setIsLaunching(true);
+    try {
+      await launchTeam(teamName, pendingProjectName);
+      toast.success(`Launched ${teamName} team for project: ${pendingProjectName}`);
+      setTeamLaunchOpen(false);
+      // Navigate to the project
+      navigateTo('projects', { projectName: pendingProjectName });
+    } catch (error) {
+      toast.error(`Failed to launch team: ${error}`);
+    } finally {
+      setIsLaunching(false);
+    }
+  };
 
   const archiveMutation = useMutation({
     mutationFn: () => invoke<Idea>('update_idea_status', { id: idea.id, status: 'archived' }),
@@ -167,8 +194,9 @@ export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
   const isArchived = idea.status === 'archived';
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
+    <>
+      <div className="h-full flex flex-col">
+        {/* Header */}
       <div className="flex items-center gap-3 mb-4 pb-4 border-b border-border">
         <Button variant="ghost" size="sm" onClick={onBack} className="text-xs h-7 px-2">
           Back
@@ -546,5 +574,14 @@ export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
         </div>
       </div>
     </div>
+
+      <TeamLaunchModal
+        open={teamLaunchOpen}
+        onOpenChange={setTeamLaunchOpen}
+        onLaunch={handleTeamLaunch}
+        projectName={pendingProjectName}
+        isLaunching={isLaunching}
+      />
+    </>
   );
 }

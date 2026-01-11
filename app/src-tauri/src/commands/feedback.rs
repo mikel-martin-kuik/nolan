@@ -600,6 +600,12 @@ pub struct IdeaReview {
     pub updated_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub accepted_at: Option<String>,
+    /// Route type when accepted: "project" or "implementer"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub route: Option<String>,
+    /// Route detail: project name for "project", or "triggered" for "implementer"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub route_detail: Option<String>,
 }
 
 fn get_inbox_reviews_file() -> Result<PathBuf, String> {
@@ -811,13 +817,29 @@ pub struct AcceptAndRouteResult {
 #[command]
 pub async fn accept_and_route_review(item_id: String) -> Result<AcceptAndRouteResult, String> {
     // First accept the review
-    let review = accept_review(item_id.clone())?;
+    let _review = accept_review(item_id.clone())?;
 
     // Then route based on complexity
-    let route_result = crate::cronos::commands::route_accepted_idea(item_id).await?;
+    let route_result = crate::cronos::commands::route_accepted_idea(item_id.clone()).await?;
+
+    // Update the review with route info
+    let path = get_inbox_reviews_file()?;
+    let mut reviews: Vec<IdeaReview> = read_jsonl(&path)?;
+
+    let review = reviews
+        .iter_mut()
+        .find(|r| r.item_id == item_id)
+        .ok_or_else(|| format!("Review not found for item: {}", item_id))?;
+
+    review.route = Some(route_result.route.clone());
+    review.route_detail = Some(route_result.detail.clone());
+    review.updated_at = Some(Utc::now().to_rfc3339());
+
+    let updated = review.clone();
+    write_jsonl(&path, &reviews)?;
 
     Ok(AcceptAndRouteResult {
-        review,
+        review: updated,
         route: route_result.route,
         route_detail: route_result.detail,
     })

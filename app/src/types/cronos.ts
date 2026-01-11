@@ -87,6 +87,8 @@ export interface AgentStats {
   failure_count: number;
   success_rate: number;
   avg_duration_secs?: number;
+  total_cost_usd?: number;
+  avg_cost_usd?: number;
 }
 
 export interface CronRunLog {
@@ -102,6 +104,8 @@ export interface CronRunLog {
   // New fields
   attempt: number;
   trigger: RunTrigger;
+  // Cost tracking
+  total_cost_usd?: number;
 }
 
 export type CronRunStatus = 'running' | 'success' | 'failed' | 'timeout' | 'cancelled' | 'skipped' | 'retrying';
@@ -136,6 +140,7 @@ export interface CronosHealthSummary {
   recent_runs: CronRunLog[];
   success_rate_7d: number;
   success_rate_30d: number;
+  total_cost_7d: number;
 }
 
 // Running agent info

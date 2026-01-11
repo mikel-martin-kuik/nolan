@@ -1,28 +1,33 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { invoke } from '@/lib/api';
-import { FeedbackStats, Idea, IdeaReview } from '@/types';
+import { FeedbackStats, Idea, IdeaReview, TeamDecision } from '@/types';
 import { FeatureRequestsTab } from './FeatureRequestsTab';
 import { IdeasTab } from './IdeasTab';
+import { DecisionsTab } from './DecisionsTab';
 import { IdeaForm } from './IdeaForm';
 import { FeatureRequestForm } from './FeatureRequestForm';
+import { DecisionForm } from './DecisionForm';
 import { RoadmapViewer } from '../Projects/RoadmapViewer';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Compass } from 'lucide-react';
+import { Compass, FileCheck } from 'lucide-react';
 
-type TabType = 'requests' | 'ideas' | 'roadmap';
+type TabType = 'requests' | 'ideas' | 'decisions' | 'roadmap';
 
 export function SupportPanel() {
   const [activeTab, setActiveTab] = useState<TabType>('requests');
   const [ideaFormOpen, setIdeaFormOpen] = useState(false);
   const [requestFormOpen, setRequestFormOpen] = useState(false);
+  const [decisionFormOpen, setDecisionFormOpen] = useState(false);
 
   const handleNewClick = () => {
     if (activeTab === 'ideas') {
       setIdeaFormOpen(true);
     } else if (activeTab === 'requests') {
       setRequestFormOpen(true);
+    } else if (activeTab === 'decisions') {
+      setDecisionFormOpen(true);
     }
     // No action for roadmap tab
   };
@@ -44,6 +49,17 @@ export function SupportPanel() {
     queryFn: () => invoke<IdeaReview[]>('list_idea_reviews'),
     refetchInterval: 30000,
   });
+
+  const { data: decisions = [] } = useQuery({
+    queryKey: ['decisions'],
+    queryFn: () => invoke<TeamDecision[]>('list_decisions'),
+    refetchInterval: 30000,
+  });
+
+  // Count approved decisions
+  const approvedDecisionsCount = useMemo(() => {
+    return decisions.filter(d => d.status === 'approved').length;
+  }, [decisions]);
 
   // Count ideas that are not in "done" column
   const pendingIdeasCount = useMemo(() => {
@@ -110,6 +126,22 @@ export function SupportPanel() {
             )}
           </button>
           <button
+            onClick={() => setActiveTab('decisions')}
+            className={cn(
+              "flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all",
+              activeTab === 'decisions' && "bg-foreground/10 text-foreground",
+              activeTab !== 'decisions' && "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <FileCheck className="w-3 h-3" />
+            <span>Decisions</span>
+            {approvedDecisionsCount > 0 && (
+              <span className="text-[10px] px-1 rounded bg-foreground/10">
+                {approvedDecisionsCount}
+              </span>
+            )}
+          </button>
+          <button
             onClick={() => setActiveTab('roadmap')}
             className={cn(
               "flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all",
@@ -127,11 +159,13 @@ export function SupportPanel() {
       <div className="flex-1 overflow-auto">
         {activeTab === 'requests' && <FeatureRequestsTab />}
         {activeTab === 'ideas' && <IdeasTab />}
+        {activeTab === 'decisions' && <DecisionsTab />}
         {activeTab === 'roadmap' && <RoadmapViewer />}
       </div>
 
       <IdeaForm open={ideaFormOpen} onOpenChange={setIdeaFormOpen} />
       <FeatureRequestForm open={requestFormOpen} onOpenChange={setRequestFormOpen} />
+      <DecisionForm open={decisionFormOpen} onOpenChange={setDecisionFormOpen} />
     </div>
   );
 }

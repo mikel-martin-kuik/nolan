@@ -400,6 +400,7 @@ impl CronosManager {
                         trigger: trigger.clone(),
                         session_name: Some(session_name.clone()),
                         run_dir: run_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
+                        total_cost_usd: None,  // Cost not available during recovery
                     };
 
                     // Write final log
@@ -478,6 +479,7 @@ impl CronosManager {
             trigger: run_log.trigger.clone(),
             session_name: run_log.session_name.clone(),
             run_dir: run_log.run_dir.clone(),
+            total_cost_usd: None,  // Cost not available during recovery
         };
 
         let json = serde_json::to_string_pretty(&final_log)
@@ -690,12 +692,16 @@ impl CronosManager {
                     for file in files {
                         if file.path().extension().map(|e| e == "json").unwrap_or(false) {
                             if let Ok(content) = std::fs::read_to_string(file.path()) {
-                                if let Ok(log) = serde_json::from_str::<CronRunLog>(&content) {
+                                if let Ok(mut log) = serde_json::from_str::<CronRunLog>(&content) {
                                     // Filter by agent if specified
                                     if let Some(name) = agent_name {
                                         if log.agent_name != name {
                                             continue;
                                         }
+                                    }
+                                    // Extract cost from output log if not in JSON
+                                    if log.total_cost_usd.is_none() && !log.output_file.is_empty() {
+                                        log.total_cost_usd = crate::cronos::executor::extract_cost_from_log_file(&log.output_file);
                                     }
                                     logs.push(log);
                                     if logs.len() >= limit {
@@ -736,12 +742,36 @@ impl CronosManager {
             Some(durations.iter().sum::<f32>() / durations.len() as f32)
         };
 
+        // Calculate cost statistics - try JSON field first, then extract from output log
+        let costs: Vec<f32> = history.iter()
+            .filter_map(|r| {
+                // First try the JSON field
+                if let Some(cost) = r.total_cost_usd {
+                    return Some(cost);
+                }
+                // Fall back to extracting from output log file
+                if !r.output_file.is_empty() {
+                    return crate::cronos::executor::extract_cost_from_log_file(&r.output_file);
+                }
+                None
+            })
+            .collect();
+
+        let (total_cost_usd, avg_cost_usd) = if costs.is_empty() {
+            (None, None)
+        } else {
+            let total = costs.iter().sum::<f32>();
+            (Some(total), Some(total / costs.len() as f32))
+        };
+
         AgentStats {
             total_runs,
             success_count,
             failure_count,
             success_rate: if total_runs > 0 { success_count as f32 / total_runs as f32 } else { 0.0 },
             avg_duration_secs,
+            total_cost_usd,
+            avg_cost_usd,
         }
     }
 

@@ -122,14 +122,16 @@ pub async fn start_agent_core(team_name: &str, agent: &str) -> Result<String, St
     let team = TeamConfig::load(team_name)
         .map_err(|e| format!("Failed to load team config '{}': {}", team_name, e))?;
 
-    // Validate agent is in team (can be workflow participant or coordinator)
+    // Validate agent is in team (can be workflow participant, note-taker, or exception handler)
     let participants = team.workflow_participants();
     let is_participant = participants.iter().any(|p| p == &agent);
-    let is_coordinator = team.coordinator() == agent;
+    #[allow(deprecated)]
+    let is_note_taker = team.note_taker() == Some(agent) || team.coordinator() == Some(agent);
+    let is_exception_handler = team.exception_handler() == Some(agent);
 
-    if !is_participant && !is_coordinator {
+    if !is_participant && !is_note_taker && !is_exception_handler {
         return Err(format!(
-            "Agent '{}' is not a participant or coordinator in team '{}'",
+            "Agent '{}' is not a participant, note-taker, or exception handler in team '{}'",
             agent, team_name
         ));
     }

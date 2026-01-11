@@ -48,26 +48,18 @@ export const TeamCard: React.FC<TeamCardProps> = ({
   // Use provided team config or fall back to the team's config
   const config = teamConfig;
 
-  // Get coordinator from team config
-  const coordinatorName = config?.team.workflow.coordinator ?? 'dan';
-  const coordinator = agents.find(a => a.name === coordinatorName);
-
-  // Get workflow agents from team config (in phase order)
+  // Get all workflow agents from team config (in phase order)
+  // Note: coordinator role is deprecated - workflow is now automated via hooks
   const workflowAgentNames = config?.team.workflow.phases
     .map(p => p.owner)
     .filter((name, index, arr) => arr.indexOf(name) === index) // unique
-    .filter(name => name !== coordinatorName) // exclude coordinator
     ?? [];
   const workflowAgents = workflowAgentNames
     .map(name => agents.find(a => a.name === name))
     .filter((a): a is AgentStatusType => a !== undefined);
 
-  // Determine team project - use coordinator's project or first active agent's project
+  // Determine team project - use first active agent's project
   const getTeamProject = (): string | undefined => {
-    // Priority: coordinator's project > any active agent's project
-    if (coordinator?.active && coordinator.current_project) {
-      return coordinator.current_project;
-    }
     const activeAgent = agents.find(a => a.active && a.current_project);
     return activeAgent?.current_project;
   };
@@ -146,20 +138,6 @@ export const TeamCard: React.FC<TeamCardProps> = ({
   };
 
   const arrowStates = getArrowStates();
-
-  // Vertical arrow state: completed if first workflow phase is complete
-  // This represents the coordinator handing off to the first workflow agent
-  const verticalArrowState: ArrowState = (() => {
-    if (!teamProject || !currentProjectInfo) return 'pending';
-    // Check if the first phase output exists (coordinator has handed off)
-    const firstPhaseComplete = stepCompletion.length > 0 && stepCompletion[0].complete;
-    if (!firstPhaseComplete) {
-      // Check if any agent is working (workflow has started)
-      const anyInProgress = arrowStates.some(s => s === 'current');
-      return anyInProgress ? 'current' : 'pending';
-    }
-    return 'completed';
-  })();
 
   // Helper function to get arrow classes based on state
   const getArrowClasses = (state: ArrowState): string => {
@@ -316,28 +294,6 @@ export const TeamCard: React.FC<TeamCardProps> = ({
                 )}
               </div>
             )}
-          </div>
-
-          {/* Coordinator */}
-          {coordinator && (
-            <div className="flex justify-center px-3 sm:px-4">
-              <div className="w-[clamp(140px,70vw,180px)]">
-                <AgentCard
-                  agent={coordinator}
-                  variant="dashboard"
-                  showActions={showActions}
-                  hideProject
-                />
-              </div>
-            </div>
-          )}
-
-          {/* Arrow separator - state-based styling */}
-          <div className="flex justify-center py-2 sm:py-3">
-            <ArrowDown className={cn(
-              "w-4 h-4 sm:w-5 sm:h-5 transition-colors",
-              getArrowClasses(verticalArrowState)
-            )} />
           </div>
 
           {/* Workflow Agents Row - Layout adapts to team size */}

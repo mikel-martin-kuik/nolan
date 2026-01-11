@@ -54,7 +54,8 @@ export const TeamsPanel: React.FC = () => {
   // Modal states
   const [agentConfigModal, setAgentConfigModal] = useState<{ agent: AgentConfig; index: number } | null>(null);
   const [phaseModal, setPhaseModal] = useState<{ phase: PhaseConfig; index: number } | null>(null);
-  const [coordinatorModal, setCoordinatorModal] = useState(false);
+  const [noteTakerModal, setNoteTakerModal] = useState(false);
+  const [exceptionHandlerModal, setExceptionHandlerModal] = useState(false);
   const [addAgentModal, setAddAgentModal] = useState(false);
   const [addPhaseModal, setAddPhaseModal] = useState(false);
   const [teamSettingsModal, setTeamSettingsModal] = useState(false);
@@ -64,7 +65,8 @@ export const TeamsPanel: React.FC = () => {
   // Edited values for modals
   const [editedAgent, setEditedAgent] = useState<AgentConfig | null>(null);
   const [editedPhase, setEditedPhase] = useState<PhaseConfig | null>(null);
-  const [editedCoordinator, setEditedCoordinator] = useState('');
+  const [editedNoteTaker, setEditedNoteTaker] = useState('');
+  const [editedExceptionHandler, setEditedExceptionHandler] = useState('');
   const [newAgentName, setNewAgentName] = useState('');
   const [newPhase, setNewPhase] = useState<PhaseConfig>({ name: '', owner: '', output: '', requires: [], template: '' });
   const [editedTeamName, setEditedTeamName] = useState('');
@@ -413,26 +415,54 @@ export const TeamsPanel: React.FC = () => {
     setAddPhaseModal(false);
   };
 
-  // Coordinator modal handlers
-  const openCoordinatorModal = () => {
+  // Auditor modal handlers
+  const openAuditorModal = () => {
     if (!teamConfig) return;
-    setEditedCoordinator(teamConfig.team.workflow.coordinator);
-    setCoordinatorModal(true);
+    setEditedNoteTaker(teamConfig.team.workflow.note_taker || '');
+    setNoteTakerModal(true);
   };
 
-  const saveCoordinator = async () => {
-    if (!teamConfig || !editedCoordinator) return;
+  const saveNoteTaker = async () => {
+    if (!teamConfig) return;
+
+    // Convert "__none__" placeholder back to undefined
+    const noteTakerValue = editedNoteTaker && editedNoteTaker !== '__none__' ? editedNoteTaker : undefined;
 
     const newConfig: TeamConfig = {
       ...teamConfig,
       team: {
         ...teamConfig.team,
-        workflow: { ...teamConfig.team.workflow, coordinator: editedCoordinator }
+        workflow: { ...teamConfig.team.workflow, note_taker: noteTakerValue }
       }
     };
 
     await saveTeamConfig(newConfig);
-    setCoordinatorModal(false);
+    setNoteTakerModal(false);
+  };
+
+  // Exception handler modal handlers
+  const openExceptionHandlerModal = () => {
+    if (!teamConfig) return;
+    setEditedExceptionHandler(teamConfig.team.workflow.exception_handler || '');
+    setExceptionHandlerModal(true);
+  };
+
+  const saveExceptionHandler = async () => {
+    if (!teamConfig) return;
+
+    // Convert "__none__" placeholder back to undefined
+    const handlerValue = editedExceptionHandler && editedExceptionHandler !== '__none__' ? editedExceptionHandler : undefined;
+
+    const newConfig: TeamConfig = {
+      ...teamConfig,
+      team: {
+        ...teamConfig.team,
+        workflow: { ...teamConfig.team.workflow, exception_handler: handlerValue }
+      }
+    };
+
+    await saveTeamConfig(newConfig);
+    setExceptionHandlerModal(false);
   };
 
   // Team settings modal handlers
@@ -739,22 +769,48 @@ export const TeamsPanel: React.FC = () => {
                 </div>
               </div>
 
-              {/* Coordinator - Clickable */}
+              {/* Workflow Roles - Clickable */}
               <div>
                 <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
-                  Coordinator
+                  Workflow Roles
                 </h3>
-                <div
-                  onClick={openCoordinatorModal}
-                  className="p-3 rounded-lg bg-violet-500/10 border border-violet-500/20 cursor-pointer hover:border-violet-500/40 hover:bg-violet-500/15 transition-all group"
-                >
-                  <span className="font-medium text-foreground capitalize group-hover:text-violet-400 transition-colors">
-                    {teamConfig.team.workflow.coordinator}
-                  </span>
-                  <span className="text-sm text-muted-foreground ml-2">
-                    manages workflow and assignments
-                  </span>
-                  <Edit2 className="w-3 h-3 inline ml-2 opacity-0 group-hover:opacity-50 transition-opacity" />
+                <p className="text-xs text-muted-foreground mb-3">
+                  Workflow progression is automated via hooks. These roles handle documentation and exceptions.
+                </p>
+                <div className="space-y-2">
+                  {/* Note-taker */}
+                  <div
+                    onClick={openAuditorModal}
+                    className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 cursor-pointer hover:border-blue-500/40 hover:bg-blue-500/15 transition-all group"
+                  >
+                    <span className="text-xs text-blue-400 uppercase tracking-wider">Note-taker</span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="font-medium text-foreground capitalize group-hover:text-blue-400 transition-colors">
+                        {teamConfig.team.workflow.note_taker || 'Not assigned'}
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        documents workflow progress
+                      </span>
+                      <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity ml-auto" />
+                    </div>
+                  </div>
+
+                  {/* Exception Handler */}
+                  <div
+                    onClick={openExceptionHandlerModal}
+                    className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 cursor-pointer hover:border-amber-500/40 hover:bg-amber-500/15 transition-all group"
+                  >
+                    <span className="text-xs text-amber-400 uppercase tracking-wider">Exception Handler</span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="font-medium text-foreground capitalize group-hover:text-amber-400 transition-colors">
+                        {teamConfig.team.workflow.exception_handler || 'Not assigned'}
+                      </span>
+                      <span className="text-sm text-muted-foreground">
+                        escalates issues to human
+                      </span>
+                      <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-50 transition-opacity ml-auto" />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -974,22 +1030,27 @@ export const TeamsPanel: React.FC = () => {
         document.body
       )}
 
-      {/* Coordinator Modal */}
-      {coordinatorModal && createPortal(
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center" onClick={() => setCoordinatorModal(false)}>
+      {/* Auditor Modal */}
+      {noteTakerModal && createPortal(
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center" onClick={() => setNoteTakerModal(false)}>
           <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-foreground">Select Coordinator</h3>
-              <Button variant="ghost" size="icon" onClick={() => setCoordinatorModal(false)}>
+              <h3 className="text-lg font-semibold text-foreground">Select Note-taker</h3>
+              <Button variant="ghost" size="icon" onClick={() => setNoteTakerModal(false)}>
                 <X className="w-4 h-4" />
               </Button>
             </div>
 
-            <Select value={editedCoordinator} onValueChange={setEditedCoordinator}>
+            <p className="text-sm text-muted-foreground mb-4">
+              The note-taker documents workflow progress and maintains project notes.
+            </p>
+
+            <Select value={editedNoteTaker || '__none__'} onValueChange={setEditedNoteTaker}>
               <SelectTrigger>
-                <SelectValue placeholder="Select coordinator..." />
+                <SelectValue placeholder="Select note-taker (optional)..." />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="__none__">None</SelectItem>
                 {teamConfig?.team.agents.map((agent) => (
                   <SelectItem key={agent.name} value={agent.name}>
                     {agent.name}
@@ -999,8 +1060,49 @@ export const TeamsPanel: React.FC = () => {
             </Select>
 
             <div className="flex justify-end gap-2 mt-6">
-              <Button variant="secondary" onClick={() => setCoordinatorModal(false)}>Cancel</Button>
-              <Button onClick={saveCoordinator} disabled={saving}>
+              <Button variant="secondary" onClick={() => setNoteTakerModal(false)}>Cancel</Button>
+              <Button onClick={saveNoteTaker} disabled={saving}>
+                <Save className="w-4 h-4 mr-1" />
+                {saving ? 'Saving...' : 'Save'}
+              </Button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Exception Handler Modal */}
+      {exceptionHandlerModal && createPortal(
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center" onClick={() => setExceptionHandlerModal(false)}>
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-foreground">Select Exception Handler</h3>
+              <Button variant="ghost" size="icon" onClick={() => setExceptionHandlerModal(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <p className="text-sm text-muted-foreground mb-4">
+              The exception handler monitors for workflow issues and intervenes when needed.
+            </p>
+
+            <Select value={editedExceptionHandler || '__none__'} onValueChange={setEditedExceptionHandler}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select exception handler (optional)..." />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">None</SelectItem>
+                {teamConfig?.team.agents.map((agent) => (
+                  <SelectItem key={agent.name} value={agent.name}>
+                    {agent.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <div className="flex justify-end gap-2 mt-6">
+              <Button variant="secondary" onClick={() => setExceptionHandlerModal(false)}>Cancel</Button>
+              <Button onClick={saveExceptionHandler} disabled={saving}>
                 <Save className="w-4 h-4 mr-1" />
                 {saving ? 'Saving...' : 'Save'}
               </Button>

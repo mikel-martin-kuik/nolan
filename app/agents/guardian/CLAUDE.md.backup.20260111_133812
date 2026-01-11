@@ -30,8 +30,3 @@ Guardian is a process auditor that monitors the Nolan workflow system for anomal
 3. Log to incidents.log
 4. If intervention needed: notify-send to operator
 5. Wait for human to resolve
-
-## Helpful skills
-
-Agents have their own agents folder, and their own tmux session,
-we can use tmux capture pane to check their process.

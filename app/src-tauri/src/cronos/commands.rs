@@ -22,6 +22,9 @@ pub async fn init_cronos() -> Result<(), String> {
     let manager = super::CronosManager::new().await?;
     manager.start().await?;
 
+    // Schedule all enabled agents
+    manager.schedule_all_agents().await?;
+
     // Check for missed runs on startup
     let missed = manager.check_missed_runs().await?;
     for (agent_name, policy) in missed {
@@ -321,6 +324,38 @@ pub async fn trigger_cron_agent_api(name: String) -> Result<String, String> {
     });
 
     Ok(format!("Triggered {}", name))
+}
+
+/// Trigger a cron agent from the scheduler (scheduled trigger)
+pub async fn trigger_cron_agent_scheduled(name: String) -> Result<String, String> {
+    let guard = CRONOS.read().await;
+    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+    let config = manager.get_agent(&name).await?;
+
+    // Check if already running (unless parallel allowed)
+    if !config.concurrency.allow_parallel && manager.is_running(&name).await {
+        return Err(format!("Agent '{}' is already running", name));
+    }
+
+    drop(guard);
+
+    // Get output sender for streaming
+    let output_sender = OUTPUT_SENDER.clone();
+
+    // Execute (not spawned - let the caller handle spawning)
+    let guard = CRONOS.read().await;
+    if let Some(manager) = guard.as_ref() {
+        executor::execute_cron_agent(
+            &config,
+            manager,
+            RunTrigger::Scheduled,
+            false,
+            Some(output_sender),
+            None,
+        ).await?;
+    }
+
+    Ok(format!("Scheduled run completed for {}", name))
 }
 
 #[tauri::command]

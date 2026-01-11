@@ -64,7 +64,7 @@ team:
     awaits_qa: false
   workflow:
     coordinator: dan
-    auditor: dan
+    note_taker: dan
     exception_handler: guardian
     phases:
     - name: Research

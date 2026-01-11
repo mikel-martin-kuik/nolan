@@ -136,6 +136,17 @@ export const CronosPanel: React.FC = () => {
     }
   }, [showError, showSuccess, fetchAgents]);
 
+  // Handle toggle enabled
+  const handleToggleEnabled = useCallback(async (name: string, enabled: boolean) => {
+    try {
+      await invoke('toggle_cron_agent', { name, enabled });
+      showSuccess(`${name} ${enabled ? 'enabled' : 'disabled'}`);
+      fetchAgents();
+    } catch (err) {
+      showError(`Failed to toggle agent: ${err}`);
+    }
+  }, [showError, showSuccess, fetchAgents]);
+
   // Handle card click - show output modal if running, otherwise show detail page
   const handleCardClick = useCallback((name: string) => {
     const agent = agents.find(a => a.name === name);
@@ -263,13 +274,14 @@ export const CronosPanel: React.FC = () => {
               <p className="text-sm mt-1">Create your first scheduled agent</p>
             </div>
           ) : (
-            <div className="flex flex-wrap gap-2 lg:gap-3">
+            <div className="flex flex-wrap gap-2 lg:gap-3 pt-2">
               {agents.map((agent) => (
                 <div key={agent.name} className="w-[clamp(180px,calc(100%/4-12px),220px)]">
                   <CronAgentCard
                     agent={agent}
                     onTrigger={handleTrigger}
                     onDelete={(name) => setDeleteConfirm(name)}
+                    onToggleEnabled={handleToggleEnabled}
                     onClick={handleCardClick}
                   />
                 </div>

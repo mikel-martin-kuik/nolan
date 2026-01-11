@@ -27,7 +27,9 @@ pub struct Team {
 impl Default for WorkflowConfig {
     fn default() -> Self {
         WorkflowConfig {
-            coordinator: String::new(),
+            coordinator: None,
+            note_taker: None,
+            exception_handler: None,
             phases: vec![],
         }
     }
@@ -61,10 +63,18 @@ fn default_true() -> bool {
 }
 
 /// Workflow configuration with phases
+/// Schema v2: coordinator is deprecated - workflow is now event-driven via hooks
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowConfig {
-    #[serde(default)]
-    pub coordinator: String,
+    /// @deprecated - use note_taker instead (v1 backward compat only)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coordinator: Option<String>,
+    /// Agent that documents workflow progress (maintains NOTES.md)
+    #[serde(default, skip_serializing_if = "Option::is_none", alias = "auditor")]
+    pub note_taker: Option<String>,
+    /// Agent that handles workflow exceptions (escalates to human)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exception_handler: Option<String>,
     #[serde(default, deserialize_with = "deserialize_phases_or_default")]
     pub phases: Vec<PhaseConfig>,
 }
@@ -632,13 +642,34 @@ impl TeamConfig {
             }
         }
 
-        // Validate coordinator exists in agents list (skip if empty - allows "headless" teams)
-        let coordinator = &self.team.workflow.coordinator;
-        if !coordinator.is_empty() && !seen_names.contains(coordinator.as_str()) {
-            return Err(format!(
-                "Coordinator '{}' not found in agents list for team '{}'",
-                coordinator, self.team.name
-            ));
+        // Validate coordinator exists in agents list if specified (deprecated field, for v1 compat)
+        if let Some(ref coordinator) = self.team.workflow.coordinator {
+            if !coordinator.is_empty() && !seen_names.contains(coordinator.as_str()) {
+                return Err(format!(
+                    "Coordinator '{}' not found in agents list for team '{}'",
+                    coordinator, self.team.name
+                ));
+            }
+        }
+
+        // Validate note_taker exists in agents list if specified
+        if let Some(ref note_taker) = self.team.workflow.note_taker {
+            if !note_taker.is_empty() && !seen_names.contains(note_taker.as_str()) {
+                return Err(format!(
+                    "Note-taker '{}' not found in agents list for team '{}'",
+                    note_taker, self.team.name
+                ));
+            }
+        }
+
+        // Validate exception_handler exists in agents list if specified
+        if let Some(ref handler) = self.team.workflow.exception_handler {
+            if !handler.is_empty() && !seen_names.contains(handler.as_str()) {
+                return Err(format!(
+                    "Exception handler '{}' not found in agents list for team '{}'",
+                    handler, self.team.name
+                ));
+            }
         }
 
         // Validate all phase owners exist in agents list (skip empty owners - allows simplified phase lists)
@@ -674,21 +705,36 @@ impl TeamConfig {
             .collect()
     }
 
-    /// Get coordinator agent name
-    pub fn coordinator(&self) -> &str {
-        &self.team.workflow.coordinator
+    /// Get coordinator agent name (deprecated - use note_taker() instead)
+    #[deprecated(note = "coordinator role is deprecated, use note_taker() instead")]
+    pub fn coordinator(&self) -> Option<&str> {
+        self.team.workflow.coordinator.as_deref()
     }
 
-    /// Get coordinator's output file from team config
+    /// Get note-taker agent name (maintains NOTES.md)
+    pub fn note_taker(&self) -> Option<&str> {
+        self.team.workflow.note_taker.as_deref()
+    }
+
+    /// Get exception handler agent name
+    pub fn exception_handler(&self) -> Option<&str> {
+        self.team.workflow.exception_handler.as_deref()
+    }
+
+    /// Get coordinator's output file from team config (deprecated)
     /// Returns Result to allow graceful error handling if coordinator lacks output_file
+    #[deprecated(note = "coordinator role is deprecated")]
     pub fn coordinator_output_file(&self) -> Result<String, String> {
+        let coordinator = self.team.workflow.coordinator.as_ref()
+            .ok_or_else(|| format!("No coordinator defined for team '{}'", self.team.name))?;
+
         self.team.agents.iter()
-            .find(|a| a.name == self.team.workflow.coordinator)
+            .find(|a| a.name == *coordinator)
             .and_then(|a| a.output_file.as_ref())
             .map(|s| s.to_string())
             .ok_or_else(|| format!(
                 "Coordinator '{}' must have output_file defined in team config '{}'",
-                self.team.workflow.coordinator,
+                coordinator,
                 self.team.name
             ))
     }
@@ -712,6 +758,11 @@ impl TeamConfig {
     /// Get the owner of the first workflow phase
     pub fn first_phase_owner(&self) -> Option<&str> {
         self.first_phase().map(|p| p.owner.as_str())
+    }
+
+    /// Get phase at specific index
+    pub fn get_phase(&self, index: usize) -> Option<&PhaseConfig> {
+        self.team.workflow.phases.get(index)
     }
 
     /// Check if this team uses auto-progression (schema v2+)

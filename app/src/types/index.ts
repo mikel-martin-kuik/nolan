@@ -48,7 +48,11 @@ export interface AgentConfig {
 }
 
 export interface WorkflowConfig {
-  coordinator: string;
+  // Schema v2: coordinator role is deprecated - workflow is now event-driven
+  // Keep for backward compatibility with v1 configs
+  coordinator?: string;       // @deprecated - use note_taker instead (v1 compat only)
+  note_taker?: string;        // Agent that documents workflow progress (maintains NOTES.md)
+  exception_handler?: string; // Agent that handles workflow exceptions (escalates to human)
   phases: PhaseConfig[];
 }
 
@@ -146,6 +150,12 @@ export const CLAUDE_MODELS: { id: ClaudeModel; label: string; hint: string }[] =
   { id: 'sonnet', label: 'Sonnet', hint: 'Balanced' },
   { id: 'haiku', label: 'Haiku', hint: 'Fast' },
 ];
+
+// Spawn options for free agents
+export interface SpawnOptions {
+  model: ClaudeModel;
+  chrome?: boolean;  // Enable Chrome DevTools integration
+}
 
 
 // History log types

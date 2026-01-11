@@ -58,10 +58,13 @@ export function getWorkflowParticipants(): string[] {
 /**
  * Get the coordinator agent name from current team
  */
+/**
+ * @deprecated Coordinator role is deprecated - use getAuditor() instead
+ */
 export function getCoordinator(): string | null {
   const team = useTeamStore.getState().currentTeam;
   if (!team) return null;
-  return team.team.workflow.coordinator;
+  return team.team.workflow.coordinator ?? null;
 }
 
 /**

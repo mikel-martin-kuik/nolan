@@ -13,7 +13,7 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Users, Plus, XCircle, LayoutGrid, ChevronDown, ChevronRight } from 'lucide-react';
 import { invoke, isBrowserMode } from '@/lib/api';
-import type { AgentName, ClaudeModel, TeamConfig } from '@/types';
+import type { AgentName, ClaudeModel, TeamConfig, SpawnOptions } from '@/types';
 import { getRalphDisplayName, parseRalphSession } from '@/lib/agentIdentity';
 import { getTeamMembers } from '@/types';
 import type { ProjectInfo } from '@/types/projects';
@@ -193,7 +193,7 @@ export const StatusPanel: React.FC = () => {
   }, [showError]);
 
   // Handler for spawning any agent type (team-scoped)
-  const handleSpawnAgent = async (teamName: string, agentName: AgentName, model?: ClaudeModel) => {
+  const handleSpawnAgent = async (teamName: string, agentName: AgentName, model?: ClaudeModel, chrome?: boolean) => {
     try {
       // Capture existing sessions BEFORE spawning to detect the new one
       const { freeAgents: beforeFreeAgents, teamAgents: beforeTeamAgents } = useAgentStore.getState();
@@ -207,7 +207,7 @@ export const StatusPanel: React.FC = () => {
           .map(s => s.session)
       );
 
-      await spawnAgent(teamName, agentName, false, model);
+      await spawnAgent(teamName, agentName, false, model, chrome);
 
       // Poll for new session with timeout
       const maxAttempts = 10;
@@ -261,8 +261,8 @@ export const StatusPanel: React.FC = () => {
   };
 
   // Handler for when model is selected (Ralph is team-independent)
-  const handleModelSelect = (model: ClaudeModel) => {
-    handleSpawnAgent('', 'ralph', model);
+  const handleModelSelect = (options: SpawnOptions) => {
+    handleSpawnAgent('', 'ralph', options.model, options.chrome);
   };
 
   // Handler for killing all Ralph instances
@@ -319,34 +319,38 @@ export const StatusPanel: React.FC = () => {
       <div className="w-full h-full flex flex-col">
         {/* Teams List (scrollable area) */}
         <div className="flex-1 min-h-0 overflow-auto">
-          {/* Team List - Grouped by Department */}
+          {/* Team List - Grouped by Department (hide header when only "Other" group exists) */}
           <div className="space-y-4">
             {departmentGroups.map((group) => {
               const isDeptCollapsed = collapsedDepartments.includes(group.name);
+              // Hide department header when there's only one "Other" group (no departments configured)
+              const showDepartmentHeader = !(departmentGroups.length === 1 && group.isOther);
 
               return (
                 <div key={group.name}>
-                  {/* Department Header */}
-                  <button
-                    onClick={() => toggleDepartmentCollapsed(group.name)}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-secondary/30 rounded-lg transition-colors mb-2"
-                  >
-                    {isDeptCollapsed ? (
-                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                    ) : (
-                      <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                    )}
-                    <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-                      {group.name}
-                    </span>
-                    <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5 ml-auto">
-                      {group.teams.length}
-                    </Badge>
-                  </button>
+                  {/* Department Header - hidden when only "Other" group */}
+                  {showDepartmentHeader && (
+                    <button
+                      onClick={() => toggleDepartmentCollapsed(group.name)}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-secondary/30 rounded-lg transition-colors mb-2"
+                    >
+                      {isDeptCollapsed ? (
+                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                      )}
+                      <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
+                        {group.name}
+                      </span>
+                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5 ml-auto">
+                        {group.teams.length}
+                      </Badge>
+                    </button>
+                  )}
 
-                  {/* Team Cards (collapsible) */}
-                  {!isDeptCollapsed && (
-                    <div className="space-y-3 pl-2">
+                  {/* Team Cards (collapsible only when department header is shown) */}
+                  {(!showDepartmentHeader || !isDeptCollapsed) && (
+                    <div className={showDepartmentHeader ? "space-y-3 pl-2" : "space-y-3"}>
                       {group.teams.map(teamName => {
                         const teamConfig = teamConfigs.get(teamName);
                         if (!teamConfig) return null;

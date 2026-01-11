@@ -201,28 +201,87 @@ pub fn get_default_model(agent: &str) -> String {
     "opus".to_string()
 }
 
-/// Determine which agents are needed based on project phase status in coordinator's output file
-/// Returns None if coordinator file doesn't exist (new project - launch all agents)
+/// Detect which phase to resume from by checking completed output files.
+/// Returns the index of the first incomplete phase, or None if all complete.
+fn detect_current_phase(docs_path: &std::path::Path, team: &TeamConfig) -> Option<usize> {
+    let phases = &team.team.workflow.phases;
+
+    for (index, phase) in phases.iter().enumerate() {
+        let output_file = if phase.output.ends_with(".md") {
+            phase.output.clone()
+        } else {
+            format!("{}.md", phase.output)
+        };
+
+        let file_path = docs_path.join(&output_file);
+
+        // Check if file exists and has HANDOFF completion marker
+        if !is_phase_complete(&file_path) {
+            return Some(index); // First incomplete phase
+        }
+    }
+
+    None // All phases complete
+}
+
+/// Check if a phase output file is complete (has HANDOFF marker)
+fn is_phase_complete(file_path: &std::path::Path) -> bool {
+    if !file_path.exists() {
+        return false;
+    }
+
+    match std::fs::read_to_string(file_path) {
+        Ok(content) => {
+            // Look for HANDOFF completion marker
+            content.contains("<!-- HANDOFF:") && content.contains(":COMPLETE")
+        }
+        Err(_) => false,
+    }
+}
+
+/// Determine which agents are needed based on project phase status in NOTES.md
+/// Returns None if NOTES.md doesn't exist (new project - launch all agents)
 /// Returns Some(Vec<agent_names>) for existing projects based on incomplete phases
 fn determine_needed_agents(docs_path: &std::path::Path, team: &TeamConfig) -> Option<Vec<String>> {
     use std::fs;
     use std::collections::HashSet;
 
-    let coordinator_file = team.coordinator_output_file().ok()?;
-    let coordinator_path = docs_path.join(&coordinator_file);
-    let content = fs::read_to_string(&coordinator_path).ok()?;
+    // Get note-taker (auditor field, or coordinator for v1 compat) - maintains NOTES.md
+    #[allow(deprecated)]
+    let note_taker = team.note_taker()
+        .or_else(|| team.coordinator())
+        .unwrap_or("dan")
+        .to_string();
 
-    // Check if project is complete - only launch coordinator
-    let coordinator = team.coordinator().to_string();
+    // Get exception handler (escalates issues to humans)
+    let exception_handler = team.exception_handler()
+        .map(|s| s.to_string());
+
+    // Always read NOTES.md for project status (maintained by the note-taker)
+    let notes_path = docs_path.join("NOTES.md");
+    let content = fs::read_to_string(&notes_path).ok()?;
+
+    // Check if project is complete - only launch note-taker and exception handler
     if content.contains("<!-- PROJECT:STATUS:COMPLETE") {
-        return Some(vec![coordinator.clone()]);
+        let mut agents = vec![note_taker.clone()];
+        if let Some(ref handler) = exception_handler {
+            if handler != &note_taker {
+                agents.push(handler.clone());
+            }
+        }
+        return Some(agents);
     }
 
     // Parse Phase Status table to find incomplete phases
     // Format: | Phase | Status | Assigned | Output |
     // Use HashSet for O(1) contains checks instead of Vec O(n)
     let mut needed_agents_set: HashSet<String> = HashSet::new();
-    needed_agents_set.insert(coordinator.clone()); // Coordinator always needed
+
+    // Always include note-taker (dan) and exception handler (guardian)
+    needed_agents_set.insert(note_taker.clone());
+    if let Some(ref handler) = exception_handler {
+        needed_agents_set.insert(handler.clone());
+    }
 
     // Build phase-to-agent mapping from team config workflow phases
     // We store exact phase names separately to prioritize exact matches
@@ -265,7 +324,6 @@ fn determine_needed_agents(docs_path: &std::path::Path, team: &TeamConfig) -> Op
     // Find the Phase Status table
     let lines: Vec<&str> = content.lines().collect();
     let mut in_phase_table = false;
-    let mut has_incomplete_phases = false;
 
     for line in &lines {
         let line_lower = line.to_lowercase();
@@ -297,7 +355,6 @@ fn determine_needed_agents(docs_path: &std::path::Path, team: &TeamConfig) -> Op
                 let is_complete = status.contains("complete") || status.contains("✅");
 
                 if !is_complete {
-                    has_incomplete_phases = true;
                     // Find which agent owns this phase
                     // First try exact match (handles "Implementation" vs "Implementation Audit")
                     if let Some(agent) = exact_phase_to_agent.get(&phase) {
@@ -316,9 +373,14 @@ fn determine_needed_agents(docs_path: &std::path::Path, team: &TeamConfig) -> Op
         }
     }
 
-    // If no incomplete phases found but project not marked complete,
-    // launch all agents (could be starting new work)
-    if !has_incomplete_phases && needed_agents_set.len() == 1 {
+    // Safety fallback: if we only have note-taker + exception handler, launch all agents
+    // This handles:
+    // - No Phase Status table found in NOTES.md
+    // - All phases are complete (but no PROJECT:STATUS:COMPLETE marker)
+    // - Incomplete phases found but no agents matched (phase name mismatch)
+    // The minimal set (dan + guardian) should only happen when project is explicitly complete
+    let base_agent_count = 1 + if exception_handler.is_some() { 1 } else { 0 };
+    if needed_agents_set.len() <= base_agent_count {
         return None; // Launch all
     }
 
@@ -444,9 +506,15 @@ fn get_docs_path_from_team_context(team_name: &str) -> Result<String, String> {
     let team = TeamConfig::load(team_name)
         .map_err(|e| format!("Failed to load team config '{}': {}", team_name, e))?;
 
-    // Priority order: coordinator first (best context), then others
-    let mut agent_priority: Vec<&str> = vec![team.coordinator()];
-    agent_priority.extend(team.workflow_participants().iter().filter(|&&a| a != team.coordinator()));
+    // Priority order: auditor first (best context), then others
+    // Note: coordinator is deprecated, using auditor (falls back to coordinator for v1 compat)
+    #[allow(deprecated)]
+    let auditor = team.note_taker().or_else(|| team.coordinator());
+    let mut agent_priority: Vec<&str> = Vec::new();
+    if let Some(a) = auditor {
+        agent_priority.push(a);
+    }
+    agent_priority.extend(team.workflow_participants().iter().filter(|&&a| Some(a) != auditor));
 
     for &agent_name in &agent_priority {
         // Team-scoped session naming
@@ -646,7 +714,7 @@ pub async fn launch_team(
     });
 
     // Determine who should receive the initial prompt based on schema version
-    // v2+ (auto-progression): Send to first phase owner (e.g., Ana for Research)
+    // v2+ (auto-progression): Send to first incomplete phase owner (supports resume)
     // v1 (legacy): Send to coordinator (Dan)
     if let Some(prompt) = effective_prompt {
         let uses_auto_progression = team.uses_auto_progression();
@@ -655,15 +723,19 @@ pub async fn launch_team(
         let prompt_with_context: String;
 
         if uses_auto_progression {
-            // Schema v2: Auto-assign to first phase owner
-            if let Some(first_phase) = team.first_phase() {
-                target_agent = first_phase.owner.clone();
+            // Schema v2: Detect current phase and assign to appropriate owner
+            // Check which phases are already complete to support resume
+            let target_phase_index = detect_current_phase(&docs_path, &team)
+                .unwrap_or(0); // Default to first phase if all complete
+
+            if let Some(target_phase) = team.get_phase(target_phase_index) {
+                target_agent = target_phase.owner.clone();
                 target_session = format!("agent-{}-{}", team_name, target_agent);
                 prompt_with_context = format!("[Project: {}] {}", project_name, prompt);
 
-                // Call assign.sh to formally assign the first phase
+                // Call assign.sh to formally assign the detected phase
                 let assign_script = nolan_root.join("app").join("scripts").join("assign.sh");
-                let phase_name = first_phase.name.clone();
+                let phase_name = target_phase.name.clone();
                 let project_name_clone = project_name.clone();
                 let nolan_root_clone = nolan_root.clone();
 
@@ -673,18 +745,26 @@ pub async fn launch_team(
 
                     let _ = Command::new(&assign_script)
                         .env("NOLAN_ROOT", nolan_root_clone.to_string_lossy().to_string())
-                        .args(&[&project_name_clone, &phase_name, &format!("Initial assignment: {}", prompt)])
+                        .args(&[&project_name_clone, &phase_name, &format!("Phase assignment: {}", prompt)])
                         .output();
                 });
             } else {
-                // No phases defined, fall back to coordinator
-                target_agent = team.coordinator().to_string();
+                // No phases defined, fall back to auditor (or coordinator for v1 compat)
+                #[allow(deprecated)]
+                let fallback_agent = team.note_taker()
+                    .or_else(|| team.coordinator())
+                    .unwrap_or("dan");
+                target_agent = fallback_agent.to_string();
                 target_session = format!("agent-{}-{}", team_name, target_agent);
                 prompt_with_context = format!("[Project: {}] {}", project_name, prompt);
             }
         } else {
-            // Schema v1 (legacy): Send to coordinator
-            target_agent = team.coordinator().to_string();
+            // Schema v1 (legacy): Send to auditor/coordinator
+            #[allow(deprecated)]
+            let fallback_agent = team.note_taker()
+                .or_else(|| team.coordinator())
+                .unwrap_or("dan");
+            target_agent = fallback_agent.to_string();
             target_session = format!("agent-{}-{}", team_name, target_agent);
             prompt_with_context = format!("[Project: {}] {}", project_name, prompt);
         }
@@ -827,7 +907,7 @@ pub async fn kill_team(app_handle: AppHandle, team_name: String) -> Result<Strin
 /// Spawn a new free agent instance (Ralph only)
 /// Team agents have a single session each - use start_agent instead
 #[tauri::command]
-pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: String, force: bool, model: Option<String>) -> Result<String, String> {
+pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: String, force: bool, model: Option<String>, chrome: Option<bool>) -> Result<String, String> {
     use std::process::Command;
     use std::fs;
     #[cfg(unix)]
@@ -932,10 +1012,13 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
     // Use provided model or default for Ralph
     let model_str = model.unwrap_or_else(|| get_default_model(&agent));
 
+    // Add --chrome flag if requested (enables Chrome DevTools integration)
+    let chrome_flag = if chrome.unwrap_or(false) { " --chrome" } else { "" };
+
     // Create tmux session for Ralph (team-independent, TEAM_NAME is empty)
     let cmd = format!(
-        "export AGENT_NAME={} TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\"; claude --dangerously-skip-permissions --model {}; exec bash",
-        agent, nolan_root_str, projects_dir_str, agent_dir_str, model_str
+        "export AGENT_NAME={} TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\"; claude --dangerously-skip-permissions --model {}{}; exec bash",
+        agent, nolan_root_str, projects_dir_str, agent_dir_str, model_str, chrome_flag
     );
 
     let output = Command::new("tmux")

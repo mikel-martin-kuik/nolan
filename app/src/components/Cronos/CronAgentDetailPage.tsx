@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Switch } from '@/components/ui/switch';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -36,7 +35,7 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
   const [config, setConfig] = useState<CronAgentConfig | null>(null);
   const [runHistory, setRunHistory] = useState<CronRunLog[]>([]);
   const [instructionsContent, setInstructionsContent] = useState('');
-  const [activeTab, setActiveTab] = useState('schedule');
+  const [activeTab, setActiveTab] = useState('status');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasConfigChanges, setHasConfigChanges] = useState(false);
@@ -173,10 +172,9 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
 
       {/* Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-        <TabsList className="grid w-full grid-cols-3 mb-4">
-          <TabsTrigger value="schedule">Schedule</TabsTrigger>
-          <TabsTrigger value="audit">Audit Log</TabsTrigger>
-          <TabsTrigger value="health">Health</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 mb-4">
+          <TabsTrigger value="status">Status</TabsTrigger>
+          <TabsTrigger value="schedule">Config</TabsTrigger>
         </TabsList>
 
         {/* Schedule Tab */}
@@ -213,10 +211,6 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
                 <div>
                   <label className="text-sm font-medium">Timeout (seconds)</label>
                   <Input className="mt-1" type="number" value={config.timeout} onChange={(e) => updateConfig({ timeout: parseInt(e.target.value) || 300 })} />
-                </div>
-                <div className="flex items-center gap-3 pt-2">
-                  <Switch checked={config.enabled} onCheckedChange={(c) => updateConfig({ enabled: c })} />
-                  <label className="text-sm font-medium">Enabled</label>
                 </div>
                 <div className="border-t pt-4">
                   <div className="flex items-center gap-2 mb-2">
@@ -283,50 +277,56 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
           </div>
         </TabsContent>
 
-        {/* Audit Tab */}
-        <TabsContent value="audit" className="flex-1 overflow-hidden">
-          <ScrollArea className="h-full">
-            {runHistory.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-                <p>No run history yet</p>
-              </div>
-            ) : (
-              <div className="space-y-2 pr-4">
-                {runHistory.map((run) => {
-                  const isFailed = run.status !== 'success' && run.status !== 'running';
-                  return (
-                    <Card
-                      key={run.run_id}
-                      className={`p-3 cursor-pointer hover:border-primary/50 transition-colors ${isFailed ? 'border-red-500/50' : ''}`}
-                      onClick={() => onViewOutput(run.run_id)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm">
-                            {new Date(run.started_at).toLocaleString()}
-                            {run.attempt > 1 && ` (attempt ${run.attempt})`}
-                            <span className="text-muted-foreground ml-2">{run.status}</span>
-                          </p>
-                          {run.trigger !== 'scheduled' && (
-                            <p className="text-xs text-muted-foreground capitalize">{run.trigger}</p>
-                          )}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {run.duration_secs !== undefined && <span>{run.duration_secs}s</span>}
-                        </div>
-                      </div>
-                      {run.error && <p className="text-xs text-destructive mt-1 truncate">{run.error}</p>}
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-          </ScrollArea>
-        </TabsContent>
+        {/* Status Tab - Combined Run History + Health */}
+        <TabsContent value="status" className="flex-1 overflow-hidden">
+          <div className="grid grid-cols-2 gap-6 h-full">
+            {/* Run History */}
+            <Card className="flex flex-col">
+              <CardHeader>
+                <CardTitle className="text-base">Run History</CardTitle>
+              </CardHeader>
+              <CardContent className="flex-1 overflow-hidden p-0">
+                <ScrollArea className="h-full px-6 pb-6">
+                  {runHistory.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
+                      <p>No run history yet</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {runHistory.map((run) => {
+                        const isFailed = run.status !== 'success' && run.status !== 'running';
+                        return (
+                          <Card
+                            key={run.run_id}
+                            className={`p-3 cursor-pointer hover:border-primary/50 transition-colors ${isFailed ? 'border-red-500/50' : ''}`}
+                            onClick={() => onViewOutput(run.run_id)}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm">
+                                  {new Date(run.started_at).toLocaleString()}
+                                  {run.attempt > 1 && ` (attempt ${run.attempt})`}
+                                  <span className="text-muted-foreground ml-2">{run.status}</span>
+                                </p>
+                                {run.trigger !== 'scheduled' && (
+                                  <p className="text-xs text-muted-foreground capitalize">{run.trigger}</p>
+                                )}
+                              </div>
+                              <div className="text-sm text-muted-foreground">
+                                {run.duration_secs !== undefined && <span>{run.duration_secs}s</span>}
+                              </div>
+                            </div>
+                            {run.error && <p className="text-xs text-destructive mt-1 truncate">{run.error}</p>}
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  )}
+                </ScrollArea>
+              </CardContent>
+            </Card>
 
-        {/* Health Tab */}
-        <TabsContent value="health" className="flex-1 overflow-auto">
-          <div className="max-w-2xl">
+            {/* Health Summary */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">Health: {agent.health.status}</CardTitle>
@@ -354,7 +354,7 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
                     <p className="text-xs text-muted-foreground">Total</p>
                   </div>
                 </div>
-                {agent.stats.avg_duration_secs !== undefined && (
+                {agent.stats.avg_duration_secs != null && (
                   <div className="pt-4 border-t">
                     <p className="text-xs text-muted-foreground">Average Duration</p>
                     <p className="text-lg font-medium">{agent.stats.avg_duration_secs.toFixed(1)}s</p>

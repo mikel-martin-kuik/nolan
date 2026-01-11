@@ -942,12 +942,24 @@ pub async fn create_project(project_name: String, team_name: Option<String>) -> 
         return Err("Project name cannot contain consecutive hyphens".to_string());
     }
 
-    // Load team config first to get coordinator's output file and workflow phases
+    // Load team config first to get note-taker's output file and workflow phases
+    // Note: coordinator is deprecated, using note_taker (falls back to coordinator for v1 compat)
     let team = team_name.unwrap_or_else(|| "default".to_string());
     let team_config = TeamConfig::load(&team)
         .map_err(|e| format!("Failed to load team config '{}': {}", team, e))?;
-    let coordinator_file = team_config.coordinator_output_file()?;
-    let coordinator_name = team_config.coordinator();
+
+    // Get note-taker name (or coordinator for v1 compat)
+    #[allow(deprecated)]
+    let note_taker_name = team_config.note_taker()
+        .or_else(|| team_config.coordinator())
+        .unwrap_or("dan");
+
+    // Get note-taker's output file (defaults to NOTES.md)
+    let note_taker_file = team_config.team.agents.iter()
+        .find(|a| a.name == note_taker_name)
+        .and_then(|a| a.output_file.as_ref())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "NOTES.md".to_string());
 
     // Get workflow files from team config to store in .team
     let (_, workflow_files) = get_expected_files_from_config(&team_config);
@@ -971,9 +983,9 @@ pub async fn create_project(project_name: String, team_name: Option<String>) -> 
     };
     project_team_file.write(&project_path)?;
 
-    // Create initial coordinator file with IN_PROGRESS marker
+    // Create initial NOTES.md file with IN_PROGRESS marker
     let now = chrono::Utc::now().format("%Y-%m-%d").to_string();
-    let coordinator_content = format!(
+    let notes_content = format!(
         r#"# {}
 
 <!-- PROJECT:STATUS:INPROGRESS:{} -->
@@ -987,12 +999,12 @@ pub async fn create_project(project_name: String, team_name: Option<String>) -> 
 
 Project created via Nolan Dashboard.
 "#,
-        project_name, now, coordinator_name
+        project_name, now, note_taker_name
     );
 
-    let coordinator_path = project_path.join(&coordinator_file);
-    fs::write(&coordinator_path, coordinator_content)
-        .map_err(|e| format!("Failed to create {}: {}", coordinator_file, e))?;
+    let notes_path = project_path.join(&note_taker_file);
+    fs::write(&notes_path, notes_content)
+        .map_err(|e| format!("Failed to create {}: {}", note_taker_file, e))?;
 
     Ok(project_path.to_string_lossy().to_string())
 }

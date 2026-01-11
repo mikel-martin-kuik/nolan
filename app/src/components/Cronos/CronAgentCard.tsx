@@ -7,6 +7,7 @@ interface CronAgentCardProps {
   agent: CronAgentInfo;
   onTrigger: (name: string) => void;
   onDelete: (name: string) => void;
+  onToggleEnabled: (name: string, enabled: boolean) => void;
   onClick: (name: string) => void;
   disabled?: boolean;
 }
@@ -15,6 +16,7 @@ export const CronAgentCard: React.FC<CronAgentCardProps> = ({
   agent,
   onTrigger,
   onDelete,
+  onToggleEnabled,
   onClick,
   disabled = false,
 }) => {
@@ -97,6 +99,11 @@ export const CronAgentCard: React.FC<CronAgentCardProps> = ({
     onDelete(agent.name);
   };
 
+  const handleToggleEnabled = () => {
+    setContextMenu(null);
+    onToggleEnabled(agent.name, !agent.enabled);
+  };
+
   // Check if last run failed (not success)
   const hasFailed = agent.last_run && agent.last_run.status !== 'success' && agent.last_run.status !== 'running';
 
@@ -108,7 +115,6 @@ export const CronAgentCard: React.FC<CronAgentCardProps> = ({
           ${isClickable ? 'cursor-pointer hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.98] active:translate-y-0' : ''}
           ${disabled ? 'cursor-not-allowed opacity-60' : ''}
           ${agent.enabled ? 'glass-card' : 'bg-muted/30 border-border/50'}
-          ${agent.is_running ? 'ring-2 ring-primary/60 ring-offset-2 ring-offset-background' : ''}
           ${hasFailed ? 'border-red-500/50' : ''}
         `}
         onClick={isClickable ? handleCardClick : undefined}
@@ -164,6 +170,13 @@ export const CronAgentCard: React.FC<CronAgentCardProps> = ({
               Run Now
             </button>
           )}
+          <button
+            onClick={handleToggleEnabled}
+            disabled={agent.is_running}
+            className="w-full px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors text-left disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {agent.enabled ? 'Disable' : 'Enable'}
+          </button>
           <button
             onClick={handleDeleteAgent}
             disabled={agent.is_running}

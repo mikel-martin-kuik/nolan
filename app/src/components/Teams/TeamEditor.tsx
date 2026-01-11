@@ -53,7 +53,8 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
   const [originalName, setOriginalName] = useState<string | null>(null);
   const [description, setDescription] = useState('');
   const [agents, setAgents] = useState<AgentConfig[]>([]);
-  const [coordinator, setCoordinator] = useState('');
+  const [noteTaker, setNoteTaker] = useState('');
+  const [exceptionHandler, setExceptionHandler] = useState('');
   const [phases, setPhases] = useState<PhaseConfig[]>([]);
 
   // Available agents from Agents page
@@ -112,7 +113,8 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
       setOriginalName(teamConfig.team.name);
       setDescription(teamConfig.team.description || '');
       setAgents([...teamConfig.team.agents]);
-      setCoordinator(teamConfig.team.workflow.coordinator);
+      setNoteTaker(teamConfig.team.workflow.note_taker || '');
+      setExceptionHandler(teamConfig.team.workflow.exception_handler || '');
       setPhases([...teamConfig.team.workflow.phases]);
     } else {
       // Default for new team
@@ -120,7 +122,8 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
       setOriginalName(null);
       setDescription('');
       setAgents([{ ...DEFAULT_AGENT }]);
-      setCoordinator('');
+      setNoteTaker('');
+      setExceptionHandler('');
       setPhases([{ ...DEFAULT_PHASE }]);
     }
   }, [teamConfig]);
@@ -201,11 +204,6 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
       return 'Agent names must be unique';
     }
 
-    if (!coordinator) return 'Coordinator must be selected';
-    if (!agentNames.includes(coordinator)) {
-      return 'Coordinator must be one of the agents';
-    }
-
     for (const phase of phases) {
       if (!phase.name.trim()) return 'All phases must have a name';
       if (!phase.owner) return `Phase '${phase.name}' must have an owner`;
@@ -232,6 +230,10 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
         await invoke('rename_team_config', { oldName: originalName, newName: name });
       }
 
+      // Convert "__none__" placeholder back to undefined
+      const noteTakerValue = noteTaker && noteTaker !== '__none__' ? noteTaker : undefined;
+      const exceptionHandlerValue = exceptionHandler && exceptionHandler !== '__none__' ? exceptionHandler : undefined;
+
       const config: TeamConfig = {
         team: {
           name,
@@ -239,7 +241,8 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
           version: '1.0.0',
           agents,
           workflow: {
-            coordinator,
+            note_taker: noteTakerValue,
+            exception_handler: exceptionHandlerValue,
             phases,
           },
         },
@@ -463,28 +466,60 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
             Workflow Configuration
           </h2>
 
-          {/* Coordinator */}
-          <div className="mb-6">
-            <Tooltip content="Agent that manages assignments and handoffs between team members" side="right">
-              <label className="block text-sm font-medium text-foreground mb-1 w-fit cursor-help">
-                Coordinator
-              </label>
-            </Tooltip>
-            <Select
-              value={coordinator || undefined}
-              onValueChange={setCoordinator}
-            >
-              <SelectTrigger className="w-full md:w-64">
-                <SelectValue placeholder="Select coordinator..." />
-              </SelectTrigger>
-              <SelectContent>
-                {agents.filter(a => a.name).map((agent) => (
-                  <SelectItem key={agent.name} value={agent.name}>
-                    {agent.name} {getAgentInfo(agent.name)?.role ? `(${getAgentInfo(agent.name)?.role})` : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          {/* Workflow Roles - automated progression, these handle documentation and exceptions */}
+          <p className="text-xs text-muted-foreground mb-4">
+            Workflow progression is automated via hooks. These roles handle documentation and exceptions.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            {/* Note-taker */}
+            <div>
+              <Tooltip content="Agent that documents workflow progress and maintains project notes" side="right">
+                <label className="block text-sm font-medium text-foreground mb-1 w-fit cursor-help">
+                  Note-taker
+                </label>
+              </Tooltip>
+              <Select
+                value={noteTaker || '__none__'}
+                onValueChange={setNoteTaker}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select note-taker (optional)..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {agents.filter(a => a.name).map((agent) => (
+                    <SelectItem key={agent.name} value={agent.name}>
+                      {agent.name} {getAgentInfo(agent.name)?.role ? `(${getAgentInfo(agent.name)?.role})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Exception Handler */}
+            <div>
+              <Tooltip content="Agent that escalates workflow issues to human (optional)" side="right">
+                <label className="block text-sm font-medium text-foreground mb-1 w-fit cursor-help">
+                  Exception Handler
+                </label>
+              </Tooltip>
+              <Select
+                value={exceptionHandler || '__none__'}
+                onValueChange={setExceptionHandler}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Select handler (optional)..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {agents.filter(a => a.name).map((agent) => (
+                    <SelectItem key={agent.name} value={agent.name}>
+                      {agent.name} {getAgentInfo(agent.name)?.role ? `(${getAgentInfo(agent.name)?.role})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {/* Phases */}

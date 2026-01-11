@@ -2,7 +2,7 @@ name: cron-roadmap
 description: Updates Nolan Roadmap
 model: opus
 timeout: 1800
-enabled: true
+enabled: false
 schedule:
   cron: 0 9 * * *
   timezone: null

@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use tokio_cron_scheduler::JobScheduler;
+use tokio_cron_scheduler::{Job, JobScheduler};
 use chrono::{DateTime, Utc};
 
 use super::types::*;
@@ -637,6 +637,93 @@ impl CronosManager {
     pub async fn start(&self) -> Result<(), String> {
         self.scheduler.start().await
             .map_err(|e| format!("Failed to start scheduler: {}", e))
+    }
+
+    /// Schedule all enabled agents with the cron scheduler
+    pub async fn schedule_all_agents(&self) -> Result<(), String> {
+        let agents = self.load_agents().await?;
+
+        for agent in agents {
+            if agent.enabled {
+                if let Err(e) = self.schedule_agent(&agent).await {
+                    eprintln!("[Cronos] Failed to schedule {}: {}", agent.name, e);
+                } else {
+                    println!("[Cronos] Scheduled {} with cron: {}", agent.name, agent.schedule.cron);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Schedule a single agent
+    pub async fn schedule_agent(&self, config: &CronAgentConfig) -> Result<(), String> {
+        // Convert 5-field cron to 6-field (add seconds)
+        let cron_expr = if config.schedule.cron.split_whitespace().count() == 5 {
+            format!("0 {}", config.schedule.cron)
+        } else {
+            config.schedule.cron.clone()
+        };
+
+        let agent_name = config.name.clone();
+        let cronos_root = self.cronos_root.clone();
+        let running = self.running.clone();
+
+        let job = Job::new_async(cron_expr.as_str(), move |_uuid, _lock| {
+            let agent_name = agent_name.clone();
+            let cronos_root = cronos_root.clone();
+            let running = running.clone();
+
+            Box::pin(async move {
+                println!("[Cronos] Triggering scheduled run for: {}", agent_name);
+
+                // Load config fresh in case it changed
+                let config_path = cronos_root.join("agents").join(&agent_name).join("agent.yaml");
+                let config: CronAgentConfig = match std::fs::read_to_string(&config_path) {
+                    Ok(content) => match serde_yaml::from_str(&content) {
+                        Ok(c) => c,
+                        Err(e) => {
+                            eprintln!("[Cronos] Failed to parse config for {}: {}", agent_name, e);
+                            return;
+                        }
+                    },
+                    Err(e) => {
+                        eprintln!("[Cronos] Failed to read config for {}: {}", agent_name, e);
+                        return;
+                    }
+                };
+
+                // Check if still enabled
+                if !config.enabled {
+                    println!("[Cronos] Skipping {} - agent is disabled", agent_name);
+                    return;
+                }
+
+                // Check if already running
+                {
+                    let running_guard = running.read().await;
+                    if running_guard.contains_key(&agent_name) && !config.concurrency.allow_parallel {
+                        println!("[Cronos] Skipping {} - already running", agent_name);
+                        return;
+                    }
+                }
+
+                // Execute the agent via the executor
+                // We spawn this as a separate task since we can't hold manager reference in job closure
+                tokio::spawn(async move {
+                    // Create a minimal execution context
+                    // The actual execution uses trigger_cron_agent_api or similar
+                    if let Err(e) = crate::cronos::commands::trigger_cron_agent_scheduled(agent_name.clone()).await {
+                        eprintln!("[Cronos] Scheduled run failed for {}: {}", agent_name, e);
+                    }
+                });
+            })
+        }).map_err(|e| format!("Failed to create job: {}", e))?;
+
+        self.scheduler.add(job).await
+            .map_err(|e| format!("Failed to add job to scheduler: {}", e))?;
+
+        Ok(())
     }
 
     /// Stop the scheduler

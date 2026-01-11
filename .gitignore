@@ -3,6 +3,7 @@
 # User workspace (not part of app distribution)
 projects/*
 !projects/.gitkeep
+.state
 
 # Build artifacts
 app/target/
@@ -10,9 +11,6 @@ app/node_modules/
 app/dist/
 app/dist-ssr/
 app/src-tauri/target/
-
-# Generated configuration files (created by setup.sh)
-app/terminator_config
 
 # OS files
 .DS_Store

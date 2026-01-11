@@ -95,13 +95,23 @@ fn scan_teams_recursive(teams_dir: &std::path::Path) -> Result<Vec<(String, Stri
     Ok(teams)
 }
 
-/// Map directory group to pillar ID
+/// Map directory group to department/pillar ID
 fn group_to_pillar(group: &str) -> Option<String> {
     match group {
+        // Legacy pillar mapping
         "pillar_1" => Some("organizational-intelligence".to_string()),
         "pillar_2" => Some("autonomous-operations".to_string()),
         "pillar_3" => Some("human-ai-collaboration".to_string()),
-        _ => None,
+        // New department structure
+        "adm_admin" => Some("admin".to_string()),
+        "hr_human_resources" => Some("human-resources".to_string()),
+        "dev_development" => Some("development".to_string()),
+        "inf_infrastructure" => Some("infrastructure".to_string()),
+        "biz_business" => Some("business".to_string()),
+        "qa_quality" => Some("quality-assurance".to_string()),
+        // For any other directory, use its name as the pillar
+        "" => None,
+        other => Some(other.replace("_", "-")),
     }
 }
 

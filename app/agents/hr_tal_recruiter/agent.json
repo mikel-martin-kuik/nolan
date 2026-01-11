@@ -1,0 +1,7 @@
+{
+  "role": "Recruiter",
+  "model": "sonnet",
+  "team": "talent_acquisition",
+  "role_template": "recruiter",
+  "department": "human_resources"
+}

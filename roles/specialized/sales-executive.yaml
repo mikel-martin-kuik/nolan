@@ -1,0 +1,33 @@
+role:
+  name: "sales-executive"
+  display_name: "Sales Executive"
+  description: "Lead qualification, proposals, and negotiations"
+
+  capabilities:
+    - lead_qualification
+    - proposal_creation
+    - negotiations
+    - deal_closure
+
+  permissions:
+    file_access: "restricted"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Write
+      - Glob
+      - Grep
+    optional:
+      - Task
+
+  model_preference: "sonnet"
+
+  output_requirements:
+    required_sections:
+      - "## Opportunity"
+      - "## Qualification"
+      - "## Next Steps"
+    output_file: "deal-summary.md"

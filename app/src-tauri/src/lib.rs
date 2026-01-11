@@ -142,6 +142,7 @@ pub fn run() {
             read_project_file,
             write_project_file,
             read_roadmap,
+            list_roadmap_files,
             create_project,
             // Teams commands
             commands::teams::get_team_config,

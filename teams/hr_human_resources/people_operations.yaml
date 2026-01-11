@@ -1,0 +1,92 @@
+team:
+  name: people_operations
+  department: Human Resources
+  description: Policies, employee relations, payroll, and performance management
+  version: 1.0.0
+
+  agents:
+    - name: hr_pop_coordinator
+      role: coordinator
+      output_file: NOTES.md
+      required_sections:
+        - "## Current Assignment"
+        - "## Phase Status"
+        - "## Handoff Log"
+      file_permissions: permissive
+      workflow_participant: false
+      awaits_qa: false
+
+    - name: hr_pop_manager
+      role: people-ops-manager
+      output_file: people-report.md
+      required_sections:
+        - "## Policy Updates"
+        - "## Employee Relations"
+        - "## Culture Initiatives"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: hr_pop_payroll
+      role: payroll-specialist
+      output_file: payroll-report.md
+      required_sections:
+        - "## Compensation"
+        - "## Benefits"
+        - "## Payroll Processing"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: hr_pop_analyst
+      role: people-analyst
+      output_file: people-analytics.md
+      required_sections:
+        - "## Employee Metrics"
+        - "## Engagement Analysis"
+        - "## Retention Insights"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: hr_pop_performance
+      role: performance-manager
+      output_file: performance-review.md
+      required_sections:
+        - "## Performance Summary"
+        - "## Goal Tracking"
+        - "## Development Plans"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+  workflow:
+    coordinator: hr_pop_coordinator
+    phases:
+      - name: Policy
+        owner: hr_pop_manager
+        output: people-report.md
+        requires:
+          - context.md
+        template: Define and implement people policies
+
+      - name: Analytics
+        owner: hr_pop_analyst
+        output: people-analytics.md
+        requires:
+          - people-report.md
+        template: Analyze employee metrics and engagement
+
+      - name: Performance
+        owner: hr_pop_performance
+        output: performance-review.md
+        requires:
+          - people-analytics.md
+        template: Manage performance reviews and development plans
+
+      - name: Compensation
+        owner: hr_pop_payroll
+        output: payroll-report.md
+        requires:
+          - performance-review.md
+        template: Process payroll and manage benefits

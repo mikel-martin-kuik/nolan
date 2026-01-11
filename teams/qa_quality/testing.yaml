@@ -1,0 +1,112 @@
+team:
+  name: testing
+  department: Quality Assurance
+  description: Functional, exploratory, performance, and integration testing
+  version: 1.0.0
+
+  agents:
+    - name: qa_tst_coordinator
+      role: coordinator
+      output_file: NOTES.md
+      required_sections:
+        - "## Current Assignment"
+        - "## Phase Status"
+        - "## Handoff Log"
+      file_permissions: permissive
+      workflow_participant: false
+      awaits_qa: false
+
+    - name: qa_tst_lead
+      role: qa-lead
+      output_file: test-strategy.md
+      required_sections:
+        - "## Test Strategy"
+        - "## Test Plan"
+        - "## Resource Allocation"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: qa_tst_functional
+      role: functional-tester
+      output_file: functional-report.md
+      required_sections:
+        - "## Test Cases"
+        - "## Results"
+        - "## Defects Found"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: qa_tst_exploratory
+      role: exploratory-tester
+      output_file: exploratory-report.md
+      required_sections:
+        - "## Exploration Sessions"
+        - "## Edge Cases"
+        - "## Usability Findings"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: qa_tst_performance
+      role: performance-tester
+      output_file: performance-report.md
+      required_sections:
+        - "## Load Test Results"
+        - "## Stress Test Results"
+        - "## Benchmarks"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: qa_tst_integration
+      role: integration-tester
+      output_file: integration-report.md
+      required_sections:
+        - "## API Tests"
+        - "## E2E Tests"
+        - "## Integration Results"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+  workflow:
+    coordinator: qa_tst_coordinator
+    phases:
+      - name: Planning
+        owner: qa_tst_lead
+        output: test-strategy.md
+        requires:
+          - context.md
+        template: Create test strategy and plan
+
+      - name: Functional Testing
+        owner: qa_tst_functional
+        output: functional-report.md
+        requires:
+          - test-strategy.md
+        parallel_with: Exploratory Testing
+        template: Execute functional and regression tests
+
+      - name: Exploratory Testing
+        owner: qa_tst_exploratory
+        output: exploratory-report.md
+        requires:
+          - test-strategy.md
+        parallel_with: Functional Testing
+        template: Conduct exploratory testing sessions
+
+      - name: Performance Testing
+        owner: qa_tst_performance
+        output: performance-report.md
+        requires:
+          - functional-report.md
+        template: Execute load and stress tests
+
+      - name: Integration Testing
+        owner: qa_tst_integration
+        output: integration-report.md
+        requires:
+          - functional-report.md
+        template: Execute API and E2E integration tests

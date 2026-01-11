@@ -1,0 +1,7 @@
+{
+  "role": "Security Analyst",
+  "model": "sonnet",
+  "team": "application_security",
+  "role_template": "security-analyst",
+  "department": "quality"
+}

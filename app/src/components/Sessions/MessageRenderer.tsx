@@ -20,8 +20,15 @@ const sanitizeSchema = {
     a: ['href', 'title', 'className'],  // Links + class for anchor styling
     code: ['className'],                 // Syntax highlighting
     details: ['open'],                   // Allow open attribute for collapsibles
-    '*': ['id'],                         // Allow IDs for heading anchors
-    span: ['className'],                 // For anchor icons
+    span: ['className', 'id'],           // For heading anchors
+    // Headings need id for navigation and className for anchor styling
+    h1: ['id', 'className'],
+    h2: ['id', 'className'],
+    h3: ['id', 'className'],
+    h4: ['id', 'className'],
+    h5: ['id', 'className'],
+    h6: ['id', 'className'],
+    '*': ['id'],                         // Fallback for any other elements
   },
   protocols: {
     href: ['http', 'https', 'mailto'],  // Block javascript:

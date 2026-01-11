@@ -1,0 +1,33 @@
+role:
+  name: "exploratory-tester"
+  display_name: "Exploratory Tester"
+  description: "Exploratory testing and edge case discovery"
+
+  capabilities:
+    - exploratory_testing
+    - edge_case_discovery
+    - usability_testing
+    - creative_testing
+
+  permissions:
+    file_access: "restricted"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Glob
+      - Grep
+    optional:
+      - Task
+      - Bash
+
+  model_preference: "sonnet"
+
+  output_requirements:
+    required_sections:
+      - "## Exploration Sessions"
+      - "## Edge Cases"
+      - "## Usability Findings"
+    output_file: "exploratory-report.md"

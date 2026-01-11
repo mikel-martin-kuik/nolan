@@ -168,9 +168,34 @@ ack_handoff() {
         if [[ "$(basename "$handoff_file")" == *"$id_prefix"* ]]; then
             local filename=$(basename "$handoff_file")
 
+            # Extract instruction_file path from handoff before moving
+            local instruction_file=$(python3 -c "
+import yaml
+with open('$handoff_file') as f:
+    d = yaml.safe_load(f)
+print(d.get('instruction_file', ''))
+" 2>/dev/null)
+
             if mv "$handoff_file" "$PROCESSED_DIR/" 2>&1; then
                 echo -e "${GREEN}ACK'd: $filename${NC}"
                 found=1
+
+                # Update instruction file status to 'reviewed'
+                if [[ -n "$instruction_file" ]] && [[ -f "$instruction_file" ]]; then
+                    local ack_time=$(date +"%Y-%m-%d %H:%M")
+                    python3 -c "
+import yaml
+from pathlib import Path
+
+instr_file = Path('$instruction_file')
+content = instr_file.read_text()
+
+# Append ACK info
+if 'ack_at:' not in content:
+    with open(instr_file, 'a') as f:
+        f.write(f'\n# Review\nstatus: reviewed\nack_at: \"$ack_time\"\n')
+" 2>/dev/null || true
+                fi
             else
                 error="Failed to move file: $handoff_file"
             fi

@@ -1,0 +1,35 @@
+role:
+  name: "solutions-architect"
+  display_name: "Solutions Architect"
+  description: "System design, integration patterns, and technology strategy"
+
+  capabilities:
+    - system_design
+    - integration_patterns
+    - technology_selection
+    - architecture_documentation
+
+  permissions:
+    file_access: "permissive"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Write
+      - Edit
+      - Glob
+      - Grep
+    optional:
+      - Task
+      - WebSearch
+
+  model_preference: "opus"
+
+  output_requirements:
+    required_sections:
+      - "## System Design"
+      - "## Integration Patterns"
+      - "## Technology Stack"
+    output_file: "architecture.md"

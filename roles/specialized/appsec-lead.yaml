@@ -1,0 +1,34 @@
+role:
+  name: "appsec-lead"
+  display_name: "AppSec Lead"
+  description: "Application security strategy and OWASP compliance"
+
+  capabilities:
+    - appsec_strategy
+    - owasp_compliance
+    - security_requirements
+    - team_leadership
+
+  permissions:
+    file_access: "restricted"
+    can_spawn_agents: true
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Write
+      - Glob
+      - Grep
+    optional:
+      - Task
+      - WebSearch
+
+  model_preference: "opus"
+
+  output_requirements:
+    required_sections:
+      - "## AppSec Strategy"
+      - "## OWASP Compliance"
+      - "## Security Requirements"
+    output_file: "appsec-strategy.md"

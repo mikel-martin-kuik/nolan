@@ -1,0 +1,32 @@
+role:
+  name: "quality-auditor"
+  display_name: "Quality Auditor"
+  description: "Process audits and compliance verification"
+
+  capabilities:
+    - process_audit
+    - compliance_verification
+    - standards_enforcement
+    - audit_reporting
+
+  permissions:
+    file_access: "restricted"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Glob
+      - Grep
+    optional:
+      - Task
+
+  model_preference: "sonnet"
+
+  output_requirements:
+    required_sections:
+      - "## Audit Scope"
+      - "## Findings"
+      - "## Compliance Status"
+    output_file: "audit-report.md"

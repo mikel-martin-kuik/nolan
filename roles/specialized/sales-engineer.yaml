@@ -1,0 +1,33 @@
+role:
+  name: "sales-engineer"
+  display_name: "Sales Engineer"
+  description: "Technical pre-sales, demos, and SOW creation"
+
+  capabilities:
+    - technical_presales
+    - solution_demos
+    - sow_creation
+    - requirements_gathering
+
+  permissions:
+    file_access: "restricted"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Write
+      - Glob
+      - Grep
+    optional:
+      - Task
+
+  model_preference: "sonnet"
+
+  output_requirements:
+    required_sections:
+      - "## Technical Requirements"
+      - "## Solution Overview"
+      - "## SOW"
+    output_file: "technical-proposal.md"

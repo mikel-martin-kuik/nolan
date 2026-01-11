@@ -1,0 +1,7 @@
+{
+  "role": "Automation Maintenance",
+  "model": "sonnet",
+  "team": "automation",
+  "role_template": "automation-maintenance",
+  "department": "quality"
+}

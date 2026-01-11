@@ -1,0 +1,7 @@
+{
+  "role": "Coordinator",
+  "model": "opus",
+  "team": "operations",
+  "role_template": "coordinator",
+  "department": "admin"
+}

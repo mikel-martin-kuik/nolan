@@ -1,0 +1,7 @@
+{
+  "role": "Coordinator",
+  "model": "opus",
+  "team": "devops",
+  "role_template": "coordinator",
+  "department": "infrastructure"
+}

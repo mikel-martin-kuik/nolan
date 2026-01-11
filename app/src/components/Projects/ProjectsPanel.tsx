@@ -42,15 +42,16 @@ export function ProjectsPanel() {
   useEffect(() => {
     const loadRoadmapSummary = async () => {
       try {
-        const content = await invoke<string>('read_roadmap');
+        const content = await invoke<string>('read_roadmap', { filename: null });
         const versionMatch = content.match(/Current State \((v[\d.]+)\)/);
-        const visionMatch = content.match(/\*\*Vision\*\*:\s*([^\n]+)/);
+        // Match vision in blockquote format: > **Vision**: ...
+        const visionMatch = content.match(/>\s*\*\*Vision\*\*:\s*([^\n]+)/);
         setRoadmapSummary({
           version: versionMatch ? versionMatch[1] : 'v0.x',
-          vision: visionMatch ? visionMatch[1] : 'Organizational Agent Management System'
+          vision: visionMatch ? visionMatch[1].trim() : 'AI-powered software development platform'
         });
       } catch {
-        setRoadmapSummary({ version: 'v0.x', vision: 'Agent orchestration platform' });
+        setRoadmapSummary({ version: 'v0.x', vision: 'AI-powered software development platform' });
       }
     };
     loadRoadmapSummary();

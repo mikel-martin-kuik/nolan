@@ -1,0 +1,33 @@
+role:
+  name: "contracts-manager"
+  display_name: "Contracts Manager"
+  description: "Contract drafting, negotiation support, and lifecycle management"
+
+  capabilities:
+    - contract_drafting
+    - negotiation_support
+    - contract_tracking
+    - terms_analysis
+
+  permissions:
+    file_access: "restricted"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Write
+      - Glob
+      - Grep
+    optional:
+      - Task
+
+  model_preference: "sonnet"
+
+  output_requirements:
+    required_sections:
+      - "## Contract Summary"
+      - "## Key Terms"
+      - "## Negotiation Points"
+    output_file: "contract-status.md"

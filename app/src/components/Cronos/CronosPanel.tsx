@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@/lib/api';
-import { Plus, RefreshCw, Clock, FileText } from 'lucide-react';
 import { CronAgentCard } from './CronAgentCard';
 import { CronAgentDetailPage } from './CronAgentDetailPage';
 import { CronAgentOutputModal } from './CronAgentOutputModal';
 import { useToastStore } from '../../store/toastStore';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -213,65 +213,80 @@ export const CronosPanel: React.FC = () => {
   }
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6 pb-4 border-b border-border">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground flex items-center gap-2">
-            <Clock className="w-6 h-6" />
-            Cronos
-          </h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Scheduled automation agents
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" onClick={fetchAgents} disabled={loading}>
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </Button>
-          <Button variant="outline" onClick={() => setTemplateSelectorOpen(true)}>
-            <FileText className="w-4 h-4 mr-2" />
-            Templates
-          </Button>
-          <Button onClick={() => setCreatorOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            New Agent
-          </Button>
-        </div>
-      </div>
-
-      {/* Agent Cards Grid */}
-      <div className="flex-1 overflow-auto">
-        {agents.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-            <Clock className="w-12 h-12 mb-4 opacity-50" />
-            <p>No cron agents configured</p>
-            <p className="text-sm">Create your first scheduled agent</p>
+    <div className="h-full">
+      <div className="w-full h-full flex flex-col">
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-4">
+          <div className="flex gap-1.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={fetchAgents}
+              disabled={loading}
+              className="text-xs h-7 px-2"
+            >
+              {loading ? 'Refreshing...' : 'Refresh'}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setTemplateSelectorOpen(true)}
+              className="text-xs h-7 px-2"
+            >
+              Templates
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCreatorOpen(true)}
+              className="text-xs h-7 px-2"
+            >
+              New Agent
+            </Button>
           </div>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-            {agents.map((agent) => (
-              <CronAgentCard
-                key={agent.name}
-                agent={agent}
-                onTrigger={handleTrigger}
-                onDelete={(name) => setDeleteConfirm(name)}
-                onClick={handleCardClick}
-              />
-            ))}
+
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/30 border border-border/40 ml-auto">
+            <span className="text-xs text-muted-foreground uppercase tracking-wider">Scheduled Agents</span>
+            {agents.length > 0 && (
+              <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                {agents.filter(a => a.enabled).length}/{agents.length}
+              </Badge>
+            )}
           </div>
-        )}
-      </div>
+        </div>
 
-      {/* Output Modal - for running agents */}
-      <CronAgentOutputModal
-        agentName={outputModalAgent}
-        onClose={() => setOutputModalAgent(null)}
-        onCancel={handleCancel}
-      />
+        {/* Agent Cards */}
+        <div className="flex-1 min-h-0 overflow-auto">
+          {agents.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+              <p>No cron agents configured</p>
+              <p className="text-sm mt-1">Create your first scheduled agent</p>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-2 lg:gap-3">
+              {agents.map((agent) => (
+                <div key={agent.name} className="w-[clamp(180px,calc(100%/4-12px),220px)]">
+                  <CronAgentCard
+                    agent={agent}
+                    onTrigger={handleTrigger}
+                    onDelete={(name) => setDeleteConfirm(name)}
+                    onClick={handleCardClick}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
-      {/* Template Selector Dialog */}
-      <Dialog open={templateSelectorOpen} onOpenChange={setTemplateSelectorOpen}>
+        {/* Output Modal - for running agents */}
+        <CronAgentOutputModal
+          agentName={outputModalAgent}
+          onClose={() => setOutputModalAgent(null)}
+          onCancel={handleCancel}
+        />
+
+        {/* Template Selector Dialog */}
+        <Dialog open={templateSelectorOpen} onOpenChange={setTemplateSelectorOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Agent Templates</DialogTitle>
@@ -404,7 +419,8 @@ export const CronosPanel: React.FC = () => {
             <Button variant="destructive" onClick={handleDelete}>Delete</Button>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
+        </AlertDialog>
+      </div>
     </div>
   );
 };

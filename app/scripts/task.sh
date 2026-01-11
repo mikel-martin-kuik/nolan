@@ -44,9 +44,39 @@ check_env() {
     fi
 }
 
-# Get instructions base directory
+# Get instructions base directory for a specific team
 get_instructions_base() {
-    echo "$PROJECTS_DIR/.state/$TEAM_NAME/instructions"
+    local team="${1:-$TEAM_NAME}"
+    echo "$PROJECTS_DIR/.state/$team/instructions"
+}
+
+# Find agent's current task symlink across all teams
+# Returns: path to symlink if found, empty if not
+find_agent_current_symlink() {
+    local agent="$1"
+    local state_base="$PROJECTS_DIR/.state"
+
+    # First try current team
+    local current_link="$state_base/$TEAM_NAME/instructions/_current/${agent}.yaml"
+    if [[ -L "$current_link" ]]; then
+        echo "$current_link"
+        return 0
+    fi
+
+    # Search other teams
+    for team_dir in "$state_base"/*/; do
+        [[ -d "$team_dir" ]] || continue
+        local team=$(basename "$team_dir")
+        [[ "$team" == "$TEAM_NAME" ]] && continue  # Already checked
+
+        local link="$team_dir/instructions/_current/${agent}.yaml"
+        if [[ -L "$link" ]]; then
+            echo "$link"
+            return 0
+        fi
+    done
+
+    return 1
 }
 
 # ===== ASSIGN =====
@@ -73,10 +103,10 @@ cmd_complete() {
         exit 1
     fi
 
-    local base=$(get_instructions_base)
-    local current_link="$base/_current/${agent}.yaml"
+    # Find current symlink (searches across all teams)
+    local current_link=$(find_agent_current_symlink "$agent")
 
-    if [[ ! -L "$current_link" ]]; then
+    if [[ -z "$current_link" ]] || [[ ! -L "$current_link" ]]; then
         echo -e "${YELLOW}No active task for $agent${NC}"
         exit 0
     fi
@@ -139,6 +169,26 @@ content = re.sub(pattern, replacement, content)
 coord_path.write_text(content)
 " 2>/dev/null || true
         fi
+
+        # Create handoff file for coordinator to ACK
+        local handoff_dir="$PROJECTS_DIR/.handoffs/pending"
+        mkdir -p "$handoff_dir"
+        local handoff_id="${msg_id/MSG_/HO_}"
+        local handoff_file="$handoff_dir/${handoff_id}.handoff"
+
+        cat > "$handoff_file" <<HANDOFF_EOF
+# Handoff from $agent
+id: $handoff_id
+task_id: $msg_id
+from_agent: $agent
+project: $project
+phase: $phase
+timestamp: '$completed_at'
+team: $TEAM_NAME
+instruction_file: $(dirname "$task_file")/$(basename "$task_file")
+status: pending_review
+HANDOFF_EOF
+        echo "  Created handoff: $handoff_id"
     fi
 
     # Remove current symlink
@@ -365,10 +415,10 @@ cmd_current() {
         exit 1
     fi
 
-    local base=$(get_instructions_base)
-    local current_link="$base/_current/${agent}.yaml"
+    # Find current symlink (searches across all teams)
+    local current_link=$(find_agent_current_symlink "$agent")
 
-    if [[ ! -L "$current_link" ]]; then
+    if [[ -z "$current_link" ]] || [[ ! -L "$current_link" ]]; then
         echo "No active task for $agent"
         exit 0
     fi

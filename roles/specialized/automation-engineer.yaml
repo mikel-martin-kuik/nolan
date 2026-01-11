@@ -1,0 +1,35 @@
+role:
+  name: "automation-engineer"
+  display_name: "Automation Engineer"
+  description: "Test automation implementation and CI integration"
+
+  capabilities:
+    - test_automation
+    - ci_integration
+    - script_development
+    - coverage_tracking
+
+  permissions:
+    file_access: "permissive"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Write
+      - Edit
+      - Bash
+      - Glob
+      - Grep
+    optional:
+      - Task
+
+  model_preference: "sonnet"
+
+  output_requirements:
+    required_sections:
+      - "## Test Automation Status"
+      - "## CI Integration"
+      - "## Coverage"
+    output_file: "automation-report.md"

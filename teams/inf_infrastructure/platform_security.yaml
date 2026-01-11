@@ -1,0 +1,74 @@
+team:
+  name: platform_security
+  department: Infrastructure
+  description: Infrastructure security, network security, access control, and compliance
+  version: 1.0.0
+
+  agents:
+    - name: inf_sec_coordinator
+      role: coordinator
+      output_file: NOTES.md
+      required_sections:
+        - "## Current Assignment"
+        - "## Phase Status"
+        - "## Handoff Log"
+      file_permissions: permissive
+      workflow_participant: false
+      awaits_qa: false
+
+    - name: inf_sec_architect
+      role: security-architect
+      output_file: security-design.md
+      required_sections:
+        - "## Security Architecture"
+        - "## Network Security"
+        - "## Access Control Design"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: inf_sec_engineer
+      role: security-engineer
+      output_file: security-report.md
+      required_sections:
+        - "## Security Status"
+        - "## Hardening"
+        - "## Changes"
+      file_permissions: permissive
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: inf_sec_compliance
+      role: security-compliance
+      output_file: compliance-audit.md
+      required_sections:
+        - "## Compliance Status"
+        - "## Certifications"
+        - "## Audit Findings"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+  workflow:
+    coordinator: inf_sec_coordinator
+    phases:
+      - name: Assessment
+        owner: inf_sec_architect
+        output: security-design.md
+        requires:
+          - context.md
+        template: Assess security requirements and design architecture
+
+      - name: Implementation
+        owner: inf_sec_engineer
+        output: security-report.md
+        requires:
+          - security-design.md
+        template: Implement security controls and hardening
+
+      - name: Audit
+        owner: inf_sec_compliance
+        output: compliance-audit.md
+        requires:
+          - security-report.md
+        template: Verify compliance and prepare audit documentation

@@ -1,0 +1,7 @@
+{
+  "role": "Executive Assistant",
+  "model": "opus",
+  "team": "operations",
+  "role_template": "executive-assistant",
+  "department": "admin"
+}

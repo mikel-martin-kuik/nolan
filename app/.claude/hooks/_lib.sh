@@ -97,6 +97,7 @@ print(config["team"]["workflow"]["coordinator"])
 }
 
 # Get team name from project path
+# Supports both YAML format (team: name) and plain text format
 # Usage: team=$(get_team_name "/path/to/project")
 get_team_name() {
     local project_path="$1"
@@ -106,5 +107,20 @@ get_team_name() {
         echo "Error: .team file not found at $team_file" >&2
         return 1
     fi
-    cat "$team_file"
+
+    # Parse team name (supports YAML and plain text)
+    python3 -c "
+import yaml
+from pathlib import Path
+
+content = Path('$team_file').read_text()
+try:
+    data = yaml.safe_load(content)
+    if isinstance(data, dict) and 'team' in data:
+        print(data['team'])
+    else:
+        print(content.strip())
+except:
+    print(content.strip())
+" 2>/dev/null || cat "$team_file" | head -1
 }

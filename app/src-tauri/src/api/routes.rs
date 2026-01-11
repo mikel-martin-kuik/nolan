@@ -79,6 +79,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/projects", get(handlers::projects::list_projects))
         .route("/api/projects", post(handlers::projects::create_project))
         .route("/api/projects/roadmap", get(handlers::projects::read_roadmap))
+        .route("/api/projects/roadmap/files", get(handlers::projects::list_roadmap_files))
         .route("/api/projects/:name/files", get(handlers::projects::list_files))
         .route("/api/projects/:name/file", get(handlers::projects::read_file))
         .route("/api/projects/:name/file", put(handlers::projects::write_file))

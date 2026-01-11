@@ -1,0 +1,7 @@
+{
+  "role": "Operations Manager",
+  "model": "sonnet",
+  "team": "operations",
+  "role_template": "operations-manager",
+  "department": "admin"
+}

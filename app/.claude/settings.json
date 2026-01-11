@@ -11,6 +11,11 @@
             "type": "command",
             "command": "\"$AGENT_DIR\"/.claude/hooks/validate-phase-complete.py",
             "timeout": 120
+          },
+          {
+            "type": "command",
+            "command": "\"$AGENT_DIR\"/.claude/hooks/auto-handoff.sh",
+            "timeout": 30
           }
         ]
       }

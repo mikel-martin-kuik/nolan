@@ -1,0 +1,160 @@
+# Product Team Template
+#
+# Instructions: Copy this file and replace {product} with your product name.
+# Example: cp _product_template.yaml my_product.yaml
+# Then search/replace {product} -> my_product
+#
+# Each product team is cross-functional and handles:
+# - Architecture and design
+# - Frontend development
+# - Backend development
+# - Database engineering
+# - Full-stack implementation
+
+team:
+  name: "{product}"
+  department: Development
+  description: "Cross-functional product team for {product}"
+  version: 1.0.0
+
+  agents:
+    - name: "dev_{product}_coordinator"
+      role: coordinator
+      output_file: NOTES.md
+      required_sections:
+        - "## Current Assignment"
+        - "## Phase Status"
+        - "## Handoff Log"
+      file_permissions: permissive
+      workflow_participant: false
+      awaits_qa: false
+
+    - name: "dev_{product}_lead"
+      role: tech-lead
+      output_file: technical-design.md
+      required_sections:
+        - "## Technical Overview"
+        - "## Architecture Decisions"
+        - "## Implementation Strategy"
+      file_permissions: permissive
+      workflow_participant: true
+      awaits_qa: true
+      qa_passes: 1
+
+    - name: "dev_{product}_architect"
+      role: solutions-architect
+      output_file: architecture.md
+      required_sections:
+        - "## System Design"
+        - "## Integration Patterns"
+        - "## Technology Stack"
+      file_permissions: permissive
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: "dev_{product}_frontend"
+      role: frontend-developer
+      output_file: frontend-progress.md
+      required_sections:
+        - "## UI Status"
+        - "## Components"
+        - "## Changes"
+      file_permissions: permissive
+      workflow_participant: true
+      awaits_qa: true
+      qa_passes: 1
+
+    - name: "dev_{product}_backend"
+      role: backend-developer
+      output_file: backend-progress.md
+      required_sections:
+        - "## API Status"
+        - "## Services"
+        - "## Changes"
+      file_permissions: permissive
+      workflow_participant: true
+      awaits_qa: true
+      qa_passes: 1
+
+    - name: "dev_{product}_database"
+      role: database-engineer
+      output_file: database-design.md
+      required_sections:
+        - "## Schema"
+        - "## Migrations"
+        - "## Queries"
+      file_permissions: permissive
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: "dev_{product}_senior"
+      role: senior-developer
+      output_file: progress.md
+      required_sections:
+        - "## Status"
+        - "## Changes"
+        - "## Review Notes"
+      file_permissions: permissive
+      workflow_participant: true
+      awaits_qa: true
+      qa_passes: 1
+
+    - name: "dev_{product}_developer"
+      role: developer
+      output_file: progress.md
+      required_sections:
+        - "## Status"
+        - "## Changes"
+      file_permissions: permissive
+      workflow_participant: true
+      awaits_qa: true
+      qa_passes: 1
+
+  workflow:
+    coordinator: "dev_{product}_coordinator"
+    phases:
+      - name: Research
+        owner: "dev_{product}_architect"
+        output: architecture.md
+        requires:
+          - context.md
+        template: Research and design system architecture
+
+      - name: Technical Design
+        owner: "dev_{product}_lead"
+        output: technical-design.md
+        requires:
+          - architecture.md
+        template: Create detailed technical design and implementation strategy
+
+      - name: Database Design
+        owner: "dev_{product}_database"
+        output: database-design.md
+        requires:
+          - technical-design.md
+        template: Design database schema and migrations
+
+      - name: Frontend Implementation
+        owner: "dev_{product}_frontend"
+        output: frontend-progress.md
+        requires:
+          - technical-design.md
+        parallel_with: Backend Implementation
+        template: Implement frontend components and UI
+
+      - name: Backend Implementation
+        owner: "dev_{product}_backend"
+        output: backend-progress.md
+        requires:
+          - technical-design.md
+          - database-design.md
+        parallel_with: Frontend Implementation
+        template: Implement backend services and APIs
+
+      - name: Integration
+        owner: "dev_{product}_senior"
+        output: progress.md
+        requires:
+          - frontend-progress.md
+          - backend-progress.md
+        template: Integrate frontend and backend, resolve cross-cutting concerns

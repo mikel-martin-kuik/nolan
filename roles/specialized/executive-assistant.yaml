@@ -1,0 +1,33 @@
+role:
+  name: "executive-assistant"
+  display_name: "Executive Assistant"
+  description: "C-suite support, strategy coordination, and executive briefings"
+
+  capabilities:
+    - executive_support
+    - strategy_coordination
+    - briefing_preparation
+    - decision_tracking
+
+  permissions:
+    file_access: "restricted"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Write
+      - Glob
+      - Grep
+    optional:
+      - Task
+
+  model_preference: "opus"
+
+  output_requirements:
+    required_sections:
+      - "## Executive Summary"
+      - "## Key Decisions"
+      - "## Action Items"
+    output_file: "executive-brief.md"

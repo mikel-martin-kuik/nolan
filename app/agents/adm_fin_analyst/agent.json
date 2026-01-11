@@ -1,0 +1,7 @@
+{
+  "role": "Financial Analyst",
+  "model": "sonnet",
+  "team": "finance",
+  "role_template": "financial-analyst",
+  "department": "admin"
+}

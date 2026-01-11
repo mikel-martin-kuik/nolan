@@ -1,0 +1,7 @@
+{
+  "role": "Security Reviewer",
+  "model": "sonnet",
+  "team": "application_security",
+  "role_template": "security-reviewer",
+  "department": "quality"
+}

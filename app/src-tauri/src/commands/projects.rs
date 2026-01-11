@@ -815,15 +815,25 @@ pub async fn read_project_file(
     Ok(content)
 }
 
-/// Read the roadmap.md file from the projects directory
+/// Read a roadmap file from the projects directory
+/// Supports: roadmap.md, business_roadmap.md, product_roadmap.md
 #[tauri::command]
-pub async fn read_roadmap() -> Result<String, String> {
+pub async fn read_roadmap(filename: Option<String>) -> Result<String, String> {
     let projects_dir = get_projects_dir()?;
-    let roadmap_path = projects_dir.join("roadmap.md");
+
+    // Validate and sanitize filename - only allow specific roadmap files
+    let valid_files = ["roadmap.md", "business_roadmap.md", "product_roadmap.md"];
+    let file = filename.unwrap_or_else(|| "roadmap.md".to_string());
+
+    if !valid_files.contains(&file.as_str()) {
+        return Err(format!("Invalid roadmap file. Valid options: {:?}", valid_files));
+    }
+
+    let roadmap_path = projects_dir.join(&file);
 
     // Check if roadmap exists
     if !roadmap_path.exists() {
-        return Err("Roadmap file not found. Create roadmap.md in the projects directory.".to_string());
+        return Err(format!("Roadmap file '{}' not found in projects directory.", file));
     }
 
     // Read roadmap content
@@ -831,6 +841,22 @@ pub async fn read_roadmap() -> Result<String, String> {
         .map_err(|e| format!("Failed to read roadmap: {}", e))?;
 
     Ok(content)
+}
+
+/// List available roadmap files in the projects directory
+#[tauri::command]
+pub async fn list_roadmap_files() -> Result<Vec<String>, String> {
+    let projects_dir = get_projects_dir()?;
+    let valid_files = ["roadmap.md", "business_roadmap.md", "product_roadmap.md"];
+
+    let mut available = Vec::new();
+    for file in valid_files {
+        if projects_dir.join(file).exists() {
+            available.push(file.to_string());
+        }
+    }
+
+    Ok(available)
 }
 
 /// Write content to a project file

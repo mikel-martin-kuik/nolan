@@ -1,0 +1,74 @@
+team:
+  name: operations
+  department: Admin
+  description: Vendor management, procurement, and executive support
+  version: 1.0.0
+
+  agents:
+    - name: adm_ops_coordinator
+      role: coordinator
+      output_file: NOTES.md
+      required_sections:
+        - "## Current Assignment"
+        - "## Phase Status"
+        - "## Handoff Log"
+      file_permissions: permissive
+      workflow_participant: false
+      awaits_qa: false
+
+    - name: adm_ops_manager
+      role: operations-manager
+      output_file: operations-report.md
+      required_sections:
+        - "## Vendor Status"
+        - "## Procurement"
+        - "## Office Operations"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: adm_ops_executive
+      role: executive-assistant
+      output_file: executive-brief.md
+      required_sections:
+        - "## Executive Summary"
+        - "## Key Decisions"
+        - "## Action Items"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: adm_ops_analyst
+      role: operations-analyst
+      output_file: ops-analysis.md
+      required_sections:
+        - "## Process Analysis"
+        - "## Efficiency Metrics"
+        - "## Improvement Recommendations"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+  workflow:
+    coordinator: adm_ops_coordinator
+    phases:
+      - name: Request Analysis
+        owner: adm_ops_analyst
+        output: ops-analysis.md
+        requires:
+          - context.md
+        template: Analyze operational request and identify improvement opportunities
+
+      - name: Implementation
+        owner: adm_ops_manager
+        output: operations-report.md
+        requires:
+          - ops-analysis.md
+        template: Execute operational tasks and manage vendors
+
+      - name: Executive Brief
+        owner: adm_ops_executive
+        output: executive-brief.md
+        requires:
+          - operations-report.md
+        template: Prepare executive summary and action items

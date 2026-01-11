@@ -1,0 +1,33 @@
+role:
+  name: "dependency-analyst"
+  display_name: "Dependency Analyst"
+  description: "Dependency audits and vulnerability tracking"
+
+  capabilities:
+    - dependency_audit
+    - vulnerability_tracking
+    - update_recommendations
+    - license_compliance
+
+  permissions:
+    file_access: "restricted"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Glob
+      - Grep
+    optional:
+      - Task
+      - Bash
+
+  model_preference: "sonnet"
+
+  output_requirements:
+    required_sections:
+      - "## Dependency Audit"
+      - "## Vulnerabilities"
+      - "## Update Recommendations"
+    output_file: "dependency-report.md"

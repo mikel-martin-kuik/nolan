@@ -1,25 +1,61 @@
-version: "2.0"
-departments:
-  - name: "Delivery Efficiency"
-    pillar: "P1"
-    directory: "p1_delivery"
-    description: "Deliver projects faster with fewer hours"
-    teams: ["platform_engineering"]
+version: "3.0"
+description: "Software Development Company Organization Structure"
 
-  - name: "Competitive Intelligence"
-    pillar: "P2"
-    directory: "p2_competitive"
-    description: "Estimate accurately, bid confidently"
-    teams: ["estimation_bidding"]
+departments:
+  - name: "Admin"
+    code: "ADM"
+    directory: "adm_admin"
+    description: "Financial operations, legal compliance, and executive support"
+    teams:
+      - "finance"
+      - "legal"
+      - "operations"
+
+  - name: "Human Resources"
+    code: "HR"
+    directory: "hr_human_resources"
+    description: "Talent acquisition, development, and employee experience"
+    teams:
+      - "talent_acquisition"
+      - "learning_development"
+      - "people_operations"
+
+  - name: "Development"
+    code: "DEV"
+    directory: "dev_development"
+    description: "Software development through cross-functional product teams"
+    teams:
+      - "_product_template"
+      - "nolan"
+    notes: "Template-based. Each product gets its own cross-functional team."
+
+  - name: "Infrastructure"
+    code: "INF"
+    directory: "inf_infrastructure"
+    description: "Platform engineering, DevOps, security, and IT operations"
+    teams:
+      - "devops"
+      - "platform"
+      - "platform_security"
+      - "it_support"
+
+  - name: "Business"
+    code: "BIZ"
+    directory: "biz_business"
+    description: "Revenue generation, client relationships, and market presence"
+    teams:
+      - "sales"
+      - "marketing"
+      - "client_success"
+      - "partnerships"
 
   - name: "Quality Assurance"
-    pillar: "P3"
-    directory: "p3_quality"
-    description: "Prove work meets standards, maintain audit trails"
-    teams: ["quality_automation", "decision_logging", "governance"]
-
-  - name: "Autonomous Scaling"
-    pillar: "P4"
-    directory: "p4_autonomy"
-    description: "Reduce human ratio per project, scale without hiring"
-    teams: ["exception_escalation", "resource_optimization"]
+    code: "QA"
+    directory: "qa_quality"
+    description: "Comprehensive quality covering security, testing, bugs, dependencies, and standards"
+    teams:
+      - "testing"
+      - "automation"
+      - "application_security"
+      - "dependencies_bugs"
+      - "standards"

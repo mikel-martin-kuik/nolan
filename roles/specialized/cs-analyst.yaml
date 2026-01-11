@@ -1,0 +1,32 @@
+role:
+  name: "cs-analyst"
+  display_name: "CS Analyst"
+  description: "NPS, churn analysis, and success metrics"
+
+  capabilities:
+    - customer_analytics
+    - churn_analysis
+    - nps_tracking
+    - success_metrics
+
+  permissions:
+    file_access: "restricted"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Glob
+      - Grep
+    optional:
+      - Task
+
+  model_preference: "sonnet"
+
+  output_requirements:
+    required_sections:
+      - "## NPS"
+      - "## Churn Analysis"
+      - "## Success Metrics"
+    output_file: "cs-analytics.md"

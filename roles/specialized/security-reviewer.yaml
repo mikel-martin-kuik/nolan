@@ -1,0 +1,32 @@
+role:
+  name: "security-reviewer"
+  display_name: "Security Reviewer"
+  description: "Secure code review and threat modeling"
+
+  capabilities:
+    - secure_code_review
+    - threat_modeling
+    - security_recommendations
+    - vulnerability_assessment
+
+  permissions:
+    file_access: "restricted"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Glob
+      - Grep
+    optional:
+      - Task
+
+  model_preference: "sonnet"
+
+  output_requirements:
+    required_sections:
+      - "## Code Review"
+      - "## Threat Model"
+      - "## Security Recommendations"
+    output_file: "security-review.md"

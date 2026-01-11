@@ -19,6 +19,12 @@ allowed-tools: Read, Edit, Bash(cat:*), Bash(ls:*), Bash(python3:*)
 ## Existing Markers Check
 !`docs_path="$PROJECTS_DIR/$1"; coord_file=$(python3 -c "import yaml; from pathlib import Path; import os; d=yaml.safe_load((Path('$docs_path')/'.team').read_text()); t=d['team'] if isinstance(d,dict) and 'team' in d else str(d).strip(); c=yaml.safe_load((Path(os.environ['NOLAN_ROOT'])/'teams'/f'{t}.yaml').read_text()); n=c['team']['workflow']['coordinator']; a=next((x for x in c['team']['agents'] if x['name']==n),None); print(a['output_file'])" 2>/dev/null); coord_path="$docs_path/$coord_file"; if [ -f "$coord_path" ]; then if grep -q '<!-- PROJECT:STATUS:' "$coord_path"; then echo "Structured marker found:"; grep '<!-- PROJECT:STATUS:' "$coord_path"; else echo "No structured marker found (will be added)"; fi; fi`
 
+## Task History (Audit Trail)
+!`"${NOLAN_ROOT}/app/scripts/task.sh" history "$1" 2>/dev/null || echo "No task history found"`
+
+## Pending Handoffs Check
+!`pending=$(find "$PROJECTS_DIR/.handoffs/pending" -name "*.handoff" -exec grep -l "project: $1" {} \; 2>/dev/null | wc -l); if [ "$pending" -gt 0 ]; then echo "⚠️  WARNING: $pending pending handoff(s) for this project"; echo "Run /handoff to review before closing."; else echo "✓ No pending handoffs"; fi`
+
 ## Close Project Instructions
 
 To mark **$1** as complete:

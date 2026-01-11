@@ -1,0 +1,35 @@
+role:
+  name: "tech-lead"
+  display_name: "Tech Lead"
+  description: "Technical leadership, architecture decisions, and team guidance"
+
+  capabilities:
+    - technical_leadership
+    - architecture_decisions
+    - code_review
+    - team_mentoring
+
+  permissions:
+    file_access: "permissive"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Write
+      - Edit
+      - Bash
+      - Glob
+      - Grep
+    optional:
+      - Task
+
+  model_preference: "opus"
+
+  output_requirements:
+    required_sections:
+      - "## Technical Overview"
+      - "## Architecture Decisions"
+      - "## Implementation Strategy"
+    output_file: "technical-design.md"

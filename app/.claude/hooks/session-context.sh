@@ -131,10 +131,29 @@ fi
 # Uses symlink to current assignment (individual files preserved for audit)
 # Structure: .state/{team}/instructions/{project}/{agent}/{MSG_ID}.yaml
 #            .state/{team}/instructions/_current/{agent}.yaml -> symlink
+# Note: Symlink may be in a different team's directory (cross-team assignments)
 if [[ -n "${AGENT_NAME:-}" ]]; then
-    INSTRUCTIONS_BASE="$PROJECTS_BASE/.state/$CURRENT_TEAM/instructions"
-    INSTRUCTION_FILE="$INSTRUCTIONS_BASE/_current/${AGENT_NAME}.yaml"
-    if [[ -f "$INSTRUCTION_FILE" ]]; then
+    INSTRUCTION_FILE=""
+    INSTRUCTIONS_BASE=""
+
+    # First try current team
+    if [[ -L "$PROJECTS_BASE/.state/$CURRENT_TEAM/instructions/_current/${AGENT_NAME}.yaml" ]]; then
+        INSTRUCTIONS_BASE="$PROJECTS_BASE/.state/$CURRENT_TEAM/instructions"
+        INSTRUCTION_FILE="$INSTRUCTIONS_BASE/_current/${AGENT_NAME}.yaml"
+    else
+        # Search other teams for this agent's current task
+        for team_dir in "$PROJECTS_BASE/.state"/*/; do
+            [[ -d "$team_dir" ]] || continue
+            local_team=$(basename "$team_dir")
+            if [[ -L "${team_dir}instructions/_current/${AGENT_NAME}.yaml" ]]; then
+                INSTRUCTIONS_BASE="${team_dir}instructions"
+                INSTRUCTION_FILE="$INSTRUCTIONS_BASE/_current/${AGENT_NAME}.yaml"
+                break
+            fi
+        done
+    fi
+
+    if [[ -n "$INSTRUCTION_FILE" ]] && [[ -f "$INSTRUCTION_FILE" ]]; then
         echo "### Pending Task Assignment"
         echo ""
         # Parse and display the instruction file

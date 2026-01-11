@@ -1,0 +1,32 @@
+role:
+  name: "people-analyst"
+  display_name: "People Analyst"
+  description: "Employee metrics, engagement, and retention analysis"
+
+  capabilities:
+    - people_analytics
+    - engagement_analysis
+    - retention_metrics
+    - workforce_planning
+
+  permissions:
+    file_access: "restricted"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Glob
+      - Grep
+    optional:
+      - Task
+
+  model_preference: "sonnet"
+
+  output_requirements:
+    required_sections:
+      - "## Employee Metrics"
+      - "## Engagement Analysis"
+      - "## Retention Insights"
+    output_file: "people-analytics.md"

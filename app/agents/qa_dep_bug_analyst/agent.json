@@ -1,0 +1,7 @@
+{
+  "role": "Bug Analyst",
+  "model": "sonnet",
+  "team": "dependencies_bugs",
+  "role_template": "bug-analyst",
+  "department": "quality"
+}

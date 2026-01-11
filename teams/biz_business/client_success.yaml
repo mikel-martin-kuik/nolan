@@ -1,0 +1,74 @@
+team:
+  name: client_success
+  department: Business
+  description: Client onboarding, engagement, retention, and expansion
+  version: 1.0.0
+
+  agents:
+    - name: biz_cs_coordinator
+      role: coordinator
+      output_file: NOTES.md
+      required_sections:
+        - "## Current Assignment"
+        - "## Phase Status"
+        - "## Handoff Log"
+      file_permissions: permissive
+      workflow_participant: false
+      awaits_qa: false
+
+    - name: biz_cs_manager
+      role: cs-manager
+      output_file: client-health.md
+      required_sections:
+        - "## Account Health"
+        - "## Expansion Opportunities"
+        - "## Retention Risk"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: biz_cs_specialist
+      role: cs-specialist
+      output_file: engagement-report.md
+      required_sections:
+        - "## Onboarding Status"
+        - "## Training"
+        - "## Support Interactions"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: biz_cs_analyst
+      role: cs-analyst
+      output_file: cs-analytics.md
+      required_sections:
+        - "## NPS"
+        - "## Churn Analysis"
+        - "## Success Metrics"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+  workflow:
+    coordinator: biz_cs_coordinator
+    phases:
+      - name: Onboarding
+        owner: biz_cs_specialist
+        output: engagement-report.md
+        requires:
+          - context.md
+        template: Onboard client and provide training
+
+      - name: Account Management
+        owner: biz_cs_manager
+        output: client-health.md
+        requires:
+          - engagement-report.md
+        template: Monitor account health and identify opportunities
+
+      - name: Analytics
+        owner: biz_cs_analyst
+        output: cs-analytics.md
+        requires:
+          - client-health.md
+        template: Analyze success metrics and churn indicators

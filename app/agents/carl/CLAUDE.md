@@ -46,6 +46,12 @@ Includes capabilities for:
 
 When your work is done:
 1. Update `$DOCS_PATH/$OUTPUT_FILE` with all required sections
-2. Stop - the system automatically handles handoff to the coordinator
-3. Do NOT run `/handoff` - that command is coordinator-only
-4. Do NOT try to update NOTES.md - you only have write access to your output file and application code
+2. Add `<!-- STATUS:COMPLETE:YYYY-MM-DD -->` marker at the end of your output
+3. Stop - the system automatically creates a handoff for the coordinator
+4. Do NOT run `/handoff` - that command is coordinator-only
+5. Do NOT try to update NOTES.md - you only have write access to your output file and application code
+
+## Task Instructions
+
+When you receive a task assignment, your specific instructions are shown at session start.
+The instruction file is at: `$PROJECTS_DIR/.state/$TEAM_NAME/instructions/_current/${AGENT_NAME}.yaml`

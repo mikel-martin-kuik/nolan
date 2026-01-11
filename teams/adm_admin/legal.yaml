@@ -1,0 +1,74 @@
+team:
+  name: legal
+  department: Admin
+  description: Contract review, legal advice, and regulatory compliance
+  version: 1.0.0
+
+  agents:
+    - name: adm_leg_coordinator
+      role: coordinator
+      output_file: NOTES.md
+      required_sections:
+        - "## Current Assignment"
+        - "## Phase Status"
+        - "## Handoff Log"
+      file_permissions: permissive
+      workflow_participant: false
+      awaits_qa: false
+
+    - name: adm_leg_counsel
+      role: legal-counsel
+      output_file: legal-review.md
+      required_sections:
+        - "## Legal Analysis"
+        - "## Risk Assessment"
+        - "## Recommendations"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: adm_leg_compliance
+      role: compliance-officer
+      output_file: compliance-report.md
+      required_sections:
+        - "## Compliance Status"
+        - "## Regulatory Requirements"
+        - "## Audit Preparation"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: adm_leg_contracts
+      role: contracts-manager
+      output_file: contract-status.md
+      required_sections:
+        - "## Contract Summary"
+        - "## Key Terms"
+        - "## Negotiation Points"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+  workflow:
+    coordinator: adm_leg_coordinator
+    phases:
+      - name: Request
+        owner: adm_leg_contracts
+        output: contract-status.md
+        requires:
+          - context.md
+        template: Review request and prepare contract summary
+
+      - name: Legal Review
+        owner: adm_leg_counsel
+        output: legal-review.md
+        requires:
+          - contract-status.md
+        template: Provide legal analysis and risk assessment
+
+      - name: Compliance Check
+        owner: adm_leg_compliance
+        output: compliance-report.md
+        requires:
+          - legal-review.md
+        template: Verify regulatory compliance and prepare audit documentation

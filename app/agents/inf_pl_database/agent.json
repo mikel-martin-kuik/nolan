@@ -1,0 +1,7 @@
+{
+  "role": "Database Admin",
+  "model": "sonnet",
+  "team": "platform",
+  "role_template": "database-admin",
+  "department": "infrastructure"
+}

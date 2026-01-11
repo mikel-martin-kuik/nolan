@@ -1,0 +1,92 @@
+team:
+  name: marketing
+  department: Business
+  description: Marketing strategy, content, digital campaigns, and events
+  version: 1.0.0
+
+  agents:
+    - name: biz_mkt_coordinator
+      role: coordinator
+      output_file: NOTES.md
+      required_sections:
+        - "## Current Assignment"
+        - "## Phase Status"
+        - "## Handoff Log"
+      file_permissions: permissive
+      workflow_participant: false
+      awaits_qa: false
+
+    - name: biz_mkt_director
+      role: marketing-director
+      output_file: marketing-strategy.md
+      required_sections:
+        - "## Marketing Strategy"
+        - "## Brand Guidelines"
+        - "## Campaign Overview"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: biz_mkt_content
+      role: content-marketer
+      output_file: content-plan.md
+      required_sections:
+        - "## Content Strategy"
+        - "## Editorial Calendar"
+        - "## SEO"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: biz_mkt_digital
+      role: digital-marketer
+      output_file: digital-report.md
+      required_sections:
+        - "## Campaign Performance"
+        - "## Paid Ads"
+        - "## Analytics"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: biz_mkt_events
+      role: events-manager
+      output_file: events-plan.md
+      required_sections:
+        - "## Event Schedule"
+        - "## Webinars"
+        - "## Conferences"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+  workflow:
+    coordinator: biz_mkt_coordinator
+    phases:
+      - name: Strategy
+        owner: biz_mkt_director
+        output: marketing-strategy.md
+        requires:
+          - context.md
+        template: Define marketing strategy and brand guidelines
+
+      - name: Content
+        owner: biz_mkt_content
+        output: content-plan.md
+        requires:
+          - marketing-strategy.md
+        template: Create content plan and editorial calendar
+
+      - name: Digital Campaigns
+        owner: biz_mkt_digital
+        output: digital-report.md
+        requires:
+          - content-plan.md
+        template: Execute digital campaigns and track performance
+
+      - name: Events
+        owner: biz_mkt_events
+        output: events-plan.md
+        requires:
+          - marketing-strategy.md
+        template: Plan and execute marketing events

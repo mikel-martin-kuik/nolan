@@ -1,0 +1,33 @@
+role:
+  name: "qa-lead"
+  display_name: "QA Lead"
+  description: "Test strategy, planning, and resource allocation"
+
+  capabilities:
+    - test_strategy
+    - test_planning
+    - resource_allocation
+    - quality_oversight
+
+  permissions:
+    file_access: "restricted"
+    can_spawn_agents: true
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Write
+      - Glob
+      - Grep
+    optional:
+      - Task
+
+  model_preference: "opus"
+
+  output_requirements:
+    required_sections:
+      - "## Test Strategy"
+      - "## Test Plan"
+      - "## Resource Allocation"
+    output_file: "test-strategy.md"

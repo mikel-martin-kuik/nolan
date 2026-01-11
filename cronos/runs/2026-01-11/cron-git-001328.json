@@ -1,0 +1,15 @@
+{
+  "run_id": "fa8a8b28",
+  "agent_name": "cron-git",
+  "started_at": "2026-01-11T00:13:28.928186045+00:00",
+  "completed_at": null,
+  "status": "running",
+  "duration_secs": null,
+  "exit_code": null,
+  "output_file": "/home/mmartin/Proyectos/nolan/cronos/runs/2026-01-11/cron-git-001328.log",
+  "error": null,
+  "attempt": 1,
+  "trigger": "manual",
+  "session_name": "cron-cron-git-fa8a8b28",
+  "run_dir": "/home/mmartin/Proyectos/nolan/cronos/runs/2026-01-11/cron-git-fa8a8b28"
+}

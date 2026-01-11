@@ -1,0 +1,32 @@
+role:
+  name: "sales-operations"
+  display_name: "Sales Operations"
+  description: "CRM management, reporting, and process optimization"
+
+  capabilities:
+    - crm_management
+    - sales_reporting
+    - process_optimization
+    - data_analysis
+
+  permissions:
+    file_access: "restricted"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Glob
+      - Grep
+    optional:
+      - Task
+
+  model_preference: "sonnet"
+
+  output_requirements:
+    required_sections:
+      - "## CRM Status"
+      - "## Metrics"
+      - "## Process Updates"
+    output_file: "sales-report.md"

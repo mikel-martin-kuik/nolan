@@ -119,11 +119,27 @@ pub async fn set_team(
     }
 }
 
-/// Read roadmap.md
-pub async fn read_roadmap() -> Result<Json<String>, impl IntoResponse> {
-    match projects::read_roadmap().await {
+/// Query params for roadmap endpoint
+#[derive(Deserialize)]
+pub struct RoadmapQuery {
+    file: Option<String>,
+}
+
+/// Read a roadmap file (roadmap.md, business_roadmap.md, or product_roadmap.md)
+pub async fn read_roadmap(
+    Query(query): Query<RoadmapQuery>,
+) -> Result<Json<String>, impl IntoResponse> {
+    match projects::read_roadmap(query.file).await {
         Ok(content) => Ok(Json(content)),
         Err(e) => Err(error_response(StatusCode::NOT_FOUND, e)),
+    }
+}
+
+/// List available roadmap files
+pub async fn list_roadmap_files() -> Result<Json<Vec<String>>, impl IntoResponse> {
+    match projects::list_roadmap_files().await {
+        Ok(files) => Ok(Json(files)),
+        Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
     }
 }
 

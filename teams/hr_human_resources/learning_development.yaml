@@ -1,0 +1,74 @@
+team:
+  name: learning_development
+  department: Human Resources
+  description: Training program design, delivery, and skill development
+  version: 1.0.0
+
+  agents:
+    - name: hr_ld_coordinator
+      role: coordinator
+      output_file: NOTES.md
+      required_sections:
+        - "## Current Assignment"
+        - "## Phase Status"
+        - "## Handoff Log"
+      file_permissions: permissive
+      workflow_participant: false
+      awaits_qa: false
+
+    - name: hr_ld_designer
+      role: learning-designer
+      output_file: training-plan.md
+      required_sections:
+        - "## Learning Objectives"
+        - "## Curriculum Design"
+        - "## Materials"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: hr_ld_trainer
+      role: trainer
+      output_file: training-report.md
+      required_sections:
+        - "## Training Delivery"
+        - "## Participant Progress"
+        - "## Feedback"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: hr_ld_analyst
+      role: ld-analyst
+      output_file: skill-gap-analysis.md
+      required_sections:
+        - "## Skills Assessment"
+        - "## Gap Analysis"
+        - "## Career Pathing"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+  workflow:
+    coordinator: hr_ld_coordinator
+    phases:
+      - name: Needs Analysis
+        owner: hr_ld_analyst
+        output: skill-gap-analysis.md
+        requires:
+          - context.md
+        template: Analyze skill gaps and identify training needs
+
+      - name: Program Design
+        owner: hr_ld_designer
+        output: training-plan.md
+        requires:
+          - skill-gap-analysis.md
+        template: Design training program and create curriculum
+
+      - name: Delivery
+        owner: hr_ld_trainer
+        output: training-report.md
+        requires:
+          - training-plan.md
+        template: Deliver training and track participant progress

@@ -1,0 +1,33 @@
+role:
+  name: "bd-analyst"
+  display_name: "BD Analyst"
+  description: "Market research and competitive intelligence"
+
+  capabilities:
+    - market_research
+    - competitive_intelligence
+    - opportunity_analysis
+    - trend_analysis
+
+  permissions:
+    file_access: "restricted"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Glob
+      - Grep
+    optional:
+      - Task
+      - WebSearch
+
+  model_preference: "sonnet"
+
+  output_requirements:
+    required_sections:
+      - "## Market Research"
+      - "## Competitive Intelligence"
+      - "## Opportunity Analysis"
+    output_file: "market-analysis.md"

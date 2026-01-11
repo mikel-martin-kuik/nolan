@@ -1,0 +1,74 @@
+team:
+  name: talent_acquisition
+  department: Human Resources
+  description: Sourcing, screening, interviewing, and onboarding new talent
+  version: 1.0.0
+
+  agents:
+    - name: hr_tal_coordinator
+      role: coordinator
+      output_file: NOTES.md
+      required_sections:
+        - "## Current Assignment"
+        - "## Phase Status"
+        - "## Handoff Log"
+      file_permissions: permissive
+      workflow_participant: false
+      awaits_qa: false
+
+    - name: hr_tal_recruiter
+      role: recruiter
+      output_file: recruitment-report.md
+      required_sections:
+        - "## Candidate Pipeline"
+        - "## Sourcing Strategy"
+        - "## Screening Results"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: hr_tal_interviewer
+      role: technical-interviewer
+      output_file: interview-assessment.md
+      required_sections:
+        - "## Technical Assessment"
+        - "## Culture Fit"
+        - "## Recommendation"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: hr_tal_onboarding
+      role: onboarding-specialist
+      output_file: onboarding-plan.md
+      required_sections:
+        - "## Onboarding Schedule"
+        - "## Training Plan"
+        - "## Equipment Setup"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+  workflow:
+    coordinator: hr_tal_coordinator
+    phases:
+      - name: Sourcing
+        owner: hr_tal_recruiter
+        output: recruitment-report.md
+        requires:
+          - context.md
+        template: Source and screen candidates for the requisition
+
+      - name: Interview
+        owner: hr_tal_interviewer
+        output: interview-assessment.md
+        requires:
+          - recruitment-report.md
+        template: Conduct technical assessment and evaluate culture fit
+
+      - name: Onboarding
+        owner: hr_tal_onboarding
+        output: onboarding-plan.md
+        requires:
+          - interview-assessment.md
+        template: Prepare onboarding plan for accepted candidates

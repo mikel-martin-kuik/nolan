@@ -1,0 +1,92 @@
+team:
+  name: sales
+  department: Business
+  description: Sales strategy, pipeline management, proposals, and deal closure
+  version: 1.0.0
+
+  agents:
+    - name: biz_sal_coordinator
+      role: coordinator
+      output_file: NOTES.md
+      required_sections:
+        - "## Current Assignment"
+        - "## Phase Status"
+        - "## Handoff Log"
+      file_permissions: permissive
+      workflow_participant: false
+      awaits_qa: false
+
+    - name: biz_sal_director
+      role: sales-director
+      output_file: sales-strategy.md
+      required_sections:
+        - "## Sales Strategy"
+        - "## Pipeline Overview"
+        - "## Forecast"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: biz_sal_executive
+      role: sales-executive
+      output_file: deal-summary.md
+      required_sections:
+        - "## Opportunity"
+        - "## Qualification"
+        - "## Next Steps"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: biz_sal_engineer
+      role: sales-engineer
+      output_file: technical-proposal.md
+      required_sections:
+        - "## Technical Requirements"
+        - "## Solution Overview"
+        - "## SOW"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: biz_sal_operations
+      role: sales-operations
+      output_file: sales-report.md
+      required_sections:
+        - "## CRM Status"
+        - "## Metrics"
+        - "## Process Updates"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+  workflow:
+    coordinator: biz_sal_coordinator
+    phases:
+      - name: Lead Qualification
+        owner: biz_sal_executive
+        output: deal-summary.md
+        requires:
+          - context.md
+        template: Qualify lead and document opportunity
+
+      - name: Technical Proposal
+        owner: biz_sal_engineer
+        output: technical-proposal.md
+        requires:
+          - deal-summary.md
+        template: Create technical proposal and SOW
+
+      - name: Strategy
+        owner: biz_sal_director
+        output: sales-strategy.md
+        requires:
+          - technical-proposal.md
+        template: Review and finalize sales approach
+
+      - name: Reporting
+        owner: biz_sal_operations
+        output: sales-report.md
+        requires:
+          - sales-strategy.md
+        template: Update CRM and generate reports

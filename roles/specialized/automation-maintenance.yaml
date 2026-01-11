@@ -1,0 +1,35 @@
+role:
+  name: "automation-maintenance"
+  display_name: "Automation Maintenance"
+  description: "Test maintenance and flaky test fixes"
+
+  capabilities:
+    - test_maintenance
+    - flaky_test_resolution
+    - test_refactoring
+    - stability_improvement
+
+  permissions:
+    file_access: "permissive"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Write
+      - Edit
+      - Bash
+      - Glob
+      - Grep
+    optional:
+      - Task
+
+  model_preference: "sonnet"
+
+  output_requirements:
+    required_sections:
+      - "## Test Maintenance"
+      - "## Flaky Tests"
+      - "## Fixes"
+    output_file: "maintenance-report.md"

@@ -1,0 +1,7 @@
+{
+  "role": "Trainer",
+  "model": "sonnet",
+  "team": "learning_development",
+  "role_template": "trainer",
+  "department": "human_resources"
+}

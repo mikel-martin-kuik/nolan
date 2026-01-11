@@ -1,0 +1,7 @@
+{
+  "role": "Coordinator",
+  "model": "opus",
+  "team": "platform_security",
+  "role_template": "coordinator",
+  "department": "infrastructure"
+}

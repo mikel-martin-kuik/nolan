@@ -1,0 +1,7 @@
+{
+  "role": "IT Manager",
+  "model": "sonnet",
+  "team": "it_support",
+  "role_template": "it-manager",
+  "department": "infrastructure"
+}

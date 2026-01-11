@@ -1,0 +1,33 @@
+role:
+  name: "security-analyst"
+  display_name: "Security Analyst"
+  description: "Vulnerability scanning and code analysis (SAST/DAST)"
+
+  capabilities:
+    - vulnerability_scanning
+    - sast_analysis
+    - dast_analysis
+    - security_reporting
+
+  permissions:
+    file_access: "restricted"
+    can_spawn_agents: false
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Glob
+      - Grep
+    optional:
+      - Task
+      - Bash
+
+  model_preference: "sonnet"
+
+  output_requirements:
+    required_sections:
+      - "## SAST Results"
+      - "## DAST Results"
+      - "## Vulnerabilities"
+    output_file: "security-findings.md"

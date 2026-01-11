@@ -1,0 +1,33 @@
+role:
+  name: "qa-manager"
+  display_name: "QA Manager"
+  description: "Process governance, metrics, and quality gates"
+
+  capabilities:
+    - quality_governance
+    - metrics_management
+    - quality_gates
+    - process_oversight
+
+  permissions:
+    file_access: "restricted"
+    can_spawn_agents: true
+    can_modify_workflow: false
+
+  tools:
+    required:
+      - Read
+      - Write
+      - Glob
+      - Grep
+    optional:
+      - Task
+
+  model_preference: "opus"
+
+  output_requirements:
+    required_sections:
+      - "## Quality Overview"
+      - "## Governance"
+      - "## Quality Gates"
+    output_file: "quality-report.md"

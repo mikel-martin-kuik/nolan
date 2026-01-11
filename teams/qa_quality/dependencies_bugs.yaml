@@ -1,0 +1,74 @@
+team:
+  name: dependencies_bugs
+  department: Quality Assurance
+  description: Dependency management, vulnerability tracking, bug triage, and root cause analysis
+  version: 1.0.0
+
+  agents:
+    - name: qa_dep_coordinator
+      role: coordinator
+      output_file: NOTES.md
+      required_sections:
+        - "## Current Assignment"
+        - "## Phase Status"
+        - "## Handoff Log"
+      file_permissions: permissive
+      workflow_participant: false
+      awaits_qa: false
+
+    - name: qa_dep_analyst
+      role: dependency-analyst
+      output_file: dependency-report.md
+      required_sections:
+        - "## Dependency Audit"
+        - "## Vulnerabilities"
+        - "## Update Recommendations"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: qa_dep_bug_triage
+      role: bug-triage-specialist
+      output_file: triage-report.md
+      required_sections:
+        - "## New Bugs"
+        - "## Prioritization"
+        - "## Assignment"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: qa_dep_bug_analyst
+      role: bug-analyst
+      output_file: bug-analysis.md
+      required_sections:
+        - "## Root Cause Analysis"
+        - "## Reproduction Steps"
+        - "## Impact Assessment"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+  workflow:
+    coordinator: qa_dep_coordinator
+    phases:
+      - name: Monitoring
+        owner: qa_dep_analyst
+        output: dependency-report.md
+        requires:
+          - context.md
+        template: Audit dependencies and track vulnerabilities
+
+      - name: Triage
+        owner: qa_dep_bug_triage
+        output: triage-report.md
+        requires:
+          - dependency-report.md
+        template: Triage bugs and prioritize based on severity
+
+      - name: Analysis
+        owner: qa_dep_bug_analyst
+        output: bug-analysis.md
+        requires:
+          - triage-report.md
+        template: Analyze root cause and document reproduction steps

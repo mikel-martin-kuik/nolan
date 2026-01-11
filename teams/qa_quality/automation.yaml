@@ -1,0 +1,74 @@
+team:
+  name: automation
+  department: Quality Assurance
+  description: Test automation framework, CI integration, and maintenance
+  version: 1.0.0
+
+  agents:
+    - name: qa_aut_coordinator
+      role: coordinator
+      output_file: NOTES.md
+      required_sections:
+        - "## Current Assignment"
+        - "## Phase Status"
+        - "## Handoff Log"
+      file_permissions: permissive
+      workflow_participant: false
+      awaits_qa: false
+
+    - name: qa_aut_architect
+      role: automation-architect
+      output_file: automation-design.md
+      required_sections:
+        - "## Framework Design"
+        - "## Tool Selection"
+        - "## Architecture"
+      file_permissions: restricted
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: qa_aut_engineer
+      role: automation-engineer
+      output_file: automation-report.md
+      required_sections:
+        - "## Test Automation Status"
+        - "## CI Integration"
+        - "## Coverage"
+      file_permissions: permissive
+      workflow_participant: true
+      awaits_qa: false
+
+    - name: qa_aut_maintenance
+      role: automation-maintenance
+      output_file: maintenance-report.md
+      required_sections:
+        - "## Test Maintenance"
+        - "## Flaky Tests"
+        - "## Fixes"
+      file_permissions: permissive
+      workflow_participant: true
+      awaits_qa: false
+
+  workflow:
+    coordinator: qa_aut_coordinator
+    phases:
+      - name: Design
+        owner: qa_aut_architect
+        output: automation-design.md
+        requires:
+          - context.md
+        template: Design automation framework and select tools
+
+      - name: Implementation
+        owner: qa_aut_engineer
+        output: automation-report.md
+        requires:
+          - automation-design.md
+        template: Implement test automation and CI integration
+
+      - name: Maintenance
+        owner: qa_aut_maintenance
+        output: maintenance-report.md
+        requires:
+          - automation-report.md
+        template: Maintain tests and fix flaky tests

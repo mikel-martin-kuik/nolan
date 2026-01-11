@@ -528,7 +528,7 @@ impl DepartmentsConfig {
 
 impl TeamConfig {
     /// Resolve team name to filesystem path
-    /// Checks root first (backward compat), then pillar_1/, pillar_2/, pillar_3/, foundation/, support/
+    /// Checks root first (backward compat), then scans all subdirectories
     pub fn resolve_team_path(team_name: &str) -> Result<PathBuf, String> {
         let nolan_root = std::env::var("NOLAN_ROOT")
             .map_err(|_| "NOLAN_ROOT not set".to_string())?;
@@ -540,11 +540,16 @@ impl TeamConfig {
             return Ok(root_path);
         }
 
-        // Check subdirectories in order (underscores in directory names)
-        for subdir in &["pillar_1", "pillar_2", "pillar_3", "foundation", "support"] {
-            let subdir_path = teams_dir.join(subdir).join(format!("{}.yaml", team_name));
-            if subdir_path.exists() {
-                return Ok(subdir_path);
+        // Dynamically scan all subdirectories (supports any department structure)
+        if let Ok(entries) = fs::read_dir(&teams_dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let path = entry.path();
+                if path.is_dir() {
+                    let subdir_path = path.join(format!("{}.yaml", team_name));
+                    if subdir_path.exists() {
+                        return Ok(subdir_path);
+                    }
+                }
             }
         }
 

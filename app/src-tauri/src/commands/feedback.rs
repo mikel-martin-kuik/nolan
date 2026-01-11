@@ -606,11 +606,99 @@ fn get_inbox_reviews_file() -> Result<PathBuf, String> {
     Ok(ensure_feedback_dir()?.join("inbox-reviews.jsonl"))
 }
 
+fn get_decisions_file() -> Result<PathBuf, String> {
+    Ok(ensure_feedback_dir()?.join("decisions.jsonl"))
+}
+
+// ============================================================================
+// Design Decision Tracking
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "../../src/types/generated/feedback/")]
+#[serde(rename_all = "snake_case")]
+pub enum DecisionStatus {
+    Proposed,
+    InReview,
+    Approved,
+    Deprecated,
+    Superseded,
+}
+
+impl Default for DecisionStatus {
+    fn default() -> Self {
+        DecisionStatus::Proposed
+    }
+}
+
+impl std::fmt::Display for DecisionStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DecisionStatus::Proposed => write!(f, "proposed"),
+            DecisionStatus::InReview => write!(f, "in_review"),
+            DecisionStatus::Approved => write!(f, "approved"),
+            DecisionStatus::Deprecated => write!(f, "deprecated"),
+            DecisionStatus::Superseded => write!(f, "superseded"),
+        }
+    }
+}
+
+impl std::str::FromStr for DecisionStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "proposed" => Ok(DecisionStatus::Proposed),
+            "in_review" => Ok(DecisionStatus::InReview),
+            "approved" => Ok(DecisionStatus::Approved),
+            "deprecated" => Ok(DecisionStatus::Deprecated),
+            "superseded" => Ok(DecisionStatus::Superseded),
+            _ => Err(format!("Invalid decision status: {}", s)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/feedback/")]
+pub struct TeamDecision {
+    pub id: String,
+    pub team_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
+    pub title: String,
+    pub problem: String,
+    pub proposed_solution: String,
+    #[serde(default)]
+    pub alternatives: Vec<String>,
+    pub rationale: String,
+    pub impact: String,
+    pub scope: String,
+    pub status: DecisionStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approved_by: Option<String>,
+    pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub approved_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub deprecated_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub superseded_by: Option<String>,
+}
+
 #[command]
 pub fn list_idea_reviews() -> Result<Vec<IdeaReview>, String> {
     let path = get_inbox_reviews_file()?;
     let reviews: Vec<IdeaReview> = read_jsonl(&path)?;
     Ok(reviews)
+}
+
+#[command]
+pub fn delete_idea_review(item_id: String) -> Result<(), String> {
+    let path = get_inbox_reviews_file()?;
+    let reviews: Vec<IdeaReview> = read_jsonl(&path)?;
+    let filtered: Vec<_> = reviews.into_iter().filter(|r| r.item_id != item_id).collect();
+    write_jsonl(&path, &filtered)?;
+    Ok(())
 }
 
 #[command]
@@ -708,4 +796,163 @@ pub async fn accept_and_route_review(item_id: String) -> Result<AcceptAndRouteRe
         route: route_result.route,
         route_detail: route_result.detail,
     })
+}
+
+// ============================================================================
+// Team Decision Commands
+// ============================================================================
+
+#[command]
+pub fn list_decisions() -> Result<Vec<TeamDecision>, String> {
+    let path = get_decisions_file()?;
+    let mut decisions: Vec<TeamDecision> = read_jsonl(&path)?;
+
+    // Sort by created_at descending (newest first)
+    decisions.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+
+    Ok(decisions)
+}
+
+#[command]
+pub fn list_decisions_by_team(team_id: String) -> Result<Vec<TeamDecision>, String> {
+    let path = get_decisions_file()?;
+    let decisions: Vec<TeamDecision> = read_jsonl(&path)?;
+
+    let filtered: Vec<_> = decisions
+        .into_iter()
+        .filter(|d| d.team_id == team_id)
+        .collect();
+
+    Ok(filtered)
+}
+
+#[command]
+pub fn create_decision(
+    team_id: String,
+    title: String,
+    problem: String,
+    proposed_solution: String,
+    alternatives: Vec<String>,
+    rationale: String,
+    impact: String,
+    scope: String,
+    agent_id: Option<String>,
+) -> Result<TeamDecision, String> {
+    let decision = TeamDecision {
+        id: Uuid::new_v4().to_string(),
+        team_id,
+        agent_id,
+        title,
+        problem,
+        proposed_solution,
+        alternatives,
+        rationale,
+        impact,
+        scope,
+        status: DecisionStatus::Proposed,
+        approved_by: None,
+        created_at: Utc::now().to_rfc3339(),
+        approved_at: None,
+        deprecated_at: None,
+        superseded_by: None,
+    };
+
+    let path = get_decisions_file()?;
+    append_jsonl(&path, &decision)?;
+
+    Ok(decision)
+}
+
+#[command]
+pub fn update_decision_status(id: String, status: String) -> Result<TeamDecision, String> {
+    let path = get_decisions_file()?;
+    let mut decisions: Vec<TeamDecision> = read_jsonl(&path)?;
+
+    let new_status: DecisionStatus = status.parse()?;
+
+    let decision = decisions
+        .iter_mut()
+        .find(|d| d.id == id)
+        .ok_or_else(|| format!("Decision not found: {}", id))?;
+
+    decision.status = new_status;
+
+    let updated = decision.clone();
+    write_jsonl(&path, &decisions)?;
+
+    Ok(updated)
+}
+
+#[command]
+pub fn approve_decision(id: String, approved_by: String) -> Result<TeamDecision, String> {
+    let path = get_decisions_file()?;
+    let mut decisions: Vec<TeamDecision> = read_jsonl(&path)?;
+
+    let decision = decisions
+        .iter_mut()
+        .find(|d| d.id == id)
+        .ok_or_else(|| format!("Decision not found: {}", id))?;
+
+    decision.status = DecisionStatus::Approved;
+    decision.approved_by = Some(approved_by);
+    decision.approved_at = Some(Utc::now().to_rfc3339());
+
+    let updated = decision.clone();
+    write_jsonl(&path, &decisions)?;
+
+    Ok(updated)
+}
+
+#[command]
+pub fn deprecate_decision(id: String) -> Result<TeamDecision, String> {
+    let path = get_decisions_file()?;
+    let mut decisions: Vec<TeamDecision> = read_jsonl(&path)?;
+
+    let decision = decisions
+        .iter_mut()
+        .find(|d| d.id == id)
+        .ok_or_else(|| format!("Decision not found: {}", id))?;
+
+    decision.status = DecisionStatus::Deprecated;
+    decision.deprecated_at = Some(Utc::now().to_rfc3339());
+
+    let updated = decision.clone();
+    write_jsonl(&path, &decisions)?;
+
+    Ok(updated)
+}
+
+#[command]
+pub fn supersede_decision(id: String, new_decision_id: String) -> Result<TeamDecision, String> {
+    let path = get_decisions_file()?;
+    let mut decisions: Vec<TeamDecision> = read_jsonl(&path)?;
+
+    // Verify new decision exists
+    let new_exists = decisions.iter().any(|d| d.id == new_decision_id);
+    if !new_exists {
+        return Err(format!("New decision not found: {}", new_decision_id));
+    }
+
+    let decision = decisions
+        .iter_mut()
+        .find(|d| d.id == id)
+        .ok_or_else(|| format!("Decision not found: {}", id))?;
+
+    decision.status = DecisionStatus::Superseded;
+    decision.superseded_by = Some(new_decision_id);
+
+    let updated = decision.clone();
+    write_jsonl(&path, &decisions)?;
+
+    Ok(updated)
+}
+
+#[command]
+pub fn delete_decision(id: String) -> Result<(), String> {
+    let path = get_decisions_file()?;
+    let decisions: Vec<TeamDecision> = read_jsonl(&path)?;
+    let filtered: Vec<_> = decisions.into_iter().filter(|d| d.id != id).collect();
+    write_jsonl(&path, &filtered)?;
+
+    Ok(())
 }

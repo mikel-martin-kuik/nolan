@@ -5,6 +5,7 @@ import { useToastStore } from '../../store/toastStore';
 import { useTeamStore } from '../../store/teamStore';
 import { useOllamaStore } from '../../store/ollamaStore';
 import { useChatDraftStore } from '../../store/chatDraftStore';
+import { useDebouncedCallback } from '../../hooks/useDebouncedCallback';
 import { Tooltip } from '@/components/ui/tooltip';
 
 interface ChatInputProps {
@@ -26,7 +27,6 @@ export const ChatInput: React.FC<ChatInputProps> = memo(({
   const [suggestion, setSuggestion] = useState('');
   const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const suggestionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastValueRef = useRef(value);
   const { error: showError } = useToastStore();
   const { currentTeam } = useTeamStore();
@@ -49,13 +49,8 @@ export const ChatInput: React.FC<ChatInputProps> = memo(({
     checkConnection();
   }, [checkConnection]);
 
-  // Fetch autocomplete suggestion (debounced)
+  // Fetch autocomplete suggestion
   const fetchSuggestion = useCallback(async (text: string) => {
-    if (!text.trim() || text.length < 10 || ollamaStatus !== 'connected') {
-      setSuggestion('');
-      return;
-    }
-
     setLoadingSuggestion(true);
     try {
       const systemPrompt = `You are an autocomplete assistant. Given a partial message, suggest a natural completion. Return ONLY the completion text (the part that comes after what the user typed), nothing else. Keep it concise (1-2 sentences max). If the message seems complete, return empty string.`;
@@ -72,36 +67,24 @@ export const ChatInput: React.FC<ChatInputProps> = memo(({
     } finally {
       setLoadingSuggestion(false);
     }
-  }, [targetAgent, ollamaGenerate, ollamaStatus]);
+  }, [targetAgent, ollamaGenerate]);
 
-  // Debounced autocomplete trigger
+  // Track value changes and clear suggestion
   useEffect(() => {
     lastValueRef.current = value;
-
-    // Clear previous timeout
-    if (suggestionTimeoutRef.current) {
-      clearTimeout(suggestionTimeoutRef.current);
-    }
-
-    // Clear suggestion if value changed
     setSuggestion('');
+  }, [value]);
 
-    // Don't trigger if Ollama not connected or value too short
-    if (ollamaStatus !== 'connected' || !value.trim() || value.length < 10) {
-      return;
-    }
-
-    // Debounce: wait 800ms after user stops typing
-    suggestionTimeoutRef.current = setTimeout(() => {
-      fetchSuggestion(value);
-    }, 800);
-
-    return () => {
-      if (suggestionTimeoutRef.current) {
-        clearTimeout(suggestionTimeoutRef.current);
-      }
-    };
-  }, [value, ollamaStatus, fetchSuggestion]);
+  // Debounced autocomplete trigger using custom hook
+  useDebouncedCallback(
+    {
+      delay: 800,
+      value,
+      enabled: ollamaStatus === 'connected',
+      minLength: 10,
+    },
+    fetchSuggestion,
+  );
 
   // Accept suggestion
   const acceptSuggestion = useCallback(() => {

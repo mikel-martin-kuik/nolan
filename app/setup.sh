@@ -33,6 +33,11 @@ fi
 echo "✓ All required directories present"
 echo ""
 
+# Determine data root (NOLAN_DATA_ROOT or default to ~/.nolan)
+NOLAN_DATA_ROOT="${NOLAN_DATA_ROOT:-$HOME/.nolan}"
+echo "Data directory: $NOLAN_DATA_ROOT"
+echo ""
+
 # Check runtime dependencies
 echo "Checking runtime dependencies..."
 MISSING_DEPS=()
@@ -55,21 +60,40 @@ if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
     echo ""
 fi
 
-# Verify projects directory at repo root
+# Verify/create data directories
 REPO_ROOT="$(dirname "$NOLAN_APP_ROOT")"
-if [ ! -d "$REPO_ROOT/projects" ]; then
-    echo "WARNING: projects/ directory not found"
-    echo "Creating: $REPO_ROOT/projects"
-    mkdir -p "$REPO_ROOT/projects"
+if [ ! -d "$NOLAN_DATA_ROOT/projects" ]; then
+    echo "Creating projects directory: $NOLAN_DATA_ROOT/projects"
+    mkdir -p "$NOLAN_DATA_ROOT/projects"
 fi
 
-echo "✓ Projects directory: $REPO_ROOT/projects"
+if [ ! -d "$NOLAN_DATA_ROOT/teams" ]; then
+    echo "Creating teams directory: $NOLAN_DATA_ROOT/teams"
+    mkdir -p "$NOLAN_DATA_ROOT/teams"
+    # Copy default team if it exists
+    if [ -f "$REPO_ROOT/teams/default.yaml" ]; then
+        cp "$REPO_ROOT/teams/default.yaml" "$NOLAN_DATA_ROOT/teams/"
+        echo "  Copied default team configuration"
+    fi
+fi
+
+if [ ! -d "$NOLAN_DATA_ROOT/.state" ]; then
+    echo "Creating state directory: $NOLAN_DATA_ROOT/.state"
+    mkdir -p "$NOLAN_DATA_ROOT/.state"
+fi
+
+if [ ! -d "$NOLAN_DATA_ROOT/agents" ]; then
+    echo "Creating agents directory: $NOLAN_DATA_ROOT/agents"
+    mkdir -p "$NOLAN_DATA_ROOT/agents"
+fi
+
+echo "✓ Data directories configured at: $NOLAN_DATA_ROOT"
 echo ""
 
 # Create symlinks for .claude settings in agent directories
 echo "Setting up Claude settings inheritance..."
 if [ -d "$NOLAN_APP_ROOT/.claude" ]; then
-    AGENTS_DIR="$NOLAN_APP_ROOT/agents"
+    AGENTS_DIR="$NOLAN_DATA_ROOT/agents"
     if [ -d "$AGENTS_DIR" ]; then
         for agent_dir in "$AGENTS_DIR"/*; do
             if [ -d "$agent_dir" ]; then
@@ -118,8 +142,14 @@ echo "========================================="
 echo "✅ Setup Complete!"
 echo "========================================="
 echo ""
-echo "Nolan app root:     $NOLAN_APP_ROOT"
-echo "Projects directory: $REPO_ROOT/projects"
+echo "Nolan app root:  $NOLAN_APP_ROOT"
+echo "Nolan data root: $NOLAN_DATA_ROOT"
+echo ""
+echo "Data directories:"
+echo "  Projects: $NOLAN_DATA_ROOT/projects"
+echo "  Teams:    $NOLAN_DATA_ROOT/teams"
+echo "  Agents:   $NOLAN_DATA_ROOT/agents"
+echo "  State:    $NOLAN_DATA_ROOT/.state"
 echo ""
 echo "To launch Nolan:"
 echo "  cd $NOLAN_APP_ROOT"

@@ -1,11 +1,14 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { invoke } from '@/lib/api';
 import { CronAgentCard } from './CronAgentCard';
 import { CronAgentDetailPage } from './CronAgentDetailPage';
 import { CronGroupEditor } from './CronGroupEditor';
+import { TaskMonitoringDashboard } from './TaskMonitoringDashboard';
 import { useToastStore } from '../../store/toastStore';
 import { useCronOutputStore } from '../../store/cronOutputStore';
 import { useCollapsedCronGroupsStore } from '../../store/collapsedCronGroupsStore';
+import { useFetchData } from '../../hooks/useFetchData';
+import { usePollingEffect } from '../../hooks/usePollingEffect';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -30,9 +33,33 @@ import type { CronAgentInfo, CronAgentConfig, CronAgentGroup } from '@/types';
 import { CRON_PRESETS, CRON_MODELS, AGENT_TEMPLATES, createDefaultCronAgentConfig } from '@/types/cronos';
 
 export const CronosPanel: React.FC = () => {
-  const [agents, setAgents] = useState<CronAgentInfo[]>([]);
-  const [groups, setGroups] = useState<CronAgentGroup[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Data fetching with custom hooks
+  const {
+    data: agents,
+    loading,
+    refresh: fetchAgents,
+  } = useFetchData({
+    fetcher: () => invoke<CronAgentInfo[]>('list_cron_agents'),
+    defaultValue: [],
+    errorMessage: 'Failed to load cron agents',
+    init: () => invoke('init_cronos'),
+  });
+
+  const {
+    data: groups,
+    refresh: fetchGroups,
+  } = useFetchData({
+    fetcher: () => invoke<CronAgentGroup[]>('list_cron_groups'),
+    defaultValue: [],
+    errorMessage: 'Failed to load cron groups',
+  });
+
+  // Auto-refresh when there are running agents
+  usePollingEffect({
+    interval: 3000,
+    enabled: agents.some(a => a.is_running),
+    callback: fetchAgents,
+  });
 
   // Collapsed groups state (persisted)
   const { isCollapsed, toggleCollapsed } = useCollapsedCronGroupsStore();
@@ -53,52 +80,6 @@ export const CronosPanel: React.FC = () => {
   const [newAgentGroup, setNewAgentGroup] = useState<string>('');
 
   const { error: showError, success: showSuccess } = useToastStore();
-
-  // Fetch groups
-  const fetchGroups = useCallback(async () => {
-    try {
-      const list = await invoke<CronAgentGroup[]>('list_cron_groups');
-      setGroups(list);
-    } catch (err) {
-      console.error('Failed to load cron groups:', err);
-      setGroups([]);
-    }
-  }, []);
-
-  // Fetch agents list
-  const fetchAgents = useCallback(async () => {
-    setLoading(true);
-    try {
-      const list = await invoke<CronAgentInfo[]>('list_cron_agents');
-      setAgents(list);
-    } catch (err) {
-      showError(`Failed to load cron agents: ${err}`);
-      setAgents([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [showError]);
-
-  // Initialize and load data
-  useEffect(() => {
-    const init = async () => {
-      try {
-        await invoke('init_cronos');
-      } catch { /* might already be initialized */ }
-      fetchGroups();
-      fetchAgents();
-    };
-    init();
-  }, [fetchAgents, fetchGroups]);
-
-  // Auto-refresh when there are running agents
-  useEffect(() => {
-    const hasRunning = agents.some(a => a.is_running);
-    if (hasRunning) {
-      const interval = setInterval(fetchAgents, 3000);
-      return () => clearInterval(interval);
-    }
-  }, [agents, fetchAgents]);
 
   // Group agents by their group ID
   const groupedAgents = useMemo(() => {
@@ -304,14 +285,12 @@ export const CronosPanel: React.FC = () => {
             {loading ? 'Refreshing...' : 'Refresh'}
           </Button>
 
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/30 border border-border/40 ml-auto">
-            <span className="text-xs text-muted-foreground uppercase tracking-wider">Scheduled Agents</span>
-            {agents.length > 0 && (
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
-                {agents.filter(a => a.enabled).length}/{agents.length}
-              </Badge>
-            )}
-          </div>
+          <div className="flex-1" />
+        </div>
+
+        {/* Task Monitoring Dashboard */}
+        <div className="mb-4">
+          <TaskMonitoringDashboard refreshInterval={agents.some(a => a.is_running) ? 3000 : 15000} />
         </div>
 
         {/* Agent Cards - Grouped */}

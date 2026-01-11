@@ -105,13 +105,11 @@ try:
     except:
         team_name = team_content.strip()
 
-    nolan_root = Path(os.environ.get('NOLAN_ROOT', ''))
-    if not nolan_root:
-        sys.exit(0)  # Can't validate without NOLAN_ROOT
+    nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 
     # Search for team config in teams directory (supports subdirectories)
     config_path = None
-    for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+    for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
         config_path = path
         break
     if config_path is None:

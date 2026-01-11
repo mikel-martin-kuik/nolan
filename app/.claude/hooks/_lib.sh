@@ -43,18 +43,21 @@ get_note_taker_file() {
         return 1
     fi
 
+    # Use NOLAN_DATA_ROOT for teams (with fallback to NOLAN_ROOT)
+    local data_root="${NOLAN_DATA_ROOT:-$HOME/.nolan}"
+
     # Get team name using YAML-aware parser
     team_name=$(get_team_name "$project_path") || return 1
 
     # Query team config for note_taker's output file
-    HOOK_NOLAN_ROOT="$NOLAN_ROOT" HOOK_TEAM_NAME="$team_name" python3 -c '
+    HOOK_DATA_ROOT="$data_root" HOOK_TEAM_NAME="$team_name" python3 -c '
 import yaml, os
 from pathlib import Path
 
-nolan_root = os.environ["HOOK_NOLAN_ROOT"]
+data_root = os.environ["HOOK_DATA_ROOT"]
 team_name = os.environ["HOOK_TEAM_NAME"]
 
-teams_dir = Path(nolan_root) / "teams"
+teams_dir = Path(data_root) / "teams"
 config_path = None
 for path in teams_dir.rglob(f"{team_name}.yaml"):
     config_path = path
@@ -95,18 +98,21 @@ get_note_taker_name() {
         return 1
     fi
 
+    # Use NOLAN_DATA_ROOT for teams (with fallback to NOLAN_ROOT)
+    local data_root="${NOLAN_DATA_ROOT:-$HOME/.nolan}"
+
     # Get team name using YAML-aware parser
     team_name=$(get_team_name "$project_path") || return 1
 
     # Query team config for note_taker name
-    HOOK_NOLAN_ROOT="$NOLAN_ROOT" HOOK_TEAM_NAME="$team_name" python3 -c '
+    HOOK_DATA_ROOT="$data_root" HOOK_TEAM_NAME="$team_name" python3 -c '
 import yaml, os
 from pathlib import Path
 
-nolan_root = os.environ["HOOK_NOLAN_ROOT"]
+data_root = os.environ["HOOK_DATA_ROOT"]
 team_name = os.environ["HOOK_TEAM_NAME"]
 
-teams_dir = Path(nolan_root) / "teams"
+teams_dir = Path(data_root) / "teams"
 config_path = None
 for path in teams_dir.rglob(f"{team_name}.yaml"):
     config_path = path
@@ -145,19 +151,22 @@ get_next_agent() {
         return 1
     fi
 
+    # Use NOLAN_DATA_ROOT for teams (with fallback to NOLAN_ROOT)
+    local data_root="${NOLAN_DATA_ROOT:-$HOME/.nolan}"
+
     # Get team name using YAML-aware parser
     team_name=$(get_team_name "$project_path") || return 1
 
     # Query team config for next agent in workflow
-    HOOK_NOLAN_ROOT="$NOLAN_ROOT" HOOK_TEAM_NAME="$team_name" HOOK_CURRENT_AGENT="$current_agent" python3 -c '
+    HOOK_DATA_ROOT="$data_root" HOOK_TEAM_NAME="$team_name" HOOK_CURRENT_AGENT="$current_agent" python3 -c '
 import yaml, os
 from pathlib import Path
 
-nolan_root = os.environ["HOOK_NOLAN_ROOT"]
+data_root = os.environ["HOOK_DATA_ROOT"]
 team_name = os.environ["HOOK_TEAM_NAME"]
 current_agent = os.environ["HOOK_CURRENT_AGENT"]
 
-teams_dir = Path(nolan_root) / "teams"
+teams_dir = Path(data_root) / "teams"
 config_path = None
 for path in teams_dir.rglob(f"{team_name}.yaml"):
     config_path = path
@@ -197,18 +206,21 @@ is_workflow_participant() {
         return 1
     fi
 
+    # Use NOLAN_DATA_ROOT for teams (with fallback to NOLAN_ROOT)
+    local data_root="${NOLAN_DATA_ROOT:-$HOME/.nolan}"
+
     # Get team name using YAML-aware parser
     team_name=$(get_team_name "$project_path") || return 1
 
-    HOOK_NOLAN_ROOT="$NOLAN_ROOT" HOOK_TEAM_NAME="$team_name" HOOK_AGENT="$agent_name" python3 -c '
+    HOOK_DATA_ROOT="$data_root" HOOK_TEAM_NAME="$team_name" HOOK_AGENT="$agent_name" python3 -c '
 import yaml, os
 from pathlib import Path
 
-nolan_root = os.environ["HOOK_NOLAN_ROOT"]
+data_root = os.environ["HOOK_DATA_ROOT"]
 team_name = os.environ["HOOK_TEAM_NAME"]
 agent_name = os.environ["HOOK_AGENT"]
 
-teams_dir = Path(nolan_root) / "teams"
+teams_dir = Path(data_root) / "teams"
 config_path = None
 for path in teams_dir.rglob(f"{team_name}.yaml"):
     config_path = path

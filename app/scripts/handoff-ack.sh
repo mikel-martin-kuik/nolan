@@ -32,16 +32,16 @@ import yaml, sys
 from pathlib import Path
 import os
 
-nolan_root = Path(os.environ.get('NOLAN_ROOT', ''))
+nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 team_name = os.environ.get('TEAM_NAME', 'default')
 agent_name = os.environ.get('AGENT_NAME', '').lower()
 
-if not nolan_root or not agent_name:
+if not agent_name:
     sys.exit(0)  # Allow if can't determine
 
-# Search for team config
+# Search for team config in data root
 config_path = None
-for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
     config_path = path
     break
 
@@ -67,19 +67,18 @@ for agent in agents:
 # Run access check
 check_note_taker_access
 
-# Required environment variables (no hardcoded defaults)
-if [[ -z "${NOLAN_ROOT:-}" ]]; then
-    echo "ERROR: NOLAN_ROOT environment variable is not set." >&2
-    exit 1
-fi
+# Required environment variables
 if [[ -z "${PROJECTS_DIR:-}" ]]; then
     echo "ERROR: PROJECTS_DIR environment variable is not set." >&2
     exit 1
 fi
-PENDING_DIR="$NOLAN_ROOT/.state/handoffs/pending"
-PROCESSED_DIR="$NOLAN_ROOT/.state/handoffs/processed"
-LOCK_FILE="$NOLAN_ROOT/.state/handoffs/.lock-pending"
-HEARTBEAT_FILE="$NOLAN_ROOT/.state/handoffs/.heartbeat"
+# Use NOLAN_DATA_ROOT for data paths (with fallback to ~/.nolan)
+NOLAN_DATA_ROOT="${NOLAN_DATA_ROOT:-$HOME/.nolan}"
+
+PENDING_DIR="$NOLAN_DATA_ROOT/.state/handoffs/pending"
+PROCESSED_DIR="$NOLAN_DATA_ROOT/.state/handoffs/processed"
+LOCK_FILE="$NOLAN_DATA_ROOT/.state/handoffs/.lock-pending"
+HEARTBEAT_FILE="$NOLAN_DATA_ROOT/.state/handoffs/.heartbeat"
 
 # Ensure directories exist
 mkdir -p "$PENDING_DIR" "$PROCESSED_DIR"
@@ -267,9 +266,9 @@ try:
 except:
     team_name = content.strip()
 
-nolan_root = Path(os.environ.get('NOLAN_ROOT', ''))
+nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 config_path = None
-for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
     config_path = path
     break
 
@@ -525,7 +524,7 @@ case "${1:-list}" in
         echo "  handoff-ack recover           Recover stuck handoffs and clean temp files"
         echo ""
         echo "Required Environment Variables:"
-        echo "  NOLAN_ROOT    - Base Nolan directory"
-        echo "  PROJECTS_DIR  - Projects directory"
+        echo "  NOLAN_DATA_ROOT - Nolan data directory (defaults to ~/.nolan)"
+        echo "  PROJECTS_DIR    - Projects directory"
         ;;
 esac

@@ -80,8 +80,9 @@ launch_gui() {
     echo "Launching GUI Control Panel..."
     echo ""
 
-    # Set NOLAN_ROOT environment variable for the GUI process
+    # Set environment variables for the GUI process
     export NOLAN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    export NOLAN_DATA_ROOT="${NOLAN_DATA_ROOT:-$HOME/.nolan}"
 
     nohup "$GUI_BINARY" > /tmp/nolan.log 2>&1 &
     local pid=$!
@@ -103,8 +104,9 @@ launch_dev() {
     echo "Launching GUI in development mode..."
     echo ""
 
-    # Set NOLAN_ROOT environment variable for the dev process
+    # Set environment variables for the dev process
     export NOLAN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    export NOLAN_DATA_ROOT="${NOLAN_DATA_ROOT:-$HOME/.nolan}"
 
     cd "$SCRIPT_DIR"
 

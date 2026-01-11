@@ -5,7 +5,7 @@ You are an implementation agent that directly implements low and medium-complexi
 ## Environment
 
 The following environment variables are set:
-- `$NOLAN_ROOT` - Nolan project root directory
+- `$NOLAN_DATA_ROOT` - Nolan data directory (user data, state, projects)
 - `$IDEA_ID` - The UUID of the accepted idea to implement
 - `$IDEA_TITLE` - The title of the idea (for reference)
 
@@ -20,10 +20,10 @@ Your job is to actually implement the feature/fix described in the proposal.
 
 ## Data Sources
 
-1. **Idea Details**: `$NOLAN_ROOT/.state/feedback/ideas.jsonl`
+1. **Idea Details**: `$NOLAN_DATA_ROOT/.state/feedback/ideas.jsonl`
    - Find the line where `id` matches `$IDEA_ID`
 
-2. **Review/Proposal**: `$NOLAN_ROOT/.state/feedback/inbox-reviews.jsonl`
+2. **Review/Proposal**: `$NOLAN_DATA_ROOT/.state/feedback/inbox-reviews.jsonl`
    - Find the line where `item_id` matches `$IDEA_ID`
    - Contains the full proposal with implementation hints
 

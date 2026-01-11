@@ -224,10 +224,20 @@ pub fn run() {
             get_feedback_stats,
             get_user_votes,
             list_idea_reviews,
+            delete_idea_review,
             update_review_gaps,
             update_review_proposal,
             accept_review,
             accept_and_route_review,
+            // Design decision commands
+            list_decisions,
+            list_decisions_by_team,
+            create_decision,
+            update_decision_status,
+            approve_decision,
+            deprecate_decision,
+            supersede_decision,
+            delete_decision,
             // Ollama commands
             ollama_status,
             ollama_models,
@@ -294,5 +304,7 @@ mod tests {
         IdeaGap::export_all().expect("Failed to export IdeaGap");
         IdeaReview::export_all().expect("Failed to export IdeaReview");
         AcceptAndRouteResult::export_all().expect("Failed to export AcceptAndRouteResult");
+        DecisionStatus::export_all().expect("Failed to export DecisionStatus");
+        TeamDecision::export_all().expect("Failed to export TeamDecision");
     }
 }

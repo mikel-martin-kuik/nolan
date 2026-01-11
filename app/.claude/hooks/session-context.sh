@@ -51,8 +51,11 @@ if [[ -z "${NOLAN_ROOT:-}" ]]; then
     echo "This must be configured in your launch environment."
     exit 0
 fi
+# Use NOLAN_DATA_ROOT for data paths (with fallback to ~/.nolan)
+NOLAN_DATA_ROOT="${NOLAN_DATA_ROOT:-$HOME/.nolan}"
+
 # Search for team config in teams directory (supports subdirectories)
-TEAM_CONFIG=$(find "$NOLAN_ROOT/teams" -name "${CURRENT_TEAM}.yaml" -type f 2>/dev/null | head -1)
+TEAM_CONFIG=$(find "$NOLAN_DATA_ROOT/teams" -name "${CURRENT_TEAM}.yaml" -type f 2>/dev/null | head -1)
 
 if [[ -z "$TEAM_CONFIG" ]] || [[ ! -f "$TEAM_CONFIG" ]]; then
     echo "## Nolan Team Status"
@@ -136,12 +139,12 @@ if [[ -n "${AGENT_NAME:-}" ]]; then
     INSTRUCTIONS_BASE=""
 
     # First try current team
-    if [[ -L "$NOLAN_ROOT/.state/$CURRENT_TEAM/instructions/_current/${AGENT_NAME}.yaml" ]]; then
-        INSTRUCTIONS_BASE="$NOLAN_ROOT/.state/$CURRENT_TEAM/instructions"
+    if [[ -L "$NOLAN_DATA_ROOT/.state/$CURRENT_TEAM/instructions/_current/${AGENT_NAME}.yaml" ]]; then
+        INSTRUCTIONS_BASE="$NOLAN_DATA_ROOT/.state/$CURRENT_TEAM/instructions"
         INSTRUCTION_FILE="$INSTRUCTIONS_BASE/_current/${AGENT_NAME}.yaml"
     else
         # Search other teams for this agent's current task
-        for team_dir in "$NOLAN_ROOT/.state"/*/; do
+        for team_dir in "$NOLAN_DATA_ROOT/.state"/*/; do
             [[ -d "$team_dir" ]] || continue
             local_team=$(basename "$team_dir")
             if [[ -L "${team_dir}instructions/_current/${AGENT_NAME}.yaml" ]]; then
@@ -202,8 +205,8 @@ except Exception as e:
 fi
 
 # Handoff directories
-PENDING_DIR="$NOLAN_ROOT/.state/handoffs/pending"
-PROCESSED_DIR="$NOLAN_ROOT/.state/handoffs/processed"
+PENDING_DIR="$NOLAN_DATA_ROOT/.state/handoffs/pending"
+PROCESSED_DIR="$NOLAN_DATA_ROOT/.state/handoffs/processed"
 
 # Process handoffs for note_taker (replaces coordinator pattern)
 NOTE_TAKER=$(python3 -c "
@@ -228,7 +231,7 @@ fi
 
 if [[ "${AGENT_NAME:-}" == "$NOTE_TAKER" ]] && [[ -d "$PENDING_DIR" ]]; then
     mkdir -p "$PROCESSED_DIR"
-    LOCK_FILE="$NOLAN_ROOT/.state/handoffs/.lock-pending"
+    LOCK_FILE="$NOLAN_DATA_ROOT/.state/handoffs/.lock-pending"
 
     # Use flock for atomic batch ACK (prevents race with other processes)
     ack_count=0

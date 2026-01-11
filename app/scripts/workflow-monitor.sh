@@ -12,8 +12,9 @@
 
 set -euo pipefail
 
-NOLAN_ROOT="${NOLAN_ROOT:-$HOME/nolan}"
-STATE_DIR="$NOLAN_ROOT/.state"
+# Use NOLAN_DATA_ROOT for data paths (with fallback to ~/.nolan)
+NOLAN_DATA_ROOT="${NOLAN_DATA_ROOT:-$HOME/.nolan}"
+STATE_DIR="$NOLAN_DATA_ROOT/.state"
 INCIDENT_LOG="$STATE_DIR/incidents.log"
 
 # Ensure state directory exists

@@ -55,8 +55,9 @@ else
     exit 1
 fi
 
-# Get projects directory
-PROJECTS_DIR="${PROJECTS_DIR:-${NOLAN_ROOT:-$HOME/nolan}/projects}"
+# Get projects directory (uses NOLAN_DATA_ROOT for data paths)
+NOLAN_DATA_ROOT="${NOLAN_DATA_ROOT:-$HOME/.nolan}"
+PROJECTS_DIR="${PROJECTS_DIR:-$NOLAN_DATA_ROOT/projects}"
 PROJECT_DIR="$PROJECTS_DIR/$PROJECT_NAME"
 
 # Validate project exists
@@ -124,11 +125,11 @@ try:
 except:
     team_name = content.strip()
 
-nolan_root = Path(os.environ.get('NOLAN_ROOT', os.path.expanduser('~/nolan')))
+nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 
 # Search for team config
 config_path = None
-for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
     config_path = path
     break
 
@@ -161,15 +162,15 @@ sys.exit(1)
 # Usage: config_path=$(get_team_config_path "$team_name")
 get_team_config_path() {
     local team_name="$1"
-    local nolan_root="${NOLAN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
+    local nolan_data_root="${NOLAN_DATA_ROOT:-$HOME/.nolan}"
 
     python3 -c "
 import sys
 from pathlib import Path
 
 team_name = '$team_name'
-nolan_root = Path('$nolan_root')
-teams_dir = nolan_root / 'teams'
+nolan_data_root = Path('$nolan_data_root')
+teams_dir = nolan_data_root / 'teams'
 
 # Search for team config in teams directory (supports subdirectories)
 config_path = None
@@ -207,11 +208,11 @@ try:
 except:
     team_name = content.strip()
 
-nolan_root = Path(os.environ.get('NOLAN_ROOT', os.path.expanduser('~/nolan')))
+nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 
 # Search for team config in teams directory (supports subdirectories)
 config_path = None
-for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
     config_path = path
     break
 
@@ -251,11 +252,11 @@ try:
 except:
     team_name = content.strip()
 
-nolan_root = Path(os.environ.get('NOLAN_ROOT', os.path.expanduser('~/nolan')))
+nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 
 # Search for team config in teams directory (supports subdirectories)
 config_path = None
-for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
     config_path = path
     break
 
@@ -329,11 +330,11 @@ try:
 except:
     team_name = content.strip()
 
-nolan_root = Path(os.environ.get('NOLAN_ROOT', os.path.expanduser('~/nolan')))
+nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 
 # Search for team config in teams directory (supports subdirectories)
 config_path = None
-for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
     config_path = path
     break
 
@@ -375,11 +376,11 @@ try:
 except:
     team_name = content.strip()
 
-nolan_root = Path(os.environ.get('NOLAN_ROOT', os.path.expanduser('~/nolan')))
+nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 
 # Search for team config in teams directory (supports subdirectories)
 config_path = None
-for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
     config_path = path
     break
 
@@ -423,11 +424,11 @@ try:
 except:
     team_name = content.strip()
 
-nolan_root = Path(os.environ.get('NOLAN_ROOT', os.path.expanduser('~/nolan')))
+nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 
 # Search for team config in teams directory (supports subdirectories)
 config_path = None
-for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
     config_path = path
     break
 
@@ -609,7 +610,7 @@ echo ""
 # Set agent's active project state file
 # This is CRITICAL - the stop hook uses this to know which project to validate
 TEAM_NAME=$(get_team_name "$PROJECT_DIR")
-STATE_DIR="$NOLAN_ROOT/.state/$TEAM_NAME"
+STATE_DIR="$NOLAN_DATA_ROOT/.state/$TEAM_NAME"
 mkdir -p "$STATE_DIR"
 echo "$PROJECT_NAME" > "$STATE_DIR/active-$AGENT.txt"
 echo "✅ Set active project for $AGENT"

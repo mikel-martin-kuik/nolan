@@ -122,3 +122,41 @@ export const COMPLEXITY_COLORS: Record<IdeaComplexity, string> = {
   medium: 'text-yellow-500',
   high: 'text-red-500',
 };
+
+// Design decision tracking types
+export type DecisionStatus = 'proposed' | 'in_review' | 'approved' | 'deprecated' | 'superseded';
+
+export interface TeamDecision {
+  id: string;
+  team_id: string;
+  agent_id?: string;
+  title: string;
+  problem: string;
+  proposed_solution: string;
+  alternatives: string[];
+  rationale: string;
+  impact: string;
+  scope: string;
+  status: DecisionStatus;
+  approved_by?: string;
+  created_at: string;
+  approved_at?: string;
+  deprecated_at?: string;
+  superseded_by?: string;
+}
+
+export const DECISION_STATUS_LABELS: Record<DecisionStatus, string> = {
+  proposed: 'Proposed',
+  in_review: 'In Review',
+  approved: 'Approved',
+  deprecated: 'Deprecated',
+  superseded: 'Superseded',
+};
+
+export const DECISION_STATUS_COLORS: Record<DecisionStatus, string> = {
+  proposed: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+  in_review: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+  approved: 'bg-green-500/10 text-green-500 border-green-500/20',
+  deprecated: 'bg-slate-500/10 text-slate-500 border-slate-500/20',
+  superseded: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
+};

@@ -12,10 +12,11 @@
 #   task cleanup [--days <n>] [--dry-run]          - Clean old completed tasks
 #
 # Environment:
-#   PROJECTS_DIR  - Projects directory (required)
-#   NOLAN_ROOT    - Nolan root directory (required)
-#   AGENT_NAME    - Current agent name (for 'complete' without args)
-#   TEAM_NAME     - Current team name (required)
+#   PROJECTS_DIR    - Projects directory (required)
+#   NOLAN_DATA_ROOT - Nolan data directory (required for state paths)
+#   NOLAN_ROOT      - Nolan source root directory (for scripts)
+#   AGENT_NAME      - Current agent name (for 'complete' without args)
+#   TEAM_NAME       - Current team name (required)
 #
 
 set -euo pipefail
@@ -34,27 +35,25 @@ check_env() {
         echo -e "${RED}ERROR: PROJECTS_DIR environment variable not set${NC}" >&2
         exit 1
     fi
-    if [[ -z "${NOLAN_ROOT:-}" ]]; then
-        echo -e "${RED}ERROR: NOLAN_ROOT environment variable not set${NC}" >&2
-        exit 1
-    fi
     if [[ -z "${TEAM_NAME:-}" ]]; then
         echo -e "${RED}ERROR: TEAM_NAME environment variable not set${NC}" >&2
         exit 1
     fi
+    # Use NOLAN_DATA_ROOT for data paths (with fallback to ~/.nolan)
+    NOLAN_DATA_ROOT="${NOLAN_DATA_ROOT:-$HOME/.nolan}"
 }
 
 # Get instructions base directory for a specific team
 get_instructions_base() {
     local team="${1:-$TEAM_NAME}"
-    echo "$NOLAN_ROOT/.state/$team/instructions"
+    echo "$NOLAN_DATA_ROOT/.state/$team/instructions"
 }
 
 # Find agent's current task symlink across all teams
 # Returns: path to symlink if found, empty if not
 find_agent_current_symlink() {
     local agent="$1"
-    local state_base="$NOLAN_ROOT/.state"
+    local state_base="$NOLAN_DATA_ROOT/.state"
 
     # First try current team
     local current_link="$state_base/$TEAM_NAME/instructions/_current/${agent}.yaml"
@@ -177,7 +176,7 @@ notes_path.write_text(content)
         fi
 
         # Create handoff file for next agent
-        local handoff_dir="$NOLAN_ROOT/.state/handoffs/pending"
+        local handoff_dir="$NOLAN_DATA_ROOT/.state/handoffs/pending"
         mkdir -p "$handoff_dir"
         local handoff_id="${msg_id/MSG_/HO_}"
         local handoff_file="$handoff_dir/${handoff_id}.handoff"
@@ -202,7 +201,7 @@ HANDOFF_EOF
     rm -f "$current_link"
 
     # Clear active project state
-    local state_file="$NOLAN_ROOT/.state/$TEAM_NAME/active-${agent}.txt"
+    local state_file="$NOLAN_DATA_ROOT/.state/$TEAM_NAME/active-${agent}.txt"
     rm -f "$state_file"
 
     echo -e "${GREEN}✓ Task completed${NC}"
@@ -563,10 +562,10 @@ COMMANDS:
       Initialize task directories for current team
 
 ENVIRONMENT:
-  PROJECTS_DIR   Projects directory (required)
-  NOLAN_ROOT     Nolan root directory (required)
-  TEAM_NAME      Current team name (required)
-  AGENT_NAME     Current agent (optional, for 'complete')
+  PROJECTS_DIR    Projects directory (required)
+  NOLAN_DATA_ROOT Nolan data directory (for state paths, defaults to ~/.nolan)
+  TEAM_NAME       Current team name (required)
+  AGENT_NAME      Current agent (optional, for 'complete')
 
 AUDIT TRAIL:
   Tasks are tracked internally with full history.

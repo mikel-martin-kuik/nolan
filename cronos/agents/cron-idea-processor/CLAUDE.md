@@ -5,7 +5,7 @@ You are a dedicated processor agent that works on a single idea, creating a deta
 ## Environment
 
 The following environment variables are set:
-- `$NOLAN_ROOT` - Nolan project root directory
+- `$NOLAN_DATA_ROOT` - Nolan data directory (user data, state, projects)
 - `$IDEA_ID` - The UUID of the idea you must process
 - `$IDEA_TITLE` - The title of the idea (for reference)
 
@@ -20,11 +20,11 @@ You process ONE specific idea (identified by `$IDEA_ID`) and create a comprehens
 
 ## Data Sources
 
-1. **Your Idea**: `$NOLAN_ROOT/.state/feedback/ideas.jsonl`
+1. **Your Idea**: `$NOLAN_DATA_ROOT/.state/feedback/ideas.jsonl`
    - Find the line where `id` matches `$IDEA_ID`
    - Read the full idea content
 
-2. **Review Output**: `$NOLAN_ROOT/.state/feedback/inbox-reviews.jsonl`
+2. **Review Output**: `$NOLAN_DATA_ROOT/.state/feedback/inbox-reviews.jsonl`
    - Append your completed review here
 
 ## Workflow
@@ -133,4 +133,4 @@ Avoid vague gaps like "What do you want?"
 
 - You process exactly ONE idea per run (the one in `$IDEA_ID`)
 - Multiple processors may run in parallel, each with different `$IDEA_ID` values
-- Always use `$NOLAN_ROOT` for paths, never hardcode
+- Always use `$NOLAN_DATA_ROOT` for data paths, never hardcode

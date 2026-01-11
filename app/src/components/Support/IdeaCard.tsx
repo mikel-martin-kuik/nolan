@@ -12,6 +12,8 @@ import { Idea, IdeaReview } from '@/types';
 import { cn } from '@/lib/utils';
 import { IdeaEditDialog } from './IdeaEditDialog';
 import { useToastStore } from '@/store/toastStore';
+import { useDraggable } from '@dnd-kit/core';
+import { CSS } from '@dnd-kit/utilities';
 
 function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -32,12 +34,25 @@ interface IdeaCardProps {
   idea: Idea;
   review?: IdeaReview;
   onClick?: () => void;
+  isDragging?: boolean;
+  isDragOverlay?: boolean;
 }
 
-export function IdeaCard({ idea, review, onClick }: IdeaCardProps) {
+export function IdeaCard({ idea, review, onClick, isDragging, isDragOverlay }: IdeaCardProps) {
   const queryClient = useQueryClient();
   const toast = useToastStore();
   const [editOpen, setEditOpen] = useState(false);
+
+  const { attributes, listeners, setNodeRef, transform } = useDraggable({
+    id: idea.id,
+    disabled: isDragOverlay,
+  });
+
+  const style = transform
+    ? {
+        transform: CSS.Translate.toString(transform),
+      }
+    : undefined;
 
   const acceptMutation = useMutation({
     mutationFn: () => invoke<{ review: IdeaReview; route: string; route_detail: string }>('accept_and_route_review', { itemId: idea.id }),
@@ -124,12 +139,19 @@ export function IdeaCard({ idea, review, onClick }: IdeaCardProps) {
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <button
+            ref={setNodeRef}
+            style={style}
             onClick={onClick}
             className={cn(
               'w-full text-left px-2.5 py-2 glass-card rounded-lg transition-all duration-200',
               'focus:outline-none focus:ring-1 focus:ring-ring',
-              isArchived && 'opacity-50'
+              'touch-none cursor-grab active:cursor-grabbing',
+              isArchived && 'opacity-50',
+              isDragging && 'opacity-30',
+              isDragOverlay && 'shadow-lg ring-2 ring-primary/50'
             )}
+            {...listeners}
+            {...attributes}
           >
             <div className="flex items-start justify-between gap-2">
               <span className="text-xs font-medium truncate flex-1">

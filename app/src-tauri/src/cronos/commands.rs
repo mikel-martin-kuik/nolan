@@ -922,6 +922,8 @@ struct GapForRouting {
     description: String,
     #[serde(default)]
     value: Option<String>,
+    #[serde(default)]
+    required: bool,
 }
 
 /// Result of routing an accepted idea
@@ -1019,18 +1021,35 @@ pub async fn route_accepted_idea(idea_id: String) -> Result<RouteResult, String>
                 None, // Use default team
             ).await?;
 
-            // Build Q&A section from answered gaps
+            // Build Requirements section from gaps
             let qa_section = {
                 let answered_gaps: Vec<_> = review.gaps.iter()
                     .filter(|g| g.value.is_some())
                     .collect();
-                if answered_gaps.is_empty() {
+                let unanswered_required: Vec<_> = review.gaps.iter()
+                    .filter(|g| g.value.is_none() && g.required)
+                    .collect();
+
+                if answered_gaps.is_empty() && unanswered_required.is_empty() {
                     String::new()
                 } else {
                     let mut qa = String::from("\n## Requirements\n\n");
+
+                    // Add answered questions with descriptions
                     for gap in answered_gaps {
-                        qa.push_str(&format!("**{}**: {}\n\n", gap.label, gap.value.as_ref().unwrap()));
+                        qa.push_str(&format!("**{}**: {}\n", gap.label, gap.value.as_ref().unwrap()));
+                        qa.push_str(&format!("*{}*\n\n", gap.description));
                     }
+
+                    // Add unanswered required questions as TODOs
+                    if !unanswered_required.is_empty() {
+                        qa.push_str("### TODO: Unanswered Required Questions\n\n");
+                        for gap in unanswered_required {
+                            qa.push_str(&format!("- [ ] **{}**: {}\n", gap.label, gap.description));
+                        }
+                        qa.push('\n');
+                    }
+
                     qa
                 }
             };

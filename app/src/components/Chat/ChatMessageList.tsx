@@ -112,8 +112,8 @@ export const ChatMessageList: React.FC<ChatMessageListProps> = memo(({
   const [autoScroll, setAutoScroll] = useState(true);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
-  // Classify and group messages
-  const groups = useMessageClassifier(entries);
+  // Classify and group messages (pass isActive to collapse intermediate messages)
+  const groups = useMessageClassifier(entries, isActive);
 
   // Check if waiting for input
   const waitingForInput = isWaitingForInput(entries, isActive);

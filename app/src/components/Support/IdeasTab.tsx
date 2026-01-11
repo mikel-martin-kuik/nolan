@@ -1,12 +1,21 @@
 import { useState, useMemo } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation } from '@tanstack/react-query';
 import { invoke } from '@/lib/api';
 import { Idea, IdeaReview } from '@/types';
 import { IdeaCard } from './IdeaCard';
 import { IdeaDetailPage } from './IdeaDetailPage';
 import { IdeaEditDialog } from './IdeaEditDialog';
-import { Loader2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Loader2, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useToastStore } from '@/store/toastStore';
+
+interface DispatchResult {
+  dispatched: string[];
+  already_reviewed: number;
+  already_processing: number;
+  inactive: number;
+}
 
 type WorkflowColumn = 'new' | 'analysis' | 'ready' | 'done';
 
@@ -55,6 +64,23 @@ function hasReviewContent(review?: IdeaReview): boolean {
 export function IdeasTab() {
   const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(null);
   const [editModalIdea, setEditModalIdea] = useState<Idea | null>(null);
+
+  const toast = useToastStore();
+
+  // Dispatch all unreviewed ideas
+  const dispatchAllMutation = useMutation({
+    mutationFn: () => invoke<DispatchResult>('dispatch_ideas'),
+    onSuccess: (result) => {
+      if (result.dispatched.length > 0) {
+        toast.success(`Dispatched ${result.dispatched.length} idea${result.dispatched.length > 1 ? 's' : ''} for processing`);
+      } else {
+        toast.info('No new ideas to dispatch');
+      }
+    },
+    onError: (error) => {
+      toast.error(`Failed to dispatch: ${error}`);
+    },
+  });
 
   const { data: ideas = [], isLoading } = useQuery({
     queryKey: ['ideas'],
@@ -138,8 +164,33 @@ export function IdeasTab() {
     );
   }
 
+  // Count ideas that would be dispatched (active + no review)
+  const dispatchableCount = ideas.filter(
+    (idea) => idea.status === 'active' && !reviewMap.has(idea.id)
+  ).length;
+
   return (
     <div className="space-y-3">
+      {/* Header with dispatch button */}
+      {dispatchableCount > 0 && (
+        <div className="flex items-center justify-end">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => dispatchAllMutation.mutate()}
+            disabled={dispatchAllMutation.isPending}
+            className="text-xs gap-1.5"
+          >
+            {dispatchAllMutation.isPending ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <Play className="h-3 w-3" />
+            )}
+            Dispatch All ({dispatchableCount})
+          </Button>
+        </div>
+      )}
+
       {/* Kanban Board */}
       <div className="grid grid-cols-4 gap-3">
         {COLUMNS.map((column) => (

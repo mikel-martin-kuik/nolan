@@ -127,6 +127,13 @@ function generateGroupSummary(messages: ClassifiedMessage[]): string {
 
   const parts: string[] = [];
 
+  // If there are assistant messages (intermediate thinking), label as "agent activity"
+  if (assistantMsgs.length > 0 && (toolUses.length > 0 || toolResults.length > 0)) {
+    parts.push('agent activity');
+  } else if (assistantMsgs.length > 0) {
+    parts.push('thinking');
+  }
+
   if (toolUses.length > 0) {
     // Group by tool name
     const toolCounts = toolUses.reduce((acc, m) => {
@@ -148,10 +155,6 @@ function generateGroupSummary(messages: ClassifiedMessage[]): string {
 
   if (toolResults.length > 0 && toolUses.length === 0) {
     parts.push(`${toolResults.length} result${toolResults.length > 1 ? 's' : ''}`);
-  }
-
-  if (assistantMsgs.length > 0) {
-    parts.push(`${assistantMsgs.length} message${assistantMsgs.length > 1 ? 's' : ''}`);
   }
 
   // Add warmup indicator if mixed with other content
@@ -203,13 +206,69 @@ function groupMessages(classified: ClassifiedMessage[]): MessageGroup[] {
 }
 
 /**
- * Hook to classify and group messages for chat display
+ * Determine if an assistant message is a "final" response vs intermediate thinking.
+ * Final responses are:
+ * - Followed by a user message (they were the response to the user)
+ * - The last assistant message when agent is not active (conversation paused)
  */
-export function useMessageClassifier(entries: HistoryEntry[]): MessageGroup[] {
+function isFinalAssistantMessage(
+  entries: HistoryEntry[],
+  index: number,
+  isActive: boolean
+): boolean {
+  const entry = entries[index];
+  if (entry.entry_type !== 'assistant') return false;
+
+  // Check if followed by a user message (it was a final response)
+  for (let i = index + 1; i < entries.length; i++) {
+    const nextEntry = entries[i];
+    if (nextEntry.entry_type === 'user' && nextEntry.message?.trim()) {
+      return true;
+    }
+    // If we hit another assistant message before a user message, this wasn't final
+    if (nextEntry.entry_type === 'assistant' && nextEntry.message?.trim()) {
+      return false;
+    }
+  }
+
+  // If agent is not active, the last assistant message with content is final
+  if (!isActive) {
+    // Check if this is the last assistant message with content
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i];
+      if (e.entry_type === 'assistant' && e.message?.trim()) {
+        return i === index;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Hook to classify and group messages for chat display
+ * @param entries - The history entries to classify
+ * @param isActive - Whether the agent is currently active/working
+ */
+export function useMessageClassifier(entries: HistoryEntry[], isActive: boolean = false): MessageGroup[] {
   return useMemo(() => {
-    const classified = entries.map(classifyEntry);
+    const classified = entries.map((entry, index) => {
+      const base = classifyEntry(entry);
+
+      // Override: collapse intermediate assistant messages
+      if (entry.entry_type === 'assistant' && base.priority === 'primary') {
+        if (!isFinalAssistantMessage(entries, index, isActive)) {
+          return {
+            ...base,
+            priority: 'secondary' as const,
+          };
+        }
+      }
+
+      return base;
+    });
     return groupMessages(classified);
-  }, [entries]);
+  }, [entries, isActive]);
 }
 
 /**

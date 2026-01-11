@@ -1,6 +1,8 @@
 # Product Roadmap
 
-The product roadmap defines **what we build in Nolan** to support the business.
+The product roadmap defines **what we build in Nolan** to support the business vision: *deliver projects faster and cheaper than traditional agencies*.
+
+> **The Mechanism**: Spec-driven development. Specs in natural language become the source of truth; AI agents execute them. Code becomes a generated artifact, not a human-authored one.
 
 **Related:** [Business Roadmap](business_roadmap.md)
 
@@ -16,13 +18,14 @@ The product roadmap defines **what we build in Nolan** to support the business.
 | **Phase 3:** Context & Communication | Mostly Complete | 95% |
 | **Phase 4:** Autonomy & Scale | In Progress | 40% |
 | **Phase 5:** Enterprise | Not Started | 0% |
+| **Phase 6:** Spec-Driven Development | Not Started | 0% |
 
 ---
 
 ## Current State (v0.4.6)
 
 ### Core Features
-- [x] 7 active teams aligned with P1-P4 pillars + core agents (Dan, Ana, Bill, Carl, Enzo, Frank, Ralph)
+- [x] Default team with core workflow agents (Dan, Ana, Bill, Enzo, Carl, Frank, Guardian)
 - [x] Phase-gate workflow with automatic handoffs and QA gates
 - [x] Document-based outputs (research.md, plan.md, progress.md, implementation-audit.md)
 - [x] Tauri-based dashboard with 8 main tabs (Status, Chat, Projects, Teams, Agents, Cronos, Usage, Settings)
@@ -161,16 +164,234 @@ The product roadmap defines **what we build in Nolan** to support the business.
 
 ---
 
+## Phase 6: Spec-Driven Development (0% Started)
+
+> **The Breakthrough**: This phase transforms Nolan from an agent orchestrator into a spec-first development platform. Specs become the source of truth. Code becomes a generated artifact.
+
+**Team Assignment**: Default team (core workflow agents: Ana, Bill, Enzo, Carl, Frank, Dan)
+
+**New Agents Required**:
+- `cron-spec-generator`: Converts accepted proposals to formal specs
+- `spec-reviewer` (or extend Enzo's role): Reviews specs before project creation
+
+**Priority**: NEAR-TERM (enables Transition Phase 2: Spec Foundation)
+
+### Foundation: The Ideas System (Already Exists)
+
+The Ideas/Support system already provides the starting point:
+
+**What exists today:**
+- `ideas.jsonl`: User-submitted ideas with title, description, status
+- `cron-idea-processor`: AI agent that analyzes ideas and creates proposals
+- `inbox-reviews.jsonl`: AI-generated proposals with gaps identified
+- `idea-reviews.jsonl`: Accepted proposals (ready for implementation)
+- Kanban UI: New → Analysis → Ready → Done
+
+**Current Flow (with gap):**
+```
+Idea → cron-idea-processor → Proposal → User accepts → [MANUAL GAP] → Project → Code
+                                              ↓
+                                     inbox-reviews.jsonl
+```
+
+**The gap**: Accepted proposals don't automatically become specs or projects. Manual intervention required.
+
+### Target Flow
+```
+Idea → Proposal → SPEC (auto-generated) → Project (auto-created) → Code
+```
+
+### Implementation Sequence
+
+| Sub-phase | Depends On | Priority |
+|-----------|------------|----------|
+| **6.1 Spec Layer** | Ideas system (exists) | First - Foundation |
+| **6.2 Spec as Contract** | 6.1 | Second |
+| **6.3 Spec Composition** | 6.2 | Third (can parallel 6.4) |
+| **6.4 Natural Language Interface** | 6.1 | Third (can parallel 6.3) |
+| **6.5 Self-Development Loop** | 6.1-6.4 | Last - Validates everything |
+
+---
+
+### 6.1 The Spec Layer (Foundation)
+
+Add formal specifications as first-class entities between ideas and projects.
+
+**New Artifacts:**
+- `spec.md` in project template
+- `cron-spec-generator` agent
+- Spec review workflow phase
+
+**Spec Format:**
+```markdown
+# Specification: {Title}
+
+## Overview
+{One-sentence summary}
+
+## Requirements
+- Functional: {list}
+- Non-functional: {list}
+- Constraints: {list}
+
+## Acceptance Criteria
+1. {criterion with testable condition}
+2. {criterion with testable condition}
+
+## Dependencies
+- Projects: {related projects}
+- Components: {existing code}
+
+## Scope
+- Includes: {features in scope}
+- Excludes: {features explicitly out of scope}
+
+## Implementation Hints
+{code paths, patterns, relevant files}
+```
+
+**Implementation:**
+- [ ] Add `spec.md` to project template
+- [ ] Create `cron-spec-generator` agent (converts accepted proposals to specs)
+- [ ] Add spec review phase to default team workflow
+- [ ] Link idea acceptance → spec creation in frontend
+- [ ] Update Bill's planner to read from spec, not just research
+
+**Validation:**
+- [ ] Accepted idea auto-generates spec.md
+- [ ] Spec visible in project file viewer
+- [ ] Bill's plan references spec requirements
+- [ ] Frank audits implementation against spec
+
+---
+
+### 6.2 Spec as Contract
+
+Specs become the authoritative source. Code is validated against specs.
+
+**Features:**
+- [ ] Spec versioning (track changes over project lifecycle)
+- [ ] Spec diff tracking (what changed between versions)
+- [ ] Compliance validation (does code satisfy spec?)
+- [ ] Spec-to-test generation (acceptance criteria → test cases)
+
+**New Workflow:**
+```
+Spec Change → Impact Analysis → Re-plan → Re-implement → Re-validate
+```
+
+**Implementation:**
+- [ ] Version specs with git-like history
+- [ ] Frank validates code against spec acceptance criteria
+- [ ] Generate test stubs from acceptance criteria
+- [ ] Block completion if spec compliance fails
+
+---
+
+### 6.3 Spec Composition
+
+Complex features decompose into composable spec building blocks.
+
+**Spec Dependencies:**
+```yaml
+spec: user-auth
+  requires: [database, session-management]
+
+spec: admin-dashboard
+  requires: [user-auth, analytics]
+
+spec: full-product
+  requires: [admin-dashboard, payments]
+```
+
+**Features:**
+- [ ] Spec dependency graph
+- [ ] Cross-project impact analysis
+- [ ] Capacity planning from spec complexity
+- [ ] Spec templates for common patterns
+
+**Implementation:**
+- [ ] Dependency syntax in spec.md
+- [ ] Visualize spec dependency graph
+- [ ] Warn on circular dependencies
+- [ ] Calculate project scope from spec tree
+
+---
+
+### 6.4 Natural Language Interface
+
+Conversation becomes the primary interface for spec creation.
+
+**Target Interaction:**
+```
+User: "I want users to export their data as CSV"
+
+Nolan:
+├── Searches existing specs for related features
+├── Identifies affected components (data layer, API, UI)
+├── Generates draft spec with gaps highlighted
+├── Shows impact on current roadmap
+└── Asks: "Shall I create this spec?"
+```
+
+**Features:**
+- [ ] Conversational spec creation
+- [ ] Automatic gap detection (missing requirements)
+- [ ] Roadmap integration (where does this fit?)
+- [ ] Conflict detection (contradicts existing spec?)
+
+**Implementation:**
+- [ ] Natural language → spec draft generation
+- [ ] Semantic search across existing specs
+- [ ] Conflict detection algorithm
+- [ ] Roadmap impact visualization
+
+---
+
+### 6.5 Self-Development Loop
+
+Nolan develops itself through specs.
+
+**The Loop:**
+```
+1. User writes spec for Nolan feature
+2. Nolan's agents implement the spec
+3. New capability added to Nolan
+4. Better spec tooling enables faster spec writing
+5. Return to step 1 (accelerating cycle)
+```
+
+**Validation:**
+- [ ] Nolan can accept specs for its own features
+- [ ] Implementation cycle completes end-to-end
+- [ ] New features demonstrably improve spec workflow
+
+---
+
 ## Product-Business Alignment
 
-| Product Phase | Business Pillar Support |
-|---------------|------------------------|
-| Phase 0: Architecture | Foundation for all pillars |
-| Phase 1: Cost & Execution | P4 Cost Tracking, P1 Delivery Tracking |
-| Phase 2: Safety & Versioning | P3 Quality Assurance |
-| Phase 3: Context & Communication | P3 Decision Audit |
-| Phase 4: Autonomy & Scale | P4 Autonomous Scaling |
-| Phase 5: Enterprise | P3 Governance, P2 Integrations |
+| Product Phase | Business Goal Support |
+|---------------|----------------------|
+| Phase 0: Architecture | Foundation for all goals |
+| Phase 1: Cost & Execution | Cost tracking, delivery tracking |
+| Phase 2: Safety & Versioning | Quality assurance |
+| Phase 3: Context & Communication | Decision audit |
+| Phase 4: Autonomy & Scale | Autonomous scaling |
+| Phase 5: Enterprise | Governance, integrations |
+| Phase 6: Spec-Driven Development | **Transforms entire delivery model** |
+
+### Phase 6 Business Impact
+
+Phase 6 is transformational. It changes **how we work**, not just **what we build**.
+
+| Business Goal | Phase 6 Impact |
+|---------------|----------------|
+| Delivery Efficiency | Specs auto-generate plans → faster project starts |
+| Competitive Intelligence | Specs enable accurate scoping → better estimates |
+| Quality Assurance | Spec compliance validation → provable quality |
+| Autonomous Scaling | Specs are executable → higher AI leverage |
+
+**Key Metric**: Human involvement shifts from "writing code" to "approving specs."
 
 ---
 
@@ -203,16 +424,12 @@ NolanServer
 
 ## Recently Completed (Jan 2026)
 
-### Team Reorganization (Jan 11)
-- Consolidated from 15+ teams to 7 teams aligned with P1-P4 pillars
-- Created estimation_bidding team for competitive intelligence
-- Merged security_operations into quality_automation
-- Reorganized directories: p1_delivery, p2_competitive, p3_quality, p4_autonomy
-
-### Roadmap Split (Jan 11)
+### Roadmap Evolution (Jan 11)
 - Split into Business Roadmap and Product Roadmap
-- Business: P1-P4 pillars, project templates, metrics
-- Product: Phases 0-5, technical features, architecture
+- Business: Strategy, metrics, feature roadmap
+- Product: Phases 0-6, technical features, architecture
+- Added Phase 6: Spec-Driven Development (the breakthrough)
+- Clarified terminology: Transition Phases vs Product Phases
 
 ### Authentication System (Jan 10)
 - Password-based authentication with Argon2 hashing

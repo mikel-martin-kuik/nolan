@@ -19,6 +19,9 @@ pub type CancellationToken = Arc<RwLock<bool>>;
 /// Output event sender for real-time streaming
 pub type OutputSender = broadcast::Sender<CronOutputEvent>;
 
+/// Extra environment variables to pass to cron agents
+pub type ExtraEnvVars = std::collections::HashMap<String, String>;
+
 /// Execute a cron agent with full feature support
 ///
 /// Features:
@@ -27,6 +30,7 @@ pub type OutputSender = broadcast::Sender<CronOutputEvent>;
 /// - Retry logic with exponential backoff
 /// - Cancellation support
 /// - Persistent state tracking
+/// - Extra environment variables (e.g., IDEA_ID for parameterized runs)
 pub async fn execute_cron_agent(
     config: &CronAgentConfig,
     manager: &CronosManager,
@@ -34,6 +38,19 @@ pub async fn execute_cron_agent(
     dry_run: bool,
     output_sender: Option<OutputSender>,
     cancellation: Option<CancellationToken>,
+) -> Result<CronRunLog, String> {
+    execute_cron_agent_with_env(config, manager, trigger, dry_run, output_sender, cancellation, None).await
+}
+
+/// Execute a cron agent with extra environment variables
+pub async fn execute_cron_agent_with_env(
+    config: &CronAgentConfig,
+    manager: &CronosManager,
+    trigger: RunTrigger,
+    dry_run: bool,
+    output_sender: Option<OutputSender>,
+    cancellation: Option<CancellationToken>,
+    extra_env: Option<ExtraEnvVars>,
 ) -> Result<CronRunLog, String> {
     // Check concurrency
     if !config.concurrency.allow_parallel && manager.is_running(&config.name).await {
@@ -84,6 +101,7 @@ pub async fn execute_cron_agent(
             dry_run,
             output_sender.clone(),
             cancellation.clone(),
+            extra_env.clone(),
         ).await;
 
         match &result {
@@ -137,6 +155,7 @@ async fn execute_single_run(
     dry_run: bool,
     output_sender: Option<OutputSender>,
     cancellation: Option<CancellationToken>,
+    extra_env: Option<ExtraEnvVars>,
 ) -> Result<CronRunLog, String> {
     let run_id = Uuid::new_v4().to_string()[..8].to_string();
     let started_at = Utc::now();
@@ -250,10 +269,18 @@ async fn execute_single_run(
         .map(PathBuf::from)
         .unwrap_or_else(|| nolan_root.clone());
 
-    let mut cmd_parts = vec![
-        format!("export CRON_RUN_ID='{}' CRON_AGENT='{}' NOLAN_ROOT='{}'",
-            run_id, config.name, nolan_root.to_string_lossy()),
-    ];
+    // Build environment variable exports
+    let mut env_exports = format!("export CRON_RUN_ID='{}' CRON_AGENT='{}' NOLAN_ROOT='{}'",
+        run_id, config.name, nolan_root.to_string_lossy());
+
+    // Add extra environment variables (e.g., IDEA_ID for parameterized runs)
+    if let Some(ref extra) = extra_env {
+        for (key, value) in extra {
+            env_exports.push_str(&format!(" {}='{}'", key, value.replace("'", "'\\''")));
+        }
+    }
+
+    let mut cmd_parts = vec![env_exports];
 
     // Change to working directory
     cmd_parts.push(format!("cd '{}'", work_dir.to_string_lossy()));

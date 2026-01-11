@@ -1,0 +1,15 @@
+{
+  "run_id": "3f80cc0e",
+  "agent_name": "cron-git-commit",
+  "started_at": "2026-01-11T17:20:48.158151017+00:00",
+  "completed_at": null,
+  "status": "running",
+  "duration_secs": null,
+  "exit_code": null,
+  "output_file": "/home/mmartin/Proyectos/nolan/cronos/runs/2026-01-11/cron-git-commit-172048.log",
+  "error": null,
+  "attempt": 1,
+  "trigger": "manual",
+  "session_name": "cron-cron-git-commit-3f80cc0e",
+  "run_dir": "/home/mmartin/Proyectos/nolan/cronos/runs/2026-01-11/cron-git-commit-3f80cc0e"
+}

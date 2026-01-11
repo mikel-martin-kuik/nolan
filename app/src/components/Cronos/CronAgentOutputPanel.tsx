@@ -220,7 +220,7 @@ export const CronAgentOutputPanel: React.FC<CronAgentOutputPanelProps> = ({ embe
     // Fetch immediately
     const fetchLog = async () => {
       try {
-        const result = await invoke<string | { log: string }>('get_cron_run_log', { run_id: runId });
+        const result = await invoke<string | { log: string }>('get_cron_run_log', { runId });
         const logContent = typeof result === 'string' ? result : result?.log ?? '';
         if (logContent) {
           const events: CronOutputEvent[] = logContent.split('\n').filter(Boolean).map(line => ({

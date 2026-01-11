@@ -120,6 +120,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/cronos/health", get(handlers::cronos::get_health))
         .route("/api/cronos/init", post(handlers::cronos::init))
         .route("/api/cronos/shutdown", post(handlers::cronos::shutdown))
+        // Cronos groups
+        .route("/api/cronos/groups", get(handlers::cronos::list_groups))
+        .route("/api/cronos/groups", post(handlers::cronos::create_group))
+        .route("/api/cronos/groups/:group_id", get(handlers::cronos::get_group))
+        .route("/api/cronos/groups/:group_id", put(handlers::cronos::update_group))
+        .route("/api/cronos/groups/:group_id", delete(handlers::cronos::delete_group))
+        .route("/api/cronos/agents/:name/group", put(handlers::cronos::set_agent_group))
         // WebSocket endpoints
         .route("/api/ws/terminal/:session", get(ws::terminal_stream))
         .route("/api/ws/status", get(ws::status_stream))

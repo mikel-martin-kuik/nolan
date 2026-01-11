@@ -1,0 +1,15 @@
+{
+  "run_id": "919d4e8d",
+  "agent_name": "cron-workflow-monitor",
+  "started_at": "2026-01-11T16:30:00.298659347+00:00",
+  "completed_at": "2026-01-11T16:30:06.524478472+00:00",
+  "status": "success",
+  "duration_secs": 6,
+  "exit_code": 0,
+  "output_file": "/home/mmartin/Proyectos/nolan/cronos/runs/2026-01-11/cron-workflow-monitor-163000.log",
+  "error": null,
+  "attempt": 1,
+  "trigger": "scheduled",
+  "session_name": "cron-cron-workflow-monitor-919d4e8d",
+  "run_dir": "/home/mmartin/Proyectos/nolan/cronos/runs/2026-01-11/cron-workflow-monitor-919d4e8d"
+}

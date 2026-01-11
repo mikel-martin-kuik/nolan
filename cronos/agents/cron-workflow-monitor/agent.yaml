@@ -1,10 +1,11 @@
 name: cron-workflow-monitor
-description: Monitors workflow for stuck phases and orphaned handoffs
+description: Monitors workflows
 model: haiku
 timeout: 60
 enabled: true
+group: monitoring
 schedule:
-  cron: "*/15 * * * *"
+  cron: '*/15 * * * *'
   timezone: null
 guardrails:
   allowed_tools:

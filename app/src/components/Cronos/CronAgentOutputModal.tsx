@@ -215,7 +215,7 @@ export const CronAgentOutputModal: React.FC<CronAgentOutputModalProps> = ({
       const runId = agent?.current_run_id || agent?.last_run?.run_id;
       if (runId) {
         try {
-          const result = await invoke<string | { log: string }>('get_cron_run_log', { run_id: runId });
+          const result = await invoke<string | { log: string }>('get_cron_run_log', { runId });
           const logContent = typeof result === 'string' ? result : result?.log ?? '';
           if (logContent) {
             const events: CronOutputEvent[] = logContent.split('\n').filter(Boolean).map(line => ({

@@ -3,6 +3,7 @@ description: Check dependencies
 model: haiku
 timeout: 600
 enabled: true
+group: maintenance
 schedule:
   cron: 0 0 * * *
   timezone: null

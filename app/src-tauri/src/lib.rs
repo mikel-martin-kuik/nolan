@@ -198,6 +198,16 @@ pub fn run() {
             cronos::commands::subscribe_cron_output,
             cronos::commands::get_cron_next_runs,
             cronos::commands::describe_cron_expression,
+            // Cronos group commands
+            cronos::commands::list_cron_groups,
+            cronos::commands::get_cron_group,
+            cronos::commands::create_cron_group,
+            cronos::commands::update_cron_group,
+            cronos::commands::delete_cron_group,
+            cronos::commands::set_agent_group,
+            // Idea dispatch commands
+            cronos::commands::dispatch_ideas,
+            cronos::commands::dispatch_single_idea,
             // Feedback commands
             list_feature_requests,
             create_feature_request,

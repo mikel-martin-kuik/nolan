@@ -439,6 +439,97 @@ impl CronosManager {
     }
 
     // ========================
+    // Group Management
+    // ========================
+
+    fn groups_file_path(&self) -> std::path::PathBuf {
+        self.cronos_root.join("groups.yaml")
+    }
+
+    /// Load all groups from disk
+    pub fn load_groups(&self) -> Result<Vec<CronAgentGroup>, String> {
+        let path = self.groups_file_path();
+        if !path.exists() {
+            return Ok(Vec::new());
+        }
+
+        let content = std::fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read groups.yaml: {}", e))?;
+        let config: GroupsConfig = serde_yaml::from_str(&content)
+            .map_err(|e| format!("Failed to parse groups.yaml: {}", e))?;
+
+        let mut groups = config.groups;
+        groups.sort_by(|a, b| a.order.cmp(&b.order));
+        Ok(groups)
+    }
+
+    /// Save groups to disk
+    pub fn save_groups(&self, groups: &[CronAgentGroup]) -> Result<(), String> {
+        let path = self.groups_file_path();
+        let config = GroupsConfig {
+            groups: groups.to_vec(),
+        };
+
+        let yaml = serde_yaml::to_string(&config)
+            .map_err(|e| format!("Failed to serialize groups: {}", e))?;
+
+        // Add header comment
+        let content = format!(
+            "# Cron Agent Groups Configuration\n# Groups help organize cron agents by category/purpose\n\n{}",
+            yaml
+        );
+
+        std::fs::write(&path, content)
+            .map_err(|e| format!("Failed to write groups.yaml: {}", e))?;
+        Ok(())
+    }
+
+    /// Get a specific group by ID
+    pub fn get_group(&self, group_id: &str) -> Result<CronAgentGroup, String> {
+        let groups = self.load_groups()?;
+        groups.into_iter()
+            .find(|g| g.id == group_id)
+            .ok_or_else(|| format!("Group '{}' not found", group_id))
+    }
+
+    /// Create a new group
+    pub fn create_group(&self, group: CronAgentGroup) -> Result<(), String> {
+        let mut groups = self.load_groups()?;
+
+        // Check for duplicate ID
+        if groups.iter().any(|g| g.id == group.id) {
+            return Err(format!("Group '{}' already exists", group.id));
+        }
+
+        groups.push(group);
+        self.save_groups(&groups)
+    }
+
+    /// Update an existing group
+    pub fn update_group(&self, group: CronAgentGroup) -> Result<(), String> {
+        let mut groups = self.load_groups()?;
+
+        let pos = groups.iter().position(|g| g.id == group.id)
+            .ok_or_else(|| format!("Group '{}' not found", group.id))?;
+
+        groups[pos] = group;
+        self.save_groups(&groups)
+    }
+
+    /// Delete a group
+    pub fn delete_group(&self, group_id: &str) -> Result<(), String> {
+        let mut groups = self.load_groups()?;
+        let original_len = groups.len();
+        groups.retain(|g| g.id != group_id);
+
+        if groups.len() == original_len {
+            return Err(format!("Group '{}' not found", group_id));
+        }
+
+        self.save_groups(&groups)
+    }
+
+    // ========================
     // Agent Configuration Management
     // ========================
 

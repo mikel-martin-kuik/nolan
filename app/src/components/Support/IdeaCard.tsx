@@ -11,6 +11,7 @@ import { invoke } from '@/lib/api';
 import { Idea, IdeaReview } from '@/types';
 import { cn } from '@/lib/utils';
 import { IdeaEditDialog } from './IdeaEditDialog';
+import { useToastStore } from '@/store/toastStore';
 
 function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -35,6 +36,7 @@ interface IdeaCardProps {
 
 export function IdeaCard({ idea, review, onClick }: IdeaCardProps) {
   const queryClient = useQueryClient();
+  const toast = useToastStore();
   const [editOpen, setEditOpen] = useState(false);
 
   const acceptMutation = useMutation({
@@ -57,6 +59,16 @@ export function IdeaCard({ idea, review, onClick }: IdeaCardProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ideas'] });
       queryClient.invalidateQueries({ queryKey: ['feedback-stats'] });
+    },
+  });
+
+  const dispatchMutation = useMutation({
+    mutationFn: () => invoke<string>('dispatch_single_idea', { ideaId: idea.id }),
+    onSuccess: () => {
+      toast.success(`Dispatched "${idea.title}" for processing`);
+    },
+    onError: (error) => {
+      toast.error(`Failed to dispatch: ${error}`);
     },
   });
 
@@ -90,6 +102,13 @@ export function IdeaCard({ idea, review, onClick }: IdeaCardProps) {
   // Can accept if there's a review that's ready and all gaps are filled
   const canAccept = review && !review.accepted_at && review.review_status !== 'rejected';
   const allGapsFilled = !review?.gaps?.some((g) => g.required && !g.value?.trim());
+
+  // Can dispatch if active and no review yet
+  const canDispatch = idea.status === 'active' && !review;
+
+  const handleDispatch = () => {
+    dispatchMutation.mutate();
+  };
 
   return (
     <>
@@ -131,6 +150,15 @@ export function IdeaCard({ idea, review, onClick }: IdeaCardProps) {
         </ContextMenuTrigger>
 
         <ContextMenuContent>
+          {canDispatch && (
+            <ContextMenuItem
+              onClick={handleDispatch}
+              disabled={dispatchMutation.isPending}
+              className="text-xs"
+            >
+              {dispatchMutation.isPending ? 'Dispatching...' : 'Dispatch for Review'}
+            </ContextMenuItem>
+          )}
           {canAccept && (
             <ContextMenuItem
               onClick={handleAccept}

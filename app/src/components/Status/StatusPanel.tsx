@@ -13,11 +13,11 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Users, Plus, XCircle, LayoutGrid, ChevronDown, ChevronRight } from 'lucide-react';
 import { invoke, isBrowserMode } from '@/lib/api';
-import type { AgentName, ClaudeModel, TeamConfig, SpawnOptions } from '@/types';
+import type { TeamConfig } from '@/types';
 import { getRalphDisplayName, parseRalphSession } from '@/lib/agentIdentity';
 import { getTeamMembers } from '@/types';
 import type { ProjectInfo } from '@/types/projects';
-import { ModelSelectDialog } from '../shared/ModelSelectDialog';
+import { QuickLaunchModal } from '../shared/QuickLaunchModal';
 
 export const StatusPanel: React.FC = () => {
   const {
@@ -26,7 +26,6 @@ export const StatusPanel: React.FC = () => {
     updateStatus,
     launchTeam,
     killTeam,
-    spawnAgent,
     killAllInstances,
     loading,
     setupEventListeners
@@ -192,77 +191,9 @@ export const StatusPanel: React.FC = () => {
     }
   }, [showError]);
 
-  // Handler for spawning any agent type (team-scoped)
-  const handleSpawnAgent = async (teamName: string, agentName: AgentName, model?: ClaudeModel, chrome?: boolean) => {
-    try {
-      // Capture existing sessions BEFORE spawning to detect the new one
-      const { freeAgents: beforeFreeAgents, teamAgents: beforeTeamAgents } = useAgentStore.getState();
-      // For team-scoped sessions: agent-{team}-{name}-{instance}
-      // For free agents (ralph): agent-ralph-{instance}
-      const sessionPrefix = agentName === 'ralph' ? 'agent-ralph-' : `agent-${teamName}-${agentName}-`;
-      const beforeSessions = agentName === 'ralph' ? beforeFreeAgents : beforeTeamAgents;
-      const existingSessionNames = new Set(
-        beforeSessions
-          .filter(s => s.session.startsWith(sessionPrefix))
-          .map(s => s.session)
-      );
-
-      await spawnAgent(teamName, agentName, false, model, chrome);
-
-      // Poll for new session with timeout
-      const maxAttempts = 10;
-      const pollInterval = 100; // ms
-      let newSession: string | null = null;
-
-      for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        await new Promise(resolve => setTimeout(resolve, pollInterval));
-
-        // Refresh status to get latest sessions
-        try {
-          await updateStatus();
-        } catch (error) {
-          console.error(`Failed to update status on attempt ${attempt}:`, error);
-          continue;
-        }
-
-        // Get fresh sessions from store
-        const { freeAgents: currentFreeAgents, teamAgents: currentTeamAgents } = useAgentStore.getState();
-        const currentSessions = agentName === 'ralph' ? currentFreeAgents : currentTeamAgents;
-        const agentSessions = currentSessions.filter(agent =>
-          agent.session.startsWith(sessionPrefix)
-        );
-
-        // Find the NEW session (one that didn't exist before)
-        const newSessions = agentSessions.filter(s => !existingSessionNames.has(s.session));
-        if (newSessions.length > 0) {
-          newSession = newSessions[0].session;
-          break;
-        }
-      }
-
-      // Only open terminal for non-Ralph agents (Ralph stays detached)
-      if (newSession && agentName !== 'ralph') {
-        try {
-          await invoke('open_agent_terminal', { session: newSession });
-        } catch (terminalError) {
-          console.error('Failed to open terminal:', terminalError);
-        }
-      } else if (!newSession) {
-        showError(`Failed to spawn ${agentName}: session not found after ${maxAttempts} attempts`);
-      }
-    } catch (error) {
-      console.error(`Failed to spawn ${agentName}:`, error);
-    }
-  };
-
-  // Handler for showing model select dialog for Ralph
+  // Handler for showing quick launch modal for Ralph
   const handleSpawnRalphClick = () => {
     setShowModelSelectDialog(true);
-  };
-
-  // Handler for when model is selected (Ralph is team-independent)
-  const handleModelSelect = (options: SpawnOptions) => {
-    handleSpawnAgent('', 'ralph', options.model, options.chrome);
   };
 
   // Handler for killing all Ralph instances
@@ -491,11 +422,10 @@ export const StatusPanel: React.FC = () => {
         variant="destructive"
       />
 
-      {/* Model selection dialog for Ralph */}
-      <ModelSelectDialog
+      {/* Quick launch modal for Ralph */}
+      <QuickLaunchModal
         open={showModelSelectDialog}
         onOpenChange={setShowModelSelectDialog}
-        onSelect={handleModelSelect}
       />
     </div>
   );

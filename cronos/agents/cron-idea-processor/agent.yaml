@@ -1,31 +1,31 @@
-name: cron-git
-description: Nolan Repo git commit agent
-model: haiku
+name: cron-idea-processor
+description: Processes a single idea with full codebase exploration (triggered via dispatch_ideas command)
+model: opus
 timeout: 300
 enabled: true
 schedule:
-  cron: 0 */4 * * *
+  cron: 0 0 1 1 *
   timezone: null
 guardrails:
   allowed_tools:
   - Read
   - Write
-  - Edit
   - Glob
   - Grep
   forbidden_paths:
   - '**/.env'
   - '**/secrets/**'
   - '**/*.key'
-  max_file_edits: 10
+  max_file_edits: 5
 context:
   working_directory: null
+group: feedback
 concurrency:
-  allow_parallel: false
+  allow_parallel: true
   queue_if_running: false
 retry:
   enabled: false
-  max_retries: 3
+  max_retries: 1
   delay_secs: 60
   exponential_backoff: false
 catch_up: skip

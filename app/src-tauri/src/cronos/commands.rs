@@ -126,6 +126,7 @@ pub async fn list_cron_agents() -> Result<Vec<CronAgentInfo>, String> {
             cron_expression: config.schedule.cron.clone(),
             next_run: calculate_next_run(&config.schedule.cron),
             last_run,
+            group: config.group.clone(),
             is_running,
             current_run_id,
             consecutive_failures: agent_state.map(|s| s.consecutive_failures).unwrap_or(0),
@@ -237,6 +238,72 @@ pub async fn test_cron_agent(name: String) -> Result<TestRunResult, String> {
             duration_secs: duration,
         }),
     }
+}
+
+// ========================
+// Group Management
+// ========================
+
+#[tauri::command]
+pub async fn list_cron_groups() -> Result<Vec<CronAgentGroup>, String> {
+    let guard = CRONOS.read().await;
+    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+    manager.load_groups()
+}
+
+#[tauri::command]
+pub async fn get_cron_group(group_id: String) -> Result<CronAgentGroup, String> {
+    let guard = CRONOS.read().await;
+    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+    manager.get_group(&group_id)
+}
+
+#[tauri::command]
+pub async fn create_cron_group(group: CronAgentGroup) -> Result<(), String> {
+    // Validate group ID format
+    if !group.id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
+        return Err("Group ID must contain only lowercase letters, digits, and hyphens".to_string());
+    }
+    if group.id.is_empty() {
+        return Err("Group ID is required".to_string());
+    }
+    if group.name.is_empty() {
+        return Err("Group name is required".to_string());
+    }
+
+    let guard = CRONOS.read().await;
+    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+    manager.create_group(group)
+}
+
+#[tauri::command]
+pub async fn update_cron_group(group: CronAgentGroup) -> Result<(), String> {
+    let guard = CRONOS.read().await;
+    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+    manager.update_group(group)
+}
+
+#[tauri::command]
+pub async fn delete_cron_group(group_id: String) -> Result<(), String> {
+    let guard = CRONOS.read().await;
+    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+    manager.delete_group(&group_id)
+}
+
+#[tauri::command]
+pub async fn set_agent_group(agent_name: String, group_id: Option<String>) -> Result<(), String> {
+    let guard = CRONOS.read().await;
+    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+
+    // Validate group exists if provided
+    if let Some(ref gid) = group_id {
+        manager.get_group(gid)?;
+    }
+
+    // Update agent config
+    let mut config = manager.get_agent(&agent_name).await?;
+    config.group = group_id;
+    manager.save_agent(&config).await
 }
 
 // ========================
@@ -627,4 +694,219 @@ pub struct CronDescription {
     pub expression: String,
     pub human_readable: String,
     pub next_runs: Vec<String>,
+}
+
+// ========================
+// Idea Dispatch System
+// ========================
+
+/// Idea from ideas.jsonl
+#[derive(Clone, Debug, serde::Deserialize)]
+struct Idea {
+    id: String,
+    title: String,
+    #[allow(dead_code)]
+    description: String,
+    status: String,
+}
+
+/// Review from inbox-reviews.jsonl
+#[derive(Clone, Debug, serde::Deserialize)]
+struct InboxReview {
+    item_id: String,
+    #[allow(dead_code)]
+    review_status: String,
+}
+
+/// Result of dispatch operation
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct DispatchResult {
+    pub dispatched: Vec<String>,    // Idea IDs that were dispatched
+    pub already_reviewed: usize,    // Count of ideas already reviewed
+    pub already_processing: usize,  // Count of ideas being processed
+    pub inactive: usize,            // Count of non-active ideas
+}
+
+/// Dispatch unprocessed ideas to cron-idea-processor agents
+///
+/// This is a scripted dispatcher (no AI needed):
+/// 1. Read ideas.jsonl
+/// 2. Read inbox-reviews.jsonl
+/// 3. Find ideas without reviews
+/// 4. Spawn cron-idea-processor for each with IDEA_ID env var
+#[tauri::command]
+pub async fn dispatch_ideas(app: AppHandle) -> Result<DispatchResult, String> {
+    let nolan_root = crate::utils::paths::get_nolan_root()?;
+    let feedback_dir = nolan_root.join(".state/feedback");
+
+    // Read ideas
+    let ideas_path = feedback_dir.join("ideas.jsonl");
+    let ideas = read_jsonl_file::<Idea>(&ideas_path)?;
+
+    // Read existing reviews
+    let reviews_path = feedback_dir.join("inbox-reviews.jsonl");
+    let reviews = read_jsonl_file::<InboxReview>(&reviews_path).unwrap_or_default();
+
+    // Build set of already-reviewed idea IDs
+    let reviewed_ids: std::collections::HashSet<_> = reviews.iter()
+        .map(|r| r.item_id.as_str())
+        .collect();
+
+    // Get cronos manager
+    let guard = CRONOS.read().await;
+    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+
+    // Load processor config
+    let processor_config = manager.get_agent("cron-idea-processor").await?;
+
+    let mut result = DispatchResult {
+        dispatched: Vec::new(),
+        already_reviewed: 0,
+        already_processing: 0,
+        inactive: 0,
+    };
+
+    // Get output sender for streaming
+    let output_sender = OUTPUT_SENDER.clone();
+
+    // Setup event forwarding to frontend
+    let app_clone = app.clone();
+    let mut receiver = output_sender.subscribe();
+    tokio::spawn(async move {
+        while let Ok(event) = receiver.recv().await {
+            let _ = app_clone.emit("cronos:output", &event);
+        }
+    });
+
+    // Process each active idea
+    for idea in ideas {
+        // Skip non-active ideas
+        if idea.status != "active" {
+            result.inactive += 1;
+            continue;
+        }
+
+        // Skip already-reviewed ideas
+        if reviewed_ids.contains(idea.id.as_str()) {
+            result.already_reviewed += 1;
+            continue;
+        }
+
+        // Spawn processor with IDEA_ID
+        let mut extra_env = executor::ExtraEnvVars::new();
+        extra_env.insert("IDEA_ID".to_string(), idea.id.clone());
+        extra_env.insert("IDEA_TITLE".to_string(), idea.title.clone());
+
+        let config = processor_config.clone();
+        let sender = output_sender.clone();
+
+        // Spawn in background
+        tokio::spawn(async move {
+            let guard = CRONOS.read().await;
+            if let Some(manager) = guard.as_ref() {
+                if let Err(e) = executor::execute_cron_agent_with_env(
+                    &config,
+                    manager,
+                    RunTrigger::Manual,
+                    false,
+                    Some(sender),
+                    None,
+                    Some(extra_env),
+                ).await {
+                    eprintln!("Idea processor failed: {}", e);
+                }
+            }
+        });
+
+        result.dispatched.push(idea.id);
+    }
+
+    Ok(result)
+}
+
+/// Dispatch a single idea to cron-idea-processor
+#[tauri::command]
+pub async fn dispatch_single_idea(idea_id: String, app: AppHandle) -> Result<String, String> {
+    let nolan_root = crate::utils::paths::get_nolan_root()?;
+    let feedback_dir = nolan_root.join(".state/feedback");
+
+    // Read ideas to get title
+    let ideas_path = feedback_dir.join("ideas.jsonl");
+    let ideas = read_jsonl_file::<Idea>(&ideas_path)?;
+
+    let idea = ideas.iter()
+        .find(|i| i.id == idea_id)
+        .ok_or_else(|| format!("Idea {} not found", idea_id))?;
+
+    // Get cronos manager
+    let guard = CRONOS.read().await;
+    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+
+    // Load processor config
+    let processor_config = manager.get_agent("cron-idea-processor").await?;
+
+    // Get output sender
+    let output_sender = OUTPUT_SENDER.clone();
+
+    // Setup event forwarding
+    let app_clone = app.clone();
+    let mut receiver = output_sender.subscribe();
+    tokio::spawn(async move {
+        while let Ok(event) = receiver.recv().await {
+            let _ = app_clone.emit("cronos:output", &event);
+        }
+    });
+
+    // Build env vars
+    let mut extra_env = executor::ExtraEnvVars::new();
+    extra_env.insert("IDEA_ID".to_string(), idea_id.clone());
+    extra_env.insert("IDEA_TITLE".to_string(), idea.title.clone());
+
+    drop(guard);
+
+    // Spawn in background
+    let config = processor_config.clone();
+    let sender = output_sender.clone();
+    tokio::spawn(async move {
+        let guard = CRONOS.read().await;
+        if let Some(manager) = guard.as_ref() {
+            if let Err(e) = executor::execute_cron_agent_with_env(
+                &config,
+                manager,
+                RunTrigger::Manual,
+                false,
+                Some(sender),
+                None,
+                Some(extra_env),
+            ).await {
+                eprintln!("Idea processor failed: {}", e);
+            }
+        }
+    });
+
+    Ok(format!("Dispatched idea {} for processing", idea_id))
+}
+
+/// Read a JSONL file into a vector of items
+fn read_jsonl_file<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> Result<Vec<T>, String> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+
+    let mut items = Vec::new();
+    for (line_num, line) in content.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        match serde_json::from_str::<T>(line) {
+            Ok(item) => items.push(item),
+            Err(e) => eprintln!("Warning: Failed to parse line {} in {}: {}", line_num + 1, path.display(), e),
+        }
+    }
+
+    Ok(items)
 }

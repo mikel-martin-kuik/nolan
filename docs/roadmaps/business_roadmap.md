@@ -8,26 +8,63 @@
 
 ---
 
+## The Mechanism: Spec-Driven Development
+
+**How we achieve the vision**: The next abstraction jump in software development.
+
+| Era | Human Writes | Machine Handles |
+|-----|--------------|-----------------|
+| 1950s | Assembly | — |
+| 1970s | C | Assembly |
+| 2000s | JavaScript | Memory management |
+| 2025+ | **Specs (English)** | **All code** |
+
+While competitors build "AI coding assistants" (Copilot, Cursor, Devin), we build the platform where **specs are the source of truth** and code is a generated artifact.
+
+**This is how we win bids others can't**: We don't just write code faster—we eliminate code as a human concern.
+
+---
+
 ## The Hybrid Model
 
-Nolan is an **AI-augmented software delivery platform** that powers a software development company. The strategy is to start as an internal tool, build a competitive moat, establish a track record, and progressively increase autonomy.
+Nolan is a **spec-driven software delivery platform** that powers a software development company. The strategy: start as an internal tool, prove spec-to-code works, establish a track record, and progressively shift from AI-augmented to AI-native.
 
 ### Transition Path
 
-| Phase | Focus | Key Outcome | Human:AI Ratio | Timeline |
-|-------|-------|-------------|----------------|----------|
-| **1. Internal Tool** | Efficiency | 2-3x faster delivery | 90:10 | Now - 6mo |
-| **2. Competitive Moat** | Market position | Win bids others can't | 60:40 | 6mo - 18mo |
-| **3. Track Record** | Credibility | Proven results, case studies | 30:70 | 18mo - 36mo |
-| **4. Autonomous** | Transformation | Software company run by AI | 10:90 | 36mo+ |
+| Phase | Focus | Key Outcome | Human Role | AI Role |
+|-------|-------|-------------|------------|---------|
+| **1. Internal Tool** | Efficiency | 2-3x faster delivery | Write code, review AI | Assist coding |
+| **2. Spec Foundation** | Spec layer | Specs → auto-plans | Write specs, review plans | Generate plans from specs |
+| **3. Spec-First** | Spec execution | Specs → auto-code | Approve specs, review code | Generate code from specs |
+| **4. Autonomous** | Full autonomy | Specs → deployed software | Approve specs only | Everything else |
 
-### Competitive Flywheel
+### The Competitive Flywheel
 
 ```
-Win bid (cheaper) -> Deliver fast -> Build reputation -> Win more bids
-      ^                                                      |
+Win bid (cheaper) → Deliver fast → Build reputation → Win more bids
+      ↑                                                      |
       +------------- Improve estimation accuracy <-----------+
 ```
+
+### The Spec-Driven Flywheel (How We Deliver)
+
+```
+Write spec → AI generates plan → AI implements → AI validates → Ship
+     ↑                                                          |
+     +---------- Learnings improve spec templates <-------------+
+```
+
+The competitive flywheel is **what** we do. The spec-driven flywheel is **how** we do it faster than anyone else.
+
+### Competitive Positioning
+
+| Competitor | Their Approach | Our Approach |
+|------------|----------------|--------------|
+| **Copilot/Cursor** | AI helps write code | AI replaces code writing |
+| **Devin** | AI agent writes code | Specs are source of truth |
+| **Traditional Agencies** | Humans write code | Specs → auto-code |
+
+**Why we win**: Others optimize for "writing code faster." We eliminate code as a human concern.
 
 ### Business Math
 
@@ -37,42 +74,93 @@ Win bid (cheaper) -> Deliver fast -> Build reputation -> Win more bids
 - Margin: $25,000 (33%)
 - Delivery: 12 weeks
 
-**Phase 1-2: AI-Augmented (60% AI leverage):**
-- Human hours: 200 (AI handles 60%)
-- Total cost: $20,000 (labor) + $5,000 (AI) = $25,000
-- Client price: $55,000 (undercut 27%)
-- Margin: $30,000 (55%)
-- Delivery: 5 weeks
+**Phase 2: Spec Foundation (specs → plans auto-generated):**
+- Human hours: 150 (spec writing + code review)
+- AI hours: 350 (planning + implementation)
+- Total cost: $15,000 (labor) + $7,000 (AI) = $22,000
+- Client price: $50,000 (undercut 33%)
+- Margin: $28,000 (56%)
+- Delivery: 4 weeks
 
-**Phase 4: Autonomous (90% AI leverage):**
-- Human hours: 50 (oversight only)
-- Total cost: $5,000 (labor) + $8,000 (AI) = $13,000
-- Client price: $40,000 (undercut 47%)
-- Margin: $27,000 (68%)
-- Delivery: 2 weeks
+**Phase 4: Spec-First Autonomous (specs → deployed software):**
+- Human hours: 30 (spec approval only)
+- AI hours: 470 (everything else)
+- Total cost: $3,000 (labor) + $10,000 (AI) = $13,000
+- Client price: $35,000 (undercut 53%)
+- Margin: $22,000 (63%)
+- Delivery: 1-2 weeks
 
 ---
 
-## Business Pillars
+### The Self-Development Advantage
 
-| Pillar | Purpose | Business Value |
-|--------|---------|----------------|
-| **P1: Delivery Efficiency** | Deliver projects faster with fewer hours | Lower costs, faster turnaround |
-| **P2: Competitive Intelligence** | Estimate accurately, bid confidently | Win more projects |
-| **P3: Quality Assurance** | Prove work meets standards, audit trails | Client acceptance, compliance |
-| **P4: Autonomous Scaling** | Reduce human ratio per project | Margin expansion, scale without hiring |
+**Unique to Nolan**: The platform can develop itself.
 
-## Team Structure (7 Teams)
+```
+┌─────────────────────────────────────────────────────┐
+│  1. Write spec for Nolan feature                    │
+│               ↓                                     │
+│  2. Nolan's agents implement the spec               │
+│               ↓                                     │
+│  3. New capability added to Nolan                   │
+│               ↓                                     │
+│  4. Better spec tooling → faster spec writing       │
+│               ↓                                     │
+│  5. Return to step 1 (accelerating cycle)           │
+└─────────────────────────────────────────────────────┘
+```
 
-| Pillar | Team | Agents | Purpose |
-|--------|------|--------|---------|
-| P1 | platform_engineering | pe_coordinator, pe_architect, pe_backenddev, pe_frontenddev, pe_devops, pe_reviewer | Delivery infrastructure and tracking |
-| P2 | estimation_bidding | eb_coordinator, eb_estimator, eb_analyst, eb_reviewer | Project estimation and bid proposals |
-| P3 | quality_automation | qa_coordinator, qa_engineer, qa_implementer, qa_reviewer | QA + security validation |
-| P3 | decision_logging | dl_coordinator, dl_dataengineer, dl_implementer, dl_reviewer | Audit trails for compliance |
-| P3 | governance | gv_coordinator, gv_policyarchitect, gv_implementer, gv_auditor, gv_reviewer | Policies and approvals |
-| P4 | exception_escalation | ee_coordinator, ee_architect, ee_implementer, ee_tester | Blocker escalation workflow |
-| P4 | resource_optimization | ro_coordinator, ro_analyst, ro_dataengineer, ro_implementer | Cost tracking and margins |
+**Business impact**: R&D costs approach zero as Nolan matures. Competitors must pay humans to improve their tools. We write specs.
+
+---
+
+## Terminology: Phases vs Priorities
+
+| Term | What It Means | Example |
+|------|---------------|---------|
+| **Transition Phase** (1-4) | Business maturity stage | "Phase 2: Spec Foundation" |
+| **Product Phase** (0-6) | Technical feature set | "Product Phase 6: Spec-Driven Development" |
+
+**Mapping:**
+- Transition Phase 1 (Internal Tool) → Product Phases 0-3 (current)
+- Transition Phase 2 (Spec Foundation) → Product Phase 6.1
+- Transition Phase 3 (Spec-First) → Product Phases 6.2-6.4
+- Transition Phase 4 (Autonomous) → Product Phase 6.5
+
+---
+
+## Current Team Structure
+
+### Default Team (Core Workflow)
+
+One team currently handles all projects:
+
+| Agent | Role | Output |
+|-------|------|--------|
+| **Ana** | Researcher | research.md |
+| **Bill** | Planner | plan.md |
+| **Enzo** | Plan Reviewer | plan-review.md |
+| **Carl** | Implementer | progress.md |
+| **Frank** | Auditor | implementation-audit.md |
+| **Dan** | Coordinator | NOTES.md |
+| **Guardian** | Exception Handler | (escalations) |
+
+**Workflow**: Ana → Bill → Enzo → Carl → Frank (with Dan coordinating)
+
+### Cronos Agents (Background Tasks)
+
+| Agent | Purpose |
+|-------|---------|
+| cron-idea-processor | Analyzes ideas, creates proposals |
+| cron-idea-merger | Consolidates related ideas |
+| cron-roadmap | Updates roadmaps from activity |
+| cron-git-commit | Automated commits |
+| cron-workflow-monitor | Tracks workflow health |
+| cron-dependency-check | Validates dependencies |
+
+### Future: Organizational Structure
+
+A future organizational structure is documented in `teams/org.md` with departments (CORP, HR, DEV, INFRA, BIZ, QA) and ~23 teams. This is **not yet implemented** - currently all work flows through the default team.
 
 ---
 
@@ -208,270 +296,170 @@ Nolan supports four project types. Each has specific estimation patterns and del
 
 ---
 
-## Business Pillar Details
+## Feature Roadmap
 
-### P1: Delivery Efficiency
+Features organized by business goal. All features are implemented by the **default team** (Ana, Bill, Enzo, Carl, Frank).
+
+### Delivery Efficiency
 
 **Goal:** Deliver projects faster with fewer hours
 
-#### P1.1: Delivery Tracking (IMMEDIATE)
-Track actual hours vs planned across all phases.
+#### Delivery Tracking (IMMEDIATE)
 
-**Current State:**
-- Usage tracking per session/project exists
-- Session duration tracked
-- **Gap:** No phase-level time aggregation; no hours/story point metric
+**Current State:** Usage tracking per session/project exists, session duration tracked
+**Gap:** No phase-level time aggregation; no hours/story point metric
 
-**Target State:**
-- Time entry per agent session (automatic)
-- Phase-level and project-level aggregation
-- Hours per story point trending
-
-**Validation:**
+**Target:**
 - [ ] Session time captured automatically
-- [ ] Phase-level totals visible
-- [ ] Project-level totals visible
-- [ ] Trend visualization available
+- [ ] Phase-level and project-level aggregation
+- [ ] Hours per story point trending
+
+#### Delivery Metrics Dashboard (NEAR-TERM)
+
+**Target:**
+- [ ] Hours per story point metric
+- [ ] Velocity trending over time
+- [ ] Bottleneck detection per phase
 
 ---
 
-#### P1.2: Delivery Metrics Dashboard (NEAR-TERM)
-Visualize hours/story point, velocity, bottlenecks.
-
-**Target State:**
-- Hours per story point metric
-- Velocity trending over time
-- Bottleneck detection per phase
-
----
-
-### P2: Competitive Intelligence
+### Competitive Intelligence
 
 **Goal:** Estimate accurately, bid confidently
 
-#### P2.1: Estimation Engine (NEAR-TERM)
-Generate accurate project estimates from requirements.
+#### Estimation Engine (NEAR-TERM)
 
-**Current State:**
-- No estimation tooling
-- Manual estimates only
+**Current State:** No estimation tooling, manual estimates only
 
-**Target State:**
-- Story point estimation based on requirement complexity
-- Historical data lookup (similar past projects)
-- Confidence intervals on estimates
-- Project type templates (web, API, mobile, enterprise)
+**Target:**
+- [ ] Story point estimation based on requirement complexity
+- [ ] Historical data lookup (similar past projects)
+- [ ] Confidence intervals on estimates
+- [ ] Project type templates (web, API, mobile, enterprise)
 
-**Team:** estimation_bidding (eb_coordinator, eb_estimator, eb_analyst, eb_reviewer)
+#### Actual vs Estimate Tracking (NEAR-TERM)
 
-**Validation:**
-- [ ] Estimates generated from requirements
-- [ ] Historical comparisons available
-- [ ] Confidence intervals shown
-- [ ] Accuracy tracked over time
+**Target:**
+- [ ] Per-project estimate vs actual comparison
+- [ ] Variance analysis
+- [ ] Feedback loop to improve estimation model
 
----
+#### Bid Analyzer (DEFERRED)
 
-#### P2.2: Actual vs Estimate Tracking (NEAR-TERM)
-Compare estimates to actuals, learn and improve.
-
-**Target State:**
-- Per-project estimate vs actual comparison
-- Variance analysis
-- Feedback loop to improve estimation model
+**Target:**
+- [ ] Document parser for common RFP formats
+- [ ] Requirement extraction and categorization
+- [ ] Quote generation with line items
 
 ---
 
-#### P2.3: Bid Analyzer (DEFERRED)
-Parse RFP/requirements and generate realistic quotes.
-
-**Target State:**
-- Document parser for common RFP formats
-- Requirement extraction and categorization
-- Quote generation with line items
-
----
-
-### P3: Quality Assurance
+### Quality Assurance
 
 **Goal:** Prove work meets standards, maintain audit trails
 
-#### P3.1: Quality Gate Enforcement (IMMEDIATE)
-Block delivery until quality checks pass.
+#### Quality Gate Enforcement (IMMEDIATE)
 
-**Current State:**
-- Phase-gate with manual QA exists
-- Stop hooks for phase validation exist
-- **Gap:** No configurable quality thresholds
+**Current State:** Phase-gate with manual QA exists, stop hooks for phase validation exist
+**Gap:** No configurable quality thresholds
 
-**Target State:**
-- Configurable quality thresholds per project type
-- Quality score per project
-- Block handoff on quality failure
+**Target:**
+- [ ] Configurable quality thresholds per project type
+- [ ] Quality score per project
+- [ ] Block handoff on quality failure
 
-**Team:** quality_automation (qa_coordinator, qa_engineer, qa_implementer, qa_reviewer)
+#### Decision Audit Trail (IMMEDIATE)
 
-**Validation:**
-- [ ] Quality rules evaluated on phase completion
-- [ ] Quality score visible per project
-- [ ] Handoff blocked on quality failure
-- [ ] Security review included in workflow
+**Current State:** Session history in JSONL files
+**Gap:** No decision capture hook; no decision timeline UI
 
----
+**Target:**
+- [ ] Structured decision log per project
+- [ ] Rationale capture for key decisions
+- [ ] Queryable decision history
+- [ ] Export for public contract compliance
 
-#### P3.2: Decision Audit Trail (IMMEDIATE)
-Log all technical decisions with rationale for compliance.
+#### Client Deliverables Packaging (NEAR-TERM)
 
-**Current State:**
-- Session history in JSONL files
-- **Gap:** No decision capture hook; no decision timeline UI
+**Target:**
+- [ ] Export templates (documentation, code, reports)
+- [ ] Deliverable checklist per project type
+- [ ] Version-controlled deliverable history
 
-**Target State:**
-- Structured decision log per project
-- Rationale capture for key decisions
-- Queryable decision history
-- Export for public contract compliance
+#### Approval Workflow (NEAR-TERM)
 
-**Team:** decision_logging (dl_coordinator, dl_dataengineer, dl_implementer, dl_reviewer)
+**Target:**
+- [ ] Decision classification (low/medium/high risk)
+- [ ] Approval workflow for client-facing outputs
+- [ ] Approval history tracking
 
 ---
 
-#### P3.3: Client Deliverables Packaging (NEAR-TERM)
-Bundle outputs for professional client handoff.
-
-**Target State:**
-- Export templates (documentation, code, reports)
-- Deliverable checklist per project type
-- Version-controlled deliverable history
-
----
-
-#### P3.4: Approval Workflow (NEAR-TERM)
-Human sign-off on client-facing work.
-
-**Target State:**
-- Decision classification (low/medium/high risk)
-- Approval workflow for client-facing outputs
-- Approval history tracking
-
-**Team:** governance (gv_coordinator, gv_policyarchitect, gv_implementer, gv_auditor, gv_reviewer)
-
----
-
-### P4: Autonomous Scaling
+### Autonomous Scaling
 
 **Goal:** Reduce human ratio per project, scale without hiring
 
-#### P4.1: Human Ratio Tracking (IMMEDIATE)
-Measure autonomy progress per project.
+#### Human Ratio Tracking (IMMEDIATE)
 
-**Current State:**
-- Usage tracking exists for tokens/cost
-- **Gap:** No human vs AI hours distinction
+**Current State:** Usage tracking exists for tokens/cost
+**Gap:** No human vs AI hours distinction
 
-**Target State:**
-- Human hours vs AI hours tracking
-- Project autonomy score
-- Trend visualization over time
-
-**Team:** resource_optimization (ro_coordinator, ro_analyst, ro_dataengineer, ro_implementer)
-
-**Validation:**
+**Target:**
 - [ ] Human:AI ratio calculated per project
 - [ ] Autonomy score visible
 - [ ] Trends over time trackable
 
----
+#### Exception Escalation (IMMEDIATE)
 
-#### P4.2: Exception Escalation (IMMEDIATE)
-Auto-escalate blockers to humans before deadlines slip.
+**Current State:** Default policy includes escalation rules (timeout: 30m, budget exceeded, quality failed)
+**Gap:** No automatic trigger; no escalation workflow UI
 
-**Current State:**
-- Default policy includes escalation rules (timeout: 30m, budget exceeded, quality failed)
-- **Gap:** No automatic trigger; no escalation workflow UI
+**Target:**
+- [ ] Automatic trigger on timeout/budget/quality failures
+- [ ] Escalation workflow with notification
+- [ ] Resolution tracking
 
-**Target State:**
-- Automatic trigger on timeout/budget/quality failures
-- Escalation workflow with notification
-- Resolution tracking
+#### Cost Tracking & Margin Analysis (NEAR-TERM)
 
-**Team:** exception_escalation (ee_coordinator, ee_architect, ee_implementer, ee_tester)
+**Current State:** Token costs tracked per session
+**Gap:** No labor cost integration; no margin calculation
 
----
-
-#### P4.3: Cost Tracking & Margin Analysis (NEAR-TERM)
-Track costs and margins per project.
-
-**Current State:**
-- Token costs tracked per session
-- **Gap:** No labor cost integration; no margin calculation
-
-**Target State:**
-- Human labor cost tracking
-- AI cost tracking (tokens)
-- Margin calculation per project
-- Budget monitoring and alerts
+**Target:**
+- [ ] Human labor cost tracking
+- [ ] AI cost tracking (tokens)
+- [ ] Margin calculation per project
+- [ ] Budget monitoring and alerts
 
 ---
 
-## Business Pillar Dependencies
+## Feature Dependencies
 
 ```
-P1: Delivery Efficiency
-    P1.1 Delivery Tracking ---+---> P1.2 Metrics Dashboard
-                              |
-                              +---> P2.1 Estimation Engine ---> P2.2 Actual vs Estimate
-                                                            |
-                                                            +---> P2.3 Bid Analyzer
+Delivery Efficiency
+    Delivery Tracking ───────┬──→ Metrics Dashboard
+                             │
+                             └──→ Estimation Engine ──→ Actual vs Estimate
+                                                    │
+                                                    └──→ Bid Analyzer
 
-P3: Quality Assurance
-    P3.1 Quality Gates ---+---> P3.3 Client Deliverables
-    P3.2 Decision Audit --+---> P3.4 Approval Workflow
+Quality Assurance
+    Quality Gates ──────┬──→ Client Deliverables
+    Decision Audit ─────┴──→ Approval Workflow
 
-P4: Autonomous Scaling
-    P4.1 Human Ratio -----+---> P4.3 Cost Tracking
-    P4.2 Exception Escalation
+Autonomous Scaling
+    Human Ratio ────────┬──→ Cost Tracking
+    Exception Escalation
 ```
 
 **Implementation Order:**
-1. IMMEDIATE (Phase 1): P1.1, P3.1, P3.2, P4.1, P4.2
-2. NEAR-TERM (Phase 2): P1.2, P2.1, P2.2, P3.3, P3.4, P4.3
-3. DEFERRED (Phase 3+): P2.3
-
----
-
-## Team Project Assignments
-
-### IMMEDIATE Priority (Phase 1 - Internal Tool)
-
-| Project | Pillar | Team | Complexity |
-|---------|--------|------|------------|
-| delivery-tracking | P1.1 | platform_engineering | Low |
-| quality-gates | P3.1 | quality_automation | Medium |
-| decision-audit | P3.2 | decision_logging | Low |
-| human-ratio-tracking | P4.1 | resource_optimization | Medium |
-| exception-escalation | P4.2 | exception_escalation | Medium |
-
-### NEAR-TERM Priority (Phase 2 - Competitive Moat)
-
-| Project | Pillar | Team | Complexity |
-|---------|--------|------|------------|
-| metrics-dashboard | P1.2 | platform_engineering | Medium |
-| estimation-engine | P2.1 | estimation_bidding | High |
-| actual-vs-estimate | P2.2 | estimation_bidding | Medium |
-| client-deliverables | P3.3 | quality_automation | Medium |
-| approval-workflow | P3.4 | governance | Medium |
-| cost-tracking | P4.3 | resource_optimization | Medium |
-
-### DEFERRED Priority (Phase 3+ - Track Record)
-
-| Project | Pillar | Team | Complexity |
-|---------|--------|------|------------|
-| bid-analyzer | P2.3 | estimation_bidding | High |
+1. IMMEDIATE: Delivery Tracking, Quality Gates, Decision Audit, Human Ratio, Exception Escalation
+2. NEAR-TERM: Metrics Dashboard, Estimation Engine, Actual vs Estimate, Client Deliverables, Approval Workflow, Cost Tracking
+3. DEFERRED: Bid Analyzer
 
 ---
 
 ## Risks
+
+### General Risks
 
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
@@ -480,3 +468,13 @@ P4: Autonomous Scaling
 | Quality escapes | Medium | High | Security in QA workflow |
 | Client trust | Medium | High | Start with internal, prove results |
 | AI cost increases | Medium | Medium | Track margins, adjust pricing |
+
+### Phase 6 (Spec-Driven) Risks
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| Specs lack sufficient detail | High | High | Iterative spec refinement, gap detection |
+| AI generates incorrect implementations | Medium | High | Frank audits against spec, test generation |
+| Spec-to-code gap larger than expected | Medium | Medium | Start with simple specs, measure accuracy |
+| Users resist spec-first workflow | Medium | Medium | Gradual transition, prove value on internal projects |
+| Spec versioning becomes complex | Low | Medium | Simple versioning first, iterate as needed |

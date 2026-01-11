@@ -233,3 +233,88 @@ pub async fn get_agent_stats(
         Err(e) => Err(error_response(StatusCode::NOT_FOUND, e)),
     }
 }
+
+// ========================
+// Group Management
+// ========================
+
+use crate::cronos::types::CronAgentGroup;
+
+/// List all cron groups
+pub async fn list_groups() -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::list_cron_groups().await {
+        Ok(groups) => Ok(Json(serde_json::json!(groups))),
+        Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+/// Get a specific group
+pub async fn get_group(
+    Path(group_id): Path<String>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::get_cron_group(group_id).await {
+        Ok(group) => Ok(Json(serde_json::json!(group))),
+        Err(e) => Err(error_response(StatusCode::NOT_FOUND, e)),
+    }
+}
+
+/// Create group request
+#[derive(Deserialize)]
+pub struct CreateGroupRequest {
+    group: CronAgentGroup,
+}
+
+/// Create a new group
+pub async fn create_group(
+    Json(req): Json<CreateGroupRequest>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::create_cron_group(req.group).await {
+        Ok(_) => Ok(Json(serde_json::json!({ "success": true }))),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+/// Update group request
+#[derive(Deserialize)]
+pub struct UpdateGroupRequest {
+    group: CronAgentGroup,
+}
+
+/// Update an existing group
+pub async fn update_group(
+    Path(_group_id): Path<String>,
+    Json(req): Json<UpdateGroupRequest>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::update_cron_group(req.group).await {
+        Ok(_) => Ok(Json(serde_json::json!({ "success": true }))),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+/// Delete a group
+pub async fn delete_group(
+    Path(group_id): Path<String>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::delete_cron_group(group_id).await {
+        Ok(_) => Ok(Json(serde_json::json!({ "success": true }))),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+/// Set agent group request
+#[derive(Deserialize)]
+pub struct SetAgentGroupRequest {
+    #[serde(rename = "groupId")]
+    group_id: Option<String>,
+}
+
+/// Set an agent's group
+pub async fn set_agent_group(
+    Path(agent_name): Path<String>,
+    Json(req): Json<SetAgentGroupRequest>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::set_agent_group(agent_name, req.group_id).await {
+        Ok(_) => Ok(Json(serde_json::json!({ "success": true }))),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}

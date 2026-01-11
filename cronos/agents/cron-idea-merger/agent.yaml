@@ -1,17 +1,16 @@
-name: cron-roadmap
-description: Updates Nolan Roadmap
+name: cron-idea-merger
+description: Detects and auto-merges semantically similar ideas in the inbox
 model: opus
-timeout: 1800
-enabled: false
-group: planning
+timeout: 600
+enabled: true
+group: feedback
 schedule:
-  cron: 0 9 * * *
+  cron: 0 */4 * * *
   timezone: null
 guardrails:
   allowed_tools:
   - Read
   - Write
-  - Edit
   - Glob
   - Grep
   forbidden_paths:
@@ -26,7 +25,7 @@ concurrency:
   queue_if_running: false
 retry:
   enabled: false
-  max_retries: 3
+  max_retries: 1
   delay_secs: 60
   exponential_backoff: false
 catch_up: skip

@@ -9,10 +9,19 @@ export interface CronAgentConfig {
   schedule: CronSchedule;
   guardrails: CronGuardrails;
   context: CronContext;
+  // Group assignment (references groups.yaml)
+  group?: string;
   // New enhanced fields
   concurrency: ConcurrencyPolicy;
   retry: RetryPolicy;
   catch_up: CatchUpPolicy;
+}
+
+// Cron agent group definition
+export interface CronAgentGroup {
+  id: string;
+  name: string;
+  order: number;
 }
 
 export interface CronSchedule {
@@ -55,6 +64,8 @@ export interface CronAgentInfo {
   cron_expression: string;
   next_run?: string;
   last_run?: CronRunLog;
+  // Group assignment
+  group?: string;
   // New monitoring fields
   is_running: boolean;
   current_run_id?: string;
@@ -186,7 +197,7 @@ export const CATCH_UP_POLICIES = [
 ] as const;
 
 // Default config for new agents
-export function createDefaultCronAgentConfig(name: string): CronAgentConfig {
+export function createDefaultCronAgentConfig(name: string, group?: string): CronAgentConfig {
   return {
     name,
     description: '',
@@ -202,6 +213,7 @@ export function createDefaultCronAgentConfig(name: string): CronAgentConfig {
       max_file_edits: 10,
     },
     context: {},
+    group,
     // New defaults
     concurrency: {
       allow_parallel: false,

@@ -165,6 +165,13 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   subscribe_cron_output: { method: 'POST', path: '/api/noop' },  // WebSocket only - no-op in REST
   get_cron_next_runs: { method: 'GET', path: (args) => `/api/cronos/cron/next?expression=${encodeURIComponent(getArg(args, 'expression') as string)}&count=${args.count || 5}` },
   describe_cron_expression: { method: 'GET', path: (args) => `/api/cronos/cron/describe?expression=${encodeURIComponent(getArg(args, 'expression') as string)}` },
+  // Cronos groups
+  list_cron_groups: { method: 'GET', path: '/api/cronos/groups' },
+  get_cron_group: { method: 'GET', path: (args) => `/api/cronos/groups/${getArg(args, 'group_id')}` },
+  create_cron_group: { method: 'POST', path: '/api/cronos/groups' },
+  update_cron_group: { method: 'PUT', path: (args) => `/api/cronos/groups/${(args.group as { id: string })?.id}` },
+  delete_cron_group: { method: 'DELETE', path: (args) => `/api/cronos/groups/${getArg(args, 'group_id')}` },
+  set_agent_group: { method: 'PUT', path: (args) => `/api/cronos/agents/${getArg(args, 'agent_name')}/group` },
 
   // Feedback (feature requests & ideas)
   list_feature_requests: { method: 'GET', path: '/api/feedback/requests' },

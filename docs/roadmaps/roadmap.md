@@ -1,6 +1,28 @@
 # Nolan Roadmap
 
 > **Vision**: AI-powered software development company that delivers projects faster and cheaper than traditional agencies, progressively increasing autonomy as results prove out.
+>
+> *"Win bids others can't. Deliver faster than anyone else."*
+
+---
+
+## The Mechanism: Spec-Driven Development
+
+**How we achieve the vision**: The next abstraction jump.
+
+| Era | Human Writes | Machine Handles |
+|-----|--------------|-----------------|
+| 1950s | Assembly | — |
+| 1970s | C | Assembly |
+| 2000s | JavaScript | Memory, low-level ops |
+| 2025+ | **Specs (English)** | **All code** |
+
+Nolan is the platform for this transition:
+- **Specs are the source of truth** (not code)
+- **AI agents execute specs** (not humans writing code)
+- **Nolan can develop itself** (specs → implementation → better spec tooling)
+
+This is how we win: We don't just write code faster—we eliminate code as a human concern.
 
 ---
 
@@ -8,23 +30,19 @@
 
 | Document | Focus | Description |
 |----------|-------|-------------|
-| [Business Roadmap](business_roadmap.md) | Strategy & Market | How we win - pillars P1-P4, project templates, metrics, team assignments |
-| [Product Roadmap](product_roadmap.md) | Features & Technical | What we build - phases 0-5, architecture, current state |
+| [Business Roadmap](business_roadmap.md) | Strategy & Market | How we win - business goals, project templates, metrics, feature roadmap |
+| [Product Roadmap](product_roadmap.md) | Features & Technical | What we build - phases 0-6, architecture, current state |
 
 ---
 
 ## Quick Reference
 
-### Business Pillars (P1-P4)
+> **Note**: This roadmap uses three numbering systems:
+> - **Transition Phases** (1-4): Business maturity (Internal Tool → Autonomous)
+> - **Product Phases** (0-6): Technical features we build
+> - **Priority Tiers**: When we build (IMMEDIATE, NEAR-TERM, DEFERRED)
 
-| Pillar | Purpose | Priority |
-|--------|---------|----------|
-| **P1: Delivery Efficiency** | Deliver faster with fewer hours | IMMEDIATE |
-| **P2: Competitive Intelligence** | Estimate accurately, bid confidently | NEAR-TERM |
-| **P3: Quality Assurance** | Prove standards, maintain audit trails | IMMEDIATE |
-| **P4: Autonomous Scaling** | Reduce human ratio per project | IMMEDIATE |
-
-### Product Phases (0-5)
+### Product Phases (0-6)
 
 | Phase | Status | Progress |
 |-------|--------|----------|
@@ -34,33 +52,81 @@
 | Phase 3: Context & Communication | Mostly Complete | 95% |
 | Phase 4: Autonomy & Scale | In Progress | 40% |
 | Phase 5: Enterprise | Not Started | 0% |
+| **Phase 6: Spec-Driven Development** | Not Started | 0% |
 
 ### Transition Phases
 
-| Phase | Focus | Human:AI Ratio |
-|-------|-------|----------------|
-| 1. Internal Tool | Efficiency | 90:10 |
-| 2. Competitive Moat | Win bids | 60:40 |
-| 3. Track Record | Prove results | 30:70 |
-| 4. Autonomous | AI-run company | 10:90 |
+| Phase | Focus | Human Role |
+|-------|-------|------------|
+| 1. Internal Tool | Efficiency | Write code, review AI |
+| 2. Spec Foundation | Spec layer | Write specs, review plans |
+| 3. Spec-First | Spec execution | Approve specs, review code |
+| 4. Autonomous | Full autonomy | Approve specs only |
 
 ---
 
-## Team Structure
+## Current Team Structure
+
+### Default Team (Core Workflow)
+
+One team executes all projects using a phase-gate workflow:
+
+| Agent | Role | Output |
+|-------|------|--------|
+| **Ana** | Researcher | research.md |
+| **Bill** | Planner | plan.md |
+| **Enzo** | Plan Reviewer | plan-review.md |
+| **Carl** | Implementer | progress.md |
+| **Frank** | Auditor | implementation-audit.md |
+| **Dan** | Coordinator | NOTES.md |
+| **Guardian** | Exception Handler | (escalations) |
+
+**Workflow**: Ana → Bill → Enzo → Carl → Frank
+
+### Cronos Agents (Background Tasks)
+
+| Agent | Purpose |
+|-------|---------|
+| cron-idea-processor | Analyzes ideas, creates proposals |
+| cron-idea-merger | Consolidates related ideas |
+| cron-roadmap | Updates roadmaps from activity |
+| cron-git-commit | Automated commits |
+| cron-workflow-monitor | Tracks workflow health |
+| cron-dependency-check | Validates dependencies |
+
+---
+
+## What Nolan Replaces
+
+| Old Tool | Nolan Equivalent | Key Difference |
+|----------|------------------|----------------|
+| **VSCode** | Agent workspace | No code editing—spec editing |
+| **Jira** | Projects + Ideas | Specs are tickets, AI executes them |
+| **GitHub Issues** | Support/Ideas | Natural language, AI-triaged |
+| **GitHub PRs** | Workflow phases | AI review, not human review |
+| **Confluence** | Spec repository | Living docs that generate code |
+| **CI/CD** | Cronos + Agents | Continuous development, not just delivery |
+
+---
+
+## The Self-Development Loop
+
+Nolan's unique advantage: it can build itself.
 
 ```
-/teams/
-├── p1_delivery/
-│   └── platform_engineering
-├── p2_competitive/
-│   └── estimation_bidding
-├── p3_quality/
-│   ├── quality_automation
-│   ├── decision_logging
-│   └── governance
-└── p4_autonomy/
-    ├── exception_escalation
-    └── resource_optimization
+┌────────────────────────────────────────────────────┐
+│                                                     │
+│   1. You write spec for Nolan feature              │
+│              ↓                                      │
+│   2. Nolan's agents implement it                   │
+│              ↓                                      │
+│   3. New capability added to Nolan                 │
+│              ↓                                      │
+│   4. Better spec tooling enables faster specs      │
+│              ↓                                      │
+│   5. Return to step 1 (accelerating cycle)         │
+│                                                     │
+└────────────────────────────────────────────────────┘
 ```
 
-**Total:** 7 teams, ~35 agents
+No traditional dev tool has this property. VSCode can't improve itself from specs. Jira can't auto-execute tickets. Nolan can.

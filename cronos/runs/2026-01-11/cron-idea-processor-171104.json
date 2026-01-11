@@ -1,0 +1,15 @@
+{
+  "run_id": "3c74c192",
+  "agent_name": "cron-idea-processor",
+  "started_at": "2026-01-11T17:11:04.378401135+00:00",
+  "completed_at": "2026-01-11T17:13:59.382879919+00:00",
+  "status": "success",
+  "duration_secs": 175,
+  "exit_code": 0,
+  "output_file": "/home/mmartin/Proyectos/nolan/cronos/runs/2026-01-11/cron-idea-processor-171104.log",
+  "error": null,
+  "attempt": 1,
+  "trigger": "manual",
+  "session_name": "cron-cron-idea-processor-3c74c192",
+  "run_dir": "/home/mmartin/Proyectos/nolan/cronos/runs/2026-01-11/cron-idea-processor-3c74c192"
+}

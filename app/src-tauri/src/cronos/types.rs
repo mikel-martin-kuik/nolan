@@ -11,6 +11,9 @@ pub struct CronAgentConfig {
     pub schedule: CronSchedule,
     pub guardrails: CronGuardrails,
     pub context: CronContext,
+    // Group assignment (references groups.yaml)
+    #[serde(default)]
+    pub group: Option<String>,
     // New fields for enhanced functionality
     #[serde(default)]
     pub concurrency: ConcurrencyPolicy,
@@ -18,6 +21,22 @@ pub struct CronAgentConfig {
     pub retry: RetryPolicy,
     #[serde(default)]
     pub catch_up: CatchUpPolicy,
+}
+
+/// Cron agent group definition (stored in cronos/groups.yaml)
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CronAgentGroup {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub order: i32,
+}
+
+/// Groups configuration file structure
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct GroupsConfig {
+    #[serde(default)]
+    pub groups: Vec<CronAgentGroup>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -225,6 +244,8 @@ pub struct CronAgentInfo {
     pub cron_expression: String, // Raw cron expression
     pub next_run: Option<String>,
     pub last_run: Option<CronRunLog>,
+    // Group assignment
+    pub group: Option<String>,
     // New fields for enhanced monitoring
     pub is_running: bool,
     pub current_run_id: Option<String>,

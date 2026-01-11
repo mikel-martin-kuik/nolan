@@ -147,6 +147,8 @@ pub fn run() {
             read_roadmap,
             list_roadmap_files,
             create_project,
+            update_project_status,
+            update_file_marker,
             // Teams commands
             commands::teams::get_team_config,
             commands::teams::save_team_config,
@@ -225,6 +227,7 @@ pub fn run() {
             update_review_gaps,
             update_review_proposal,
             accept_review,
+            accept_and_route_review,
             // Ollama commands
             ollama_status,
             ollama_models,

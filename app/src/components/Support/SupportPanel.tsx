@@ -6,10 +6,12 @@ import { FeatureRequestsTab } from './FeatureRequestsTab';
 import { IdeasTab } from './IdeasTab';
 import { IdeaForm } from './IdeaForm';
 import { FeatureRequestForm } from './FeatureRequestForm';
+import { RoadmapViewer } from '../Projects/RoadmapViewer';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { Compass } from 'lucide-react';
 
-type TabType = 'requests' | 'ideas';
+type TabType = 'requests' | 'ideas' | 'roadmap';
 
 export function SupportPanel() {
   const [activeTab, setActiveTab] = useState<TabType>('requests');
@@ -19,9 +21,10 @@ export function SupportPanel() {
   const handleNewClick = () => {
     if (activeTab === 'ideas') {
       setIdeaFormOpen(true);
-    } else {
+    } else if (activeTab === 'requests') {
       setRequestFormOpen(true);
     }
+    // No action for roadmap tab
   };
 
   const { data: stats } = useQuery({
@@ -34,9 +37,11 @@ export function SupportPanel() {
     <div className="h-full flex flex-col gap-4">
       {/* Header with New Button and Tabs */}
       <div className="flex items-center gap-2">
-        <Button size="sm" onClick={handleNewClick}>
-          New
-        </Button>
+        {activeTab !== 'roadmap' && (
+          <Button size="sm" onClick={handleNewClick}>
+            New
+          </Button>
+        )}
         <div className="flex items-center gap-1 p-1 glass-card rounded-lg">
           <button
             onClick={() => setActiveTab('requests')}
@@ -68,6 +73,17 @@ export function SupportPanel() {
               </span>
             )}
           </button>
+          <button
+            onClick={() => setActiveTab('roadmap')}
+            className={cn(
+              "flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all",
+              activeTab === 'roadmap' && "bg-foreground/10 text-foreground",
+              activeTab !== 'roadmap' && "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Compass className="w-3 h-3" />
+            <span>Roadmap</span>
+          </button>
         </div>
       </div>
 
@@ -75,6 +91,7 @@ export function SupportPanel() {
       <div className="flex-1 overflow-auto">
         {activeTab === 'requests' && <FeatureRequestsTab />}
         {activeTab === 'ideas' && <IdeasTab />}
+        {activeTab === 'roadmap' && <RoadmapViewer />}
       </div>
 
       <IdeaForm open={ideaFormOpen} onOpenChange={setIdeaFormOpen} />

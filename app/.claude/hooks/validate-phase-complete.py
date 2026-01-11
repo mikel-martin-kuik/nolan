@@ -463,62 +463,71 @@ def generate_handoff_id(agent: str = "") -> str:
     return f"HO_{date_part}_{time_part}_{agent_part}_{short_hash}"
 
 
-def notify_coordinator(agent: str, project_name: str, handoff_id: str, team_name: str = "default"):
-    """Send wake-up notification to coordinator via tmux.
+def get_next_agent_from_phases(team_config: dict, current_agent: str) -> Optional[str]:
+    """Get the next agent in the workflow based on phases.
 
-    This wakes the coordinator from sleep state so they can ACK the handoff.
+    Uses workflow.phases[].next to determine agent-to-agent handoff target.
+    Returns None if workflow is complete or agent not in phases.
+    """
+    phases = team_config.get('team', {}).get('workflow', {}).get('phases', [])
+
+    # Find current agent's phase
+    for phase in phases:
+        if phase.get('owner') == current_agent:
+            next_phase_name = phase.get('next')
+            if not next_phase_name:
+                return None  # Workflow complete
+            # Find owner of next phase
+            for next_phase in phases:
+                if next_phase.get('name') == next_phase_name:
+                    return next_phase.get('owner')
+            break
+    return None
+
+
+def get_note_taker(team_config: dict) -> Optional[str]:
+    """Get the note_taker (or coordinator for legacy) from team config."""
+    workflow = team_config.get('team', {}).get('workflow', {})
+    return workflow.get('note_taker') or workflow.get('coordinator')
+
+
+def notify_next_agent(agent: str, project_name: str, handoff_id: str,
+                      next_agent: str, team_name: str = "default"):
+    """Send wake-up notification to next agent via tmux.
+
+    This wakes the next agent from sleep state so they can pick up the handoff.
     Uses the team-aliases.sh messaging system.
     """
     import subprocess
 
-    # Get coordinator name from team config (fail loudly if not found)
-    coordinator = None
+    if not next_agent:
+        log_stderr("Cannot notify next agent: no next agent specified")
+        return False
+
     nolan_root = os.environ.get('NOLAN_ROOT')
     if not nolan_root:
-        log_stderr("Cannot notify coordinator: NOLAN_ROOT not set")
+        log_stderr("Cannot notify next agent: NOLAN_ROOT not set")
         return False
 
-    # Search for team config in teams directory (supports subdirectories)
-    teams_dir = Path(nolan_root) / 'teams'
-    config_path = None
-    for path in teams_dir.rglob(f'{team_name}.yaml'):
-        config_path = path
-        break
+    # Build session name for next agent
+    session_name = f"agent-{team_name}-{next_agent}"
 
-    if not config_path:
-        log_stderr(f"Cannot notify coordinator: team config not found for {team_name}")
-        return False
-
-    try:
-        with open(config_path) as f:
-            config = yaml.safe_load(f)
-        coordinator = config.get('team', {}).get('workflow', {}).get('coordinator')
-        if not coordinator:
-            log_stderr(f"Cannot notify coordinator: no coordinator defined in team config {team_name}")
-            return False
-    except Exception as e:
-        log_stderr(f"Cannot notify coordinator: failed to parse team config: {e}")
-        return False
-
-    # Build session name for coordinator
-    session_name = f"agent-{team_name}-{coordinator}"
-
-    # Check if coordinator session exists
+    # Check if agent session exists
     try:
         result = subprocess.run(
             ['tmux', 'has-session', '-t', session_name],
             capture_output=True, timeout=2
         )
         if result.returncode != 0:
-            log_stderr(f"Coordinator session '{session_name}' not found - cannot send wake notification")
+            log_stderr(f"Agent session '{session_name}' not found - cannot send wake notification")
             return False
     except Exception as e:
-        log_stderr(f"Failed to check coordinator session: {e}")
+        log_stderr(f"Failed to check agent session: {e}")
         return False
 
     # Build wake-up message
     msg_id = f"HANDOFF_{handoff_id[:8]}"
-    message = f"{msg_id}: Handoff from {agent} - project '{project_name}' ready for coordination"
+    message = f"{msg_id}: Handoff from {agent} - project '{project_name}' ready for {next_agent}"
 
     try:
         # Exit copy mode if active (prevents message from being ignored)
@@ -541,15 +550,44 @@ def notify_coordinator(agent: str, project_name: str, handoff_id: str, team_name
             capture_output=True, timeout=1
         )
 
-        log_stderr(f"Sent wake notification to {coordinator}: {msg_id}")
+        log_stderr(f"Sent wake notification to {next_agent}: {msg_id}")
         return True
 
     except subprocess.TimeoutExpired:
-        log_stderr(f"Timeout sending wake notification to {coordinator}")
+        log_stderr(f"Timeout sending wake notification to {next_agent}")
         return False
     except Exception as e:
         log_stderr(f"Failed to send wake notification: {e}")
         return False
+
+
+# Legacy alias for backwards compatibility
+def notify_coordinator(agent: str, project_name: str, handoff_id: str, team_name: str = "default"):
+    """Legacy wrapper - now uses agent-to-agent notification."""
+    # Try to determine next agent from team config
+    nolan_root = os.environ.get('NOLAN_ROOT')
+    if not nolan_root:
+        return False
+
+    teams_dir = Path(nolan_root) / 'teams'
+    config_path = None
+    for path in teams_dir.rglob(f'{team_name}.yaml'):
+        config_path = path
+        break
+
+    if not config_path:
+        return False
+
+    try:
+        with open(config_path) as f:
+            config = yaml.safe_load(f)
+        # For legacy, notify the note_taker instead
+        next_agent = get_note_taker(config)
+        if next_agent:
+            return notify_next_agent(agent, project_name, handoff_id, next_agent, team_name)
+    except Exception:
+        pass
+    return False
 
 
 def write_handoff_file_atomic(agent: str, project_name: str, project_path: Path,
@@ -558,6 +596,7 @@ def write_handoff_file_atomic(agent: str, project_name: str, project_path: Path,
 
     Returns True on success, False on failure.
     This ensures the handoff file is either fully written or not at all.
+    Uses agent-to-agent handoff pattern based on workflow phases.
     """
     state_base = get_state_base()
     if not state_base:
@@ -576,29 +615,32 @@ def write_handoff_file_atomic(agent: str, project_name: str, project_path: Path,
         filename = f"{timestamp_file}_{agent}_{handoff_id}.handoff"
         final_path = pending_dir / filename
 
-        # Get team info and coordinator
+        # Get team info and determine next agent from workflow phases
         team_name = "unknown"
-        coordinator = None
+        next_agent = None
         try:
             team_file = project_path / '.team'
             if team_file.exists():
                 team_name = parse_team_name(team_file)
-                # Get coordinator from team config
+                # Get next agent from workflow phases (agent-to-agent pattern)
                 team_config = load_team_config(project_path)
-                coordinator = team_config.get('team', {}).get('workflow', {}).get('coordinator')
+                next_agent = get_next_agent_from_phases(team_config, agent)
+                # If no next agent in workflow (complete), notify note_taker
+                if not next_agent:
+                    next_agent = get_note_taker(team_config)
         except Exception as e:
-            log_stderr(f"Failed to get coordinator for handoff: {e}")
+            log_stderr(f"Failed to determine next agent for handoff: {e}")
 
-        if not coordinator:
-            log_stderr(f"No coordinator found for team {team_name} - handoff may not be processed")
-            coordinator = "unknown"
+        if not next_agent:
+            log_stderr(f"No next agent found for {agent} in team {team_name} - handoff may not be processed")
+            next_agent = "unknown"
 
         # Build handoff data
         handoff_data = {
             'id': handoff_id,
             'timestamp': timestamp,
             'from_agent': agent,
-            'to_agent': coordinator,
+            'to_agent': next_agent,
             'project': project_name,
             'team': team_name,
             'status': status,
@@ -768,9 +810,18 @@ def trigger_handoff_atomic(docs_path: Path, agent: str, output_file: str,
         # bypasses the atomic handoff system. The .handoffs/ directory is the
         # single source of truth for handoff state.
 
-        # STEP 2: Send wake-up notification to coordinator
-        # This wakes the coordinator from sleep state so they can ACK the handoff
-        notify_coordinator(agent, docs_path.name, handoff_id, team_name)
+        # STEP 2: Send wake-up notification to next agent
+        # This wakes the next agent from sleep state so they can pick up the handoff
+        try:
+            team_config = load_team_config(docs_path)
+            next_agent = get_next_agent_from_phases(team_config, agent)
+            # If workflow complete, notify note_taker
+            if not next_agent:
+                next_agent = get_note_taker(team_config)
+            if next_agent:
+                notify_next_agent(agent, docs_path.name, handoff_id, next_agent, team_name)
+        except Exception as e:
+            log_stderr(f"Could not notify next agent: {e}")
 
         # NOTE: State file clearing moved to check_handoff_done() after ACK confirmed
         # This prevents state loss if ACK times out
@@ -989,13 +1040,15 @@ def check_handoff_done(docs_path: Path, agent: str, timeout_config: dict) -> Opt
 
 
 def get_coordinator_file(docs_path: Path) -> Optional[str]:
-    """Get coordinator's output file from team config."""
+    """Get note_taker's output file from team config (replaces coordinator pattern)."""
     try:
         team = load_team_config(docs_path)
-        coordinator_name = team['team']['workflow']['coordinator']
-        coordinator_agent = next((a for a in team['team']['agents'] if a['name'] == coordinator_name), None)
-        if coordinator_agent and coordinator_agent.get('output_file'):
-            return coordinator_agent['output_file']
+        # Try note_taker first (new pattern), fall back to coordinator (legacy)
+        note_taker_name = get_note_taker(team)
+        if note_taker_name:
+            note_taker_agent = next((a for a in team['team']['agents'] if a['name'] == note_taker_name), None)
+            if note_taker_agent and note_taker_agent.get('output_file'):
+                return note_taker_agent['output_file']
     except Exception:
         pass
     return None
@@ -1138,25 +1191,30 @@ def main():
         }))
         return
 
-    # Check handoff was done (only for non-coordinator agents)
-    coordinator = None
+    # Check handoff was done (only for workflow participant agents)
+    # Uses agent-to-agent handoff pattern based on workflow phases
+    note_taker = None
+    is_workflow_participant = True
     try:
         team = load_team_config(docs_path)
-        coordinator = team['team']['workflow']['coordinator']
+        note_taker = get_note_taker(team)
+        # Check if agent is a workflow participant
+        agent_config = get_agent_config(team, agent)
+        if agent_config:
+            is_workflow_participant = agent_config.get('workflow_participant', True)
     except Exception as e:
-        log_stderr(f"Failed to load coordinator from team config: {e}")
+        log_stderr(f"Failed to load team config: {e}")
 
-    if not coordinator:
-        # Fail loudly - require explicit coordinator in team config
-        print(json.dumps({
-            "decision": "block",
-            "reason": "Cannot determine coordinator. Ensure team config has workflow.coordinator defined."
-        }))
+    # Non-workflow participants (like guardian, support agents) can always stop
+    if not is_workflow_participant:
+        log_stderr(f"Agent {agent} is not a workflow participant - skipping handoff validation")
+        print(json.dumps({"decision": "approve"}))
         return
 
-    if agent != coordinator:
-        # Non-coordinator: trigger handoff and wait for ACK
-        error = check_handoff_done(docs_path, agent, timeout_config)
+    # Note taker (replaces coordinator) handles pending handoffs
+    if agent == note_taker:
+        # Note taker: ACK pending handoffs and check project complete
+        error = coordinator_stop_check(docs_path)
         if error:
             print(json.dumps({
                 "decision": "block",
@@ -1164,8 +1222,8 @@ def main():
             }))
             return
     else:
-        # Coordinator: ACK pending handoffs and check project complete
-        error = coordinator_stop_check(docs_path)
+        # Workflow agent: trigger handoff to next agent and wait for ACK
+        error = check_handoff_done(docs_path, agent, timeout_config)
         if error:
             print(json.dumps({
                 "decision": "block",

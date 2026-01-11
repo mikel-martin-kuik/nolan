@@ -181,8 +181,15 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   delete_feature_request: { method: 'DELETE', path: (args) => `/api/feedback/requests/${args.id}` },
   list_ideas: { method: 'GET', path: '/api/feedback/ideas' },
   create_idea: { method: 'POST', path: '/api/feedback/ideas' },
+  update_idea: { method: 'PUT', path: (args) => `/api/feedback/ideas/${args.id}` },
   update_idea_status: { method: 'PUT', path: (args) => `/api/feedback/ideas/${args.id}/status` },
   delete_idea: { method: 'DELETE', path: (args) => `/api/feedback/ideas/${args.id}` },
+  dispatch_ideas: { method: 'POST', path: '/api/feedback/ideas/dispatch' },
+  list_idea_reviews: { method: 'GET', path: '/api/feedback/reviews' },
+  accept_review: { method: 'POST', path: (args) => `/api/feedback/reviews/${args.item_id}/accept` },
+  accept_and_route_review: { method: 'POST', path: (args) => `/api/feedback/reviews/${args.item_id}/accept` },
+  update_review_proposal: { method: 'PUT', path: (args) => `/api/feedback/reviews/${args.item_id}/proposal` },
+  update_review_gaps: { method: 'PUT', path: (args) => `/api/feedback/reviews/${args.item_id}/gaps` },
   get_feedback_stats: { method: 'GET', path: '/api/feedback/stats' },
   get_user_votes: { method: 'GET', path: '/api/feedback/votes' },
 
@@ -238,6 +245,15 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
   const response = await fetch(url, options);
 
   if (!response.ok) {
+    // Handle unauthorized - clear token and reload to trigger login
+    if (response.status === 401) {
+      localStorage.removeItem('nolan-session-token');
+      // Reload the page to trigger the auth check flow
+      window.location.reload();
+      // Throw to prevent further execution
+      throw new Error('Session expired. Redirecting to login...');
+    }
+
     const error = await response.text();
     throw new Error(error);
   }

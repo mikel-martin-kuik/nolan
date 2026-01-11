@@ -356,12 +356,12 @@ export const StatusPanel: React.FC = () => {
             </div>
           </div>
 
-          {/* Free Agent Cards */}
-          <div className="flex flex-wrap gap-2 lg:gap-3">
+          {/* Free Agent Cards - horizontally scrollable */}
+          <div className="flex gap-2 lg:gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
             {freeAgentsWithNames
               .filter(agent => agent.active)
               .map((agent) => (
-                <div key={agent.session} className="w-[clamp(120px,calc(70vw/2),160px)]">
+                <div key={agent.session} className="flex-shrink-0 w-[clamp(120px,calc(70vw/2),160px)]">
                   <AgentCard
                     agent={agent}
                     variant="dashboard"
@@ -372,7 +372,7 @@ export const StatusPanel: React.FC = () => {
               ))}
 
             {/* Spawn Ralph Button */}
-            <div className="w-[clamp(120px,calc(70vw/2),160px)]">
+            <div className="flex-shrink-0 w-[clamp(120px,calc(70vw/2),160px)]">
               <Button
                 variant="outline"
                 onClick={handleSpawnRalphClick}

@@ -598,6 +598,7 @@ pub async fn launch_team(
 
     // Handle prompt.md writing and determine what to send to Dan
     let prompt_file = docs_path.join("prompt.md");
+    let spec_file = docs_path.join("SPEC.md");
     let effective_prompt: Option<String> = if let Some(ref prompt) = initial_prompt {
         // New project: write initial prompt to file and send to Dan
         // Add HANDOFF marker to indicate prompt has been initialized
@@ -618,8 +619,16 @@ pub async fn launch_team(
             fs::write(&prompt_file, &content)
                 .map_err(|e| format!("Failed to update prompt.md: {}", e))?;
         }
-        // Send followup prompt to Dan (the action prompt)
-        followup_prompt.clone()
+
+        // If followup prompt provided, use it; otherwise check for SPEC.md auto-start
+        if followup_prompt.is_some() {
+            followup_prompt.clone()
+        } else if spec_file.exists() {
+            // SPEC.md exists - generate auto-start prompt for first phase agent
+            Some("Please start working on this project. Review the SPEC.md file for the complete specification and requirements.".to_string())
+        } else {
+            None
+        }
     };
 
     // Determine which agents to launch based on project phase status

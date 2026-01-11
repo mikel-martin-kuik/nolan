@@ -116,6 +116,14 @@ export const TeamsPanel: React.FC = () => {
     loadTeamInfos();  // Load hierarchical team info
   }, [loadAvailableTeams, fetchAgentInfos, loadDepartments, loadTeamInfos]);
 
+  // Preselect the default team when available teams are loaded
+  useEffect(() => {
+    if (availableTeams.length > 0 && selectedTeam === null) {
+      const defaultTeam = availableTeams.includes('default') ? 'default' : availableTeams[0];
+      handleSelectTeam(defaultTeam);
+    }
+  }, [availableTeams]);
+
   // Get teams grouped by department (flat view)
   const departmentGroups = getGroupedTeams(availableTeams);
 

@@ -1,0 +1,15 @@
+{
+  "run_id": "21df8d81",
+  "agent_name": "cron-roadmap",
+  "started_at": "2026-01-11T17:55:50.542330912+00:00",
+  "completed_at": "2026-01-11T17:59:50.146463169+00:00",
+  "status": "success",
+  "duration_secs": 239,
+  "exit_code": 0,
+  "output_file": "/home/mmartin/Proyectos/nolan/cronos/runs/2026-01-11/cron-roadmap-175550.log",
+  "error": null,
+  "attempt": 1,
+  "trigger": "manual",
+  "session_name": "cron-cron-roadmap-21df8d81",
+  "run_dir": "/home/mmartin/Proyectos/nolan/cronos/runs/2026-01-11/cron-roadmap-21df8d81"
+}

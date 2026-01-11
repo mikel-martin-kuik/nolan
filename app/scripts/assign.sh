@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# assign.sh - Update Current Assignment section in coordinator's output file
+# assign.sh - Update Current Assignment section in note_taker's output file
 #
 # Usage (preferred - agent derived from phase):
 #   assign.sh <project-name> <phase> <task-description>
@@ -14,7 +14,7 @@
 # This makes assignment deterministic and agent-transparent.
 #
 # This script:
-# 1. Updates the Current Assignment section in coordinator's output file
+# 1. Updates the Current Assignment section in note_taker's output file (NOTES.md)
 # 2. Updates the Current Status section
 # 3. Adds entry to Handoff Log
 # 4. Sends minimal handoff message to agent
@@ -185,8 +185,8 @@ print(config_path)
 "
 }
 
-# Get coordinator from team config
-get_coordinator() {
+# Get note_taker from team config (replaces coordinator pattern)
+get_note_taker() {
     local project_path="$1"
 
     python3 -c "
@@ -220,16 +220,17 @@ if config_path is None:
     sys.exit(1)
 
 config = yaml.safe_load(config_path.read_text())
-coordinator = config.get('team', {}).get('workflow', {}).get('coordinator')
-if not coordinator:
-    print(f'ERROR: No coordinator defined in team config: {team_name}', file=sys.stderr)
+# Try note_taker first (new pattern), fall back to coordinator (legacy)
+note_taker = config.get('team', {}).get('workflow', {}).get('note_taker') or config.get('team', {}).get('workflow', {}).get('coordinator')
+if not note_taker:
+    print(f'ERROR: No note_taker or coordinator defined in team config: {team_name}', file=sys.stderr)
     sys.exit(1)
-print(coordinator)
+print(note_taker)
 "
 }
 
-# Get coordinator's output file from team config
-get_coordinator_file() {
+# Get note_taker's output file from team config (replaces coordinator pattern)
+get_note_taker_file() {
     local project_path="$1"
 
     python3 -c "
@@ -263,21 +264,22 @@ if config_path is None:
     sys.exit(1)
 
 config = yaml.safe_load(config_path.read_text())
-coordinator = config.get('team', {}).get('workflow', {}).get('coordinator')
-if not coordinator:
-    print(f'ERROR: No coordinator defined in team config: {team_name}', file=sys.stderr)
+# Try note_taker first (new pattern), fall back to coordinator (legacy)
+note_taker = config.get('team', {}).get('workflow', {}).get('note_taker') or config.get('team', {}).get('workflow', {}).get('coordinator')
+if not note_taker:
+    print(f'ERROR: No note_taker or coordinator defined in team config: {team_name}', file=sys.stderr)
     sys.exit(1)
 
 for agent in config['team']['agents']:
-    if agent['name'] == coordinator:
-        print(agent['output_file'])
+    if agent['name'] == note_taker:
+        print(agent.get('output_file', 'NOTES.md'))
         break
 "
 }
 
-COORDINATOR=$(get_coordinator "$PROJECT_DIR")
-COORDINATOR_FILE=$(get_coordinator_file "$PROJECT_DIR")
-COORDINATOR_PATH="$PROJECT_DIR/$COORDINATOR_FILE"
+NOTE_TAKER=$(get_note_taker "$PROJECT_DIR")
+NOTES_FILE=$(get_note_taker_file "$PROJECT_DIR")
+NOTES_PATH="$PROJECT_DIR/$NOTES_FILE"
 
 # Determine AGENT: use explicit if provided, otherwise derive from phase owner
 if [[ -n "$EXPLICIT_AGENT" ]]; then
@@ -292,17 +294,17 @@ else
     echo "Phase '$PHASE' -> Agent: $AGENT"
 fi
 
-# Validate coordinator file exists
-if [[ ! -f "$COORDINATOR_PATH" ]]; then
-    echo "Error: Coordinator file not found: $COORDINATOR_PATH" >&2
+# Validate notes file exists
+if [[ ! -f "$NOTES_PATH" ]]; then
+    echo "Error: Notes file not found: $NOTES_PATH" >&2
     exit 1
 fi
 
 # Generate timestamp and MSG_ID
-# Format: MSG_<COORDINATOR>_<8-hex-chars>
+# Format: MSG_<NOTE_TAKER>_<8-hex-chars>
 TIMESTAMP=$(date +"%Y-%m-%d")
 TIMESTAMP_FULL=$(date +"%Y-%m-%d %H:%M")
-MSG_ID="MSG_${COORDINATOR^^}_$(openssl rand -hex 4)"
+MSG_ID="MSG_${NOTE_TAKER^^}_$(openssl rand -hex 4)"
 
 # Get agent's output file from team config
 get_output_file() {
@@ -487,28 +489,28 @@ ASSIGNMENT_SECTION+=$'\n'"Update \`$OUTPUT_FILE\` with all required sections."
 ASSIGNMENT_SECTION+=$'\n'
 ASSIGNMENT_SECTION+=$'\n'"---"
 
-# Update coordinator's output file using Python (safer for special characters)
+# Update note_taker's output file using Python (safer for special characters)
 # 1. Remove old Current Assignment section if exists
 # 2. Insert new assignment after title
 # 3. Update Current Status section
 # 4. Add Handoff Log entry
 
-python3 - "$COORDINATOR_PATH" "$PHASE" "$AGENT" "$TASK" "$OUTPUT_FILE" "$MSG_ID" "$TIMESTAMP_FULL" "$COORDINATOR" "$PROJECT_NAME" <<'PYTHON_SCRIPT'
+python3 - "$NOTES_PATH" "$PHASE" "$AGENT" "$TASK" "$OUTPUT_FILE" "$MSG_ID" "$TIMESTAMP_FULL" "$NOTE_TAKER" "$PROJECT_NAME" <<'PYTHON_SCRIPT'
 import sys
 import re
 from pathlib import Path
 
-coord_path = Path(sys.argv[1])
+notes_path = Path(sys.argv[1])
 phase = sys.argv[2]
 agent = sys.argv[3]
 task = sys.argv[4]
 output_file = sys.argv[5]
 msg_id = sys.argv[6]
 timestamp_full = sys.argv[7]
-coordinator = sys.argv[8]
+note_taker = sys.argv[8]
 project_name = sys.argv[9]
 
-content = coord_path.read_text()
+content = notes_path.read_text()
 
 # 1. Remove old Current Assignment section if exists
 content = re.sub(r'## Current Assignment.*?^---\n', '', content, flags=re.MULTILINE | re.DOTALL)
@@ -552,7 +554,7 @@ content = re.sub(r'\*\*Phase\*\*: [^\n]+', f'**Phase**: {phase}', content)
 content = re.sub(r'\*\*Assigned\*\*: [^\n]+', f'**Assigned**: {agent.capitalize()}', content)
 
 # 4. Add Handoff Log entry (with MSG_ID for audit linking)
-handoff_entry = f'| {timestamp_full} | {coordinator.capitalize()} | {agent.capitalize()} | {task[:50]}{"..." if len(task) > 50 else ""} | {output_file} | `{msg_id}` |'
+handoff_entry = f'| {timestamp_full} | {note_taker.capitalize()} | {agent.capitalize()} | {task[:50]}{"..." if len(task) > 50 else ""} | {output_file} | `{msg_id}` |'
 
 # Find the header separator and add entry after it
 def add_handoff_entry(match):
@@ -594,10 +596,10 @@ else:
         flags=re.DOTALL
     )
 
-coord_path.write_text(content)
+notes_path.write_text(content)
 PYTHON_SCRIPT
 
-echo "✅ Updated $COORDINATOR_PATH"
+echo "✅ Updated $NOTES_PATH"
 echo "   Agent: ${AGENT^}"
 echo "   Phase: $PHASE"
 echo "   Task: $TASK"
@@ -638,7 +640,7 @@ task: |
   $TASK
 assigned: "$TIMESTAMP_FULL"
 msg_id: $MSG_ID
-coordinator: $COORDINATOR
+note_taker: $NOTE_TAKER
 output_file: $OUTPUT_FILE
 
 # Files to Review

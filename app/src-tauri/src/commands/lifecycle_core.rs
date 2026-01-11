@@ -251,17 +251,16 @@ pub async fn spawn_ralph_core(model: Option<String>, force: bool) -> Result<Stri
         // Create symlinks
         #[cfg(unix)]
         {
-            // .claude symlink
-            if let Ok(app_root) = crate::utils::paths::get_nolan_app_root() {
-                let claude_path = app_root.join(".claude");
-                if claude_path.exists() {
-                    let claude_link = agent_dir.join(".claude");
-                    let _ = symlink(&claude_path, &claude_link);
-                }
+            // .claude symlink - use ralph-specific settings (no team hooks)
+            // from agents/ralph/.claude, NOT app/.claude (which has team hooks)
+            let base_agent_dir = agents_dir.join("ralph");
+            let ralph_claude = base_agent_dir.join(".claude");
+            if ralph_claude.exists() {
+                let claude_link = agent_dir.join(".claude");
+                let _ = symlink(&ralph_claude, &claude_link);
             }
 
             // CLAUDE.md symlink
-            let base_agent_dir = agents_dir.join("ralph");
             let claude_md_src = base_agent_dir.join("CLAUDE.md");
             if claude_md_src.exists() {
                 let claude_md_link = agent_dir.join("CLAUDE.md");

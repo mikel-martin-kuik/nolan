@@ -41,6 +41,7 @@ static RE_SESSION_SPAWNED: Lazy<Regex> = Lazy::new(|| {
 const DEFAULT_TIMEOUT_SECS: u64 = 5;
 const DEFAULT_RETRY_COUNT: u32 = 2;
 const POLL_INTERVAL_MS: u64 = 200;
+const READY_TIMEOUT_SECS: u64 = 30;  // Max time to wait for Claude Code to be ready
 
 /// Generate a unique message ID with sender identity
 /// Format: MSG_<SENDER>_<8-hex-chars>
@@ -95,6 +96,40 @@ fn capture_pane(session: &str, scrollback_lines: i32) -> Result<String, String> 
         .map_err(|e| format!("Failed to capture pane: {}", e))?;
 
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Wait for Claude Code to be ready to receive input
+/// Returns Ok(()) when ready, Err if timeout
+fn wait_for_ready(session: &str, timeout_secs: u64) -> Result<(), String> {
+    let start = Instant::now();
+
+    while start.elapsed().as_secs() < timeout_secs {
+        let pane_content = capture_pane(session, 50)?;
+
+        // Claude Code shows "❯" prompt when ready for input
+        // Also check for the status line pattern indicating initialization complete
+        if pane_content.contains("❯") {
+            return Ok(());
+        }
+
+        // Alternative ready indicators:
+        // - "Claude Code v" in the ASCII art header
+        // - The model info line (e.g., "Opus 4.5")
+        // combined with the prompt character
+        if pane_content.contains("Claude Code v") &&
+           (pane_content.contains("Opus") || pane_content.contains("Sonnet") || pane_content.contains("Haiku")) {
+            // Header is showing, wait a bit more for the prompt
+            thread::sleep(Duration::from_millis(500));
+            let pane_content = capture_pane(session, 50)?;
+            if pane_content.contains("❯") {
+                return Ok(());
+            }
+        }
+
+        thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
+    }
+
+    Err(format!("Timeout waiting for Claude Code to be ready in session '{}'", session))
 }
 
 /// Try to force submit by sending C-m if message appears stuck
@@ -162,6 +197,10 @@ fn send_verified_native(
     if !crate::tmux::session::session_exists(&session)? {
         return Err(format!("Agent '{}' in team '{}' not found or offline (session: {})", target, team, session));
     }
+
+    // Wait for Claude Code to be ready before sending message
+    // This prevents race conditions when messages are sent immediately after spawning
+    wait_for_ready(&session, READY_TIMEOUT_SECS)?;
 
     let msg_id = generate_message_id(sender);
     let prefixed_msg = format!("{}: {}", msg_id, message);

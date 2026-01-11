@@ -10,12 +10,12 @@
 #   handoff-ack status            # Show handoff system status
 #   handoff-ack recover           # Recover stuck handoffs
 #
-# RESTRICTED: Coordinator-only tool
+# RESTRICTED: Note-taker and support agents only (not workflow participants)
 
 set -e
 
-# Check if caller is coordinator or support (security check)
-check_coordinator_access() {
+# Check if caller is note_taker or support (security check)
+check_note_taker_access() {
     local agent_name="${AGENT_NAME:-}"
     local team_name="${TEAM_NAME:-default}"
 
@@ -65,7 +65,7 @@ for agent in agents:
 }
 
 # Run access check
-check_coordinator_access
+check_note_taker_access
 
 # Required environment variables (no hardcoded defaults)
 if [[ -z "${NOLAN_ROOT:-}" ]]; then
@@ -241,18 +241,18 @@ if 'ack_at:' not in content:
 " 2>/dev/null || true
                 fi
 
-                # Update Task Log in coordinator file (mark as Complete)
+                # Update Task Log in note_taker file (mark as Complete)
                 if [[ -n "$project" ]] && [[ -n "$msg_id" ]]; then
-                    local coord_path="$PROJECTS_DIR/$project"
-                    if [[ -d "$coord_path" ]]; then
-                        # Get coordinator file from team config
-                        local coord_file
-                        coord_file=$(python3 -c "
+                    local project_path="$PROJECTS_DIR/$project"
+                    if [[ -d "$project_path" ]]; then
+                        # Get note_taker file from team config
+                        local notes_file
+                        notes_file=$(python3 -c "
 import yaml, sys
 from pathlib import Path
 import os
 
-project_path = Path('$coord_path')
+project_path = Path('$project_path')
 team_file = project_path / '.team'
 if not team_file.exists():
     sys.exit(1)
@@ -277,24 +277,25 @@ if not config_path:
     sys.exit(1)
 
 config = yaml.safe_load(config_path.read_text())
-coordinator = config.get('team', {}).get('workflow', {}).get('coordinator')
-if not coordinator:
+# Try note_taker first (new pattern), fall back to coordinator (legacy)
+note_taker = config.get('team', {}).get('workflow', {}).get('note_taker') or config.get('team', {}).get('workflow', {}).get('coordinator')
+if not note_taker:
     sys.exit(1)
 
 for agent in config['team']['agents']:
-    if agent['name'] == coordinator:
-        print(agent['output_file'])
+    if agent['name'] == note_taker:
+        print(agent.get('output_file', 'NOTES.md'))
         break
 " 2>/dev/null) || true
 
-                        if [[ -n "$coord_file" ]] && [[ -f "$coord_path/$coord_file" ]]; then
+                        if [[ -n "$notes_file" ]] && [[ -f "$project_path/$notes_file" ]]; then
                             # Update Task Log entry from Active to Complete
                             python3 -c "
 import re
 from pathlib import Path
 
-coord_path = Path('$coord_path/$coord_file')
-content = coord_path.read_text()
+notes_path = Path('$project_path/$notes_file')
+content = notes_path.read_text()
 
 # Update Task Log entry status from Active to Complete
 # Pattern: | \`MSG_ID\` | ... | Active |
@@ -304,7 +305,7 @@ replacement = r'\1 Complete \2'
 new_content = re.sub(pattern, replacement, content)
 
 if new_content != content:
-    coord_path.write_text(new_content)
+    notes_path.write_text(new_content)
 " 2>/dev/null || true
                         fi
                     fi

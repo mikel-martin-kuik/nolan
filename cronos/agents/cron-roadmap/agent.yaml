@@ -2,8 +2,7 @@ name: cron-roadmap
 description: Updates Nolan Roadmap
 model: opus
 timeout: 1800
-enabled: false
-group: planning
+enabled: true
 schedule:
   cron: 0 9 * * *
   timezone: null
@@ -21,6 +20,7 @@ guardrails:
   max_file_edits: 10
 context:
   working_directory: null
+group: planning
 concurrency:
   allow_parallel: false
   queue_if_running: false

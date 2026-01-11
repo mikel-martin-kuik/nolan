@@ -40,9 +40,18 @@ export function IdeaCard({ idea, review, onClick }: IdeaCardProps) {
   const [editOpen, setEditOpen] = useState(false);
 
   const acceptMutation = useMutation({
-    mutationFn: () => invoke<IdeaReview>('accept_review', { item_id: idea.id }),
-    onSuccess: () => {
+    mutationFn: () => invoke<{ review: IdeaReview; route: string; route_detail: string }>('accept_and_route_review', { itemId: idea.id }),
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['idea-reviews'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      if (result.route === 'project') {
+        toast.success(`Created project: ${result.route_detail}`);
+      } else {
+        toast.success(`Idea accepted and queued for implementation`);
+      }
+    },
+    onError: (error) => {
+      toast.error(`Failed to accept idea: ${error}`);
     },
   });
 

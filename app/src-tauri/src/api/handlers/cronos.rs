@@ -318,3 +318,15 @@ pub async fn set_agent_group(
         Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
     }
 }
+
+// ========================
+// Idea Dispatch
+// ========================
+
+/// Dispatch all unprocessed ideas for processing
+pub async fn dispatch_ideas() -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::dispatch_ideas_api().await {
+        Ok(result) => Ok(Json(serde_json::json!(result))),
+        Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}

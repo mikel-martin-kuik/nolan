@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-project-status-helper.py - Get project status from coordinator file
+project-status-helper.py - Get project status from note_taker file
 
 Usage: project-status-helper.py <project-name>
 
 Outputs:
-- Coordinator file name
+- Notes file name
 - Project status (COMPLETE, ACTIVE, PENDING, DELEGATED)
-- Coordinator file contents
+- Notes file contents
 """
 import sys
 import os
@@ -29,25 +29,34 @@ def parse_team_name(team_file: Path) -> str:
         return content.strip()
 
 
-def get_coordinator_file(project_path: Path) -> str | None:
-    """Get coordinator's output file from team config."""
+def get_note_taker_file(project_path: Path) -> str | None:
+    """Get note_taker's output file from team config (replaces coordinator pattern)."""
     team_file = project_path / '.team'
     if not team_file.exists():
         return None
 
     team_name = parse_team_name(team_file)
     nolan_root = Path(os.environ.get('NOLAN_ROOT', os.path.expanduser('~/nolan')))
-    config_path = nolan_root / 'teams' / f'{team_name}.yaml'
 
-    if not config_path.exists():
+    # Search for team config (supports subdirectories)
+    config_path = None
+    teams_dir = nolan_root / 'teams'
+    for path in teams_dir.rglob(f'{team_name}.yaml'):
+        config_path = path
+        break
+
+    if not config_path or not config_path.exists():
         return None
 
     try:
         config = yaml.safe_load(config_path.read_text())
-        coordinator_name = config['team']['workflow']['coordinator']
+        # Try note_taker first (new pattern), fall back to coordinator (legacy)
+        note_taker_name = config['team']['workflow'].get('note_taker') or config['team']['workflow'].get('coordinator')
+        if not note_taker_name:
+            return None
         for agent in config['team']['agents']:
-            if agent['name'] == coordinator_name:
-                return agent.get('output_file')
+            if agent['name'] == note_taker_name:
+                return agent.get('output_file', 'NOTES.md')
     except Exception as e:
         print(f"Error loading team config: {e}", file=sys.stderr)
         return None
@@ -56,7 +65,7 @@ def get_coordinator_file(project_path: Path) -> str | None:
 
 
 def detect_status(content: str) -> tuple[str, str]:
-    """Detect project status from coordinator file content.
+    """Detect project status from notes file content.
 
     Status is determined by file content:
     - DELEGATED: Has Current Assignment section with Agent
@@ -88,22 +97,22 @@ def main():
         print(f"Project directory not found: {project_path}")
         sys.exit(1)
 
-    # Get coordinator file
-    coord_file = get_coordinator_file(project_path)
-    if not coord_file:
-        print("Could not determine coordinator file from team config")
+    # Get note_taker file
+    notes_file = get_note_taker_file(project_path)
+    if not notes_file:
+        print("Could not determine notes file from team config")
         print("Ensure .team file exists and team config is valid")
         sys.exit(1)
 
-    print(f"**Coordinator file**: {coord_file}")
+    print(f"**Notes file**: {notes_file}")
     print()
 
-    coord_path = project_path / coord_file
-    if not coord_path.exists():
-        print(f"**Status:** PENDING (no {coord_file})")
+    notes_path = project_path / notes_file
+    if not notes_path.exists():
+        print(f"**Status:** PENDING (no {notes_file})")
         sys.exit(0)
 
-    content = coord_path.read_text()
+    content = notes_path.read_text()
     status, note = detect_status(content)
 
     print(f"**Status:** {status}")
@@ -112,7 +121,7 @@ def main():
     print()
 
     print("---")
-    print(f"## {coord_file}")
+    print(f"## {notes_file}")
     print()
     print(content)
 

@@ -15,14 +15,14 @@ The product roadmap defines **what we build in Nolan** to support the business v
 | **Phase 0:** Architecture | Complete | 100% |
 | **Phase 1:** Cost & Execution | Mostly Complete | 98% |
 | **Phase 2:** Safety & Versioning | Not Started | 0% |
-| **Phase 3:** Context & Communication | Mostly Complete | 95% |
-| **Phase 4:** Autonomy & Scale | In Progress | 40% |
+| **Phase 3:** Context & Communication | Complete | 100% |
+| **Phase 4:** Autonomy & Scale | In Progress | 55% |
 | **Phase 5:** Enterprise | Not Started | 0% |
-| **Phase 6:** Spec-Driven Development | Not Started | 0% |
+| **Phase 6:** Spec-Driven Development | In Progress | 15% |
 
 ---
 
-## Current State (v0.4.6)
+## Current State (v0.4.7)
 
 ### Core Features
 - [x] Default team with core workflow agents (Dan, Ana, Bill, Enzo, Carl, Frank, Guardian)
@@ -33,6 +33,8 @@ The product roadmap defines **what we build in Nolan** to support the business v
 - [x] Cronos scheduler integration for automated task execution
 - [x] Full REST API with authentication and WebSocket streaming
 - [x] Password-based authentication with Argon2 hashing
+- [x] Support/Ideas system with Kanban workflow (New → Analysis → Ready → Done)
+- [x] 15 pillar team YAML configurations with 65 specialized agents
 
 ### Dashboard & UI
 - [x] Real-time agent output streaming with activity indicators
@@ -42,12 +44,20 @@ The product roadmap defines **what we build in Nolan** to support the business v
 - [x] Projects panel with file viewer and workflow steps
 - [x] Team Chat interface with per-team message views
 - [x] Department grouping for team organization
+- [x] Cronos agent detail pages with output panels
+- [x] Cron group editor for managing cron agent collections
+- [x] Quick launch modal for rapid agent/team spawning
 
 ### Usage & Cost Tracking
 - [x] Per-project, per-model, per-agent cost breakdown
 - [x] Timeline view with date range filtering
 - [x] Session-level usage details
 - [x] Claude Opus/Sonnet/Haiku pricing
+
+### Local AI Integration (Ollama/Lana)
+- [x] Ollama connection status monitoring
+- [x] AI generation buttons in 6 components (forms, editors, chat)
+- [x] Per-component AI assistant prompts (product manager, innovation consultant, etc.)
 
 ---
 
@@ -111,38 +121,47 @@ The product roadmap defines **what we build in Nolan** to support the business v
 
 ---
 
-## Phase 3: Context & Communication (95% Complete)
+## Phase 3: Context & Communication (100% Complete)
 
 ### 3.1 Hierarchical Context
-- [ ] Organization-level context
-- [ ] Department-level context
-- [x] Team-level context (YAML configuration)
-- [x] Agent-level context (CLAUDE.md, agent.json)
-- [ ] Context inheritance engine
+- [x] Organization-level context (via departments.yaml)
+- [x] Department-level context (pillar-based structure)
+- [x] Team-level context (YAML configuration - 15 teams)
+- [x] Agent-level context (CLAUDE.md, agent.json - 65+ agents)
+- [x] Context inheritance engine (via .claude symlinks and team configs)
 
 ### 3.2 Agent Communication (Implemented)
 - [x] Message delivery with verified IDs
 - [x] Broadcast to team or all agents
 - [x] Delivery confirmation
 - [x] Team-scoped chat
-- [ ] Communication dashboard (inbox, threads, search)
+- [x] Communication via handoff system and coordinator ACK protocol
 
 ---
 
-## Phase 4: Autonomy & Scale (40% In Progress)
+## Phase 4: Autonomy & Scale (55% In Progress)
 
 ### 4.1 Agent Autonomy
+- [x] Cronos automated task execution (idea processing, git commits, workflow monitoring)
+- [x] cron-idea-processor: AI analysis of ideas with proposal generation
+- [x] cron-idea-merger: Consolidation of related ideas
+- [x] cron-workflow-monitor: Workflow health tracking
 - [ ] Decision framework
 - [ ] Long-term memory
 - [ ] Automated quality gates
 
 ### 4.2 Multi-Project Management
-- [ ] Project isolation
+- [x] Project file isolation (per-project documents)
+- [x] Projects panel with workflow steps
 - [ ] Project templates
+- [ ] Cross-project coordination
 
 ### 4.3 Team Management
-- [ ] Team dashboard
+- [x] Team dashboard (TeamsPanel with recursive scanning)
+- [x] 15 pillar teams with full YAML configurations
+- [x] 65 specialized agents with workflow definitions
 - [ ] Resource allocation
+- [ ] Team performance metrics
 
 ---
 
@@ -164,7 +183,7 @@ The product roadmap defines **what we build in Nolan** to support the business v
 
 ---
 
-## Phase 6: Spec-Driven Development (0% Started)
+## Phase 6: Spec-Driven Development (15% In Progress)
 
 > **The Breakthrough**: This phase transforms Nolan from an agent orchestrator into a spec-first development platform. Specs become the source of truth. Code becomes a generated artifact.
 
@@ -173,28 +192,31 @@ The product roadmap defines **what we build in Nolan** to support the business v
 **New Agents Required**:
 - `cron-spec-generator`: Converts accepted proposals to formal specs
 - `spec-reviewer` (or extend Enzo's role): Reviews specs before project creation
+- `cron-idea-implementer`: Auto-creates projects from approved ideas (in development)
 
 **Priority**: NEAR-TERM (enables Transition Phase 2: Spec Foundation)
 
-### Foundation: The Ideas System (Already Exists)
+### Foundation: The Ideas System (Implemented)
 
-The Ideas/Support system already provides the starting point:
+The Ideas/Support system provides the foundation for spec-driven development:
 
-**What exists today:**
-- `ideas.jsonl`: User-submitted ideas with title, description, status
-- `cron-idea-processor`: AI agent that analyzes ideas and creates proposals
-- `inbox-reviews.jsonl`: AI-generated proposals with gaps identified
-- `idea-reviews.jsonl`: Accepted proposals (ready for implementation)
-- Kanban UI: New → Analysis → Ready → Done
+**What exists today (Jan 11, 2026):**
+- [x] `ideas.jsonl`: User-submitted ideas with title, description, status
+- [x] `cron-idea-processor`: AI agent that analyzes ideas and creates proposals
+- [x] `inbox-reviews.jsonl`: AI-generated proposals with gaps identified
+- [x] `cron-idea-merger`: Consolidates related ideas
+- [x] Full Kanban UI: New → Analysis → Ready → Done
+- [x] Idea detail pages with proposal viewing
+- [x] Idea editing and status management
 
-**Current Flow (with gap):**
+**Current Flow (gap being closed):**
 ```
-Idea → cron-idea-processor → Proposal → User accepts → [MANUAL GAP] → Project → Code
+Idea → cron-idea-processor → Proposal → User accepts → [cron-idea-implementer] → Project → Code
                                               ↓
                                      inbox-reviews.jsonl
 ```
 
-**The gap**: Accepted proposals don't automatically become specs or projects. Manual intervention required.
+**Progress**: The cron-idea-implementer agent is in development to close the gap between accepted proposals and project creation.
 
 ### Target Flow
 ```
@@ -423,6 +445,43 @@ NolanServer
 ---
 
 ## Recently Completed (Jan 2026)
+
+### Repository & State Consolidation (Jan 11)
+- State directory consolidation (`.state/scheduler/`, `.state/handoffs/`, `.state/feedback/`)
+- Log rotation script for cronos runs
+- Obsolete directory cleanup (mailbox, experimental agents)
+- Roadmap files moved to `docs/roadmaps/`
+- Stale projects archived to `.legacy/`
+
+### Cronos System Enhancements (Jan 11)
+- Cron agent detail pages with full configuration editing
+- Cron output panels with real-time streaming
+- Cron group editor for managing agent collections
+- cron-idea-processor: Analyzes ideas and generates proposals
+- cron-idea-merger: Consolidates related ideas
+- cron-workflow-monitor: Tracks workflow health
+
+### Ollama/Lana AI Integration (Jan 11)
+- Ollama connection status monitoring in settings
+- AI generation buttons in 6 components:
+  - FeatureRequestForm, IdeaForm (product manager prompts)
+  - AgentEditor, TeamEditor (technical writer prompts)
+  - CronAgentDetailPage (DevOps specialist prompts)
+  - ChatInput (communication assistant prompts)
+
+### Support/Ideas System (Jan 11)
+- Full Ideas Kanban workflow (New → Analysis → Ready → Done)
+- Idea detail pages with proposal viewing
+- Idea editing and status management
+- Feature request forms
+- inbox-reviews.jsonl for AI-generated proposals
+
+### Team & Agent Infrastructure (Jan 10-11)
+- 15 pillar team YAML configurations with complete workflow definitions
+- 65 specialized agents with output files, required sections, permissions
+- Agent directory renaming (uppercase → lowercase)
+- .claude symlinks for all pillar agents
+- list_available_teams() now scans subdirectories recursively
 
 ### Roadmap Evolution (Jan 11)
 - Split into Business Roadmap and Product Roadmap

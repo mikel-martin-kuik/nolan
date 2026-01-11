@@ -22,7 +22,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Button } from '@/components/ui/button';
 import { ProjectInfo } from '@/types/projects';
-import { FolderOpen, Plus, Rocket, FileText, MessageSquare } from 'lucide-react';
+import { FolderOpen, Plus, Rocket, FileText, MessageSquare, FileCheck } from 'lucide-react';
 
 export interface LaunchParams {
   projectName: string;
@@ -71,8 +71,10 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
   const [loadingPrompt, setLoadingPrompt] = useState<boolean>(false);
   // For existing projects: followup prompt to send to Dan
   const [followupPrompt, setFollowupPrompt] = useState<string>('');
+  // Track if project has SPEC.md (auto-generated from idea)
+  const [hasSpec, setHasSpec] = useState<boolean>(false);
 
-  // Fetch prompt.md content when project is selected
+  // Fetch prompt.md and check for SPEC.md when project is selected
   const fetchProjectPrompt = async (projectName: string) => {
     setLoadingPrompt(true);
     try {
@@ -87,9 +89,20 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
       // No prompt.md exists yet - that's fine
       setOriginalPrompt('');
       setSavedOriginalPrompt('');
-    } finally {
-      setLoadingPrompt(false);
     }
+
+    // Check if SPEC.md exists (from idea-to-project conversion)
+    try {
+      await invoke<string | { content: string }>('read_project_file', {
+        projectName,
+        filePath: 'SPEC.md',
+      });
+      setHasSpec(true);
+    } catch {
+      setHasSpec(false);
+    }
+
+    setLoadingPrompt(false);
   };
 
   // Reset state when modal opens
@@ -100,6 +113,7 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
       setOriginalPrompt('');
       setSavedOriginalPrompt('');
       setFollowupPrompt('');
+      setHasSpec(false);
 
       // Check if there are any pending or in-progress projects
       const activeProjects = teamProjects.filter(
@@ -138,8 +152,9 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
   };
 
   // Validation
+  // For existing projects with SPEC.md, no prompt is required - agent will start automatically
   const isValid = mode === 'existing'
-    ? selectedProject !== '' && followupPrompt.trim() !== ''
+    ? selectedProject !== '' && (hasSpec || followupPrompt.trim() !== '')
     : newProjectName.trim() !== '' && newProjectPrompt.trim() !== '';
 
   // Handle launch
@@ -155,11 +170,13 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
     } else {
       // Check if original prompt was modified
       const promptWasModified = originalPrompt.trim() !== savedOriginalPrompt.trim();
+      // For SPEC.md projects without followup, pass undefined to trigger auto-start
+      const effectiveFollowup = followupPrompt.trim() || undefined;
       onLaunch({
         projectName: selectedProject,
         isNew: false,
         updatedOriginalPrompt: promptWasModified ? originalPrompt.trim() : undefined,
-        followupPrompt: followupPrompt.trim(),
+        followupPrompt: effectiveFollowup,
       });
     }
     onOpenChange(false);
@@ -279,45 +296,63 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
             </div>
           )}
 
-          {/* Existing Project: Two boxes */}
+          {/* Existing Project: Show SPEC.md indicator or prompt fields */}
           {mode === 'existing' && selectedProject && (
             <>
-              {/* Original Prompt (from prompt.md) */}
-              <div className="flex flex-col gap-2">
-                <label className="text-sm text-muted-foreground flex items-center gap-2">
-                  <FileText className="w-4 h-4" />
-                  Original prompt:
-                  {originalPrompt !== savedOriginalPrompt && (
-                    <span className="text-xs text-amber-400">(modified)</span>
-                  )}
-                </label>
-                {loadingPrompt ? (
-                  <div className="w-full bg-secondary/30 border border-border rounded-lg px-3 py-2
-                    text-muted-foreground text-sm h-20 flex items-center justify-center">
-                    Loading...
+              {/* SPEC.md indicator - project is ready to auto-start */}
+              {hasSpec && (
+                <div className="flex items-center gap-3 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                  <FileCheck className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-sm text-emerald-400 font-medium">SPEC.md found</span>
+                    <span className="text-xs text-muted-foreground">
+                      First phase agent will start automatically with the specification
+                    </span>
                   </div>
-                ) : (
-                  <Textarea
-                    value={originalPrompt}
-                    onChange={(e) => setOriginalPrompt(e.target.value)}
-                    placeholder="No original prompt found for this project"
-                    rows={3}
-                    className="bg-secondary/30"
-                  />
-                )}
-              </div>
+                </div>
+              )}
 
-              {/* Followup Prompt (to send to Dan) */}
+              {/* Original Prompt (from prompt.md) - collapsed when SPEC.md exists */}
+              {!hasSpec && (
+                <div className="flex flex-col gap-2">
+                  <label className="text-sm text-muted-foreground flex items-center gap-2">
+                    <FileText className="w-4 h-4" />
+                    Original prompt:
+                    {originalPrompt !== savedOriginalPrompt && (
+                      <span className="text-xs text-amber-400">(modified)</span>
+                    )}
+                  </label>
+                  {loadingPrompt ? (
+                    <div className="w-full bg-secondary/30 border border-border rounded-lg px-3 py-2
+                      text-muted-foreground text-sm h-20 flex items-center justify-center">
+                      Loading...
+                    </div>
+                  ) : (
+                    <Textarea
+                      value={originalPrompt}
+                      onChange={(e) => setOriginalPrompt(e.target.value)}
+                      placeholder="No original prompt found for this project"
+                      rows={3}
+                      className="bg-secondary/30"
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* Followup Prompt - optional when SPEC.md exists */}
               <div className="flex flex-col gap-2">
                 <label className="text-sm text-muted-foreground flex items-center gap-2">
                   <MessageSquare className="w-4 h-4" />
-                  Followup prompt for Dan:
+                  {hasSpec ? 'Additional instructions (optional):' : 'Followup prompt for Dan:'}
                 </label>
                 <Textarea
                   value={followupPrompt}
                   onChange={(e) => setFollowupPrompt(e.target.value)}
-                  placeholder="Enter instructions to resume work on this project..."
-                  rows={3}
+                  placeholder={hasSpec
+                    ? "Optional: Add specific instructions or context..."
+                    : "Enter instructions to resume work on this project..."
+                  }
+                  rows={hasSpec ? 2 : 3}
                   className="bg-secondary/50"
                 />
               </div>

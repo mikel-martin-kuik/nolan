@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,7 +11,8 @@ import {
   IdeaGap,
   COMPLEXITY_LABELS,
 } from '@/types';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Check } from 'lucide-react';
+import { useToastStore } from '@/store/toastStore';
 
 interface IdeaDetailPageProps {
   idea: Idea;
@@ -21,6 +22,7 @@ interface IdeaDetailPageProps {
 
 export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
   const queryClient = useQueryClient();
+  const toast = useToastStore();
 
   // Editing states
   const [editingOriginal, setEditingOriginal] = useState(false);
@@ -32,12 +34,22 @@ export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
   const [proposal, setProposal] = useState<IdeaProposal | null>(review?.proposal || null);
   const [gaps, setGaps] = useState<IdeaGap[]>(review?.gaps || []);
 
-  // Sync with props
+  // Auto-save state
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedGapsRef = useRef<string>(JSON.stringify(review?.gaps || []));
+
+  // Sync with props (only when review changes from server, not our own saves)
   useEffect(() => {
     setOriginalTitle(idea.title);
     setOriginalDescription(idea.description);
     setProposal(review?.proposal || null);
-    setGaps(review?.gaps || []);
+    // Only reset gaps if they changed from server (not from our save)
+    const serverGaps = JSON.stringify(review?.gaps || []);
+    if (serverGaps !== lastSavedGapsRef.current) {
+      setGaps(review?.gaps || []);
+      lastSavedGapsRef.current = serverGaps;
+    }
   }, [idea, review]);
 
   // Mutations
@@ -62,15 +74,36 @@ export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
   const updateGapsMutation = useMutation({
     mutationFn: (updatedGaps: IdeaGap[]) =>
       invoke<IdeaReview>('update_review_gaps', { item_id: idea.id, gaps: updatedGaps }),
-    onSuccess: () => {
+    onSuccess: (result) => {
+      lastSavedGapsRef.current = JSON.stringify(result.gaps);
+      setSaveStatus('saved');
+      // Clear saved indicator after 2s
+      setTimeout(() => setSaveStatus('idle'), 2000);
       queryClient.invalidateQueries({ queryKey: ['idea-reviews'] });
+    },
+    onError: (error) => {
+      setSaveStatus('error');
+      toast.error(`Failed to save: ${error}`);
     },
   });
 
   const acceptMutation = useMutation({
-    mutationFn: () => invoke<IdeaReview>('accept_review', { item_id: idea.id }),
-    onSuccess: () => {
+    mutationFn: async () => {
+      // Save gaps first to ensure they're persisted before accepting
+      await invoke<IdeaReview>('update_review_gaps', { item_id: idea.id, gaps });
+      return invoke<{ review: IdeaReview; route: string; route_detail: string }>('accept_and_route_review', { itemId: idea.id });
+    },
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['idea-reviews'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      if (result.route === 'project') {
+        toast.success(`Created project: ${result.route_detail}`);
+      } else {
+        toast.success(`Idea accepted and queued for implementation`);
+      }
+    },
+    onError: (error) => {
+      toast.error(`Failed to accept proposal: ${error}`);
     },
   });
 
@@ -82,15 +115,36 @@ export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
     },
   });
 
+  // Debounced auto-save for gaps
+  const debouncedSave = useCallback((gapsToSave: IdeaGap[]) => {
+    // Clear any pending save
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    setSaveStatus('saving');
+
+    // Save after 1 second of no typing
+    saveTimeoutRef.current = setTimeout(() => {
+      updateGapsMutation.mutate(gapsToSave);
+    }, 1000);
+  }, [updateGapsMutation]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const handleGapChange = (gapId: string, value: string) => {
     const updated = gaps.map((g) =>
       g.id === gapId ? { ...g, value: value || undefined } : g
     );
     setGaps(updated);
-  };
-
-  const handleGapBlur = () => {
-    updateGapsMutation.mutate(gaps);
+    debouncedSave(updated);
   };
 
   const handleSaveOriginal = () => {
@@ -272,11 +326,32 @@ export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
                 <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                   Questions
                 </h2>
-                {gaps.length > 0 && (
-                  <span className="text-[10px] text-muted-foreground">
-                    {gaps.filter((g) => g.value?.trim()).length}/{gaps.length} filled
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {gaps.length > 0 && (
+                    <span className="text-[10px] text-muted-foreground">
+                      {gaps.filter((g) => g.value?.trim()).length}/{gaps.length} filled
+                    </span>
+                  )}
+                  {gaps.length > 0 && !isReady && !isRejected && (
+                    <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                      {saveStatus === 'saving' && (
+                        <>
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          <span>Saving...</span>
+                        </>
+                      )}
+                      {saveStatus === 'saved' && (
+                        <>
+                          <Check className="h-3 w-3 text-green-500" />
+                          <span className="text-green-500">Saved</span>
+                        </>
+                      )}
+                      {saveStatus === 'error' && (
+                        <span className="text-destructive">Save failed</span>
+                      )}
+                    </span>
+                  )}
+                </div>
               </div>
 
               <div className="flex-1 overflow-auto">
@@ -301,7 +376,6 @@ export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
                         <Textarea
                           value={gap.value || ''}
                           onChange={(e) => handleGapChange(gap.id, e.target.value)}
-                          onBlur={handleGapBlur}
                           placeholder={gap.placeholder}
                           rows={2}
                           className="text-xs"

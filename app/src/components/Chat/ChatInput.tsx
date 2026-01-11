@@ -6,7 +6,6 @@ import { useTeamStore } from '../../store/teamStore';
 import { useOllamaStore } from '../../store/ollamaStore';
 import { useChatDraftStore } from '../../store/chatDraftStore';
 import { Tooltip } from '@/components/ui/tooltip';
-import { Textarea } from '@/components/ui/textarea';
 
 interface ChatInputProps {
   session: string;
@@ -24,7 +23,11 @@ export const ChatInput: React.FC<ChatInputProps> = memo(({
   const setValue = useCallback((text: string) => setDraft(session, text), [session, setDraft]);
   const [sending, setSending] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [suggestion, setSuggestion] = useState('');
+  const [loadingSuggestion, setLoadingSuggestion] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const suggestionTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastValueRef = useRef(value);
   const { error: showError } = useToastStore();
   const { currentTeam } = useTeamStore();
   const { status: ollamaStatus, checkConnection, generate: ollamaGenerate } = useOllamaStore();
@@ -45,6 +48,68 @@ export const ChatInput: React.FC<ChatInputProps> = memo(({
   useEffect(() => {
     checkConnection();
   }, [checkConnection]);
+
+  // Fetch autocomplete suggestion (debounced)
+  const fetchSuggestion = useCallback(async (text: string) => {
+    if (!text.trim() || text.length < 10 || ollamaStatus !== 'connected') {
+      setSuggestion('');
+      return;
+    }
+
+    setLoadingSuggestion(true);
+    try {
+      const systemPrompt = `You are an autocomplete assistant. Given a partial message, suggest a natural completion. Return ONLY the completion text (the part that comes after what the user typed), nothing else. Keep it concise (1-2 sentences max). If the message seems complete, return empty string.`;
+      const prompt = `Complete this message for agent "${targetAgent}":\n\n"${text}"`;
+      const result = await ollamaGenerate(prompt, systemPrompt);
+      const completion = result.trim();
+
+      // Only set suggestion if the input hasn't changed
+      if (lastValueRef.current === text && completion && !completion.startsWith('"')) {
+        setSuggestion(completion);
+      }
+    } catch {
+      // Silent failure for autocomplete
+    } finally {
+      setLoadingSuggestion(false);
+    }
+  }, [targetAgent, ollamaGenerate, ollamaStatus]);
+
+  // Debounced autocomplete trigger
+  useEffect(() => {
+    lastValueRef.current = value;
+
+    // Clear previous timeout
+    if (suggestionTimeoutRef.current) {
+      clearTimeout(suggestionTimeoutRef.current);
+    }
+
+    // Clear suggestion if value changed
+    setSuggestion('');
+
+    // Don't trigger if Ollama not connected or value too short
+    if (ollamaStatus !== 'connected' || !value.trim() || value.length < 10) {
+      return;
+    }
+
+    // Debounce: wait 800ms after user stops typing
+    suggestionTimeoutRef.current = setTimeout(() => {
+      fetchSuggestion(value);
+    }, 800);
+
+    return () => {
+      if (suggestionTimeoutRef.current) {
+        clearTimeout(suggestionTimeoutRef.current);
+      }
+    };
+  }, [value, ollamaStatus, fetchSuggestion]);
+
+  // Accept suggestion
+  const acceptSuggestion = useCallback(() => {
+    if (suggestion) {
+      setValue(value + suggestion);
+      setSuggestion('');
+    }
+  }, [suggestion, value, setValue]);
 
   // Improve message using Ollama
   const handleImproveMessage = useCallback(async () => {
@@ -98,26 +163,58 @@ export const ChatInput: React.FC<ChatInputProps> = memo(({
   }, [session, showError]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    // Accept suggestion on Tab
+    if (e.key === 'Tab' && suggestion) {
+      e.preventDefault();
+      acceptSuggestion();
+      return;
+    }
+
     // Send on Ctrl+Enter (or Cmd+Enter on Mac)
     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       handleSend();
     }
-  }, [handleSend]);
+
+    // Dismiss suggestion on Escape
+    if (e.key === 'Escape' && suggestion) {
+      e.preventDefault();
+      setSuggestion('');
+    }
+  }, [handleSend, suggestion, acceptSuggestion]);
 
   return (
     <div className="border-t border-border p-4 flex-shrink-0">
       <div className="flex items-end gap-3">
-        <Textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          disabled={disabled || sending || generating}
-          className="flex-1 min-h-[44px] max-h-32"
-          rows={1}
-        />
+        {/* Textarea with ghost text overlay */}
+        <div className="flex-1 relative">
+          <textarea
+            ref={textareaRef}
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={placeholder}
+            disabled={disabled || sending || generating}
+            className="w-full min-h-[44px] max-h-32 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            rows={1}
+          />
+          {/* Ghost text suggestion overlay */}
+          {suggestion && (
+            <div
+              className="absolute top-0 left-0 right-0 px-3 py-2 text-sm pointer-events-none overflow-hidden whitespace-pre-wrap break-words"
+              style={{ lineHeight: 'inherit' }}
+            >
+              <span className="invisible">{value}</span>
+              <span className="text-muted-foreground/50">{suggestion}</span>
+            </div>
+          )}
+          {/* Loading indicator for suggestion */}
+          {loadingSuggestion && (
+            <div className="absolute right-2 top-1/2 -translate-y-1/2">
+              <Loader2 className="w-3 h-3 animate-spin text-purple-400/50" />
+            </div>
+          )}
+        </div>
 
         {/* Improve with AI button */}
         {ollamaStatus === 'connected' && (
@@ -169,7 +266,7 @@ export const ChatInput: React.FC<ChatInputProps> = memo(({
       </div>
 
       <p className="text-[10px] text-muted-foreground mt-2 px-1">
-        Press Ctrl+Enter to send, Enter for new line
+        Ctrl+Enter to send{ollamaStatus === 'connected' && ', Tab to accept suggestion'}
       </p>
     </div>
   );

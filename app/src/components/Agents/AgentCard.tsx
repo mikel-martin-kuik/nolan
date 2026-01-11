@@ -126,7 +126,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
             'truncate',
             isComplete ? 'text-foreground font-medium' : 'text-muted-foreground'
           )}>
-            {name}
+            {name.charAt(0).toUpperCase() + name.slice(1)}
           </span>
           {/* Status indicator - only show for issues */}
           {needsAttention && (

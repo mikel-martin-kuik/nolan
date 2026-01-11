@@ -3,7 +3,6 @@ import { useQuery } from '@tanstack/react-query';
 import { invoke } from '@/lib/api';
 import { ProjectList } from './ProjectList';
 import { ProjectFileViewer } from './ProjectFileViewer';
-import { RoadmapViewer } from './RoadmapViewer';
 import { ProjectInfo } from '@/types/projects';
 import { useTeamStore } from '@/store/teamStore';
 import { Plus } from 'lucide-react';
@@ -16,8 +15,6 @@ export function ProjectsPanel() {
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('inprogress');
-  const [showRoadmap, setShowRoadmap] = useState(true); // Default to roadmap
-  const [roadmapSummary, setRoadmapSummary] = useState<{ version: string; vision: string } | null>(null);
 
   // Load team configs for per-project workflow steps
   const { loadAvailableTeams, loadAllTeams } = useTeamStore();
@@ -35,24 +32,6 @@ export function ProjectsPanel() {
     refetchInterval: 30000,
   });
 
-  // Load roadmap summary
-  useEffect(() => {
-    const loadRoadmapSummary = async () => {
-      try {
-        const content = await invoke<string>('read_roadmap', { filename: null });
-        const versionMatch = content.match(/Current State \((v[\d.]+)\)/);
-        // Match vision in blockquote format: > **Vision**: ...
-        const visionMatch = content.match(/>\s*\*\*Vision\*\*:\s*([^\n]+)/);
-        setRoadmapSummary({
-          version: versionMatch ? versionMatch[1] : 'v0.x',
-          vision: visionMatch ? visionMatch[1].trim() : 'AI-powered software development platform'
-        });
-      } catch {
-        setRoadmapSummary({ version: 'v0.x', vision: 'AI-powered software development platform' });
-      }
-    };
-    loadRoadmapSummary();
-  }, []);
 
   // Group projects by status (mapping 5 statuses to 3 tabs)
   // Active tab: inprogress, delegated
@@ -83,13 +62,6 @@ export function ProjectsPanel() {
   const handleFileSelect = (project: string, file: string) => {
     setSelectedProject(project);
     setSelectedFile(file);
-    setShowRoadmap(false); // Switch from roadmap to file view
-  };
-
-  const handleRoadmapClick = () => {
-    setShowRoadmap(true);
-    setSelectedProject(null);
-    setSelectedFile(null);
   };
 
   const currentProjects = groupedProjects[activeTab] || [];
@@ -125,26 +97,6 @@ export function ProjectsPanel() {
 
   return (
     <div className="h-full flex flex-col gap-4">
-      {/* Roadmap Banner - Header */}
-      <button
-        onClick={handleRoadmapClick}
-        className={cn(
-          "w-full p-3 rounded-xl transition-all border",
-          showRoadmap
-            ? "bg-accent/50 border-border"
-            : "border-border/50 hover:border-border hover:bg-accent/30"
-        )}
-      >
-        <div className="flex items-center justify-center gap-2">
-          <span className="font-semibold text-foreground">Nolan Roadmap</span>
-          {roadmapSummary && (
-            <span className="text-xs px-1.5 py-0.5 rounded bg-foreground/10 text-muted-foreground font-medium">
-              {roadmapSummary.version}
-            </span>
-          )}
-        </div>
-      </button>
-
       {/* Main Content */}
       <div className="flex-1 flex overflow-hidden gap-4 min-h-0">
         {/* Left: Project List with Tabs */}
@@ -209,18 +161,14 @@ export function ProjectsPanel() {
           />
         </div>
 
-        {/* Right: File Viewer or Roadmap */}
+        {/* Right: File Viewer */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          {showRoadmap ? (
-            <RoadmapViewer />
-          ) : (
-            <ProjectFileViewer
-              project={selectedProject}
-              file={selectedFile}
-              isWorkflowFile={isWorkflowFile}
-              fileCompletion={selectedFileCompletion}
-            />
-          )}
+          <ProjectFileViewer
+            project={selectedProject}
+            file={selectedFile}
+            isWorkflowFile={isWorkflowFile}
+            fileCompletion={selectedFileCompletion}
+          />
         </div>
       </div>
     </div>

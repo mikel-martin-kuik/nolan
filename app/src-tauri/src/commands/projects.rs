@@ -15,8 +15,9 @@ static RE_HANDOFF: Lazy<Option<Regex>> = Lazy::new(|| {
 });
 
 // Cached regex pattern for PROJECT:STATUS markers
+// Matches both old format (no date) and new format (with date)
 static RE_PROJECT_STATUS: Lazy<Option<Regex>> = Lazy::new(|| {
-    Regex::new(r"<!-- PROJECT:STATUS:[A-Z]+:\d{4}-\d{2}-\d{2} -->").ok()
+    Regex::new(r"<!-- PROJECT:STATUS:[A-Z]+(?::\d{4}-\d{2}-\d{2})? -->").ok()
 });
 
 /// Project status derived from NOTES.md
@@ -1037,14 +1038,16 @@ pub async fn update_project_status(project_name: String, status: String) -> Resu
     let now = chrono::Utc::now().format("%Y-%m-%d").to_string();
     let new_marker = format!("<!-- PROJECT:STATUS:{}:{} -->", status_upper, now);
 
-    // Replace existing marker or append
+    // Remove all existing markers, then append the new one
     let new_content = if let Some(re) = RE_PROJECT_STATUS.as_ref() {
-        if re.is_match(&content) {
-            re.replace(&content, new_marker.as_str()).to_string()
-        } else {
-            // Append at end of file with newline
-            format!("{}\n\n{}\n", content.trim_end(), new_marker)
-        }
+        // Remove all existing status markers
+        let without_markers = re.replace_all(&content, "").to_string();
+        // Clean up extra blank lines and append new marker
+        let cleaned = without_markers
+            .lines()
+            .collect::<Vec<_>>()
+            .join("\n");
+        format!("{}\n\n{}\n", cleaned.trim_end(), new_marker)
     } else {
         // Regex failed to compile, just append
         format!("{}\n\n{}\n", content.trim_end(), new_marker)

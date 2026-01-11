@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { invoke } from '@/lib/api';
-import { Idea, IdeaReview } from '@/types';
+import { Idea, IdeaReview, IdeaComplexity } from '@/types';
 import { IdeaCard } from './IdeaCard';
 import { IdeaDetailPage } from './IdeaDetailPage';
 import { IdeaEditDialog } from './IdeaEditDialog';
 import { Button } from '@/components/ui/button';
-import { Loader2, Play } from 'lucide-react';
+import { Loader2, Play, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToastStore } from '@/store/toastStore';
 
@@ -26,6 +26,15 @@ const COLUMNS: { id: WorkflowColumn; label: string }[] = [
   { id: 'done', label: 'Done' },
 ];
 
+type ComplexityGroup = IdeaComplexity | 'unknown';
+const COMPLEXITY_ORDER: ComplexityGroup[] = ['high', 'medium', 'low', 'unknown'];
+const COMPLEXITY_LABELS: Record<ComplexityGroup, string> = {
+  high: 'High',
+  medium: 'Medium',
+  low: 'Low',
+  unknown: 'Unassessed',
+};
+
 function getIdeaColumn(idea: Idea, review?: IdeaReview): WorkflowColumn {
   // Archived ideas go to Done
   if (idea.status === 'archived') {
@@ -40,8 +49,10 @@ function getIdeaColumn(idea: Idea, review?: IdeaReview): WorkflowColumn {
   // Map review status to column
   switch (review.review_status) {
     case 'draft':
-      return 'new';
+      // Draft proposals are complete and ready for user acceptance
+      return 'ready';
     case 'needs_input':
+      // Needs user to fill in gaps
       return 'analysis';
     case 'ready':
       // If accepted, it's done; otherwise ready for acceptance
@@ -53,19 +64,31 @@ function getIdeaColumn(idea: Idea, review?: IdeaReview): WorkflowColumn {
   }
 }
 
-// Check if idea has meaningful review content (not just draft)
+// Check if idea has meaningful review content
 function hasReviewContent(review?: IdeaReview): boolean {
   if (!review) return false;
-  // Draft reviews don't have content yet, treat as new
-  if (review.review_status === 'draft') return false;
-  return true;
+  // All reviews with a proposal have content
+  return !!review.proposal;
 }
 
 export function IdeasTab() {
   const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(null);
   const [editModalIdea, setEditModalIdea] = useState<Idea | null>(null);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
 
   const toast = useToastStore();
+
+  const toggleSection = (key: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
 
   // Dispatch all unreviewed ideas
   const dispatchAllMutation = useMutation({
@@ -105,30 +128,42 @@ export function IdeasTab() {
     return map;
   }, [reviews]);
 
-  // Group ideas by column
+  // Group ideas by column and complexity
   const columnIdeas = useMemo(() => {
-    const grouped: Record<WorkflowColumn, { idea: Idea; review?: IdeaReview }[]> = {
-      new: [],
-      analysis: [],
-      ready: [],
-      done: [],
+    type GroupedByComplexity = Record<ComplexityGroup, { idea: Idea; review?: IdeaReview }[]>;
+    const grouped: Record<WorkflowColumn, GroupedByComplexity> = {
+      new: { high: [], medium: [], low: [], unknown: [] },
+      analysis: { high: [], medium: [], low: [], unknown: [] },
+      ready: { high: [], medium: [], low: [], unknown: [] },
+      done: { high: [], medium: [], low: [], unknown: [] },
     };
 
     ideas.forEach((idea) => {
       const review = reviewMap.get(idea.id);
       const column = getIdeaColumn(idea, review);
-      grouped[column].push({ idea, review });
+      const complexity: ComplexityGroup = review?.complexity || 'unknown';
+      grouped[column][complexity].push({ idea, review });
     });
 
-    // Sort each column by created_at (newest first)
-    Object.values(grouped).forEach((items) => {
-      items.sort((a, b) =>
-        new Date(b.idea.created_at).getTime() - new Date(a.idea.created_at).getTime()
-      );
+    // Sort each group by created_at (newest first)
+    Object.values(grouped).forEach((byComplexity) => {
+      Object.values(byComplexity).forEach((items) => {
+        items.sort((a, b) =>
+          new Date(b.idea.created_at).getTime() - new Date(a.idea.created_at).getTime()
+        );
+      });
     });
 
     return grouped;
   }, [ideas, reviewMap]);
+
+  // Get total count for a column
+  const getColumnCount = (columnId: WorkflowColumn) => {
+    return COMPLEXITY_ORDER.reduce(
+      (sum, complexity) => sum + columnIdeas[columnId][complexity].length,
+      0
+    );
+  };
 
   // Handle card click - modal for new ideas, page for reviewed ones
   const handleCardClick = (idea: Idea, review?: IdeaReview) => {
@@ -201,30 +236,63 @@ export function IdeasTab() {
                 {column.label}
               </span>
               <span className="text-[10px] text-muted-foreground/60">
-                {columnIdeas[column.id].length}
+                {getColumnCount(column.id)}
               </span>
             </div>
 
             {/* Column Content */}
             <div
               className={cn(
-                'glass-card no-hover min-h-[200px] space-y-1.5 rounded-xl p-2',
+                'glass-card no-hover min-h-[200px] rounded-xl p-2',
                 column.id === 'done' && 'opacity-60'
               )}
             >
-              {columnIdeas[column.id].length === 0 ? (
+              {getColumnCount(column.id) === 0 ? (
                 <div className="flex items-center justify-center h-16 text-[10px] text-muted-foreground/50">
                   Empty
                 </div>
               ) : (
-                columnIdeas[column.id].map(({ idea, review }) => (
-                  <IdeaCard
-                    key={idea.id}
-                    idea={idea}
-                    review={review}
-                    onClick={() => handleCardClick(idea, review)}
-                  />
-                ))
+                <div className="space-y-2">
+                  {COMPLEXITY_ORDER.map((complexity) => {
+                    const items = columnIdeas[column.id][complexity];
+                    if (items.length === 0) return null;
+
+                    const sectionKey = `${column.id}-${complexity}`;
+                    const isCollapsed = collapsedSections.has(sectionKey);
+
+                    return (
+                      <div key={complexity}>
+                        {/* Complexity Header */}
+                        <button
+                          onClick={() => toggleSection(sectionKey)}
+                          className="flex items-center gap-1 w-full text-left py-1 px-1 hover:bg-muted/50 rounded text-[10px] text-muted-foreground"
+                        >
+                          {isCollapsed ? (
+                            <ChevronRight className="h-3 w-3" />
+                          ) : (
+                            <ChevronDown className="h-3 w-3" />
+                          )}
+                          <span>{COMPLEXITY_LABELS[complexity]}</span>
+                          <span className="ml-auto">{items.length}</span>
+                        </button>
+
+                        {/* Items */}
+                        {!isCollapsed && (
+                          <div className="space-y-1.5 mt-1">
+                            {items.map(({ idea, review }) => (
+                              <IdeaCard
+                                key={idea.id}
+                                idea={idea}
+                                review={review}
+                                onClick={() => handleCardClick(idea, review)}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </div>
           </div>

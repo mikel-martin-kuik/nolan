@@ -26,11 +26,11 @@ export function ProjectStatusDropdown({ projectName, currentStatus }: ProjectSta
     setIsUpdating(true);
     try {
       await invoke('update_project_status', {
-        project_name: projectName,
+        projectName: projectName,
         status: newStatus.toUpperCase(),
       });
       // Invalidate projects query to refresh UI
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      await queryClient.invalidateQueries({ queryKey: ['projects'] });
     } catch (error) {
       console.error('Failed to update status:', error);
     } finally {

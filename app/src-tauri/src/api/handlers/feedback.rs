@@ -157,3 +157,94 @@ pub async fn get_user_votes() -> Result<Json<HashMap<String, String>>, impl Into
         Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
     }
 }
+
+// ============================================================================
+// Idea Reviews
+// ============================================================================
+
+/// List all idea reviews
+pub async fn list_idea_reviews() -> Result<Json<Vec<feedback::IdeaReview>>, impl IntoResponse> {
+    match feedback::list_idea_reviews() {
+        Ok(reviews) => Ok(Json(reviews)),
+        Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct UpdateIdeaBody {
+    pub title: String,
+    pub description: String,
+}
+
+/// Update an idea's title and description
+pub async fn update_idea(
+    Path(id): Path<String>,
+    Json(body): Json<UpdateIdeaBody>,
+) -> Result<Json<feedback::Idea>, impl IntoResponse> {
+    match feedback::update_idea(id, body.title, body.description) {
+        Ok(idea) => Ok(Json(idea)),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+/// Accept a review proposal and route based on complexity
+pub async fn accept_review(
+    Path(item_id): Path<String>,
+) -> impl IntoResponse {
+    // First accept the review
+    let review = match feedback::accept_review(item_id.clone()) {
+        Ok(r) => r,
+        Err(e) => return error_response(StatusCode::BAD_REQUEST, e).into_response(),
+    };
+
+    // Then route based on complexity
+    let route_result = match crate::cronos::commands::route_accepted_idea(item_id).await {
+        Ok(r) => r,
+        Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
+    };
+
+    Json(AcceptReviewResponse {
+        review,
+        route: route_result.route,
+        route_detail: route_result.detail,
+    }).into_response()
+}
+
+#[derive(serde::Serialize)]
+pub struct AcceptReviewResponse {
+    pub review: feedback::IdeaReview,
+    pub route: String,
+    pub route_detail: String,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateProposalBody {
+    pub proposal: feedback::IdeaProposal,
+}
+
+/// Update a review's proposal
+pub async fn update_review_proposal(
+    Path(item_id): Path<String>,
+    Json(body): Json<UpdateProposalBody>,
+) -> Result<Json<feedback::IdeaReview>, impl IntoResponse> {
+    match feedback::update_review_proposal(item_id, body.proposal) {
+        Ok(review) => Ok(Json(review)),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct UpdateGapsBody {
+    pub gaps: Vec<feedback::IdeaGap>,
+}
+
+/// Update a review's gaps
+pub async fn update_review_gaps(
+    Path(item_id): Path<String>,
+    Json(body): Json<UpdateGapsBody>,
+) -> Result<Json<feedback::IdeaReview>, impl IntoResponse> {
+    match feedback::update_review_gaps(item_id, body.gaps) {
+        Ok(review) => Ok(Json(review)),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}

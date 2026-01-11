@@ -358,11 +358,11 @@ export interface WorkflowStep {
  * Get workflow steps for progress tracking from team config
  * Returns ordered list of steps: phase outputs → close
  * Note: Steps are derived entirely from team workflow phases - no hardcoded files
- * Requires team config - throws if null
+ * Returns empty array if team config is null
  */
 export function getWorkflowSteps(team: TeamConfig | null): WorkflowStep[] {
   if (!team) {
-    throw new Error('Team config is required for workflow steps');
+    return [];
   }
 
   const steps: WorkflowStep[] = [];
@@ -391,11 +391,11 @@ export function getWorkflowSteps(team: TeamConfig | null): WorkflowStep[] {
  * Get file order mapping for sorting project files
  * Order: prompt -> NOTES.md -> phase outputs (in workflow order)
  * (NOTES.md is created early by note-taker, even though it's closed last)
- * Requires team config - throws if null
+ * Returns empty object if team config is null
  */
 export function getFileOrder(team: TeamConfig | null): Record<string, number> {
   if (!team) {
-    throw new Error('Team config is required for file order');
+    return {};
   }
 
   const order: Record<string, number> = {};

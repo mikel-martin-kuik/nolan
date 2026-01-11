@@ -5,6 +5,7 @@ import { CronAgentDetailPage } from './CronAgentDetailPage';
 import { CronGroupEditor } from './CronGroupEditor';
 import { useToastStore } from '../../store/toastStore';
 import { useCronOutputStore } from '../../store/cronOutputStore';
+import { useCollapsedCronGroupsStore } from '../../store/collapsedCronGroupsStore';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,8 +34,8 @@ export const CronosPanel: React.FC = () => {
   const [groups, setGroups] = useState<CronAgentGroup[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Collapsed groups state (stored by group ID)
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  // Collapsed groups state (persisted)
+  const { isCollapsed, toggleCollapsed } = useCollapsedCronGroupsStore();
 
   // Navigation state
   const [selectedAgentPage, setSelectedAgentPage] = useState<string | null>(null);
@@ -117,19 +118,6 @@ export const CronosPanel: React.FC = () => {
 
     return { grouped, ungrouped };
   }, [agents]);
-
-  // Toggle group collapsed state
-  const toggleGroup = useCallback((groupId: string) => {
-    setCollapsedGroups(prev => {
-      const next = new Set(prev);
-      if (next.has(groupId)) {
-        next.delete(groupId);
-      } else {
-        next.add(groupId);
-      }
-      return next;
-    });
-  }, []);
 
   // Handle agent creation
   const handleCreate = useCallback(async () => {
@@ -340,22 +328,22 @@ export const CronosPanel: React.FC = () => {
                 const groupAgents = groupedAgents.grouped[group.id] || [];
                 if (groupAgents.length === 0) return null;
 
-                const isCollapsed = collapsedGroups.has(group.id);
+                const collapsed = isCollapsed(group.id);
                 const enabledCount = groupAgents.filter(a => a.enabled).length;
                 const runningCount = groupAgents.filter(a => a.is_running).length;
 
                 return (
                   <Collapsible
                     key={group.id}
-                    open={!isCollapsed}
-                    onOpenChange={() => toggleGroup(group.id)}
+                    open={!collapsed}
+                    onOpenChange={() => toggleCollapsed(group.id)}
                   >
                     <div className="border border-border/50 rounded-lg overflow-hidden">
                       <CollapsibleTrigger asChild>
                         <div
                           className="flex items-center gap-3 px-3 py-2 bg-secondary/20 hover:bg-secondary/30 cursor-pointer transition-colors"
                         >
-                          {isCollapsed ? (
+                          {collapsed ? (
                             <ChevronRight className="h-4 w-4 text-muted-foreground" />
                           ) : (
                             <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -386,15 +374,15 @@ export const CronosPanel: React.FC = () => {
               {/* Ungrouped agents */}
               {groupedAgents.ungrouped.length > 0 && (
                 <Collapsible
-                  open={!collapsedGroups.has('__ungrouped__')}
-                  onOpenChange={() => toggleGroup('__ungrouped__')}
+                  open={!isCollapsed('__ungrouped__')}
+                  onOpenChange={() => toggleCollapsed('__ungrouped__')}
                 >
                   <div className="border border-border/50 rounded-lg overflow-hidden">
                     <CollapsibleTrigger asChild>
                       <div
                         className="flex items-center gap-3 px-3 py-2 bg-secondary/20 hover:bg-secondary/30 cursor-pointer transition-colors"
                       >
-                        {collapsedGroups.has('__ungrouped__') ? (
+                        {isCollapsed('__ungrouped__') ? (
                           <ChevronRight className="h-4 w-4 text-muted-foreground" />
                         ) : (
                           <ChevronDown className="h-4 w-4 text-muted-foreground" />

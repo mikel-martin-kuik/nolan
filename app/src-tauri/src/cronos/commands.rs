@@ -470,7 +470,9 @@ pub async fn get_cron_run_log(run_id: String) -> Result<String, String> {
         for process in running {
             if process.run_id == run_id {
                 // Read from the log file of the running process
-                return Ok(std::fs::read_to_string(&process.log_file)
+                // Use from_utf8_lossy to handle corrupted log files gracefully
+                return Ok(std::fs::read(&process.log_file)
+                    .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
                     .unwrap_or_else(|_| String::new()));
             }
         }
@@ -489,7 +491,9 @@ pub async fn get_cron_run_log(run_id: String) -> Result<String, String> {
                     if let Ok(content) = std::fs::read_to_string(&path) {
                         if let Ok(log) = serde_json::from_str::<CronRunLog>(&content) {
                             if log.run_id == run_id {
-                                return std::fs::read_to_string(&log.output_file)
+                                // Use from_utf8_lossy to handle corrupted log files gracefully
+                                return std::fs::read(&log.output_file)
+                                    .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
                                     .map_err(|e| format!("Failed to read log: {}", e));
                             }
                         }
@@ -885,6 +889,250 @@ pub async fn dispatch_single_idea(idea_id: String, app: AppHandle) -> Result<Str
     });
 
     Ok(format!("Dispatched idea {} for processing", idea_id))
+}
+
+// ========================
+// Accepted Idea Routing
+// ========================
+
+/// Review from inbox-reviews.jsonl (extended for routing)
+#[derive(Clone, Debug, serde::Deserialize)]
+struct ReviewForRouting {
+    item_id: String,
+    review_status: String,
+    #[serde(default)]
+    complexity: Option<String>,
+    proposal: Option<ProposalForRouting>,
+}
+
+#[derive(Clone, Debug, serde::Deserialize)]
+struct ProposalForRouting {
+    title: String,
+    summary: String,
+    problem: String,
+    solution: String,
+    #[serde(default)]
+    scope: Option<String>,
+    #[serde(default)]
+    implementation_hints: Option<String>,
+}
+
+/// Result of routing an accepted idea
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct RouteResult {
+    pub idea_id: String,
+    pub route: String,  // "project" or "implementer"
+    pub detail: String, // project name or "triggered"
+}
+
+/// Route an accepted idea based on complexity
+/// - High/Medium complexity → Create project
+/// - Low complexity → Trigger cron-idea-implementer
+pub async fn route_accepted_idea(idea_id: String) -> Result<RouteResult, String> {
+    let nolan_root = crate::utils::paths::get_nolan_root()?;
+    let feedback_dir = nolan_root.join(".state/feedback");
+
+    // Read the idea to get title
+    let ideas_path = feedback_dir.join("ideas.jsonl");
+    let ideas = read_jsonl_file::<Idea>(&ideas_path)?;
+    let idea = ideas.iter()
+        .find(|i| i.id == idea_id)
+        .ok_or_else(|| format!("Idea {} not found", idea_id))?;
+
+    // Read the review to get complexity and proposal
+    let reviews_path = feedback_dir.join("inbox-reviews.jsonl");
+    let reviews = read_jsonl_file::<ReviewForRouting>(&reviews_path)?;
+    let review = reviews.iter()
+        .find(|r| r.item_id == idea_id)
+        .ok_or_else(|| format!("Review for idea {} not found", idea_id))?;
+
+    // Get complexity (default to medium if not set)
+    let complexity = review.complexity.as_deref().unwrap_or("medium");
+
+    match complexity {
+        "low" => {
+            // Trigger cron-idea-implementer
+            let guard = CRONOS.read().await;
+            let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+
+            let config = manager.get_agent("cron-idea-implementer").await?;
+            let output_sender = OUTPUT_SENDER.clone();
+
+            let mut extra_env = executor::ExtraEnvVars::new();
+            extra_env.insert("IDEA_ID".to_string(), idea_id.clone());
+            extra_env.insert("IDEA_TITLE".to_string(), idea.title.clone());
+
+            // Spawn in background
+            tokio::spawn(async move {
+                let guard = CRONOS.read().await;
+                if let Some(manager) = guard.as_ref() {
+                    if let Err(e) = executor::execute_cron_agent_with_env(
+                        &config,
+                        manager,
+                        RunTrigger::Manual,
+                        false,
+                        Some(output_sender),
+                        None,
+                        Some(extra_env),
+                    ).await {
+                        eprintln!("Idea implementer failed: {}", e);
+                    }
+                }
+            });
+
+            Ok(RouteResult {
+                idea_id,
+                route: "implementer".to_string(),
+                detail: "triggered".to_string(),
+            })
+        }
+        _ => {
+            // High or medium complexity → Create project
+            let proposal = review.proposal.as_ref()
+                .ok_or("Review has no proposal")?;
+
+            // Generate project name from proposal title
+            let project_name = proposal.title
+                .to_lowercase()
+                .chars()
+                .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+                .collect::<String>()
+                .split('-')
+                .filter(|s| !s.is_empty())
+                .collect::<Vec<_>>()
+                .join("-")
+                .chars()
+                .take(50) // Limit length
+                .collect::<String>()
+                .trim_end_matches('-')
+                .to_string();
+
+            // Create project
+            let project_path = crate::commands::projects::create_project(
+                project_name.clone(),
+                None, // Use default team
+            ).await?;
+
+            // Write spec file with proposal content
+            let spec_content = format!(
+r#"# {}
+
+## Summary
+
+{}
+
+## Problem
+
+{}
+
+## Solution
+
+{}
+{}{}
+---
+*Generated from accepted idea: {}*
+"#,
+                proposal.title,
+                proposal.summary,
+                proposal.problem,
+                proposal.solution,
+                proposal.scope.as_ref().map(|s| format!("\n## Scope\n\n{}\n", s)).unwrap_or_default(),
+                proposal.implementation_hints.as_ref().map(|h| format!("\n## Implementation Hints\n\n{}\n", h)).unwrap_or_default(),
+                idea_id
+            );
+
+            let spec_path = std::path::Path::new(&project_path).join("SPEC.md");
+            std::fs::write(&spec_path, spec_content)
+                .map_err(|e| format!("Failed to write SPEC.md: {}", e))?;
+
+            Ok(RouteResult {
+                idea_id,
+                route: "project".to_string(),
+                detail: project_name,
+            })
+        }
+    }
+}
+
+/// Dispatch unprocessed ideas via HTTP API (no AppHandle required)
+pub async fn dispatch_ideas_api() -> Result<DispatchResult, String> {
+    let nolan_root = crate::utils::paths::get_nolan_root()?;
+    let feedback_dir = nolan_root.join(".state/feedback");
+
+    // Read ideas
+    let ideas_path = feedback_dir.join("ideas.jsonl");
+    let ideas = read_jsonl_file::<Idea>(&ideas_path)?;
+
+    // Read existing reviews
+    let reviews_path = feedback_dir.join("inbox-reviews.jsonl");
+    let reviews = read_jsonl_file::<InboxReview>(&reviews_path).unwrap_or_default();
+
+    // Build set of already-reviewed idea IDs
+    let reviewed_ids: std::collections::HashSet<_> = reviews.iter()
+        .map(|r| r.item_id.as_str())
+        .collect();
+
+    // Get cronos manager
+    let guard = CRONOS.read().await;
+    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+
+    // Load processor config
+    let processor_config = manager.get_agent("cron-idea-processor").await?;
+
+    let mut result = DispatchResult {
+        dispatched: Vec::new(),
+        already_reviewed: 0,
+        already_processing: 0,
+        inactive: 0,
+    };
+
+    // Get output sender for streaming (no frontend to emit to)
+    let output_sender = OUTPUT_SENDER.clone();
+
+    // Process each active idea
+    for idea in ideas {
+        // Skip non-active ideas
+        if idea.status != "active" {
+            result.inactive += 1;
+            continue;
+        }
+
+        // Skip already-reviewed ideas
+        if reviewed_ids.contains(idea.id.as_str()) {
+            result.already_reviewed += 1;
+            continue;
+        }
+
+        // Spawn processor with IDEA_ID
+        let mut extra_env = executor::ExtraEnvVars::new();
+        extra_env.insert("IDEA_ID".to_string(), idea.id.clone());
+        extra_env.insert("IDEA_TITLE".to_string(), idea.title.clone());
+
+        let config = processor_config.clone();
+        let sender = output_sender.clone();
+
+        // Spawn in background
+        tokio::spawn(async move {
+            let guard = CRONOS.read().await;
+            if let Some(manager) = guard.as_ref() {
+                if let Err(e) = executor::execute_cron_agent_with_env(
+                    &config,
+                    manager,
+                    RunTrigger::Manual,
+                    false,
+                    Some(sender),
+                    None,
+                    Some(extra_env),
+                ).await {
+                    eprintln!("Idea processor failed: {}", e);
+                }
+            }
+        });
+
+        result.dispatched.push(idea.id);
+    }
+
+    Ok(result)
 }
 
 /// Read a JSONL file into a vector of items

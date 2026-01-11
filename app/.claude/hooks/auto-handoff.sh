@@ -24,16 +24,17 @@ if [[ "$AGENT" == "ralph" ]] || [[ "$AGENT" =~ ^ralph- ]]; then
     exit 0
 fi
 
-# Skip coordinators (dynamically check from team config)
+# Skip non-workflow participants (note_taker, guardian, support agents)
 TEAM_NAME="${TEAM_NAME:-default}"
 NOLAN_ROOT="${NOLAN_ROOT:-}"
 if [[ -n "$NOLAN_ROOT" ]]; then
-    COORDINATOR=$(python3 -c "
+    IS_WORKFLOW_PARTICIPANT=$(python3 -c "
 import yaml, sys
 from pathlib import Path
 
 nolan_root = Path('$NOLAN_ROOT')
 team_name = '$TEAM_NAME'
+agent_name = '$AGENT'
 
 # Search for team config
 config_path = None
@@ -42,14 +43,25 @@ for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
     break
 
 if not config_path:
+    # If no config, assume workflow participant
+    print('true')
     sys.exit(0)
 
 config = yaml.safe_load(config_path.read_text())
-coordinator = config.get('team', {}).get('workflow', {}).get('coordinator', '')
-print(coordinator)
+# Check if agent is a workflow participant
+for agent in config.get('team', {}).get('agents', []):
+    if agent.get('name') == agent_name:
+        if agent.get('workflow_participant', True):
+            print('true')
+        else:
+            print('false')
+        sys.exit(0)
+
+# Agent not found in config, assume workflow participant
+print('true')
 " 2>/dev/null)
 
-    if [[ "$AGENT" == "$COORDINATOR" ]]; then
+    if [[ "$IS_WORKFLOW_PARTICIPANT" == "false" ]]; then
         exit 0
     fi
 fi
@@ -148,26 +160,26 @@ if 'status:' not in content:
         f.write(f'\n# Auto-completion\nstatus: completed\ncompleted_at: \"$COMPLETED_AT\"\nauto_handoff: true\n')
 " 2>/dev/null || true
 
-# 2. Update Task Log in coordinator file
+# 2. Update Task Log in note_taker file (replaces coordinator pattern)
 if [[ -d "$PROJECT_PATH" ]]; then
     source "$NOLAN_ROOT/app/.claude/hooks/_lib.sh" 2>/dev/null || true
-    COORD_FILE=$(get_coordinator_file "$PROJECT_PATH" 2>/dev/null) || true
-    COORD_PATH="$PROJECT_PATH/$COORD_FILE"
+    NOTES_FILE=$(get_note_taker_file "$PROJECT_PATH" 2>/dev/null) || true
+    NOTES_PATH="$PROJECT_PATH/$NOTES_FILE"
 
-    if [[ -f "$COORD_PATH" ]]; then
+    if [[ -f "$NOTES_PATH" ]]; then
         python3 -c "
 import re
 from pathlib import Path
 
-coord_path = Path('$COORD_PATH')
-content = coord_path.read_text()
+notes_path = Path('$NOTES_PATH')
+content = notes_path.read_text()
 
 # Update Task Log entry status
 pattern = r'(\| \`$MSG_ID\` \|[^|]+\|[^|]+\|[^|]+\|) Active (\|)'
 replacement = r'\1 Complete \2'
 content = re.sub(pattern, replacement, content)
 
-coord_path.write_text(content)
+notes_path.write_text(content)
 " 2>/dev/null || true
     fi
 
@@ -182,15 +194,23 @@ coord_path.write_text(content)
     if [[ -n "$existing_handoff" ]]; then
         echo "Handoff already exists for $AGENT - skipping creation (created by validate-phase-complete.py)"
     else
-        # Create handoff file with standardized format
+        # Determine next agent from workflow phases (agent-to-agent pattern)
+        NEXT_AGENT=$(get_next_agent "$PROJECT_PATH" "$AGENT" 2>/dev/null) || true
+        # If workflow complete, use note_taker as target
+        if [[ -z "$NEXT_AGENT" ]]; then
+            NEXT_AGENT=$(get_note_taker_name "$PROJECT_PATH" 2>/dev/null) || NEXT_AGENT="unknown"
+        fi
+
+        # Create handoff file with standardized format (agent-to-agent)
         HANDOFF_ID="${MSG_ID/MSG_/HO_}"
         HANDOFF_FILE="$HANDOFF_DIR/${HANDOFF_ID}.handoff"
 
         cat > "$HANDOFF_FILE" <<HANDOFF_EOF
-# Auto-handoff from $AGENT
+# Auto-handoff from $AGENT to $NEXT_AGENT
 id: $HANDOFF_ID
 task_id: $MSG_ID
 from_agent: $AGENT
+to_agent: $NEXT_AGENT
 project: $PROJECT
 phase: $PHASE
 timestamp: '$COMPLETED_AT'

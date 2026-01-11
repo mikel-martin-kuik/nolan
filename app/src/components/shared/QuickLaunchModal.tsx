@@ -6,7 +6,6 @@ import { CLAUDE_MODELS, type ClaudeModel } from '@/types';
 import { isBrowserMode } from '@/lib/api';
 import { useAgentStore } from '@/store/agentStore';
 import { useToastStore } from '@/store/toastStore';
-import { getRalphDisplayName } from '@/lib/agentIdentity';
 
 interface QuickLaunchModalProps {
   open: boolean;
@@ -26,7 +25,6 @@ export const QuickLaunchModal: React.FC<QuickLaunchModalProps> = ({
 
   const { spawnAgent, freeAgents } = useAgentStore();
   const { error: showError, success: showSuccess } = useToastStore();
-  const ralphDisplayName = getRalphDisplayName();
 
   // Focus message input when modal opens
   useEffect(() => {
@@ -49,7 +47,7 @@ export const QuickLaunchModal: React.FC<QuickLaunchModalProps> = ({
         await spawnAgent('', 'ralph', false, selectedModel, showChromeOption ? chromeEnabled : undefined);
         onOpenChange(false);
       } catch (error) {
-        showError(`Failed to spawn ${ralphDisplayName}: ${error}`);
+        showError(`Failed to spawn Ralph: ${error}`);
       } finally {
         setIsLaunching(false);
       }
@@ -94,14 +92,14 @@ export const QuickLaunchModal: React.FC<QuickLaunchModalProps> = ({
         // Send the message to the new session
         const target = newSession.replace('agent-', ''); // ralph-{name}
         await invoke<string>('send_message', { team: '', target, message: messageText });
-        showSuccess(`${ralphDisplayName} launched with message`);
+        showSuccess(`Ralph launched with message`);
       } else {
-        showSuccess(`${ralphDisplayName} launched (message not sent - session detection timeout)`);
+        showSuccess(`Ralph launched (message not sent - session detection timeout)`);
       }
 
       onOpenChange(false);
     } catch (error) {
-      showError(`Failed to launch ${ralphDisplayName}: ${error}`);
+      showError(`Failed to launch Ralph: ${error}`);
     } finally {
       setIsLaunching(false);
     }
@@ -133,7 +131,7 @@ export const QuickLaunchModal: React.FC<QuickLaunchModalProps> = ({
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold flex items-center gap-2">
             <Zap className="w-4 h-4 text-primary" />
-            Quick Launch {ralphDisplayName}
+            Quick Launch Ralph
           </h3>
           <button
             onClick={() => onOpenChange(false)}

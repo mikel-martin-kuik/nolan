@@ -670,3 +670,29 @@ pub fn accept_review(item_id: String) -> Result<IdeaReview, String> {
 
     Ok(updated)
 }
+
+/// Result of accepting and routing an idea
+#[derive(Debug, Clone, Serialize)]
+pub struct AcceptAndRouteResult {
+    pub review: IdeaReview,
+    pub route: String,
+    pub route_detail: String,
+}
+
+/// Accept a review and route it based on complexity (async version for Tauri)
+/// - High/Medium complexity → Create project
+/// - Low complexity → Trigger cron-idea-implementer
+#[command]
+pub async fn accept_and_route_review(item_id: String) -> Result<AcceptAndRouteResult, String> {
+    // First accept the review
+    let review = accept_review(item_id.clone())?;
+
+    // Then route based on complexity
+    let route_result = crate::cronos::commands::route_accepted_idea(item_id).await?;
+
+    Ok(AcceptAndRouteResult {
+        review,
+        route: route_result.route,
+        route_detail: route_result.detail,
+    })
+}

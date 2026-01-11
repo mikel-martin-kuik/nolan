@@ -88,9 +88,9 @@ export const ProjectListItem = memo(function ProjectListItem({
   return (
     <div className="mb-1">
       {/* Project Header */}
-      <button
+      <div
         onClick={onToggle}
-        className="group w-full flex items-center gap-2 p-2.5 rounded-lg transition-colors hover:bg-accent/50"
+        className="group w-full flex items-center gap-2 p-2.5 rounded-lg transition-colors hover:bg-accent/50 cursor-pointer"
       >
         <ChevronDown
           className={cn(
@@ -124,7 +124,7 @@ export const ProjectListItem = memo(function ProjectListItem({
           projectName={project.name}
           currentStatus={project.status}
         />
-      </button>
+      </div>
 
       {/* File List */}
       {isExpanded && sortedFiles && (

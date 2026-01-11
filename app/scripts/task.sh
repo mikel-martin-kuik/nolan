@@ -144,42 +144,50 @@ else:
     task_file.write_text(yaml.dump(data, default_flow_style=False, sort_keys=False))
 "
 
-    # Update Task Log in coordinator file
+    # Update Task Log in note_taker file
     local project_path="$PROJECTS_DIR/$project"
     if [[ -d "$project_path" ]]; then
-        # Source helper to get coordinator file
+        # Source helper to get note_taker file
         source "$(dirname "$0")/../.claude/hooks/_lib.sh" 2>/dev/null || true
-        local coord_file=$(get_coordinator_file "$project_path" 2>/dev/null) || true
-        local coord_path="$project_path/$coord_file"
+        local notes_file=$(get_note_taker_file "$project_path" 2>/dev/null) || true
+        local notes_path="$project_path/$notes_file"
 
-        if [[ -f "$coord_path" ]]; then
+        if [[ -f "$notes_path" ]]; then
             python3 -c "
 import re
 from pathlib import Path
 
-coord_path = Path('$coord_path')
-content = coord_path.read_text()
+notes_path = Path('$notes_path')
+content = notes_path.read_text()
 
 # Update Task Log entry status from Active to Complete
 pattern = r'(\| \`$msg_id\` \|[^|]+\|[^|]+\|[^|]+\|) Active (\|)'
 replacement = r'\1 Complete \2'
 content = re.sub(pattern, replacement, content)
 
-coord_path.write_text(content)
+notes_path.write_text(content)
 " 2>/dev/null || true
         fi
 
-        # Create handoff file for coordinator to ACK
+        # Determine next agent from workflow phases (agent-to-agent pattern)
+        local next_agent=$(get_next_agent "$project_path" "$agent" 2>/dev/null) || true
+        # If workflow complete, use note_taker as target
+        if [[ -z "$next_agent" ]]; then
+            next_agent=$(get_note_taker_name "$project_path" 2>/dev/null) || next_agent="unknown"
+        fi
+
+        # Create handoff file for next agent
         local handoff_dir="$NOLAN_ROOT/.state/handoffs/pending"
         mkdir -p "$handoff_dir"
         local handoff_id="${msg_id/MSG_/HO_}"
         local handoff_file="$handoff_dir/${handoff_id}.handoff"
 
         cat > "$handoff_file" <<HANDOFF_EOF
-# Handoff from $agent
+# Handoff from $agent to $next_agent
 id: $handoff_id
 task_id: $msg_id
 from_agent: $agent
+to_agent: $next_agent
 project: $project
 phase: $phase
 timestamp: '$completed_at'

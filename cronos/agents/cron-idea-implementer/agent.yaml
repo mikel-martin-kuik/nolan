@@ -1,0 +1,33 @@
+name: cron-idea-implementer
+description: Implements low-complexity accepted ideas directly (triggered on idea acceptance)
+model: sonnet
+timeout: 600
+enabled: true
+schedule:
+  cron: 0 0 1 1 *
+  timezone: null
+guardrails:
+  allowed_tools:
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  - Bash
+  forbidden_paths:
+  - '**/.env'
+  - '**/secrets/**'
+  - '**/*.key'
+  max_file_edits: 20
+context:
+  working_directory: null
+group: feedback
+concurrency:
+  allow_parallel: false
+  queue_if_running: true
+retry:
+  enabled: true
+  max_retries: 2
+  delay_secs: 60
+  exponential_backoff: false
+catch_up: skip

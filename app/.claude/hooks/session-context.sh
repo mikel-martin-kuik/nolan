@@ -73,8 +73,8 @@ config = yaml.safe_load(Path('$TEAM_CONFIG').read_text())
 team = config['team']
 current_agent = os.environ.get('AGENT_NAME', '').lower()
 
-# Get coordinator
-coordinator = team['workflow']['coordinator']
+# Get note_taker (replaces coordinator pattern)
+note_taker = team['workflow'].get('note_taker') or team['workflow'].get('coordinator')
 
 # Get workflow participants with their phases
 phases = team['workflow'].get('phases', [])
@@ -86,8 +86,8 @@ for phase in phases:
     phase_owners[owner].append(phase['name'])
 
 # Determine current agent's role
-if current_agent == coordinator:
-    my_role = 'coordinator'
+if current_agent == note_taker:
+    my_role = 'note_taker'
 elif current_agent in phase_owners:
     my_role = '/'.join(phase_owners[current_agent]).lower()
 elif current_agent.startswith('ralph'):
@@ -205,27 +205,28 @@ fi
 PENDING_DIR="$NOLAN_ROOT/.state/handoffs/pending"
 PROCESSED_DIR="$NOLAN_ROOT/.state/handoffs/processed"
 
-# Process handoffs for coordinator
-COORDINATOR=$(python3 -c "
+# Process handoffs for note_taker (replaces coordinator pattern)
+NOTE_TAKER=$(python3 -c "
 import yaml, os, sys
 try:
     config = yaml.safe_load(open('$TEAM_CONFIG'))
-    coordinator = config.get('team', {}).get('workflow', {}).get('coordinator')
-    if not coordinator:
-        print('ERROR: No coordinator defined in team config', file=sys.stderr)
+    # Try note_taker first (new pattern), fall back to coordinator (legacy)
+    note_taker = config.get('team', {}).get('workflow', {}).get('note_taker') or config.get('team', {}).get('workflow', {}).get('coordinator')
+    if not note_taker:
+        print('ERROR: No note_taker or coordinator defined in team config', file=sys.stderr)
         sys.exit(1)
-    print(coordinator)
+    print(note_taker)
 except Exception as e:
-    print(f'ERROR: Failed to get coordinator: {e}', file=sys.stderr)
+    print(f'ERROR: Failed to get note_taker: {e}', file=sys.stderr)
     sys.exit(1)
 " 2>/dev/null)
 
-if [[ -z "$COORDINATOR" ]]; then
-    echo "ERROR: Could not determine coordinator from team config."
+if [[ -z "$NOTE_TAKER" ]]; then
+    echo "ERROR: Could not determine note_taker from team config."
     exit 0
 fi
 
-if [[ "${AGENT_NAME:-}" == "$COORDINATOR" ]] && [[ -d "$PENDING_DIR" ]]; then
+if [[ "${AGENT_NAME:-}" == "$NOTE_TAKER" ]] && [[ -d "$PENDING_DIR" ]]; then
     mkdir -p "$PROCESSED_DIR"
     LOCK_FILE="$NOLAN_ROOT/.state/handoffs/.lock-pending"
 
@@ -270,31 +271,32 @@ if [[ -d "$PENDING_DIR" ]]; then
     pending_count=$(find "$PENDING_DIR" -name "*.handoff" -type f 2>/dev/null | wc -l)
 fi
 
-# Only show pending handoff details to coordinator
+# Only show pending handoff details to note_taker
 if [[ $pending_count -gt 0 ]]; then
-    # Load coordinator from current team config (no fallback - require explicit config)
-    COORDINATOR_2=$(python3 -c "
+    # Load note_taker from current team config (no fallback - require explicit config)
+    NOTE_TAKER_2=$(python3 -c "
 import yaml, os, sys
 try:
     config = yaml.safe_load(open('$TEAM_CONFIG'))
-    coordinator = config.get('team', {}).get('workflow', {}).get('coordinator')
-    if coordinator:
-        print(coordinator)
+    # Try note_taker first (new pattern), fall back to coordinator (legacy)
+    note_taker = config.get('team', {}).get('workflow', {}).get('note_taker') or config.get('team', {}).get('workflow', {}).get('coordinator')
+    if note_taker:
+        print(note_taker)
 except Exception:
     pass
 " 2>/dev/null)
 
-    # Use first COORDINATOR if available, otherwise second lookup
-    if [[ -z "$COORDINATOR" ]] && [[ -n "$COORDINATOR_2" ]]; then
-        COORDINATOR="$COORDINATOR_2"
+    # Use first NOTE_TAKER if available, otherwise second lookup
+    if [[ -z "$NOTE_TAKER" ]] && [[ -n "$NOTE_TAKER_2" ]]; then
+        NOTE_TAKER="$NOTE_TAKER_2"
     fi
 
     # Check if agent is Ralph (support agent with full access)
     is_ralph=false
     [[ "${AGENT_NAME:-}" == "ralph" ]] || [[ "${AGENT_NAME:-}" =~ ^ralph- ]] && is_ralph=true
 
-    if [[ "${AGENT_NAME:-}" == "$COORDINATOR" ]] || [[ "$is_ralph" == "true" ]]; then
-        # Coordinator and Ralph see full details
+    if [[ "${AGENT_NAME:-}" == "$NOTE_TAKER" ]] || [[ "$is_ralph" == "true" ]]; then
+        # Note taker and Ralph see full details
         echo "### ⚠️ Pending Handoffs ($pending_count)"
         echo ""
         echo "| ID | Timestamp | From | Project | Team |"
@@ -338,14 +340,14 @@ fi
 #
 # Returns via global: PROJECT_STATUS = "inprogress" | "pending"
 get_project_status() {
-    local coord_path="$1"
+    local file_path="$1"
     PROJECT_STATUS="pending"
 
-    [[ ! -f "$coord_path" ]] && return
+    [[ ! -f "$file_path" ]] && return
 
     # Check for active assignment (Current Assignment with Agent field)
-    if grep -q '## Current Assignment' "$coord_path" 2>/dev/null; then
-        if grep -q '\*\*Agent\*\*:' "$coord_path" 2>/dev/null; then
+    if grep -q '## Current Assignment' "$file_path" 2>/dev/null; then
+        if grep -q '\*\*Agent\*\*:' "$file_path" 2>/dev/null; then
             PROJECT_STATUS="inprogress"
             return
         fi
@@ -376,12 +378,12 @@ for dir in "$PROJECTS_BASE"/*/; do
         continue
     fi
 
-    # Get coordinator file from team config (skip if no .team file)
-    coordinator_file=$(get_coordinator_file "$dir" 2>/dev/null) || continue
-    coord_path="$dir/$coordinator_file"
+    # Get note_taker file from team config (skip if no .team file)
+    notes_file=$(get_note_taker_file "$dir" 2>/dev/null) || continue
+    notes_path="$dir/$notes_file"
 
     # Get status from file content
-    get_project_status "$coord_path"
+    get_project_status "$notes_path"
 
     case "$PROJECT_STATUS" in
         inprogress)
@@ -389,8 +391,8 @@ for dir in "$PROJECTS_BASE"/*/; do
             echo "### $project"
 
             # Show Current Assignment section (if exists)
-            if grep -q "## Current Assignment" "$coord_path" 2>/dev/null; then
-                assignment=$(sed -n '/## Current Assignment/,/^---$/p' "$coord_path" | sed '$d')
+            if grep -q "## Current Assignment" "$notes_path" 2>/dev/null; then
+                assignment=$(sed -n '/## Current Assignment/,/^---$/p' "$notes_path" | sed '$d')
                 if [[ -n "$assignment" ]]; then
                     echo "$assignment"
                     echo ""
@@ -398,8 +400,8 @@ for dir in "$PROJECTS_BASE"/*/; do
             fi
 
             # Show status section
-            status=$(grep -A3 "## Current Status" "$coord_path" 2>/dev/null | head -4)
-            [[ -z "$status" ]] && status=$(grep -A3 "^## Status" "$coord_path" 2>/dev/null | head -4)
+            status=$(grep -A3 "## Current Status" "$notes_path" 2>/dev/null | head -4)
+            [[ -z "$status" ]] && status=$(grep -A3 "^## Status" "$notes_path" 2>/dev/null | head -4)
             if [[ -n "$status" ]]; then
                 echo "$status"
             else

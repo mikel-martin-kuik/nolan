@@ -13,7 +13,8 @@ pub type RunningProcesses = Arc<RwLock<HashMap<String, RunningProcess>>>;
 
 pub struct CronosManager {
     scheduler: JobScheduler,
-    cronos_root: PathBuf,
+    cronos_root: PathBuf,        // Agent definitions (source code) in NOLAN_ROOT/cronos
+    cronos_data_root: PathBuf,   // Run logs (user data) in NOLAN_DATA_ROOT/cronos
     nolan_root: PathBuf,
     running: RunningProcesses,
     state: Arc<RwLock<SchedulerState>>,
@@ -22,16 +23,18 @@ pub struct CronosManager {
 impl CronosManager {
     pub async fn new() -> Result<Self, String> {
         let nolan_root = paths::get_nolan_root()?;
-        let cronos_root = nolan_root.join("cronos");
+        let nolan_data_root = paths::get_nolan_data_root()?;
+        let cronos_root = nolan_root.join("cronos");         // Agent definitions (source)
+        let cronos_data_root = nolan_data_root.join("cronos"); // Run logs (data)
 
         // Ensure directories exist
         std::fs::create_dir_all(cronos_root.join("agents"))
             .map_err(|e| format!("Failed to create cronos/agents: {}", e))?;
-        std::fs::create_dir_all(cronos_root.join("runs"))
+        std::fs::create_dir_all(cronos_data_root.join("runs"))
             .map_err(|e| format!("Failed to create cronos/runs: {}", e))?;
 
-        // Create consolidated state directory for scheduler
-        let scheduler_state_dir = nolan_root.join(".state").join("scheduler");
+        // Create consolidated state directory for scheduler (uses data root via get_state_dir)
+        let scheduler_state_dir = paths::get_scheduler_state_dir()?;
         std::fs::create_dir_all(&scheduler_state_dir)
             .map_err(|e| format!("Failed to create .state/scheduler: {}", e))?;
 
@@ -39,20 +42,26 @@ impl CronosManager {
             .map_err(|e| format!("Failed to create scheduler: {}", e))?;
 
         // Load persistent state from consolidated location
-        let state = Self::load_state(&nolan_root)?;
+        let state = Self::load_state(&nolan_data_root)?;
 
         Ok(Self {
             scheduler,
             cronos_root,
+            cronos_data_root,
             nolan_root,
             running: Arc::new(RwLock::new(HashMap::new())),
             state: Arc::new(RwLock::new(state)),
         })
     }
 
-    /// Get the cronos root path
+    /// Get the cronos root path (source code - agent definitions)
     pub fn cronos_root(&self) -> &PathBuf {
         &self.cronos_root
+    }
+
+    /// Get the cronos data root path (user data - run logs)
+    pub fn cronos_data_root(&self) -> &PathBuf {
+        &self.cronos_data_root
     }
 
     /// Get running processes tracker
@@ -207,7 +216,7 @@ impl CronosManager {
     /// Scans JSON log files for runs with completed_at: null and session_name set,
     /// then checks if the tmux session is still alive.
     pub fn find_orphaned_cron_sessions(&self) -> Result<Vec<OrphanedCronSession>, String> {
-        let runs_dir = self.cronos_root.join("runs");
+        let runs_dir = self.cronos_data_root.join("runs");
         let mut orphaned = Vec::new();
 
         // Scan date directories (e.g., runs/2026-01-10/)
@@ -626,7 +635,7 @@ impl CronosManager {
         agent_name: Option<&str>,
         limit: usize,
     ) -> Result<Vec<CronRunLog>, String> {
-        let runs_dir = self.cronos_root.join("runs");
+        let runs_dir = self.cronos_data_root.join("runs");
         let mut logs = Vec::new();
 
         // Read all date directories in reverse order

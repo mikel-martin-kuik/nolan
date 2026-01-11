@@ -480,8 +480,7 @@ pub async fn get_cron_run_log(run_id: String) -> Result<String, String> {
     drop(guard);
 
     // Check completed runs
-    let nolan_root = crate::utils::paths::get_nolan_root()?;
-    let runs_dir = nolan_root.join("cronos/runs");
+    let runs_dir = crate::utils::paths::get_cronos_runs_dir()?;
 
     for date_entry in std::fs::read_dir(&runs_dir).into_iter().flatten().flatten() {
         if date_entry.path().is_dir() {
@@ -740,8 +739,7 @@ pub struct DispatchResult {
 /// 4. Spawn cron-idea-processor for each with IDEA_ID env var
 #[tauri::command]
 pub async fn dispatch_ideas(app: AppHandle) -> Result<DispatchResult, String> {
-    let nolan_root = crate::utils::paths::get_nolan_root()?;
-    let feedback_dir = nolan_root.join(".state/feedback");
+    let feedback_dir = crate::utils::paths::get_feedback_dir()?;
 
     // Read ideas
     let ideas_path = feedback_dir.join("ideas.jsonl");
@@ -831,8 +829,7 @@ pub async fn dispatch_ideas(app: AppHandle) -> Result<DispatchResult, String> {
 /// Dispatch a single idea to cron-idea-processor
 #[tauri::command]
 pub async fn dispatch_single_idea(idea_id: String, app: AppHandle) -> Result<String, String> {
-    let nolan_root = crate::utils::paths::get_nolan_root()?;
-    let feedback_dir = nolan_root.join(".state/feedback");
+    let feedback_dir = crate::utils::paths::get_feedback_dir()?;
 
     // Read ideas to get title
     let ideas_path = feedback_dir.join("ideas.jsonl");
@@ -929,8 +926,7 @@ pub struct RouteResult {
 /// - High complexity → Create project
 /// - Low/Medium complexity → Trigger cron-idea-implementer
 pub async fn route_accepted_idea(idea_id: String) -> Result<RouteResult, String> {
-    let nolan_root = crate::utils::paths::get_nolan_root()?;
-    let feedback_dir = nolan_root.join(".state/feedback");
+    let feedback_dir = crate::utils::paths::get_feedback_dir()?;
 
     // Read the idea to get title
     let ideas_path = feedback_dir.join("ideas.jsonl");
@@ -1056,8 +1052,7 @@ r#"# {}
 
 /// Dispatch unprocessed ideas via HTTP API (no AppHandle required)
 pub async fn dispatch_ideas_api() -> Result<DispatchResult, String> {
-    let nolan_root = crate::utils::paths::get_nolan_root()?;
-    let feedback_dir = nolan_root.join(".state/feedback");
+    let feedback_dir = crate::utils::paths::get_feedback_dir()?;
 
     // Read ideas
     let ideas_path = feedback_dir.join("ideas.jsonl");

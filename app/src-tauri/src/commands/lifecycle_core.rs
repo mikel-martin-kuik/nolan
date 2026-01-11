@@ -69,11 +69,7 @@ pub fn kill_session(session_name: &str) -> Result<String, String> {
 pub fn clear_team_active_project(team_name: &str) -> Result<(), String> {
     use std::fs;
 
-    let nolan_root = std::env::var("NOLAN_ROOT")
-        .map_err(|_| "NOLAN_ROOT not set")?;
-
-    let state_file = PathBuf::from(&nolan_root)
-        .join(".state")
+    let state_file = crate::utils::paths::get_state_dir()?
         .join(team_name)
         .join("active-project.txt");
 
@@ -149,6 +145,7 @@ pub async fn start_agent_core(team_name: &str, agent: &str) -> Result<String, St
 
     // Get paths
     let nolan_root = crate::utils::paths::get_nolan_root()?;
+    let nolan_data_root = crate::utils::paths::get_nolan_data_root()?;
     let projects_dir = crate::utils::paths::get_projects_dir()?;
     let agents_dir = crate::utils::paths::get_agents_dir()?;
     let agent_dir = agents_dir.join(agent);
@@ -162,10 +159,11 @@ pub async fn start_agent_core(team_name: &str, agent: &str) -> Result<String, St
 
     // Build Claude command
     let cmd = format!(
-        "export AGENT_NAME={} TEAM_NAME={} NOLAN_ROOT=\"{}\" PROJECTS_DIR=\"{}\"; claude --dangerously-skip-permissions --model {}; exec bash",
+        "export AGENT_NAME={} TEAM_NAME={} NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\"; claude --dangerously-skip-permissions --model {}; exec bash",
         agent,
         team_name,
         nolan_root.to_string_lossy(),
+        nolan_data_root.to_string_lossy(),
         projects_dir.to_string_lossy(),
         model
     );
@@ -239,6 +237,7 @@ pub async fn spawn_ralph_core(model: Option<String>, force: bool) -> Result<Stri
 
     // Get paths
     let nolan_root = crate::utils::paths::get_nolan_root()?;
+    let nolan_data_root = crate::utils::paths::get_nolan_data_root()?;
     let projects_dir = crate::utils::paths::get_projects_dir()?;
     let agents_dir = crate::utils::paths::get_agents_dir()?;
     let agent_dir = agents_dir.join(format!("agent-ralph-{}", instance_id));
@@ -272,8 +271,9 @@ pub async fn spawn_ralph_core(model: Option<String>, force: bool) -> Result<Stri
     // Build command
     let model_str = model.unwrap_or_else(|| crate::commands::lifecycle::get_default_model("ralph"));
     let cmd = format!(
-        "export AGENT_NAME=ralph TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" PROJECTS_DIR=\"{}\"; claude --dangerously-skip-permissions --model {}; exec bash",
+        "export AGENT_NAME=ralph TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\"; claude --dangerously-skip-permissions --model {}; exec bash",
         nolan_root.to_string_lossy(),
+        nolan_data_root.to_string_lossy(),
         projects_dir.to_string_lossy(),
         model_str
     );
@@ -395,13 +395,15 @@ pub async fn recover_ralph_instance(instance: &OrphanedRalphInstance, model: Opt
 
     // Get paths
     let nolan_root = crate::utils::paths::get_nolan_root()?;
+    let nolan_data_root = crate::utils::paths::get_nolan_data_root()?;
     let projects_dir = crate::utils::paths::get_projects_dir()?;
 
     // Build command with --continue flag to resume the previous Claude session
     let model_str = model.unwrap_or_else(|| crate::commands::lifecycle::get_default_model("ralph"));
     let cmd = format!(
-        "export AGENT_NAME=ralph TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" PROJECTS_DIR=\"{}\"; claude --dangerously-skip-permissions --model {} --continue; exec bash",
+        "export AGENT_NAME=ralph TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\"; claude --dangerously-skip-permissions --model {} --continue; exec bash",
         nolan_root.to_string_lossy(),
+        nolan_data_root.to_string_lossy(),
         projects_dir.to_string_lossy(),
         model_str
     );
@@ -516,13 +518,12 @@ struct RegistryEntry {
 fn team_has_active_project(team_name: &str) -> bool {
     use std::fs;
 
-    let nolan_root = match std::env::var("NOLAN_ROOT") {
-        Ok(r) => r,
+    let state_dir = match crate::utils::paths::get_state_dir() {
+        Ok(d) => d,
         Err(_) => return false,
     };
 
-    let state_file = PathBuf::from(&nolan_root)
-        .join(".state")
+    let state_file = state_dir
         .join(team_name)
         .join("active-project.txt");
 
@@ -628,9 +629,8 @@ pub fn find_orphaned_team_sessions() -> Result<Vec<OrphanedTeamSession>, String>
 fn get_team_docs_path(team_name: &str) -> Option<String> {
     use std::fs;
 
-    let nolan_root = std::env::var("NOLAN_ROOT").ok()?;
-    let state_file = PathBuf::from(&nolan_root)
-        .join(".state")
+    let state_dir = crate::utils::paths::get_state_dir().ok()?;
+    let state_file = state_dir
         .join(team_name)
         .join("active-project.txt");
 
@@ -664,6 +664,7 @@ pub async fn recover_team_session(orphan: &OrphanedTeamSession) -> Result<String
 
     // Get paths
     let nolan_root = crate::utils::paths::get_nolan_root()?;
+    let nolan_data_root = crate::utils::paths::get_nolan_data_root()?;
     let projects_dir = crate::utils::paths::get_projects_dir()?;
 
     // Get docs path from team state (may be empty if no active project)
@@ -677,10 +678,11 @@ pub async fn recover_team_session(orphan: &OrphanedTeamSession) -> Result<String
 
     // Build command with --continue flag to resume the previous Claude session
     let cmd = format!(
-        "export AGENT_NAME={} TEAM_NAME=\"{}\" NOLAN_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\" DOCS_PATH=\"{}\" OUTPUT_FILE=\"{}\"; claude --dangerously-skip-permissions --model {} --continue; exec bash",
+        "export AGENT_NAME={} TEAM_NAME=\"{}\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\" DOCS_PATH=\"{}\" OUTPUT_FILE=\"{}\"; claude --dangerously-skip-permissions --model {} --continue; exec bash",
         orphan.agent,
         orphan.team,
         nolan_root.to_string_lossy(),
+        nolan_data_root.to_string_lossy(),
         projects_dir.to_string_lossy(),
         orphan.agent_dir.to_string_lossy(),
         docs_path,

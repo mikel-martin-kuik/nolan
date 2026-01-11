@@ -28,9 +28,7 @@ pub async fn save_team_config(team_name: String, config: TeamConfig) -> Result<(
         return Err("Team name must contain only lowercase letters, digits, and underscores".to_string());
     }
 
-    let nolan_root = std::env::var("NOLAN_ROOT")
-        .map_err(|_| "NOLAN_ROOT not set".to_string())?;
-    let teams_dir = PathBuf::from(nolan_root).join("teams");
+    let teams_dir = crate::utils::paths::get_teams_dir()?;
 
     // Ensure teams directory exists
     if !teams_dir.exists() {
@@ -126,9 +124,7 @@ pub async fn list_teams() -> Result<Vec<String>, String> {
 /// List all teams with full metadata (new endpoint for hierarchical display)
 #[tauri::command]
 pub async fn list_teams_info() -> Result<Vec<TeamInfo>, String> {
-    let nolan_root = std::env::var("NOLAN_ROOT")
-        .map_err(|_| "NOLAN_ROOT not set".to_string())?;
-    let teams_dir = PathBuf::from(nolan_root).join("teams");
+    let teams_dir = crate::utils::paths::get_teams_dir()?;
 
     if !teams_dir.exists() {
         return Ok(vec![]);

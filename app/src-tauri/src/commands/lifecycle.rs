@@ -117,13 +117,8 @@ const MAX_INSTANCES: u32 = 15;
 /// Creates the directory if it doesn't exist
 fn get_team_state_dir(team_name: &str) -> Result<std::path::PathBuf, String> {
     use std::fs;
-    use std::path::PathBuf;
 
-    let nolan_root = std::env::var("NOLAN_ROOT")
-        .map_err(|_| "NOLAN_ROOT not set".to_string())?;
-
-    let state_dir = PathBuf::from(nolan_root)
-        .join(".state")
+    let state_dir = crate::utils::paths::get_state_dir()?
         .join(team_name);
 
     // Create directory if it doesn't exist
@@ -179,12 +174,10 @@ pub fn register_session(tmux_session: &str, agent: &str, agent_dir: &str, team: 
 /// Default models for each agent (loaded from agent.json in agent directory)
 pub fn get_default_model(agent: &str) -> String {
     use std::fs;
-    use std::path::PathBuf;
 
     // Try to read model from agent.json
-    if let Ok(nolan_root) = std::env::var("NOLAN_ROOT") {
-        let agent_json_path = PathBuf::from(&nolan_root)
-            .join("app/agents")
+    if let Ok(agents_dir) = crate::utils::paths::get_agents_dir() {
+        let agent_json_path = agents_dir
             .join(agent)
             .join("agent.json");
 
@@ -593,6 +586,8 @@ pub async fn launch_team(
         .map_err(|e| format!("Failed to write team state: {}", e))?;
 
     let nolan_root_str = nolan_root.to_string_lossy();
+    let nolan_data_root = crate::utils::paths::get_nolan_data_root()?;
+    let nolan_data_root_str = nolan_data_root.to_string_lossy();
     let projects_dir_str = projects_dir.to_string_lossy();
     let docs_path_str = docs_path.to_string_lossy();
 
@@ -683,8 +678,8 @@ pub async fn launch_team(
 
         // Create tmux session with Claude - includes TEAM_NAME, DOCS_PATH, and OUTPUT_FILE
         let cmd = format!(
-            "export AGENT_NAME={} TEAM_NAME=\"{}\" NOLAN_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\" DOCS_PATH=\"{}\" OUTPUT_FILE=\"{}\"; claude --dangerously-skip-permissions --model {}; exec bash",
-            agent, team_name, nolan_root_str, projects_dir_str, agent_dir_str, docs_path_str, output_file, model
+            "export AGENT_NAME={} TEAM_NAME=\"{}\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\" DOCS_PATH=\"{}\" OUTPUT_FILE=\"{}\"; claude --dangerously-skip-permissions --model {}; exec bash",
+            agent, team_name, nolan_root_str, nolan_data_root_str, projects_dir_str, agent_dir_str, docs_path_str, output_file, model
         );
 
         let output = Command::new("tmux")
@@ -996,6 +991,8 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
 
     // Convert paths to strings for command
     let nolan_root_str = nolan_root.to_string_lossy();
+    let nolan_data_root = crate::utils::paths::get_nolan_data_root()?;
+    let nolan_data_root_str = nolan_data_root.to_string_lossy();
     let projects_dir_str = projects_dir.to_string_lossy();
     let agent_dir_str = agent_dir.to_string_lossy();
 
@@ -1007,8 +1004,8 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
 
     // Create tmux session for Ralph (team-independent, TEAM_NAME is empty)
     let cmd = format!(
-        "export AGENT_NAME={} TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\"; claude --dangerously-skip-permissions --model {}{}; exec bash",
-        agent, nolan_root_str, projects_dir_str, agent_dir_str, model_str, chrome_flag
+        "export AGENT_NAME={} TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\"; claude --dangerously-skip-permissions --model {}{}; exec bash",
+        agent, nolan_root_str, nolan_data_root_str, projects_dir_str, agent_dir_str, model_str, chrome_flag
     );
 
     let output = Command::new("tmux")
@@ -1022,6 +1019,7 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
         ("AGENT_NAME", agent.as_str()),
         ("TEAM_NAME", ""),
         ("NOLAN_ROOT", nolan_root_str.as_ref()),
+        ("NOLAN_DATA_ROOT", nolan_data_root_str.as_ref()),
         ("PROJECTS_DIR", projects_dir_str.as_ref()),
         ("AGENT_DIR", agent_dir_str.as_ref()),
     ];
@@ -1102,6 +1100,8 @@ pub async fn start_agent(app_handle: AppHandle, team_name: String, agent: String
 
     // Convert paths to strings for command
     let nolan_root_str = nolan_root.to_string_lossy();
+    let nolan_data_root = crate::utils::paths::get_nolan_data_root()?;
+    let nolan_data_root_str = nolan_data_root.to_string_lossy();
     let projects_dir_str = projects_dir.to_string_lossy();
     let agent_dir_str = agent_dir.to_string_lossy();
 
@@ -1119,8 +1119,8 @@ pub async fn start_agent(app_handle: AppHandle, team_name: String, agent: String
 
     // Create tmux session with inherited project context - includes TEAM_NAME and OUTPUT_FILE
     let cmd = format!(
-        "export AGENT_NAME={} TEAM_NAME=\"{}\" NOLAN_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\" DOCS_PATH=\"{}\" OUTPUT_FILE=\"{}\"; claude --dangerously-skip-permissions --model {}; exec bash",
-        agent, team_name, nolan_root_str, projects_dir_str, agent_dir_str, docs_path, output_file, model
+        "export AGENT_NAME={} TEAM_NAME=\"{}\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\" DOCS_PATH=\"{}\" OUTPUT_FILE=\"{}\"; claude --dangerously-skip-permissions --model {}; exec bash",
+        agent, team_name, nolan_root_str, nolan_data_root_str, projects_dir_str, agent_dir_str, docs_path, output_file, model
     );
 
     let output = Command::new("tmux")
@@ -1478,9 +1478,7 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
 
 /// List available team names from teams directory (scans subdirectories recursively)
 fn list_available_teams() -> Result<Vec<String>, String> {
-    let nolan_root = std::env::var("NOLAN_ROOT")
-        .map_err(|_| "NOLAN_ROOT not set")?;
-    let teams_dir = std::path::PathBuf::from(nolan_root).join("teams");
+    let teams_dir = crate::utils::paths::get_teams_dir()?;
 
     let mut teams = Vec::new();
     for entry in WalkDir::new(&teams_dir)

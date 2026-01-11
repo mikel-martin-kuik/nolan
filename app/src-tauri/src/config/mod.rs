@@ -509,12 +509,9 @@ impl DepartmentsConfig {
     /// Load departments configuration from YAML file
     /// Returns empty config if file doesn't exist (graceful fallback)
     pub fn load() -> Result<Self, String> {
-        let nolan_root = std::env::var("NOLAN_ROOT")
-            .map_err(|_| "NOLAN_ROOT not set".to_string())?;
+        let teams_dir = crate::utils::paths::get_teams_dir()?;
 
-        let config_path = PathBuf::from(nolan_root)
-            .join("teams")
-            .join("departments.yaml");
+        let config_path = teams_dir.join("departments.yaml");
 
         if !config_path.exists() {
             // Return empty config for graceful fallback
@@ -538,10 +535,7 @@ impl DepartmentsConfig {
 
     /// Save departments configuration to YAML file
     pub fn save(&self) -> Result<(), String> {
-        let nolan_root = std::env::var("NOLAN_ROOT")
-            .map_err(|_| "NOLAN_ROOT not set".to_string())?;
-
-        let teams_dir = PathBuf::from(nolan_root).join("teams");
+        let teams_dir = crate::utils::paths::get_teams_dir()?;
 
         // Ensure teams directory exists
         if !teams_dir.exists() {
@@ -563,9 +557,7 @@ impl TeamConfig {
     /// Resolve team name to filesystem path
     /// Checks root first (backward compat), then scans all subdirectories
     pub fn resolve_team_path(team_name: &str) -> Result<PathBuf, String> {
-        let nolan_root = std::env::var("NOLAN_ROOT")
-            .map_err(|_| "NOLAN_ROOT not set".to_string())?;
-        let teams_dir = PathBuf::from(&nolan_root).join("teams");
+        let teams_dir = crate::utils::paths::get_teams_dir()?;
 
         // Check root first (backward compatible)
         let root_path = teams_dir.join(format!("{}.yaml", team_name));

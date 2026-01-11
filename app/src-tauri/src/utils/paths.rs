@@ -79,21 +79,16 @@ pub fn get_history_path() -> Result<PathBuf, String> {
     Ok(get_home_dir()?.join(".claude/history.jsonl"))
 }
 
-/// Get agents directory
-/// Returns: <nolan_app_root>/agents
+/// Get agents directory (user data)
+/// Returns: <nolan_data_root>/agents
 pub fn get_agents_dir() -> Result<PathBuf, String> {
-    Ok(get_nolan_app_root()?.join("agents"))
+    Ok(get_nolan_data_root()?.join("agents"))
 }
 
-/// Get projects directory
-/// We need to go up one level from app root to get to repo root.
-/// Returns: <repo_root>/projects
+/// Get projects directory (user data)
+/// Returns: <nolan_data_root>/projects
 pub fn get_projects_dir() -> Result<PathBuf, String> {
-    let app_root = get_nolan_app_root()?;
-    let repo_root = app_root
-        .parent()
-        .ok_or("Cannot determine repository root from app directory")?;
-    Ok(repo_root.join("projects"))
+    Ok(get_nolan_data_root()?.join("projects"))
 }
 
 /// Get roadmaps directory
@@ -119,28 +114,62 @@ pub fn get_nolan_root() -> Result<PathBuf, String> {
         .map_err(|e| format!("Invalid root path: {}", e))
 }
 
-/// Get the consolidated state directory path
-/// Returns: <nolan_root>/.state
-pub fn get_state_dir() -> Result<PathBuf, String> {
-    Ok(get_nolan_root()?.join(".state"))
+/// Get Nolan data root directory for user-specific data
+/// Priority:
+/// 1. NOLAN_DATA_ROOT environment variable
+/// 2. Fall back to NOLAN_ROOT (backward compatibility)
+/// Returns: directory for user data (agents, projects, teams, .state)
+pub fn get_nolan_data_root() -> Result<PathBuf, String> {
+    // Priority 1: Check NOLAN_DATA_ROOT
+    if let Ok(data_root) = env::var("NOLAN_DATA_ROOT") {
+        let path = PathBuf::from(&data_root);
+        if path.exists() {
+            return Ok(path);
+        }
+        // Create if doesn't exist (first run with new var)
+        std::fs::create_dir_all(&path)
+            .map_err(|e| format!("Failed to create NOLAN_DATA_ROOT: {}", e))?;
+        return Ok(path);
+    }
+
+    // Priority 2: Fall back to NOLAN_ROOT for backward compatibility
+    get_nolan_root()
 }
 
-/// Get the scheduler state directory
-/// Returns: <nolan_root>/.state/scheduler
+/// Get the consolidated state directory path (user data)
+/// Returns: <nolan_data_root>/.state
+pub fn get_state_dir() -> Result<PathBuf, String> {
+    Ok(get_nolan_data_root()?.join(".state"))
+}
+
+/// Get the scheduler state directory (user data)
+/// Returns: <nolan_data_root>/.state/scheduler
 pub fn get_scheduler_state_dir() -> Result<PathBuf, String> {
     Ok(get_state_dir()?.join("scheduler"))
 }
 
-/// Get the handoffs directory
-/// Returns: <nolan_root>/.state/handoffs
+/// Get the handoffs directory (user data)
+/// Returns: <nolan_data_root>/.state/handoffs
 pub fn get_handoffs_dir() -> Result<PathBuf, String> {
     Ok(get_state_dir()?.join("handoffs"))
 }
 
-/// Get the feedback directory for support/feature requests
-/// Returns: <nolan_root>/.state/feedback
+/// Get the feedback directory for support/feature requests (user data)
+/// Returns: <nolan_data_root>/.state/feedback
 pub fn get_feedback_dir() -> Result<PathBuf, String> {
     Ok(get_state_dir()?.join("feedback"))
+}
+
+/// Get teams directory (user data)
+/// Returns: <nolan_data_root>/teams
+pub fn get_teams_dir() -> Result<PathBuf, String> {
+    Ok(get_nolan_data_root()?.join("teams"))
+}
+
+/// Get cronos runs directory (user data - execution logs)
+/// Returns: <nolan_data_root>/cronos/runs
+pub fn get_cronos_runs_dir() -> Result<PathBuf, String> {
+    Ok(get_nolan_data_root()?.join("cronos").join("runs"))
 }
 
 #[cfg(test)]

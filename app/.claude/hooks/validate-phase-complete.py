@@ -824,18 +824,15 @@ def trigger_handoff_atomic(docs_path: Path, agent: str, output_file: str,
         # bypasses the atomic handoff system. The .handoffs/ directory is the
         # single source of truth for handoff state.
 
-        # STEP 2: Send wake-up notification to next agent
-        # This wakes the next agent from sleep state so they can pick up the handoff
+        # STEP 2: Send handoff notification to note_taker (for audit/ACK)
+        # The next workflow agent is notified via assign.sh in auto-progression
         try:
             team_config = load_team_config(docs_path)
-            next_agent = get_next_agent_from_phases(team_config, agent)
-            # If workflow complete, notify note_taker
-            if not next_agent:
-                next_agent = get_note_taker(team_config)
-            if next_agent:
-                notify_next_agent(agent, docs_path.name, handoff_id, next_agent, team_name)
+            note_taker = get_note_taker(team_config)
+            if note_taker:
+                notify_next_agent(agent, docs_path.name, handoff_id, note_taker, team_name)
         except Exception as e:
-            log_stderr(f"Could not notify next agent: {e}")
+            log_stderr(f"Could not notify note_taker: {e}")
 
         # NOTE: State file clearing moved to check_handoff_done() after ACK confirmed
         # This prevents state loss if ACK times out

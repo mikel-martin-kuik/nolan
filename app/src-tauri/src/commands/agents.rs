@@ -48,9 +48,7 @@ fn validate_agent_name(name: &str) -> Result<(), String> {
 
 /// Get the agents directory path
 fn get_agents_dir() -> Result<PathBuf, String> {
-    let nolan_root = std::env::var("NOLAN_ROOT")
-        .map_err(|_| "NOLAN_ROOT environment variable not set".to_string())?;
-    Ok(PathBuf::from(nolan_root).join("app/agents"))
+    crate::utils::paths::get_agents_dir()
 }
 
 /// Read agent metadata from agent.json
@@ -136,10 +134,11 @@ pub async fn create_agent_directory(agent_name: String) -> Result<String, String
         .map_err(|e| format!("Failed to create agent directory: {}", e))?;
 
     // Create symlink to .claude (following pattern from existing agents)
-    let nolan_root = std::env::var("NOLAN_ROOT")
-        .map_err(|_| "NOLAN_ROOT environment variable not set".to_string())?;
+    // .claude config directory is source code, so it stays relative to app root
+    let app_root = crate::utils::paths::get_nolan_app_root()
+        .map_err(|e| format!("Failed to get app root: {}", e))?;
     let claude_link = agent_dir.join(".claude");
-    let claude_target = PathBuf::from(&nolan_root).join("app/.claude");
+    let claude_target = app_root.join(".claude");
 
     #[cfg(unix)]
     {

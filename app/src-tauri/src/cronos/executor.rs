@@ -163,8 +163,10 @@ async fn execute_single_run(
 
     // Setup paths
     let nolan_root = paths::get_nolan_root()?;
-    let cronos_root = nolan_root.join("cronos");
-    let runs_dir = cronos_root.join("runs").join(&date_str);
+    let nolan_data_root = paths::get_nolan_data_root()?;
+    let cronos_root = nolan_root.join("cronos");  // Agent definitions (source)
+    let cronos_runs_dir = paths::get_cronos_runs_dir()?;
+    let runs_dir = cronos_runs_dir.join(&date_str);
     std::fs::create_dir_all(&runs_dir)
         .map_err(|e| format!("Failed to create runs directory: {}", e))?;
 
@@ -272,8 +274,8 @@ async fn execute_single_run(
         .unwrap_or_else(|| nolan_root.clone());
 
     // Build environment variable exports
-    let mut env_exports = format!("export CRON_RUN_ID='{}' CRON_AGENT='{}' NOLAN_ROOT='{}'",
-        run_id, config.name, nolan_root.to_string_lossy());
+    let mut env_exports = format!("export CRON_RUN_ID='{}' CRON_AGENT='{}' NOLAN_ROOT='{}' NOLAN_DATA_ROOT='{}'",
+        run_id, config.name, nolan_root.to_string_lossy(), nolan_data_root.to_string_lossy());
 
     // Add extra environment variables (e.g., IDEA_ID for parameterized runs)
     if let Some(ref extra) = extra_env {
@@ -577,15 +579,16 @@ pub async fn execute_cron_agent_simple(
 
     // Setup run log directory
     let nolan_root = paths::get_nolan_root()?;
-    let cronos_root = nolan_root.join("cronos");
-    let runs_dir = cronos_root.join("runs").join(&date_str);
+    let cronos_root = nolan_root.join("cronos");  // Agent definitions (source)
+    let cronos_runs_dir = paths::get_cronos_runs_dir()?;  // Run logs (data)
+    let runs_dir = cronos_runs_dir.join(&date_str);
     std::fs::create_dir_all(&runs_dir)
         .map_err(|e| format!("Failed to create runs directory: {}", e))?;
 
     let log_file = runs_dir.join(format!("{}-{}.log", config.name, timestamp));
     let json_file = runs_dir.join(format!("{}-{}.json", config.name, timestamp));
 
-    // Read agent's CLAUDE.md for prompt
+    // Read agent's CLAUDE.md for prompt (from source, not data)
     let agent_dir = cronos_root.join("agents").join(&config.name);
     let claude_md_path = agent_dir.join("CLAUDE.md");
     let prompt = std::fs::read_to_string(&claude_md_path)

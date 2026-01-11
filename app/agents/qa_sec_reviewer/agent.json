@@ -1,7 +1,0 @@
-{
-  "role": "Security Reviewer",
-  "model": "opus",
-  "team": "application_security",
-  "role_template": "security-reviewer",
-  "department": "quality"
-}

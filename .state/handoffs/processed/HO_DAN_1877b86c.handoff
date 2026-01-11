@@ -1,0 +1,10 @@
+# Handoff from frank
+id: HO_DAN_1877b86c
+task_id: MSG_DAN_1877b86c
+from_agent: frank
+project: nolan-repo-cleanup
+phase: Implementation Audit
+timestamp: '2026-01-11 02:18'
+team: default
+instruction_file: /home/mmartin/Proyectos/nolan/projects/.state/default/instructions/nolan-repo-cleanup/frank/MSG_DAN_1877b86c.yaml
+status: pending_review

@@ -11,13 +11,9 @@ set -o pipefail
 
 # ===== CONFIGURATION =====
 NOLAN_ROOT="${NOLAN_ROOT:-$HOME/.nolan}"
-NOLAN_MAILBOX="${NOLAN_MAILBOX:-$NOLAN_ROOT/mailbox}"
 NOLAN_MSG_TIMEOUT="${NOLAN_MSG_TIMEOUT:-5}"
 NOLAN_MSG_RETRY="${NOLAN_MSG_RETRY:-2}"
 NOLAN_DEFAULT_TEAM="${NOLAN_DEFAULT_TEAM:-default}"
-
-# Ensure mailbox directory exists
-mkdir -p "$NOLAN_MAILBOX"
 
 # ===== TEAM-INDEPENDENT AGENTS =====
 # Load team-independent agents from agent.json files
@@ -186,11 +182,6 @@ _extract_agent_name() {
     fi
 }
 
-# Get output log path for an agent
-_outlog() {
-    echo "$NOLAN_MAILBOX/$1.out"
-}
-
 # Generate unique message ID with sender identity
 # Format: MSG_<SENDER>_<8-hex-chars>
 # Usage: _msg_id [sender]
@@ -201,53 +192,6 @@ _msg_id() {
     # Uppercase the sender name
     sender=$(echo "$sender" | tr '[:lower:]' '[:upper:]')
     echo "MSG_${sender}_$(date +%s%N | sha256sum | cut -c1-8)"
-}
-
-# ===== OUTPUT CAPTURE =====
-# Uses tmux pipe-pane for continuous output logging (more reliable than capture-pane polling)
-
-# Enable output capture for an agent session
-enable_capture() {
-    local agent="$1"
-    local session="agent-$agent"
-    local outlog=$(_outlog "$agent")
-
-    _agent_exists "$agent" || { echo "Agent '$agent' not found"; return 1; }
-
-    # Start piping output to log file (appends, survives reconnects)
-    tmux pipe-pane -t "$session" -o "cat >> '$outlog'"
-    echo "Output capture enabled: $outlog"
-}
-
-# Disable output capture
-disable_capture() {
-    local agent="$1"
-    _agent_exists "$agent" || return 1
-    tmux pipe-pane -t "agent-$agent"
-    echo "Output capture disabled for $agent"
-}
-
-# Truncate log if over 1MB to prevent bloat
-_maybe_truncate_log() {
-    local outlog="$1"
-    local max_size=1048576  # 1MB
-    [ -f "$outlog" ] || return 0
-    local size=$(stat -c%s "$outlog" 2>/dev/null || echo 0)
-    if [ "$size" -gt "$max_size" ]; then
-        # Keep last 100KB
-        tail -c 102400 "$outlog" > "${outlog}.tmp" && mv "${outlog}.tmp" "$outlog"
-    fi
-}
-
-# Auto-enable capture for all agents (call on source or after new agents start)
-_init_capture() {
-    for session in $(_get_sessions); do
-        local agent="${session#agent-}"
-        local outlog=$(_outlog "$agent")
-        [ -f "$outlog" ] || touch "$outlog"
-        _maybe_truncate_log "$outlog"
-        tmux pipe-pane -t "$session" -o "cat >> '$outlog'" 2>/dev/null
-    done
 }
 
 # ===== COPY-MODE HANDLING =====
@@ -520,29 +464,6 @@ check() {
     return 1
 }
 
-# Show agent output log path
-# Usage: logpath <agent> [team]
-logpath() {
-    local agent="$1"
-    local team="${2:-$NOLAN_DEFAULT_TEAM}"
-    _agent_exists "$agent" "$team" || { echo "Agent '$agent' not found in team '$team'"; return 1; }
-    echo $(_outlog "$agent")
-}
-
-# Tail agent output in real-time
-# Usage: tail_agent <agent> [team]
-tail_agent() {
-    local agent="$1"
-    local team="${2:-$NOLAN_DEFAULT_TEAM}"
-    _agent_exists "$agent" "$team" || { echo "Agent '$agent' not found in team '$team'"; return 1; }
-
-    local outlog=$(_outlog "$agent")
-    [ -f "$outlog" ] || { echo "No output log for $agent"; return 1; }
-
-    echo "=== Tailing $agent output (Ctrl+C to stop) ==="
-    tail -f "$outlog"
-}
-
 # ===== HELP =====
 
 help() {
@@ -562,17 +483,10 @@ BROADCAST (team-isolated, core agents only)
 
 OUTPUT & DEBUGGING
   show <agent> [lines] [team]    Recent output from pane
-  tail_agent <agent> [team]      Real-time output tail
   check <agent> <msg_id> [team]  Verify delivery
-  logpath <agent> [team]         Show output log path
-
-OUTPUT CAPTURE
-  enable_capture <agent>    Start logging agent output
-  disable_capture <agent>   Stop logging
 
 CONFIGURATION (environment variables)
   NOLAN_DEFAULT_TEAM  Active team context (default: default)
-  NOLAN_MAILBOX       Output log directory (default: ~/.nolan/mailbox)
   NOLAN_MSG_TIMEOUT   Delivery timeout in seconds (default: 5)
   NOLAN_MSG_RETRY     Retry attempts (default: 2)
 
@@ -598,16 +512,15 @@ rebuild_aliases() { rebuild; }
 
 # ===== EXPORT FUNCTIONS FOR SUBSHELLS =====
 # Required for parallel execution with & or xargs
-export -f _get_sessions _agent_exists _outlog _msg_id
+export -f _get_sessions _agent_exists _msg_id
 export -f _build_session_name _extract_agent_name
 export -f _exit_copy_mode _wait_for_delivery _wait_for_delivery_session _send_plain _force_submit
 export -f send send_verified list_agents rebuild
-export -f enable_capture disable_capture
-export -f show check logpath tail_agent
+export -f show check
 export -f team _broadcast_team
 
 # Export config vars
-export NOLAN_ROOT NOLAN_MAILBOX NOLAN_MSG_TIMEOUT NOLAN_MSG_RETRY NOLAN_DEFAULT_TEAM
+export NOLAN_ROOT NOLAN_MSG_TIMEOUT NOLAN_MSG_RETRY NOLAN_DEFAULT_TEAM
 
 # ===== INITIALIZATION =====
 # Note: pipe-pane capture removed - incompatible with Claude Code sessions

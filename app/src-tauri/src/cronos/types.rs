@@ -132,7 +132,7 @@ pub enum RunTrigger {
     CatchUp,        // Triggered by catch-up policy
 }
 
-/// Persistent scheduler state (stored in cronos/scheduler_state.json)
+/// Persistent scheduler state (stored in .state/scheduler/state.json)
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct SchedulerState {
     pub agents: std::collections::HashMap<String, AgentState>,

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@/lib/api';
 import { useToastStore } from '../../store/toastStore';
-import { Save, X, Plus, Trash2, GripVertical } from 'lucide-react';
+import { Save, X, Plus, Trash2, GripVertical, Sparkles, Loader2 } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import type { TeamConfig, AgentConfig, PhaseConfig, AgentDirectoryInfo } from '@/types';
+import { useOllamaStore } from '../../store/ollamaStore';
 
 interface TeamEditorProps {
   teamConfig: TeamConfig | null;
@@ -44,6 +45,8 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
 }) => {
   const { error: showError } = useToastStore();
   const [saving, setSaving] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const { status: ollamaStatus, checkConnection, generate: ollamaGenerate } = useOllamaStore();
 
   // Form state
   const [name, setName] = useState('');
@@ -72,6 +75,35 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
   useEffect(() => {
     fetchAvailableAgents();
   }, [fetchAvailableAgents]);
+
+  // Check Ollama connection
+  useEffect(() => {
+    checkConnection();
+  }, [checkConnection]);
+
+  // Generate team description using Ollama
+  const handleGenerateDescription = async () => {
+    if (!name.trim()) {
+      showError('Enter a team name first');
+      return;
+    }
+    setGenerating(true);
+    try {
+      const agentList = agents.filter(a => a.name).map(a => {
+        const info = getAgentInfo(a.name);
+        return `${a.name} (${info?.role || 'unknown role'})`;
+      }).join(', ');
+
+      const systemPrompt = `You are an organizational designer. Generate a concise team description that explains the team's purpose, composition, and how members collaborate to achieve goals. Keep it to 1-2 sentences.`;
+      const prompt = `Generate a description for a team named "${name}"${agentList ? ` with members: ${agentList}` : ''}${description.trim() ? `\n\nCurrent description to improve: "${description}"` : ''}`;
+      const result = await ollamaGenerate(prompt, systemPrompt);
+      setDescription(result.trim());
+    } catch (err) {
+      showError(`Failed to generate: ${err}`);
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   // Initialize form from existing config
   useEffect(() => {
@@ -266,11 +298,33 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
               <label className="block text-sm font-medium text-foreground mb-1">
                 Description
               </label>
-              <Input
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Team description..."
-              />
+              <div className="flex gap-2">
+                <Input
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Team description..."
+                  disabled={generating}
+                  className="flex-1"
+                />
+                {ollamaStatus === 'connected' && (
+                  <Tooltip content="Generate description using local AI" side="top">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={handleGenerateDescription}
+                      disabled={generating || saving || !name.trim()}
+                      className="shrink-0"
+                    >
+                      {generating ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </Tooltip>
+                )}
+              </div>
             </div>
           </div>
         </section>

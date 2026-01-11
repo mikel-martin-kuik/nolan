@@ -63,9 +63,13 @@ export async function listen<T>(
     return listenAgentStatus(callback as (event: EventPayload<unknown>) => void);
   }
 
+  // Special handling for history-entry - use dedicated WebSocket
+  if (event === 'history-entry') {
+    return listenHistoryEntry(callback as (event: EventPayload<unknown>) => void);
+  }
+
   // Events that don't have WebSocket endpoints in browser mode
   const unsupportedEvents = [
-    'history-entry',
     'terminal-disconnected',
   ];
 
@@ -219,6 +223,70 @@ function listenAgentStatus(
       ws.close();
     }
     activeConnections.delete(wsKey);
+  };
+}
+
+// History entry listeners (for browser mode)
+const historyListeners = new Set<(event: EventPayload<unknown>) => void>();
+
+/**
+ * Listen to history entry updates (browser mode)
+ */
+function listenHistoryEntry(
+  callback: (event: EventPayload<unknown>) => void
+): UnlistenFn {
+  const wsKey = 'history';
+
+  // Add callback to listeners
+  historyListeners.add(callback);
+
+  // Create WebSocket if not exists
+  if (!activeConnections.has(wsKey)) {
+    const wsUrl = getWebSocketUrl('/api/ws/history');
+    const ws = new WebSocket(wsUrl);
+
+    ws.onmessage = (e) => {
+      try {
+        const payload = JSON.parse(e.data);
+        // Notify all listeners
+        historyListeners.forEach(cb => cb({ payload }));
+      } catch (err) {
+        console.error('Failed to parse history WebSocket message:', err);
+      }
+    };
+
+    ws.onerror = (err) => {
+      console.error('History WebSocket error:', err);
+    };
+
+    ws.onclose = () => {
+      activeConnections.delete(wsKey);
+      // Attempt reconnect after 3 seconds if there are still listeners
+      setTimeout(() => {
+        if (!activeConnections.has(wsKey) && historyListeners.size > 0) {
+          // Reconnect with the first listener (they'll all be notified)
+          const firstListener = historyListeners.values().next().value;
+          if (firstListener) {
+            listenHistoryEntry(firstListener);
+          }
+        }
+      }, 3000);
+    };
+
+    activeConnections.set(wsKey, ws);
+  }
+
+  // Return unlisten function
+  return () => {
+    historyListeners.delete(callback);
+    // Close WebSocket if no more listeners
+    if (historyListeners.size === 0) {
+      const ws = activeConnections.get(wsKey);
+      if (ws) {
+        ws.close();
+      }
+      activeConnections.delete(wsKey);
+    }
   };
 }
 

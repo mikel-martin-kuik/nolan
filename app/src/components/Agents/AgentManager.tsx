@@ -141,25 +141,16 @@ Outline communication style and guidelines.
   }, [deleteConfirm, handleRefresh, showError, showSuccess]);
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6 pb-4 border-b border-border">
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Agent Manager</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Create and manage agent role definitions
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="secondary" onClick={handleRefresh} disabled={loading}>
-            <RefreshCw className={loading ? 'animate-spin' : ''} />
-            Refresh
-          </Button>
-          <Button onClick={() => setCreatorOpen(true)}>
-            <Plus />
-            Create Agent
-          </Button>
-        </div>
+    <div className="h-full flex flex-col gap-4">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2">
+        <Button size="sm" onClick={() => setCreatorOpen(true)}>
+          Create Agent
+        </Button>
+        <Button size="sm" variant="secondary" onClick={handleRefresh} disabled={loading}>
+          <RefreshCw className={loading ? 'animate-spin' : ''} />
+          Refresh
+        </Button>
       </div>
 
       {/* Loading state */}

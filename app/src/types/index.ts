@@ -4,6 +4,9 @@ import { RE_RALPH_SESSION, RE_TEAM_SESSION } from '../lib/agentIdentity';
 // Re-export cronos types
 export * from './cronos';
 
+// Re-export feedback types
+export * from './feedback';
+
 export interface AgentStatus {
   name: string;
   team: string;  // Team this agent belongs to (empty for ralph)

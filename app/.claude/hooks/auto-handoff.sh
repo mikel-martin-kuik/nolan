@@ -19,14 +19,39 @@ if [[ -z "$AGENT" ]]; then
     exit 0
 fi
 
-# Skip coordinators (they use /handoff command)
-if [[ "$AGENT" == "dan" ]] || [[ "$AGENT" =~ _coordinator$ ]]; then
-    exit 0
-fi
-
 # Skip ralph agents
 if [[ "$AGENT" == "ralph" ]] || [[ "$AGENT" =~ ^ralph- ]]; then
     exit 0
+fi
+
+# Skip coordinators (dynamically check from team config)
+TEAM_NAME="${TEAM_NAME:-default}"
+NOLAN_ROOT="${NOLAN_ROOT:-}"
+if [[ -n "$NOLAN_ROOT" ]]; then
+    COORDINATOR=$(python3 -c "
+import yaml, sys
+from pathlib import Path
+
+nolan_root = Path('$NOLAN_ROOT')
+team_name = '$TEAM_NAME'
+
+# Search for team config
+config_path = None
+for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+    config_path = path
+    break
+
+if not config_path:
+    sys.exit(0)
+
+config = yaml.safe_load(config_path.read_text())
+coordinator = config.get('team', {}).get('workflow', {}).get('coordinator', '')
+print(coordinator)
+" 2>/dev/null)
+
+    if [[ "$AGENT" == "$COORDINATOR" ]]; then
+        exit 0
+    fi
 fi
 
 # Required environment
@@ -40,7 +65,7 @@ fi
 
 # Find agent's current task symlink (searches across all teams)
 find_current_symlink() {
-    local state_base="$PROJECTS_DIR/.state"
+    local state_base="$NOLAN_ROOT/.state"
 
     # First try current team
     local current_link="$state_base/$TEAM_NAME/instructions/_current/${AGENT}.yaml"
@@ -101,14 +126,11 @@ if [[ ! -f "$OUTPUT_FILE" ]]; then
     exit 0
 fi
 
-# Check if output file has the STATUS:COMPLETE marker (indicates agent finished)
-if ! grep -q "STATUS:COMPLETE" "$OUTPUT_FILE" 2>/dev/null; then
-    # No completion marker - agent may not have finished
-    # But still proceed if file has substantial content (>10 lines)
-    LINES=$(wc -l < "$OUTPUT_FILE" 2>/dev/null || echo 0)
-    if [[ "$LINES" -lt 10 ]]; then
-        exit 0
-    fi
+# Check if output file has content (validate-phase-complete.py handles required sections)
+LINES=$(wc -l < "$OUTPUT_FILE" 2>/dev/null || echo 0)
+if [[ "$LINES" -lt 5 ]]; then
+    # Output file too small - agent may not have finished
+    exit 0
 fi
 
 # Auto-complete the task
@@ -149,13 +171,22 @@ coord_path.write_text(content)
 " 2>/dev/null || true
     fi
 
-    # 3. Create handoff file
-    HANDOFF_DIR="$PROJECTS_DIR/.handoffs/pending"
-    mkdir -p "$HANDOFF_DIR"
-    HANDOFF_ID="${MSG_ID/MSG_/HO_}"
-    HANDOFF_FILE="$HANDOFF_DIR/${HANDOFF_ID}.handoff"
+    # 3. Check if handoff already exists (created by validate-phase-complete.py)
+    # Skip creating duplicate handoff if one already exists for this agent
+    HANDOFF_DIR="$NOLAN_ROOT/.state/handoffs/pending"
+    PROCESSED_DIR="$NOLAN_ROOT/.state/handoffs/processed"
+    mkdir -p "$HANDOFF_DIR" "$PROCESSED_DIR"
 
-    cat > "$HANDOFF_FILE" <<HANDOFF_EOF
+    # Check for existing handoffs for this agent (any format)
+    existing_handoff=$(find "$HANDOFF_DIR" "$PROCESSED_DIR" -name "*_${AGENT}_*.handoff" -newer "$TASK_FILE" 2>/dev/null | head -1)
+    if [[ -n "$existing_handoff" ]]; then
+        echo "Handoff already exists for $AGENT - skipping creation (created by validate-phase-complete.py)"
+    else
+        # Create handoff file with standardized format
+        HANDOFF_ID="${MSG_ID/MSG_/HO_}"
+        HANDOFF_FILE="$HANDOFF_DIR/${HANDOFF_ID}.handoff"
+
+        cat > "$HANDOFF_FILE" <<HANDOFF_EOF
 # Auto-handoff from $AGENT
 id: $HANDOFF_ID
 task_id: $MSG_ID
@@ -169,13 +200,14 @@ output_file: $OUTPUT_FILE
 status: pending_review
 auto_generated: true
 HANDOFF_EOF
+    fi
 fi
 
 # 4. Remove current symlink
 rm -f "$CURRENT_LINK"
 
 # 5. Clear active project state
-rm -f "$PROJECTS_DIR/.state/$TEAM_NAME/active-${AGENT}.txt"
+rm -f "$NOLAN_ROOT/.state/$TEAM_NAME/active-${AGENT}.txt"
 
 # Log the auto-handoff (visible in hook output)
 echo "Auto-handoff: $AGENT completed task $MSG_ID for project $PROJECT"

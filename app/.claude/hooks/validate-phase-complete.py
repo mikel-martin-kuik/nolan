@@ -30,6 +30,192 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, Tuple
 
+# ============================================================================
+# AUTO-PROGRESSION FUNCTIONS (Schema v2)
+# ============================================================================
+
+def detect_rejection_marker(filepath: Path) -> Optional[str]:
+    """Check output file for rejection marker.
+
+    Format: <!-- REJECTED: reason text here -->
+    Returns reason if found, None if approved.
+    """
+    try:
+        content = filepath.read_text()
+        match = re.search(r'<!--\s*REJECTED:\s*(.+?)\s*-->', content, re.IGNORECASE)
+        if match:
+            return match.group(1).strip()
+    except Exception:
+        pass
+    return None
+
+
+def call_workflow_router(project_path: Path, phase: str, decision: str = "approved") -> dict:
+    """Call workflow-router.py and return parsed result."""
+    import subprocess
+    router_path = Path(__file__).parent.parent.parent / "scripts" / "workflow-router.py"
+
+    try:
+        result = subprocess.run(
+            ["python3", str(router_path), str(project_path), phase, decision],
+            capture_output=True, text=True, timeout=10
+        )
+
+        if result.returncode != 0:
+            return {"action": "escalate", "reason": f"Router error: {result.stderr}"}
+
+        return json.loads(result.stdout)
+    except subprocess.TimeoutExpired:
+        return {"action": "escalate", "reason": "Router timed out"}
+    except json.JSONDecodeError as e:
+        return {"action": "escalate", "reason": f"Router returned invalid JSON: {e}"}
+    except Exception as e:
+        return {"action": "escalate", "reason": f"Router failed: {e}"}
+
+
+def call_assign(project_name: str, phase: str, task: str) -> bool:
+    """Call assign.sh to assign next phase."""
+    import subprocess
+    assign_path = Path(__file__).parent.parent.parent / "scripts" / "assign.sh"
+
+    try:
+        result = subprocess.run(
+            [str(assign_path), project_name, phase, task],
+            capture_output=True, text=True, timeout=30
+        )
+        return result.returncode == 0
+    except Exception as e:
+        log_stderr(f"assign.sh failed: {e}")
+        return False
+
+
+def write_status_file(project_path: Path, output_file: str, decision: str, reason: str = ""):
+    """Create .status file for audit trail."""
+    try:
+        status_path = project_path / f"{output_file}.status"
+        timestamp = datetime.now().isoformat()
+
+        data = {
+            "status": decision.upper(),
+            "reason": reason,
+            "timestamp": timestamp
+        }
+
+        with open(status_path, 'w') as f:
+            yaml.dump(data, f, default_flow_style=False)
+    except Exception as e:
+        log_stderr(f"Failed to write status file: {e}")
+
+
+def send_desktop_notification(title: str, message: str):
+    """Send desktop notification (Linux notify-send)."""
+    import subprocess
+    try:
+        subprocess.run(
+            ["notify-send", title, message],
+            capture_output=True, timeout=5
+        )
+    except Exception as e:
+        log_stderr(f"Failed to send notification: {e}")
+
+
+def write_incident_log(project_path: Path, event_type: str, details: str):
+    """Append to incident log."""
+    state_base = get_state_base()
+    if not state_base:
+        return
+
+    try:
+        log_path = state_base / "incidents.log"
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        with open(log_path, 'a') as f:
+            f.write(f"[{timestamp}] {event_type} | {project_path.name} | {details}\n")
+    except Exception as e:
+        log_stderr(f"Failed to write incident log: {e}")
+
+
+def get_current_phase_for_agent(team_config: dict, agent: str) -> Optional[str]:
+    """Get the current phase name for an agent from team config."""
+    phases = team_config.get('team', {}).get('workflow', {}).get('phases', [])
+    for phase in phases:
+        if phase.get('owner') == agent:
+            return phase.get('name')
+    return None
+
+
+def handle_auto_progression(docs_path: Path, agent: str, team_config: dict) -> bool:
+    """Handle auto-progression for schema v2 teams.
+
+    Returns True if auto-progression was handled, False if legacy behavior should be used.
+    """
+    schema_version = team_config.get('team', {}).get('schema_version', 1)
+    if schema_version < 2:
+        return False  # Use legacy behavior
+
+    agent_config = get_agent_config(team_config, agent)
+    if not agent_config:
+        return False
+
+    output_file = agent_config.get('output_file', '')
+    if not output_file:
+        return False
+
+    output_path = docs_path / output_file
+
+    # Detect rejection marker
+    rejection_reason = detect_rejection_marker(output_path) if output_path.exists() else None
+    decision = "rejected" if rejection_reason else "approved"
+
+    # Write status file for audit
+    write_status_file(docs_path, output_file, decision, rejection_reason or "Auto-approved")
+
+    # Get current phase name from agent config
+    current_phase = get_current_phase_for_agent(team_config, agent)
+    if not current_phase:
+        log_stderr(f"Could not determine current phase for agent {agent}")
+        return False
+
+    route_result = call_workflow_router(docs_path, current_phase, decision)
+    action = route_result.get('action')
+
+    if action == 'assign':
+        next_phase = route_result.get('next_phase')
+        next_agent = route_result.get('next_agent')
+        task = f"Continue {docs_path.name} - {next_phase}"
+
+        success = call_assign(docs_path.name, next_phase, task)
+        if success:
+            log_stderr(f"Auto-assigned {next_phase} to {next_agent}")
+        else:
+            send_desktop_notification(
+                "Nolan: Assignment Failed",
+                f"Failed to assign {next_phase} for {docs_path.name}"
+            )
+            write_incident_log(docs_path, "ASSIGN_FAILED", f"{next_phase} to {next_agent}")
+
+    elif action == 'complete':
+        send_desktop_notification(
+            "Nolan: Project Complete",
+            f"{docs_path.name} has completed all phases"
+        )
+        log_stderr(f"Project {docs_path.name} complete")
+
+    elif action == 'escalate':
+        reason = route_result.get('reason', 'Unknown error')
+        send_desktop_notification(
+            "Nolan: Escalation Required",
+            f"{docs_path.name}: {reason}"
+        )
+        write_incident_log(docs_path, "ESCALATION", reason)
+
+    return True
+
+
+# ============================================================================
+# END AUTO-PROGRESSION FUNCTIONS
+# ============================================================================
+
 # Default timeout values (can be overridden in team config)
 DEFAULT_ACK_TIMEOUT_SECONDS = 60
 DEFAULT_ACK_POLL_INTERVAL = 6
@@ -57,6 +243,17 @@ def get_projects_base() -> Optional[Path]:
         return repo_root / "projects"
     elif os.environ.get('NOLAN_ROOT'):
         return Path(os.environ['NOLAN_ROOT']) / "projects"
+    return None
+
+
+def get_state_base() -> Optional[Path]:
+    """Get state directory base path (.state at NOLAN_ROOT level)."""
+    if os.environ.get('NOLAN_ROOT'):
+        return Path(os.environ['NOLAN_ROOT']) / ".state"
+    elif os.environ.get('AGENT_DIR'):
+        agent_dir = Path(os.environ['AGENT_DIR'])
+        repo_root = agent_dir.parent.parent.parent
+        return repo_root / ".state"
     return None
 
 
@@ -197,9 +394,13 @@ def get_docs_path_strict() -> Tuple[Optional[Path], Optional[str]]:
     agent = os.environ.get('AGENT_NAME', '').lower()
     team_name = os.environ.get('TEAM_NAME', 'default')
 
+    state_base = get_state_base()
+    if not state_base:
+        return None, "Cannot determine state directory (set NOLAN_ROOT)"
+
     if agent:
         # Try team-namespaced state file first
-        state_file = projects_base / '.state' / team_name / f'active-{agent}.txt'
+        state_file = state_base / team_name / f'active-{agent}.txt'
         if state_file.exists():
             try:
                 # Use file locking for state file access
@@ -220,7 +421,7 @@ def get_docs_path_strict() -> Tuple[Optional[Path], Optional[str]]:
                 return None, f"Failed to read state file: {e}"
 
         # Legacy fallback (warn but continue)
-        legacy_state = projects_base / '.state' / f'active-{agent}.txt'
+        legacy_state = state_base / f'active-{agent}.txt'
         if legacy_state.exists():
             log_stderr(f"WARNING: Using legacy state file {legacy_state}. Migrate to team-namespaced state.")
             try:
@@ -236,15 +437,30 @@ def get_docs_path_strict() -> Tuple[Optional[Path], Optional[str]]:
     # This prevents non-deterministic "most recently modified" selection
     return None, (
         f"No active project found for agent '{agent}' in team '{team_name}'. "
-        f"Set DOCS_PATH or create state file at: {projects_base}/.state/{team_name}/active-{agent}.txt"
+        f"Set DOCS_PATH or create state file at: {state_base}/{team_name}/active-{agent}.txt"
     )
 
 
-def generate_handoff_id() -> str:
-    """Generate unique handoff ID."""
+def generate_handoff_id(agent: str = "") -> str:
+    """Generate traceable handoff ID.
+
+    Format: HO_{YYYYMMDD}_{HHMMSS}_{AGENT}_{SHORT_HASH}
+    Example: HO_20260111_143022_bill_a1b2c3
+
+    This format is:
+    - Traceable: includes timestamp and agent name
+    - Recognizable: HO prefix, human-readable date
+    - Unique: short hash prevents collisions
+    """
     import hashlib
-    timestamp = datetime.now().strftime('%Y%m%d%H%M%S%f')
-    return hashlib.sha256(timestamp.encode()).hexdigest()[:12]
+    now = datetime.now()
+    date_part = now.strftime('%Y%m%d')
+    time_part = now.strftime('%H%M%S')
+    # Include microseconds in hash for uniqueness
+    hash_input = f"{now.strftime('%Y%m%d%H%M%S%f')}{agent}"
+    short_hash = hashlib.sha256(hash_input.encode()).hexdigest()[:6]
+    agent_part = agent.lower() if agent else "unknown"
+    return f"HO_{date_part}_{time_part}_{agent_part}_{short_hash}"
 
 
 def notify_coordinator(agent: str, project_name: str, handoff_id: str, team_name: str = "default"):
@@ -255,18 +471,34 @@ def notify_coordinator(agent: str, project_name: str, handoff_id: str, team_name
     """
     import subprocess
 
-    # Get coordinator name from team config (default to 'dan')
-    coordinator = 'dan'
+    # Get coordinator name from team config (fail loudly if not found)
+    coordinator = None
+    nolan_root = os.environ.get('NOLAN_ROOT')
+    if not nolan_root:
+        log_stderr("Cannot notify coordinator: NOLAN_ROOT not set")
+        return False
+
+    # Search for team config in teams directory (supports subdirectories)
+    teams_dir = Path(nolan_root) / 'teams'
+    config_path = None
+    for path in teams_dir.rglob(f'{team_name}.yaml'):
+        config_path = path
+        break
+
+    if not config_path:
+        log_stderr(f"Cannot notify coordinator: team config not found for {team_name}")
+        return False
+
     try:
-        nolan_root = os.environ.get('NOLAN_ROOT')
-        if nolan_root:
-            config_path = Path(nolan_root) / 'teams' / f'{team_name}.yaml'
-            if config_path.exists():
-                with open(config_path) as f:
-                    config = yaml.safe_load(f)
-                coordinator = config.get('team', {}).get('workflow', {}).get('coordinator', 'dan')
-    except Exception:
-        pass
+        with open(config_path) as f:
+            config = yaml.safe_load(f)
+        coordinator = config.get('team', {}).get('workflow', {}).get('coordinator')
+        if not coordinator:
+            log_stderr(f"Cannot notify coordinator: no coordinator defined in team config {team_name}")
+            return False
+    except Exception as e:
+        log_stderr(f"Cannot notify coordinator: failed to parse team config: {e}")
+        return False
 
     # Build session name for coordinator
     session_name = f"agent-{team_name}-{coordinator}"
@@ -327,13 +559,13 @@ def write_handoff_file_atomic(agent: str, project_name: str, project_path: Path,
     Returns True on success, False on failure.
     This ensures the handoff file is either fully written or not at all.
     """
-    projects_dir = get_projects_base()
-    if not projects_dir:
-        log_stderr("Cannot write handoff: projects_dir not found")
+    state_base = get_state_base()
+    if not state_base:
+        log_stderr("Cannot write handoff: state directory not found")
         return False
 
-    pending_dir = projects_dir / '.handoffs' / 'pending'
-    lock_file = projects_dir / '.handoffs' / '.lock-pending'
+    pending_dir = state_base / 'handoffs' / 'pending'
+    lock_file = state_base / 'handoffs' / '.lock-pending'
 
     try:
         pending_dir.mkdir(parents=True, exist_ok=True)
@@ -344,21 +576,29 @@ def write_handoff_file_atomic(agent: str, project_name: str, project_path: Path,
         filename = f"{timestamp_file}_{agent}_{handoff_id}.handoff"
         final_path = pending_dir / filename
 
-        # Get team info
+        # Get team info and coordinator
         team_name = "unknown"
+        coordinator = None
         try:
             team_file = project_path / '.team'
             if team_file.exists():
                 team_name = parse_team_name(team_file)
-        except Exception:
-            pass
+                # Get coordinator from team config
+                team_config = load_team_config(project_path)
+                coordinator = team_config.get('team', {}).get('workflow', {}).get('coordinator')
+        except Exception as e:
+            log_stderr(f"Failed to get coordinator for handoff: {e}")
+
+        if not coordinator:
+            log_stderr(f"No coordinator found for team {team_name} - handoff may not be processed")
+            coordinator = "unknown"
 
         # Build handoff data
         handoff_data = {
             'id': handoff_id,
             'timestamp': timestamp,
             'from_agent': agent,
-            'to_agent': 'dan',  # Always to coordinator for now
+            'to_agent': coordinator,
             'project': project_name,
             'team': team_name,
             'status': status,
@@ -398,12 +638,12 @@ def wait_for_ack(handoff_id: str, timeout_seconds: int = DEFAULT_ACK_TIMEOUT_SEC
     """
     import time
 
-    projects_dir = get_projects_base()
-    if not projects_dir:
+    state_base = get_state_base()
+    if not state_base:
         return False
 
-    pending_dir = projects_dir / '.handoffs' / 'pending'
-    processed_dir = projects_dir / '.handoffs' / 'processed'
+    pending_dir = state_base / 'handoffs' / 'pending'
+    processed_dir = state_base / 'handoffs' / 'processed'
 
     max_attempts = max(1, timeout_seconds // poll_interval)
 
@@ -435,13 +675,13 @@ def auto_ack_pending_handoffs() -> Tuple[int, int]:
     Moves all .handoff files from pending/ to processed/.
     Returns (success_count, failure_count).
     """
-    projects_dir = get_projects_base()
-    if not projects_dir:
+    state_base = get_state_base()
+    if not state_base:
         return 0, 0
 
-    pending_dir = projects_dir / '.handoffs' / 'pending'
-    processed_dir = projects_dir / '.handoffs' / 'processed'
-    lock_file = projects_dir / '.handoffs' / '.lock-pending'
+    pending_dir = state_base / 'handoffs' / 'pending'
+    processed_dir = state_base / 'handoffs' / 'processed'
+    lock_file = state_base / 'handoffs' / '.lock-pending'
 
     if not pending_dir.exists():
         return 0, 0
@@ -472,97 +712,15 @@ def auto_ack_pending_handoffs() -> Tuple[int, int]:
     return success_count, failure_count
 
 
-def check_project_complete(docs_path: Path) -> bool:
-    """Check if project has final phase complete marker.
-
-    Returns True ONLY if project is explicitly marked COMPLETE/CLOSED/ARCHIVED.
-    Missing coordinator file = NOT complete (was a false positive before).
-    """
-    coordinator_file = get_coordinator_file(docs_path)
-    if not coordinator_file:
-        # No coordinator file configured - can't determine completion
-        # This is NOT a false positive - we require explicit completion marker
-        return False
-
-    coord_path = docs_path / coordinator_file
-    if not coord_path.exists():
-        # Coordinator file doesn't exist yet - project NOT complete
-        # FIX: Previously returned True (false positive)
-        return False
-
-    content = coord_path.read_text()
-
-    # Check for completion markers
-    if '<!-- PROJECT:STATUS:COMPLETE' in content:
-        return True
-    if '<!-- PROJECT:STATUS:CLOSED' in content:
-        return True
-    if '<!-- PROJECT:STATUS:ARCHIVED' in content:
-        return True
-
-    return False
-
-
-def check_project_delegated(docs_path: Path) -> bool:
-    """Check if project is in DELEGATED state (coordinator waiting for handoff).
-
-    Returns True if project is marked DELEGATED - coordinator has delegated work
-    to another agent and is waiting for their handoff. This is a valid stopping
-    state for coordinators.
-    """
-    coordinator_file = get_coordinator_file(docs_path)
-    if not coordinator_file:
-        return False
-
-    coord_path = docs_path / coordinator_file
-    if not coord_path.exists():
-        return False
-
-    content = coord_path.read_text()
-
-    # Check for delegated marker
-    if '<!-- PROJECT:STATUS:DELEGATED' in content:
-        return True
-
-    return False
-
-
-def check_project_pending(docs_path: Path) -> bool:
-    """Check if project is in PENDING state (awaiting assignment).
-
-    Returns True if project is marked PENDING - coordinator can stop while
-    project remains visible and available for assignment. Unlike COMPLETE,
-    PENDING projects stay in the active projects list.
-    """
-    coordinator_file = get_coordinator_file(docs_path)
-    if not coordinator_file:
-        return False
-
-    coord_path = docs_path / coordinator_file
-    if not coord_path.exists():
-        return False
-
-    content = coord_path.read_text()
-
-    # Check for pending marker
-    if '<!-- PROJECT:STATUS:PENDING' in content:
-        return True
-
-    return False
-
-
 def coordinator_stop_check(docs_path: Path) -> Optional[str]:
-    """Coordinator stop check - ACK pending handoffs and verify project status.
+    """Coordinator stop check - ACK pending handoffs.
 
-    Dan (coordinator) runs this when trying to stop:
-    1. Auto-ACK any pending handoffs (unblocks waiting agents)
-    2. Check if project is marked complete, delegated, or pending
-    3. Block stop if none of these (Dan should add marker first)
+    Coordinator can always stop after ACKing handoffs. Project status is
+    determined by the backend via file inspection (required headers),
+    not by markers.
 
     Returns None to allow stop, or error string to block.
     """
-    project_name = docs_path.name if docs_path else "unknown"
-
     # Auto-ACK any pending handoffs (unblocks agents immediately)
     success_count, failure_count = auto_ack_pending_handoffs()
     if success_count > 0:
@@ -570,22 +728,8 @@ def coordinator_stop_check(docs_path: Path) -> Optional[str]:
     if failure_count > 0:
         log_stderr(f"WARNING: Failed to ACK {failure_count} handoff(s)")
 
-    # Check if project is complete
-    if check_project_complete(docs_path):
-        return None  # Project complete, allow stop
-
-    # Check if project is delegated (coordinator waiting for handoff)
-    if check_project_delegated(docs_path):
-        log_stderr(f"Project '{project_name}' is DELEGATED - coordinator can sleep while waiting")
-        return None  # Delegated, allow stop
-
-    # Check if project is pending (awaiting assignment, stays visible)
-    if check_project_pending(docs_path):
-        log_stderr(f"Project '{project_name}' is PENDING - coordinator can stop, project remains active")
-        return None  # Pending, allow stop
-
-    # Not complete, delegated, or pending - block stop with helpful message
-    return f"Project '{project_name}' requires status marker. Use PENDING (stays active), DELEGATED (assigned), or COMPLETE (finished)."
+    # Coordinator can always stop - status tracked by backend via file inspection
+    return None
 
 
 def trigger_handoff_atomic(docs_path: Path, agent: str, output_file: str,
@@ -601,8 +745,8 @@ def trigger_handoff_atomic(docs_path: Path, agent: str, output_file: str,
     filepath = docs_path / output_file
 
     try:
-        # Generate handoff ID for tracking
-        handoff_id = generate_handoff_id()
+        # Generate handoff ID for tracking (includes agent name for traceability)
+        handoff_id = generate_handoff_id(agent)
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
 
         # Get team name for state management
@@ -639,8 +783,8 @@ def trigger_handoff_atomic(docs_path: Path, agent: str, output_file: str,
 
 def _clear_agent_state_file(docs_path: Path, agent: str):
     """Clear active project state file after successful handoff."""
-    projects_base = get_projects_base()
-    if not projects_base or not agent:
+    state_base = get_state_base()
+    if not state_base or not agent:
         return
 
     # Get team name for namespaced state file
@@ -653,8 +797,8 @@ def _clear_agent_state_file(docs_path: Path, agent: str):
         pass
 
     for state_file in [
-        projects_base / '.state' / team_name / f'active-{agent}.txt',
-        projects_base / '.state' / f'active-{agent}.txt'  # Legacy fallback
+        state_base / team_name / f'active-{agent}.txt',
+        state_base / f'active-{agent}.txt'  # Legacy fallback
     ]:
         try:
             if state_file.exists():
@@ -709,12 +853,12 @@ def check_handoff_done(docs_path: Path, agent: str, timeout_config: dict) -> Opt
     ack_timeout = timeout_config.get('ack_timeout_seconds', DEFAULT_ACK_TIMEOUT_SECONDS)
     poll_interval = timeout_config.get('ack_poll_interval', DEFAULT_ACK_POLL_INTERVAL)
 
-    projects_dir = get_projects_base()
+    state_base = get_state_base()
     project_name = docs_path.name
 
-    if projects_dir:
-        processed_dir = projects_dir / '.handoffs' / 'processed'
-        pending_dir = projects_dir / '.handoffs' / 'pending'
+    if state_base:
+        processed_dir = state_base / 'handoffs' / 'processed'
+        pending_dir = state_base / 'handoffs' / 'pending'
 
         # Check for existing handoff for this agent+project (in pending or processed)
         # Handoff files are named: YYYYMMDD_HHMMSS_<agent>_<id>.handoff
@@ -809,6 +953,14 @@ def check_handoff_done(docs_path: Path, agent: str, timeout_config: dict) -> Opt
                     acked = wait_for_ack(handoff_id, timeout_seconds=ack_timeout, poll_interval=poll_interval)
                     if not acked:
                         log_stderr(f"Existing handoff {handoff_id} not ACK'd - allowing stop anyway")
+
+                    # Auto-progression for schema v2 teams
+                    try:
+                        team_config = load_team_config(docs_path)
+                        handle_auto_progression(docs_path, agent, team_config)
+                    except Exception as e:
+                        log_stderr(f"Auto-progression error: {e}")
+
                     _clear_agent_state_file(docs_path, agent)
                     return None
             except Exception:
@@ -823,6 +975,13 @@ def check_handoff_done(docs_path: Path, agent: str, timeout_config: dict) -> Opt
     acked = wait_for_ack(handoff_id, timeout_seconds=ack_timeout, poll_interval=poll_interval)
     if not acked:
         log_stderr(f"Handoff {handoff_id} not ACK'd within {ack_timeout}s - allowing stop anyway")
+
+    # Auto-progression for schema v2 teams
+    try:
+        team_config = load_team_config(docs_path)
+        handle_auto_progression(docs_path, agent, team_config)
+    except Exception as e:
+        log_stderr(f"Auto-progression error: {e}")
 
     # Clear state file AFTER ACK confirmed (or timeout)
     _clear_agent_state_file(docs_path, agent)
@@ -980,12 +1139,20 @@ def main():
         return
 
     # Check handoff was done (only for non-coordinator agents)
-    coordinator = 'dan'  # fallback
+    coordinator = None
     try:
         team = load_team_config(docs_path)
         coordinator = team['team']['workflow']['coordinator']
-    except Exception:
-        pass
+    except Exception as e:
+        log_stderr(f"Failed to load coordinator from team config: {e}")
+
+    if not coordinator:
+        # Fail loudly - require explicit coordinator in team config
+        print(json.dumps({
+            "decision": "block",
+            "reason": "Cannot determine coordinator. Ensure team config has workflow.coordinator defined."
+        }))
+        return
 
     if agent != coordinator:
         # Non-coordinator: trigger handoff and wait for ACK

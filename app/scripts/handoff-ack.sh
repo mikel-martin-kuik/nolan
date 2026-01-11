@@ -17,16 +17,51 @@ set -e
 # Check if caller is coordinator or support (security check)
 check_coordinator_access() {
     local agent_name="${AGENT_NAME:-}"
+    local team_name="${TEAM_NAME:-default}"
 
-    # Workflow agents cannot use this script
-    # Note: Ralph IS allowed - support agents can manage handoffs for debugging
-    local workflow_agents="ana bill carl enzo frank"
-    for wa in $workflow_agents; do
-        if [[ "$agent_name" == "$wa" ]]; then
-            echo "ERROR: This tool is restricted." >&2
-            exit 2
-        fi
-    done
+    # Ralph agents are always allowed (support)
+    if [[ "$agent_name" == "ralph" ]] || [[ "$agent_name" =~ ^ralph- ]]; then
+        return 0
+    fi
+
+    # Query team config for workflow participants (dynamically)
+    # Workflow participants cannot use this script - only coordinator and support
+    local is_workflow_agent
+    is_workflow_agent=$(python3 -c "
+import yaml, sys
+from pathlib import Path
+import os
+
+nolan_root = Path(os.environ.get('NOLAN_ROOT', ''))
+team_name = os.environ.get('TEAM_NAME', 'default')
+agent_name = os.environ.get('AGENT_NAME', '').lower()
+
+if not nolan_root or not agent_name:
+    sys.exit(0)  # Allow if can't determine
+
+# Search for team config
+config_path = None
+for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+    config_path = path
+    break
+
+if not config_path:
+    sys.exit(0)  # Allow if config not found
+
+config = yaml.safe_load(config_path.read_text())
+agents = config.get('team', {}).get('agents', [])
+
+for agent in agents:
+    if agent.get('name', '').lower() == agent_name:
+        if agent.get('workflow_participant', False):
+            print('yes')
+        break
+" 2>/dev/null)
+
+    if [[ "$is_workflow_agent" == "yes" ]]; then
+        echo "ERROR: This tool is restricted." >&2
+        exit 2
+    fi
 }
 
 # Run access check
@@ -41,10 +76,10 @@ if [[ -z "${PROJECTS_DIR:-}" ]]; then
     echo "ERROR: PROJECTS_DIR environment variable is not set." >&2
     exit 1
 fi
-PENDING_DIR="$PROJECTS_DIR/.handoffs/pending"
-PROCESSED_DIR="$PROJECTS_DIR/.handoffs/processed"
-LOCK_FILE="$PROJECTS_DIR/.handoffs/.lock-pending"
-HEARTBEAT_FILE="$PROJECTS_DIR/.handoffs/.heartbeat"
+PENDING_DIR="$NOLAN_ROOT/.state/handoffs/pending"
+PROCESSED_DIR="$NOLAN_ROOT/.state/handoffs/processed"
+LOCK_FILE="$NOLAN_ROOT/.state/handoffs/.lock-pending"
+HEARTBEAT_FILE="$NOLAN_ROOT/.state/handoffs/.heartbeat"
 
 # Ensure directories exist
 mkdir -p "$PENDING_DIR" "$PROCESSED_DIR"
@@ -180,6 +215,15 @@ print(d.get('instruction_file', ''))
                 echo -e "${GREEN}ACK'd: $filename${NC}"
                 found=1
 
+                # Extract project and msg_id from handoff for Task Log update
+                local project msg_id
+                read -r project msg_id < <(python3 -c "
+import yaml
+with open('$PROCESSED_DIR/$filename') as f:
+    d = yaml.safe_load(f)
+print(d.get('project', ''), d.get('task_id', d.get('id', '')))
+" 2>/dev/null) || true
+
                 # Update instruction file status to 'reviewed'
                 if [[ -n "$instruction_file" ]] && [[ -f "$instruction_file" ]]; then
                     local ack_time=$(date +"%Y-%m-%d %H:%M")
@@ -195,6 +239,75 @@ if 'ack_at:' not in content:
     with open(instr_file, 'a') as f:
         f.write(f'\n# Review\nstatus: reviewed\nack_at: \"$ack_time\"\n')
 " 2>/dev/null || true
+                fi
+
+                # Update Task Log in coordinator file (mark as Complete)
+                if [[ -n "$project" ]] && [[ -n "$msg_id" ]]; then
+                    local coord_path="$PROJECTS_DIR/$project"
+                    if [[ -d "$coord_path" ]]; then
+                        # Get coordinator file from team config
+                        local coord_file
+                        coord_file=$(python3 -c "
+import yaml, sys
+from pathlib import Path
+import os
+
+project_path = Path('$coord_path')
+team_file = project_path / '.team'
+if not team_file.exists():
+    sys.exit(1)
+
+content = team_file.read_text()
+try:
+    data = yaml.safe_load(content)
+    if isinstance(data, dict) and 'team' in data:
+        team_name = data['team']
+    else:
+        team_name = content.strip()
+except:
+    team_name = content.strip()
+
+nolan_root = Path(os.environ.get('NOLAN_ROOT', ''))
+config_path = None
+for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+    config_path = path
+    break
+
+if not config_path:
+    sys.exit(1)
+
+config = yaml.safe_load(config_path.read_text())
+coordinator = config.get('team', {}).get('workflow', {}).get('coordinator')
+if not coordinator:
+    sys.exit(1)
+
+for agent in config['team']['agents']:
+    if agent['name'] == coordinator:
+        print(agent['output_file'])
+        break
+" 2>/dev/null) || true
+
+                        if [[ -n "$coord_file" ]] && [[ -f "$coord_path/$coord_file" ]]; then
+                            # Update Task Log entry from Active to Complete
+                            python3 -c "
+import re
+from pathlib import Path
+
+coord_path = Path('$coord_path/$coord_file')
+content = coord_path.read_text()
+
+# Update Task Log entry status from Active to Complete
+# Pattern: | \`MSG_ID\` | ... | Active |
+msg_id = '$msg_id'
+pattern = r'(\| \`' + re.escape(msg_id) + r'\` \|[^|]+\|[^|]+\|[^|]+\|) Active (\|)'
+replacement = r'\1 Complete \2'
+new_content = re.sub(pattern, replacement, content)
+
+if new_content != content:
+    coord_path.write_text(new_content)
+" 2>/dev/null || true
+                        fi
+                    fi
                 fi
             else
                 error="Failed to move file: $handoff_file"

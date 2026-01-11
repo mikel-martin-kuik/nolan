@@ -56,32 +56,23 @@ def get_coordinator_file(project_path: Path) -> str | None:
 
 
 def detect_status(content: str) -> tuple[str, str]:
-    """Detect project status from coordinator file content."""
-    # Check for structured markers
-    if '<!-- PROJECT:STATUS:COMPLETE' in content:
-        marker = re.search(r'<!-- PROJECT:STATUS:[^\n]+', content)
-        return "COMPLETE (structured marker)", marker.group(0) if marker else ""
+    """Detect project status from coordinator file content.
 
-    if '<!-- PROJECT:STATUS:CLOSED' in content:
-        return "CLOSED (structured marker)", ""
+    Status is determined by file content:
+    - DELEGATED: Has Current Assignment section with Agent
+    - PENDING: No active assignment
 
-    if '<!-- PROJECT:STATUS:ARCHIVED' in content:
-        return "ARCHIVED (structured marker)", ""
-
-    if '<!-- PROJECT:STATUS:DELEGATED' in content:
-        marker = re.search(r'<!-- PROJECT:STATUS:DELEGATED:([^:]+):([^:]+)', content)
-        if marker:
-            return f"DELEGATED to {marker.group(1)} ({marker.group(2)})", ""
+    Note: Full status (COMPLETE, etc.) is determined by backend via required headers.
+    """
+    # Check for active assignment
+    if '## Current Assignment' in content and '**Agent**:' in content:
+        # Extract agent name
+        agent_match = re.search(r'\*\*Agent\*\*:\s*(\w+)', content)
+        if agent_match:
+            return f"DELEGATED to {agent_match.group(1)}", ""
         return "DELEGATED", ""
 
-    if '<!-- PROJECT:STATUS:PENDING' in content:
-        return "PENDING (awaiting assignment)", ""
-
-    # Check for content-based detection
-    if re.search(r'\*\*(Status|Phase)\*?\*?:.*\b(COMPLETE|CLOSED|DEPLOYED|PRODUCTION.READY)\b', content, re.IGNORECASE):
-        return "COMPLETE (detected from content)", "Consider adding structured marker: `<!-- PROJECT:STATUS:COMPLETE:YYYY-MM-DD -->`"
-
-    return "ACTIVE", ""
+    return "PENDING (no assignment)", ""
 
 
 def main():

@@ -11,6 +11,9 @@ import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToastStore } from '@/store/toastStore';
+import { useOllamaStore } from '@/store/ollamaStore';
+import { Tooltip } from '@/components/ui/tooltip';
+import { Sparkles, Loader2 } from 'lucide-react';
 import { CRON_PRESETS, CRON_MODELS } from '@/types/cronos';
 import type { CronAgentInfo, CronAgentConfig, CronRunLog } from '@/types';
 
@@ -37,7 +40,9 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [hasConfigChanges, setHasConfigChanges] = useState(false);
+  const [generatingInstructions, setGeneratingInstructions] = useState(false);
   const { error: showError, success: showSuccess } = useToastStore();
+  const { status: ollamaStatus, checkConnection, generate: ollamaGenerate } = useOllamaStore();
 
   const fetchAgent = useCallback(async () => {
     try {
@@ -79,6 +84,27 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
     };
     load();
   }, [fetchAgent, fetchConfig, fetchRunHistory, fetchInstructions]);
+
+  // Check Ollama connection
+  useEffect(() => {
+    checkConnection();
+  }, [checkConnection]);
+
+  // Generate instructions using Ollama
+  const handleGenerateInstructions = async () => {
+    if (!agentName) return;
+    setGeneratingInstructions(true);
+    try {
+      const systemPrompt = `You are a DevOps specialist. Generate CLAUDE.md instructions for a scheduled automation agent. Focus on: task purpose, execution steps, success criteria, and error handling guidance. Use markdown formatting.`;
+      const prompt = `Generate CLAUDE.md instructions for a cron agent named "${agentName}"${config?.description ? ` with description: "${config.description}"` : ''}${instructionsContent.trim() ? `\n\nCurrent instructions to improve:\n${instructionsContent}` : ''}`;
+      const result = await ollamaGenerate(prompt, systemPrompt);
+      setInstructionsContent(result.trim());
+    } catch (err) {
+      showError(`Failed to generate: ${err}`);
+    } finally {
+      setGeneratingInstructions(false);
+    }
+  };
 
   const handleSaveConfig = async () => {
     if (!config) return;
@@ -219,13 +245,35 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
             {/* Instructions */}
             <Card className="flex flex-col">
               <CardHeader>
-                <CardTitle className="text-base">Instructions (CLAUDE.md)</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-base">Instructions (CLAUDE.md)</CardTitle>
+                  {ollamaStatus === 'connected' && (
+                    <Tooltip content="Generate instructions using local AI" side="top">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleGenerateInstructions}
+                        disabled={generatingInstructions || saving}
+                        className="gap-2"
+                      >
+                        {generatingInstructions ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-4 w-4" />
+                        )}
+                        Generate
+                      </Button>
+                    </Tooltip>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="flex-1 flex flex-col">
                 <Textarea
                   className="flex-1 min-h-[300px] font-mono text-sm resize-none"
                   value={instructionsContent}
                   onChange={(e) => setInstructionsContent(e.target.value)}
+                  disabled={generatingInstructions}
                 />
                 <Button onClick={handleSaveInstructions} disabled={saving} className="w-full mt-3">
                   {saving ? 'Saving...' : 'Save Instructions'}

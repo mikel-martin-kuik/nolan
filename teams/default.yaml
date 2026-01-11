@@ -2,6 +2,7 @@ team:
   name: default
   description: Default Nolan team with standard workflow
   version: 1.0.0
+  schema_version: 2
   agents:
   - name: ana
     output_file: research.md
@@ -55,8 +56,16 @@ team:
     file_permissions: restricted
     workflow_participant: true
     awaits_qa: false
+  - name: guardian
+    output_file: null
+    required_sections: []
+    file_permissions: restricted
+    workflow_participant: false
+    awaits_qa: false
   workflow:
     coordinator: dan
+    auditor: dan
+    exception_handler: guardian
     phases:
     - name: Research
       owner: ana
@@ -64,6 +73,7 @@ team:
       requires:
       - context.md
       template: Investigate and research the problem as described in context.md
+      next: Planning
     - name: Planning
       owner: bill
       output: plan.md
@@ -71,6 +81,7 @@ team:
       - research.md
       - context.md
       template: Create detailed implementation plan based on research findings
+      next: Plan Review
     - name: Plan Review
       owner: enzo
       output: plan-review.md
@@ -79,6 +90,8 @@ team:
       - context.md
       - research.md
       template: Review implementation plan for feasibility, research alignment, architecture, and completeness
+      next: Implementation
+      on_reject: Planning
     - name: Implementation
       owner: carl
       output: progress.md
@@ -87,6 +100,7 @@ team:
       - plan-review.md
       - context.md
       template: Implement changes following the approved plan
+      next: Implementation Audit
     - name: Implementation Audit
       owner: frank
       output: implementation-audit.md
@@ -97,3 +111,5 @@ team:
       - plan.md
       - plan-review.md
       template: Audit implementation for code execution, security, integration, and plan compliance
+      next: null
+      on_reject: Implementation

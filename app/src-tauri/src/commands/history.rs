@@ -11,6 +11,7 @@ use notify::{Watcher, RecursiveMode, Event, EventKind};
 use std::sync::mpsc;
 use dashmap::DashMap;
 use std::sync::Mutex as StdMutex;
+use crate::api::broadcast_history_entry;
 use crate::config::TeamConfig;
 
 // Global flag to prevent multiple streaming tasks
@@ -206,9 +207,12 @@ async fn process_file_update(app_handle: &AppHandle, path: &PathBuf) {
 
                 while let Ok(Some(line)) = lines.next_line().await {
                     if let Ok((entry, _)) = parse_transcript_line(&line, path, true) {
+                        // Emit via Tauri events (for desktop app)
                         if let Err(e) = app_handle.emit("history-entry", &entry) {
                             eprintln!("Failed to emit entry: {}", e);
                         }
+                        // Broadcast via WebSocket (for browser clients)
+                        broadcast_history_entry(entry);
                     }
                 }
 

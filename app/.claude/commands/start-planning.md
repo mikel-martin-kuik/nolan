@@ -6,13 +6,13 @@ allowed-tools: Read, Glob, Grep, Bash(cat:*), Bash(ls:*)
 # Start Planning: $1
 
 ## Environment Setup
-!`if [ -z "$1" ]; then echo "❌ ERROR: No project specified."; echo "Notifying Dan..."; source "$NOLAN_ROOT/app/scripts/team-aliases.sh" 2>/dev/null && send dan "Bill needs project name to start planning. Which project should I work on?" 2>/dev/null || echo "(Could not reach Dan - ask manually)"; echo ""; echo "⏸️  BLOCKED: Wait for Dan to specify project, then run: /start-planning <project-name>"; exit 1; fi; if [ ! -d "$PROJECTS_DIR/$1" ]; then echo "❌ ERROR: Project '$1' not found in $PROJECTS_DIR"; echo "Available projects:"; ls -1 "$PROJECTS_DIR" | grep -v "^\." | head -10; exit 1; fi; export DOCS_PATH="$PROJECTS_DIR/$1"; mkdir -p "$PROJECTS_DIR/.state"; echo "$1" > "$PROJECTS_DIR/.state/active-${AGENT_NAME:-bill}.txt"; echo "✅ DOCS_PATH set to: $DOCS_PATH"`
+!`if [ -z "$1" ]; then echo "❌ ERROR: No project specified."; echo "Notifying Dan..."; source "$NOLAN_ROOT/app/scripts/team-aliases.sh" 2>/dev/null && send dan "Bill needs project name to start planning. Which project should I work on?" 2>/dev/null || echo "(Could not reach Dan - ask manually)"; echo ""; echo "⏸️  BLOCKED: Wait for Dan to specify project, then run: /start-planning <project-name>"; exit 1; fi; if [ ! -d "$PROJECTS_DIR/$1" ]; then echo "❌ ERROR: Project '$1' not found in $PROJECTS_DIR"; echo "Available projects:"; ls -1 "$PROJECTS_DIR" | grep -v "^\." | head -10; exit 1; fi; export DOCS_PATH="$PROJECTS_DIR/$1"; mkdir -p "$NOLAN_ROOT/.state/${TEAM_NAME:-default}"; echo "$1" > "$NOLAN_ROOT/.state/${TEAM_NAME:-default}/active-${AGENT_NAME:-bill}.txt"; echo "✅ DOCS_PATH set to: $DOCS_PATH"`
 
 ## Project Context
 !`if [ -z "$1" ]; then exit 1; fi; docs_path="$PROJECTS_DIR/$1"; if [ -f "$docs_path/context.md" ]; then cat "$docs_path/context.md"; else echo "ERROR: context.md not found at $docs_path"; fi`
 
 ## Research Findings
-!`docs_path="$PROJECTS_DIR/$1"; if [ -f "$docs_path/research.md" ]; then cat "$docs_path/research.md"; else echo "ERROR: research.md not found. Research phase must complete first."; fi`
+!`docs_path="$PROJECTS_DIR/$1"; if [ -f "$docs_path/research.md" ]; then grep -v '<!-- STATUS:' "$docs_path/research.md" || cat "$docs_path/research.md"; else echo "ERROR: research.md not found. Research phase must complete first."; fi`
 
 ## Planning Phase Instructions
 
@@ -30,7 +30,6 @@ You are Bill, the planning agent. Your task:
 **Author:** Bill (Planning Agent)
 **Date:** [today]
 **Status:** Ready for Review
-<!-- STATUS:COMPLETE:[today] -->
 
 ---
 
@@ -93,4 +92,4 @@ You are Bill, the planning agent. Your task:
 ## When Complete
 
 1. Update plan.md with final implementation plan
-2. Finish your response - handoff to Dan happens automatically
+2. Stop - the system handles handoff automatically

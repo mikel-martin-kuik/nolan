@@ -1,0 +1,12 @@
+# Auto-handoff from bill
+id: HO_DAN_fcdc45a9
+task_id: MSG_DAN_fcdc45a9
+from_agent: bill
+project: ollama-nolan-integration
+phase: Planning
+timestamp: '2026-01-11 12:44'
+team: default
+instruction_file: /home/mmartin/Proyectos/nolan/.state/default/instructions/ollama-nolan-integration/bill/MSG_DAN_fcdc45a9.yaml
+output_file: /home/mmartin/Proyectos/nolan/projects/ollama-nolan-integration/plan.md
+status: pending_review
+auto_generated: true

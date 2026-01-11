@@ -1,8 +1,10 @@
 import React, { memo, useState, useCallback, useRef, useEffect } from 'react';
-import { Send, Square } from 'lucide-react';
+import { Send, Square, Sparkles, Loader2 } from 'lucide-react';
 import { invoke } from '@/lib/api';
 import { useToastStore } from '../../store/toastStore';
 import { useTeamStore } from '../../store/teamStore';
+import { useOllamaStore } from '../../store/ollamaStore';
+import { Tooltip } from '@/components/ui/tooltip';
 import { Textarea } from '@/components/ui/textarea';
 
 interface ChatInputProps {
@@ -18,9 +20,11 @@ export const ChatInput: React.FC<ChatInputProps> = memo(({
 }) => {
   const [value, setValue] = useState('');
   const [sending, setSending] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { error: showError } = useToastStore();
   const { currentTeam } = useTeamStore();
+  const { status: ollamaStatus, checkConnection, generate: ollamaGenerate } = useOllamaStore();
 
   // Derive target agent from session
   const targetAgent = session.replace(/^agent-/, '');
@@ -33,6 +37,30 @@ export const ChatInput: React.FC<ChatInputProps> = memo(({
       textarea.style.height = `${Math.min(textarea.scrollHeight, 128)}px`;
     }
   }, [value]);
+
+  // Check Ollama connection
+  useEffect(() => {
+    checkConnection();
+  }, [checkConnection]);
+
+  // Improve message using Ollama
+  const handleImproveMessage = useCallback(async () => {
+    if (!value.trim()) {
+      showError('Enter a message first');
+      return;
+    }
+    setGenerating(true);
+    try {
+      const systemPrompt = `You are a communication assistant. Improve this message to be clearer and more actionable. Preserve the original intent but enhance clarity. Keep the tone professional and concise. Return only the improved message, no explanations.`;
+      const prompt = `Improve this message for agent "${targetAgent}":\n\n"${value}"`;
+      const result = await ollamaGenerate(prompt, systemPrompt);
+      setValue(result.trim());
+    } catch (err) {
+      showError(`Failed to improve: ${err}`);
+    } finally {
+      setGenerating(false);
+    }
+  }, [value, targetAgent, ollamaGenerate, showError]);
 
   const handleSend = useCallback(async () => {
     const trimmed = value.trim();
@@ -83,15 +111,37 @@ export const ChatInput: React.FC<ChatInputProps> = memo(({
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
-          disabled={disabled || sending}
+          disabled={disabled || sending || generating}
           className="flex-1 min-h-[44px] max-h-32"
           rows={1}
         />
 
+        {/* Improve with AI button */}
+        {ollamaStatus === 'connected' && (
+          <Tooltip content="Improve message using local AI" side="top">
+            <button
+              onClick={handleImproveMessage}
+              disabled={disabled || sending || generating || !value.trim()}
+              title="Improve with AI"
+              className="w-11 h-11 rounded-xl flex items-center justify-center
+                bg-purple-500/15 border border-purple-400/30 text-purple-500
+                hover:bg-purple-500/25 hover:border-purple-400/50
+                active:scale-95 transition-all duration-200
+                disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-purple-500/15 disabled:hover:border-purple-400/30"
+            >
+              {generating ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Sparkles className="w-4 h-4" />
+              )}
+            </button>
+          </Tooltip>
+        )}
+
         {/* Send button - styled like team launch button */}
         <button
           onClick={handleSend}
-          disabled={disabled || sending || !value.trim()}
+          disabled={disabled || sending || generating || !value.trim()}
           title="Send message"
           className="w-11 h-11 rounded-xl flex items-center justify-center
             bg-emerald-500/15 border border-emerald-400/30 text-emerald-500

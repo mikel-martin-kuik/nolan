@@ -1,0 +1,12 @@
+# Auto-handoff from enzo
+id: HO_DAN_2ca397c9
+task_id: MSG_DAN_2ca397c9
+from_agent: enzo
+project: ollama-nolan-integration
+phase: Plan Review
+timestamp: '2026-01-11 12:46'
+team: default
+instruction_file: /home/mmartin/Proyectos/nolan/.state/default/instructions/ollama-nolan-integration/enzo/MSG_DAN_2ca397c9.yaml
+output_file: /home/mmartin/Proyectos/nolan/projects/ollama-nolan-integration/plan-review.md
+status: pending_review
+auto_generated: true

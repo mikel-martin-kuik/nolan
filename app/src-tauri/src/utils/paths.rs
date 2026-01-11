@@ -96,6 +96,16 @@ pub fn get_projects_dir() -> Result<PathBuf, String> {
     Ok(repo_root.join("projects"))
 }
 
+/// Get roadmaps directory
+/// Returns: <repo_root>/docs/roadmaps
+pub fn get_roadmaps_dir() -> Result<PathBuf, String> {
+    let app_root = get_nolan_app_root()?;
+    let repo_root = app_root
+        .parent()
+        .ok_or("Cannot determine repository root from app directory")?;
+    Ok(repo_root.join("docs").join("roadmaps"))
+}
+
 /// Get Nolan root directory (parent of app/)
 /// Uses existing get_nolan_app_root() and navigates up one level
 /// Returns: <nolan_root>
@@ -107,6 +117,30 @@ pub fn get_nolan_root() -> Result<PathBuf, String> {
         .to_path_buf()
         .canonicalize()
         .map_err(|e| format!("Invalid root path: {}", e))
+}
+
+/// Get the consolidated state directory path
+/// Returns: <nolan_root>/.state
+pub fn get_state_dir() -> Result<PathBuf, String> {
+    Ok(get_nolan_root()?.join(".state"))
+}
+
+/// Get the scheduler state directory
+/// Returns: <nolan_root>/.state/scheduler
+pub fn get_scheduler_state_dir() -> Result<PathBuf, String> {
+    Ok(get_state_dir()?.join("scheduler"))
+}
+
+/// Get the handoffs directory
+/// Returns: <nolan_root>/.state/handoffs
+pub fn get_handoffs_dir() -> Result<PathBuf, String> {
+    Ok(get_state_dir()?.join("handoffs"))
+}
+
+/// Get the feedback directory for support/feature requests
+/// Returns: <nolan_root>/.state/feedback
+pub fn get_feedback_dir() -> Result<PathBuf, String> {
+    Ok(get_state_dir()?.join("feedback"))
 }
 
 #[cfg(test)]

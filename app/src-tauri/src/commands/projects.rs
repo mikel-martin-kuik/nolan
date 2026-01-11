@@ -4,7 +4,7 @@ use serde::Serialize;
 use regex::Regex;
 use once_cell::sync::Lazy;
 use crate::config::{TeamConfig, load_project_team};
-use crate::utils::paths::get_projects_dir;
+use crate::utils::paths::{get_projects_dir, get_handoffs_dir, get_roadmaps_dir};
 
 // Cached regex pattern for HANDOFF markers (compiled once at startup)
 // Supports both formats:
@@ -196,12 +196,15 @@ fn parse_project_status(coordinator_content: &str) -> (ProjectStatus, Option<Str
     (ProjectStatus::Pending, None)
 }
 
-/// Check .handoffs/processed/ directory for completed handoffs
+/// Check .state/handoffs/processed/ directory for completed handoffs
 /// Returns map of agent_name -> (timestamp, handoff_id) for a specific project
 /// This is the primary source of truth for completion status
-fn get_processed_handoffs(projects_dir: &PathBuf, project_name: &str) -> std::collections::HashMap<String, (String, String)> {
+fn get_processed_handoffs(project_name: &str) -> std::collections::HashMap<String, (String, String)> {
     let mut handoffs = std::collections::HashMap::new();
-    let processed_dir = projects_dir.join(".handoffs").join("processed");
+    let processed_dir = match get_handoffs_dir() {
+        Ok(dir) => dir.join("processed"),
+        Err(_) => return handoffs,
+    };
 
     if !processed_dir.exists() {
         return handoffs;
@@ -304,30 +307,25 @@ fn parse_handoff_marker(content: &str) -> Option<(String, String)> {
 }
 
 /// Get completion status for workflow files (and prompt.md)
-/// Primary source of truth: .handoffs/processed/ directory
+/// Primary source of truth: .state/handoffs/processed/ directory
 /// Fallback: HANDOFF markers in files (for legacy compatibility)
 fn get_file_completions(
     project_path: &PathBuf,
     workflow_files: &[String],
-    projects_dir: Option<&PathBuf>,
     project_name: &str,
     config: Option<&TeamConfig>,
 ) -> Vec<FileCompletion> {
     let mut completions = Vec::new();
 
-    // Get processed handoffs from .handoffs/ directory (primary source of truth)
-    let processed_handoffs = if let Some(pd) = projects_dir {
-        get_processed_handoffs(pd, project_name)
-    } else {
-        std::collections::HashMap::new()
-    };
+    // Get processed handoffs from .state/handoffs/ directory (primary source of truth)
+    let processed_handoffs = get_processed_handoffs(project_name);
 
     // Check workflow files
     for file in workflow_files {
         let file_path = project_path.join(file);
         let exists = file_path.exists();
 
-        // First: Check .handoffs/processed/ directory (primary source of truth)
+        // First: Check .state/handoffs/processed/ directory (primary source of truth)
         let handoff_completion = if let Some(cfg) = config {
             if let Some(agent) = get_file_producer(cfg, file) {
                 if let Some((timestamp, _id)) = processed_handoffs.get(&agent) {
@@ -343,7 +341,7 @@ fn get_file_completions(
         };
 
         let (completed, completed_by, completed_at) = if let Some((ts, ag)) = handoff_completion {
-            // Completion found in .handoffs/processed/
+            // Completion found in .state/handoffs/processed/
             (true, Some(ag), Some(ts))
         } else if exists {
             // Fallback: Check for HANDOFF marker in file (legacy compatibility)
@@ -523,12 +521,11 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
         let (existing_files, missing_files) = get_file_scaffolding(&path, &expected_files);
 
         // Get workflow file completion status using stored or team-config workflow files
-        // Primary source: .handoffs/processed/ directory
+        // Primary source: .state/handoffs/processed/ directory
         // Fallback: HANDOFF markers in files (legacy compatibility)
         let file_completions = get_file_completions(
             &path,
             &workflow_files,
-            Some(&projects_dir),
             &name,
             Some(&team_config),
         );
@@ -815,11 +812,11 @@ pub async fn read_project_file(
     Ok(content)
 }
 
-/// Read a roadmap file from the projects directory
+/// Read a roadmap file from the docs/roadmaps directory
 /// Supports: roadmap.md, business_roadmap.md, product_roadmap.md
 #[tauri::command]
 pub async fn read_roadmap(filename: Option<String>) -> Result<String, String> {
-    let projects_dir = get_projects_dir()?;
+    let roadmaps_dir = get_roadmaps_dir()?;
 
     // Validate and sanitize filename - only allow specific roadmap files
     let valid_files = ["roadmap.md", "business_roadmap.md", "product_roadmap.md"];
@@ -829,11 +826,11 @@ pub async fn read_roadmap(filename: Option<String>) -> Result<String, String> {
         return Err(format!("Invalid roadmap file. Valid options: {:?}", valid_files));
     }
 
-    let roadmap_path = projects_dir.join(&file);
+    let roadmap_path = roadmaps_dir.join(&file);
 
     // Check if roadmap exists
     if !roadmap_path.exists() {
-        return Err(format!("Roadmap file '{}' not found in projects directory.", file));
+        return Err(format!("Roadmap file '{}' not found in docs/roadmaps directory.", file));
     }
 
     // Read roadmap content
@@ -843,15 +840,15 @@ pub async fn read_roadmap(filename: Option<String>) -> Result<String, String> {
     Ok(content)
 }
 
-/// List available roadmap files in the projects directory
+/// List available roadmap files in the docs/roadmaps directory
 #[tauri::command]
 pub async fn list_roadmap_files() -> Result<Vec<String>, String> {
-    let projects_dir = get_projects_dir()?;
+    let roadmaps_dir = get_roadmaps_dir()?;
     let valid_files = ["roadmap.md", "business_roadmap.md", "product_roadmap.md"];
 
     let mut available = Vec::new();
     for file in valid_files {
-        if projects_dir.join(file).exists() {
+        if roadmaps_dir.join(file).exists() {
             available.push(file.to_string());
         }
     }

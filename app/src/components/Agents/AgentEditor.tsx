@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@/lib/api';
-import { X, Save, RotateCcw } from 'lucide-react';
+import { X, Save, RotateCcw, Sparkles, Loader2 } from 'lucide-react';
 import { useToastStore } from '../../store/toastStore';
+import { useOllamaStore } from '../../store/ollamaStore';
+import { Tooltip } from '@/components/ui/tooltip';
 import {
   Select,
   SelectContent,
@@ -34,7 +36,9 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const { error: showError, success: showSuccess } = useToastStore();
+  const { status: ollamaStatus, checkConnection, generate: ollamaGenerate } = useOllamaStore();
 
   // Load CLAUDE.md content and agent metadata
   const loadContent = useCallback(async () => {
@@ -81,6 +85,30 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({
   useEffect(() => {
     setHasChanges(content !== originalContent || role !== originalRole || model !== originalModel);
   }, [content, originalContent, role, originalRole, model, originalModel]);
+
+  // Check Ollama connection
+  useEffect(() => {
+    checkConnection();
+  }, [checkConnection]);
+
+  // Generate CLAUDE.md content using Ollama
+  const handleGenerateContent = async () => {
+    if (!agentName) {
+      showError('Agent name is required');
+      return;
+    }
+    setGenerating(true);
+    try {
+      const systemPrompt = `You are a technical writer specializing in AI agent role definitions. Generate clear, actionable CLAUDE.md content for an AI agent. Focus on: role description, responsibilities, input/output expectations, and behavioral guidelines. Keep it concise and professional. Use markdown formatting.`;
+      const prompt = `Generate CLAUDE.md content for an AI agent named "${agentName}"${role ? ` with role: "${role}"` : ''}${content.trim() ? `\n\nCurrent content to improve:\n${content}` : ''}`;
+      const result = await ollamaGenerate(prompt, systemPrompt);
+      setContent(result.trim());
+    } catch (err) {
+      showError(`Failed to generate: ${err}`);
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   // Handle save
   const handleSave = useCallback(async () => {
@@ -209,19 +237,43 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({
         </div>
 
         {/* Editor */}
-        <div className="flex-1 overflow-hidden p-4">
+        <div className="flex-1 overflow-hidden p-4 flex flex-col">
           {loading ? (
             <div className="h-full flex items-center justify-center">
               <p className="text-sm text-muted-foreground">Loading...</p>
             </div>
           ) : (
-            <Textarea
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              className="w-full h-full font-mono"
-              placeholder="Enter CLAUDE.md content..."
-              spellCheck={false}
-            />
+            <>
+              {ollamaStatus === 'connected' && (
+                <div className="flex justify-end mb-2">
+                  <Tooltip content="Generate/improve content using local AI" side="left">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleGenerateContent}
+                      disabled={generating || saving}
+                      className="gap-2"
+                    >
+                      {generating ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-4 w-4" />
+                      )}
+                      {generating ? 'Generating...' : 'Generate with AI'}
+                    </Button>
+                  </Tooltip>
+                </div>
+              )}
+              <Textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                className="w-full flex-1 font-mono"
+                placeholder="Enter CLAUDE.md content..."
+                spellCheck={false}
+                disabled={generating}
+              />
+            </>
           )}
         </div>
 

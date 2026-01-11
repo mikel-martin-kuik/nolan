@@ -5,7 +5,22 @@ allowed-tools: Read, Bash(cat:*), Bash(grep:*), Bash(python3:*), Bash(handoff-ac
 ---
 # Handoff Management
 
-!`agent="${AGENT_NAME:-}"; if [[ "$agent" == "ralph" ]] || [[ "$agent" =~ ^ralph- ]]; then exit 0; fi; coord=$(python3 -c "import yaml, os; c=yaml.safe_load(open(os.environ['NOLAN_ROOT']+'/teams/'+os.environ.get('TEAM_NAME','default')+'.yaml')); print(c['team']['workflow']['coordinator'])" 2>/dev/null || echo "dan"); if [ "$agent" != "$coord" ]; then echo "ERROR: This command is restricted."; exit 1; fi`
+!`agent="${AGENT_NAME:-}"; if [[ "$agent" == "ralph" ]] || [[ "$agent" =~ ^ralph- ]]; then exit 0; fi; coord=$(python3 -c "
+import yaml, os, sys
+from pathlib import Path
+nolan_root = Path(os.environ['NOLAN_ROOT'])
+team_name = os.environ.get('TEAM_NAME', 'default')
+config_path = next((nolan_root / 'teams').rglob(f'{team_name}.yaml'), None)
+if not config_path:
+    print(f'ERROR: Team config not found: {team_name}', file=sys.stderr)
+    sys.exit(1)
+c = yaml.safe_load(config_path.read_text())
+coord = c.get('team', {}).get('workflow', {}).get('coordinator')
+if not coord:
+    print(f'ERROR: No coordinator in team config: {team_name}', file=sys.stderr)
+    sys.exit(1)
+print(coord)
+" 2>/dev/null); if [[ -z "$coord" ]]; then echo "ERROR: Could not determine coordinator."; exit 1; fi; if [ "$agent" != "$coord" ]; then echo "ERROR: This command is restricted."; exit 1; fi`
 
 ## Pending Handoffs
 !`"${NOLAN_ROOT}/app/scripts/handoff-ack.sh" list 2>/dev/null || echo "No pending handoffs"`

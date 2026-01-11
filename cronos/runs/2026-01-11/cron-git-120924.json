@@ -1,0 +1,15 @@
+{
+  "run_id": "6248291d",
+  "agent_name": "cron-git",
+  "started_at": "2026-01-11T12:09:24.801887575+00:00",
+  "completed_at": null,
+  "status": "running",
+  "duration_secs": null,
+  "exit_code": null,
+  "output_file": "/home/mmartin/Proyectos/nolan/cronos/runs/2026-01-11/cron-git-120924.log",
+  "error": null,
+  "attempt": 1,
+  "trigger": "manual",
+  "session_name": "cron-cron-git-6248291d",
+  "run_dir": "/home/mmartin/Proyectos/nolan/cronos/runs/2026-01-11/cron-git-6248291d"
+}

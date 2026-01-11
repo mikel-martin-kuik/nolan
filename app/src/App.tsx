@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Home, FolderOpen, DollarSign, MessageCircle, Users, FileUser, Clock, Settings } from 'lucide-react';
+import { Home, FolderOpen, DollarSign, MessageCircle, Users, FileUser, Clock, Settings, Lightbulb } from 'lucide-react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { listen } from '@/lib/events';
 import { invoke, isBrowserMode } from '@/lib/api';
@@ -13,6 +13,7 @@ import { TeamsPanel } from './components/Teams';
 import { ChatView } from './components/Chat';
 import { AgentManager } from './components/Agents';
 import { CronosPanel } from './components/Cronos';
+import { SupportPanel } from './components/Support';
 import { ToastContainer } from './components/shared/Toast';
 import { TerminalModal } from './components/Terminal/TerminalModal';
 import { BrandHeader } from './components/shared/BrandHeader';
@@ -20,6 +21,7 @@ import { ThemeToggle } from './components/shared/ThemeToggle';
 import { PasswordPrompt } from './components/Settings/PasswordPrompt';
 import { ServerSelector } from './components/Settings/ServerSelector';
 import { AuthStatus } from './components/Settings/AuthStatus';
+import { OllamaSettings } from './components/Settings/OllamaSettings';
 import { useAuth } from './hooks/useAuth';
 import { useToastStore } from './store/toastStore';
 import { useLiveOutputStore } from './store/liveOutputStore';
@@ -29,7 +31,7 @@ import { cn } from './lib/utils';
 import { HistoryEntry } from './types';
 import './App.css';
 
-type Tab = 'status' | 'chat' | 'projects' | 'teams' | 'agents' | 'cronos' | 'usage' | 'settings';
+type Tab = 'status' | 'chat' | 'projects' | 'teams' | 'agents' | 'cronos' | 'usage' | 'support' | 'settings';
 
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>('status');
@@ -61,6 +63,78 @@ function App() {
   useEffect(() => {
     let unlisten: (() => void) | null = null;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let pollIntervalId: ReturnType<typeof setInterval> | null = null;
+    let cachedSessions: string[] = []; // Cache sessions for polling
+
+    // Function to load history for active sessions
+    const loadHistory = async (isPolling = false) => {
+      try {
+        let sessions: string[] = [];
+
+        // For polling, try to use cached sessions first to avoid auth issues
+        if (isPolling && cachedSessions.length > 0) {
+          sessions = cachedSessions;
+        } else {
+          // Fetch fresh session list
+          const status = await invoke<{ team: { session: string }[]; free: { session: string }[] }>('get_agent_status');
+          sessions = [
+            ...status.team.map(a => a.session),
+            ...status.free.map(a => a.session),
+          ];
+          // Cache for future polling
+          if (sessions.length > 0) {
+            cachedSessions = sessions;
+          }
+        }
+
+        if (sessions.length > 0) {
+          // In browser mode, the API returns entries directly (no events)
+          // For polling, use 1 hour - deduplication in store handles overlap
+          const historyHours = isPolling ? 1 : (isBrowserMode() ? 24 : 1);
+          if (isBrowserMode()) {
+            const entries = await invoke<HistoryEntry[]>('load_history_for_active_sessions', {
+              activeSessions: sessions,
+              hours: historyHours,
+            });
+            // Add entries that have a tmux_session
+            if (!isPolling) {
+              console.log(`[browser] Loaded ${entries.length} history entries for ${sessions.length} sessions`);
+            }
+            entries.forEach(entry => {
+              if (entry.tmux_session) {
+                addEntry(entry);
+              }
+            });
+          } else {
+            // In Tauri mode, entries are emitted via events
+            await invoke('load_history_for_active_sessions', {
+              activeSessions: sessions,
+              hours: historyHours,
+            });
+          }
+        }
+      } catch (err) {
+        if (!isPolling) {
+          console.error('Failed to load history for active sessions:', err);
+        }
+        // For polling, if we have cached sessions, try to use them anyway
+        if (isPolling && cachedSessions.length > 0 && isBrowserMode()) {
+          try {
+            const entries = await invoke<HistoryEntry[]>('load_history_for_active_sessions', {
+              activeSessions: cachedSessions,
+              hours: 1,
+            });
+            entries.forEach(entry => {
+              if (entry.tmux_session) {
+                addEntry(entry);
+              }
+            });
+          } catch {
+            // Silently fail - will retry on next poll
+          }
+        }
+      }
+    };
 
     const setup = async () => {
       // Listen for history entries and route to live output store
@@ -79,41 +153,12 @@ function App() {
 
       // Load recent history for active sessions (last hour)
       // Small delay to let agent status populate first
-      timeoutId = setTimeout(async () => {
-        try {
-          const status = await invoke<{ team: { session: string }[]; free: { session: string }[] }>('get_agent_status');
-          const sessions = [
-            ...status.team.map(a => a.session),
-            ...status.free.map(a => a.session),
-          ];
-          if (sessions.length > 0) {
-            // In browser mode, the API returns entries directly (no events)
-            // Use 24 hours to load more context
-            const historyHours = isBrowserMode() ? 24 : 1;
-            if (isBrowserMode()) {
-              const entries = await invoke<HistoryEntry[]>('load_history_for_active_sessions', {
-                activeSessions: sessions,
-                hours: historyHours,
-              });
-              // Add entries that have a tmux_session
-              console.log(`[browser] Loaded ${entries.length} history entries for ${sessions.length} sessions`);
-              entries.forEach(entry => {
-                if (entry.tmux_session) {
-                  addEntry(entry);
-                }
-              });
-            } else {
-              // In Tauri mode, entries are emitted via events
-              await invoke('load_history_for_active_sessions', {
-                activeSessions: sessions,
-                hours: historyHours,
-              });
-            }
-          }
-        } catch (err) {
-          console.error('Failed to load history for active sessions:', err);
-        }
-      }, 500);
+      timeoutId = setTimeout(() => loadHistory(false), 500);
+
+      // In browser mode, poll for new history entries since we don't have real-time events
+      if (isBrowserMode()) {
+        pollIntervalId = setInterval(() => loadHistory(true), 3000); // Poll every 3 seconds
+      }
     };
 
     setup();
@@ -121,6 +166,7 @@ function App() {
     return () => {
       if (unlisten) unlisten();
       if (timeoutId) clearTimeout(timeoutId);
+      if (pollIntervalId) clearInterval(pollIntervalId);
     };
   }, [addEntry]);
 
@@ -194,8 +240,21 @@ function App() {
                   })}
                 </nav>
 
-                {/* Settings and theme toggle at bottom */}
+                {/* Support, Settings and theme toggle at bottom */}
                 <div className="flex flex-col items-center gap-3">
+                  <Tooltip content="Feedback & Ideas" side="right">
+                    <button
+                      onClick={() => setActiveTab('support')}
+                      className={cn(
+                        "w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-200",
+                        activeTab === 'support'
+                          ? "bg-foreground/10 text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                      )}
+                    >
+                      <Lightbulb className="w-5 h-5" />
+                    </button>
+                  </Tooltip>
                   <Tooltip content="Settings" side="right">
                     <button
                       onClick={() => setActiveTab('settings')}
@@ -222,6 +281,7 @@ function App() {
                 {activeTab === 'agents' && <AgentManager />}
                 {activeTab === 'cronos' && <CronosPanel />}
                 {activeTab === 'usage' && <UsagePanel />}
+                {activeTab === 'support' && <SupportPanel />}
                 {activeTab === 'settings' && (
                   <div className="max-w-2xl space-y-6">
                     <h1 className="text-2xl font-bold">Settings</h1>
@@ -238,6 +298,7 @@ function App() {
                         onLogout={logout}
                       />
                     )}
+                    <OllamaSettings />
                   </div>
                 )}
               </main>

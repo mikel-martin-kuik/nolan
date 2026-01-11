@@ -27,17 +27,45 @@ fi
 # Get agent info
 agent_name="${AGENT_NAME:-}"
 nolan_root="${NOLAN_ROOT:-}"
+team_name="${TEAM_NAME:-default}"
 
-# Define workflow agents who have restricted access
+# Check if agent is a workflow participant (dynamically from team config)
 # Note: Ralph is NOT restricted - support agents need infrastructure access
-workflow_agents="ana bill carl enzo frank"
 is_restricted=false
-for wa in $workflow_agents; do
-    if [[ "$agent_name" == "$wa" ]]; then
-        is_restricted=true
+if [[ -n "$nolan_root" ]] && [[ -n "$agent_name" ]]; then
+    # Ralph agents are never restricted
+    if [[ "$agent_name" == "ralph" ]] || [[ "$agent_name" =~ ^ralph- ]]; then
+        is_restricted=false
+    else
+        workflow_check=$(python3 -c "
+import yaml, sys
+from pathlib import Path
+
+nolan_root = Path('$nolan_root')
+team_name = '$team_name'
+agent_name = '$agent_name'.lower()
+
+# Search for team config
+config_path = None
+for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+    config_path = path
+    break
+
+if not config_path:
+    sys.exit(0)
+
+config = yaml.safe_load(config_path.read_text())
+agents = config.get('team', {}).get('agents', [])
+
+for agent in agents:
+    if agent.get('name', '').lower() == agent_name:
+        if agent.get('workflow_participant', False):
+            print('yes')
         break
+" 2>/dev/null)
+        [[ "$workflow_check" == "yes" ]] && is_restricted=true
     fi
-done
+fi
 
 # Only apply restrictions to workflow agents
 if [[ "$is_restricted" != true ]]; then
@@ -60,7 +88,8 @@ sensitive_patterns=(
 )
 
 # Commands that read file contents
-read_commands='(cat|head|tail|less|more|bat|view|vim|nano|sed|awk|grep|rg|xargs|find.*-exec)'
+# Includes common bypass methods: hex/binary viewers, dd, base64, tee, etc.
+read_commands='(cat|head|tail|less|more|bat|view|vim|nano|sed|awk|grep|rg|xargs|find.*-exec|xxd|strings|od|hexdump|dd|base64|tee|nl|pr|fold|cut|paste|rev|tac|sort|uniq|wc.*-c)'
 
 # Check if command reads a sensitive file
 for pattern in "${sensitive_patterns[@]}"; do
@@ -72,6 +101,7 @@ for pattern in "${sensitive_patterns[@]}"; do
 done
 
 # Block Python file read attempts (multiple methods)
+# Covers: open(), pathlib, subprocess, exec/compile, importlib
 python_read_patterns=(
     'python.*open\('
     'python.*read\('
@@ -83,6 +113,18 @@ python_read_patterns=(
     'python3.*pathlib.*read'
     'python.*<'        # stdin redirection
     'python3.*<'
+    'python.*subprocess'
+    'python3.*subprocess'
+    'python.*exec\('
+    'python3.*exec\('
+    'python.*compile\('
+    'python3.*compile\('
+    'python.*__import__'
+    'python3.*__import__'
+    'python.*importlib'
+    'python3.*importlib'
+    'python.*runpy'
+    'python3.*runpy'
 )
 
 sensitive_file_patterns='hooks|settings\.json|handoff-ack|coordinator-heartbeat|teams/.*\.yaml'
@@ -97,6 +139,26 @@ done
 # Block shell redirections to read sensitive files
 if echo "$command" | grep -qE '<.*\.claude/|<.*teams/.*\.yaml|<.*handoff-ack|<.*coordinator-heartbeat'; then
     echo "BLOCKED: Cannot read infrastructure files." >&2
+    exit 2
+fi
+
+# Block copy-then-read bypass attempts
+# Catches: cp file /tmp && cat /tmp/file, mv file /tmp, ln -s file /tmp
+if echo "$command" | grep -qE '(cp|mv|ln).*\.claude/|cp.*teams/.*\.yaml|cp.*handoff-ack|cp.*coordinator-heartbeat'; then
+    echo "BLOCKED: Cannot copy infrastructure files." >&2
+    exit 2
+fi
+
+# Block command substitution bypasses
+# Catches: cat $(echo .claude/hooks/file), < $(find .claude -name "*.sh")
+if echo "$command" | grep -qE '\$\(.*\.claude|\$\(.*teams/.*\.yaml|\$\(.*handoff'; then
+    echo "BLOCKED: Cannot access infrastructure files." >&2
+    exit 2
+fi
+
+# Block curl/wget file:// protocol
+if echo "$command" | grep -qE '(curl|wget).*file://'; then
+    echo "BLOCKED: Cannot use file:// protocol." >&2
     exit 2
 fi
 

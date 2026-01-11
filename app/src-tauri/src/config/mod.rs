@@ -17,6 +17,8 @@ pub struct Team {
     #[serde(default)]
     pub version: Option<String>,
     #[serde(default)]
+    pub schema_version: Option<u32>,
+    #[serde(default)]
     pub agents: Vec<AgentConfig>,
     #[serde(default)]
     pub workflow: WorkflowConfig,
@@ -87,6 +89,10 @@ pub struct PhaseConfig {
     pub requires: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub template: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub on_reject: Option<String>,
 }
 
 /// Deserialize phases from either strings or full structs
@@ -121,6 +127,8 @@ where
                             output: format!("{}.md", name),
                             requires: vec![],
                             template: None,
+                            next: None,
+                            on_reject: None,
                         }
                     }
                     serde_yaml::Value::Mapping(_) => {
@@ -689,6 +697,26 @@ impl TeamConfig {
     pub fn is_workflow_participant(&self, agent_name: &str) -> bool {
         self.team.agents.iter()
             .any(|a| a.name == agent_name && a.workflow_participant)
+    }
+
+    /// Get schema version (defaults to 1 for backward compatibility)
+    pub fn schema_version(&self) -> u32 {
+        self.team.schema_version.unwrap_or(1)
+    }
+
+    /// Get the first workflow phase
+    pub fn first_phase(&self) -> Option<&PhaseConfig> {
+        self.team.workflow.phases.first()
+    }
+
+    /// Get the owner of the first workflow phase
+    pub fn first_phase_owner(&self) -> Option<&str> {
+        self.first_phase().map(|p| p.owner.as_str())
+    }
+
+    /// Check if this team uses auto-progression (schema v2+)
+    pub fn uses_auto_progression(&self) -> bool {
+        self.schema_version() >= 2
     }
 }
 

@@ -38,10 +38,10 @@ if [[ -z "${PROJECTS_DIR:-}" ]]; then
     echo "ERROR: PROJECTS_DIR environment variable is not set." >&2
     exit 1
 fi
-PENDING_DIR="$PROJECTS_DIR/.handoffs/pending"
-PROCESSED_DIR="$PROJECTS_DIR/.handoffs/processed"
-LOCK_FILE="$PROJECTS_DIR/.handoffs/.lock-pending"
-HEARTBEAT_FILE="$PROJECTS_DIR/.handoffs/.heartbeat"
+PENDING_DIR="$NOLAN_ROOT/.state/handoffs/pending"
+PROCESSED_DIR="$NOLAN_ROOT/.state/handoffs/processed"
+LOCK_FILE="$NOLAN_ROOT/.state/handoffs/.lock-pending"
+HEARTBEAT_FILE="$NOLAN_ROOT/.state/handoffs/.heartbeat"
 
 # Default interval in seconds (for daemon mode)
 DEFAULT_INTERVAL=60

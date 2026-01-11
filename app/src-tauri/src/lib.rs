@@ -5,6 +5,7 @@ pub mod config;
 pub mod constants;
 pub mod cronos;
 pub mod error;
+pub mod ollama;
 pub mod shell;
 pub mod tmux;
 pub mod utils;
@@ -15,6 +16,8 @@ use commands::communicator::*;
 use commands::history::*;
 use commands::projects::*;
 use commands::usage::*;
+use commands::feedback::*;
+use commands::ollama::*;
 use commands::*;
 use tauri::Manager;
 
@@ -195,6 +198,25 @@ pub fn run() {
             cronos::commands::subscribe_cron_output,
             cronos::commands::get_cron_next_runs,
             cronos::commands::describe_cron_expression,
+            // Feedback commands
+            list_feature_requests,
+            create_feature_request,
+            update_feature_request_status,
+            vote_feature_request,
+            delete_feature_request,
+            list_ideas,
+            create_idea,
+            update_idea_status,
+            delete_idea,
+            get_feedback_stats,
+            get_user_votes,
+            // Ollama commands
+            ollama_status,
+            ollama_models,
+            ollama_generate,
+            ollama_chat,
+            ollama_get_config,
+            ollama_set_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

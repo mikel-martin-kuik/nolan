@@ -253,3 +253,44 @@ async fn handle_status_stream(mut socket: WebSocket, state: Arc<AppState>) {
         }
     }
 }
+
+/// WebSocket handler for history entry streaming
+pub async fn history_stream(
+    State(state): State<Arc<AppState>>,
+    ws: WebSocketUpgrade,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_history_stream(socket, state))
+}
+
+async fn handle_history_stream(mut socket: WebSocket, state: Arc<AppState>) {
+    let mut rx = state.history_tx.subscribe();
+
+    // Stream history entries in real-time
+    loop {
+        tokio::select! {
+            result = rx.recv() => {
+                match result {
+                    Ok(entry) => {
+                        let json = serde_json::to_string(&entry).unwrap_or_default();
+                        if socket.send(Message::Text(json)).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        eprintln!("History WebSocket lagged by {} messages", n);
+                        // Continue - we'll catch up
+                    }
+                    Err(_) => break,
+                }
+            }
+            msg = socket.recv() => {
+                match msg {
+                    Some(Ok(Message::Close(_))) => break,
+                    Some(Err(_)) => break,
+                    None => break,
+                    _ => {}
+                }
+            }
+        }
+    }
+}

@@ -13,6 +13,7 @@ use std::sync::Arc;
 use tokio::sync::broadcast;
 use tower_http::cors::{Any, CorsLayer};
 
+use crate::commands::history::HistoryEntry;
 use crate::commands::lifecycle::AgentStatusList;
 use crate::tmux::terminal_stream::TerminalOutput;
 
@@ -23,26 +24,43 @@ pub struct AppState {
     pub terminal_tx: broadcast::Sender<TerminalOutput>,
     /// Broadcast channel for agent status changes
     pub status_tx: broadcast::Sender<AgentStatusList>,
+    /// Broadcast channel for history entry events
+    pub history_tx: broadcast::Sender<HistoryEntry>,
 }
 
 impl AppState {
     pub fn new() -> Self {
         let (terminal_tx, _) = broadcast::channel(1024);
         let (status_tx, _) = broadcast::channel(64);
-        Self { terminal_tx, status_tx }
+        let (history_tx, _) = broadcast::channel(256);
+        Self { terminal_tx, status_tx, history_tx }
     }
 }
 
 /// Global reference to status broadcast channel (for use from lifecycle commands)
 static STATUS_TX: std::sync::OnceLock<broadcast::Sender<AgentStatusList>> = std::sync::OnceLock::new();
 
+/// Global reference to history broadcast channel (for use from history commands)
+static HISTORY_TX: std::sync::OnceLock<broadcast::Sender<HistoryEntry>> = std::sync::OnceLock::new();
+
 pub fn set_status_broadcaster(tx: broadcast::Sender<AgentStatusList>) {
     let _ = STATUS_TX.set(tx);
+}
+
+pub fn set_history_broadcaster(tx: broadcast::Sender<HistoryEntry>) {
+    let _ = HISTORY_TX.set(tx);
 }
 
 pub fn broadcast_status_change(status: AgentStatusList) {
     if let Some(tx) = STATUS_TX.get() {
         let _ = tx.send(status);
+    }
+}
+
+/// Broadcast a history entry to all connected WebSocket clients
+pub fn broadcast_history_entry(entry: HistoryEntry) {
+    if let Some(tx) = HISTORY_TX.get() {
+        let _ = tx.send(entry);
     }
 }
 
@@ -56,8 +74,9 @@ pub fn broadcast_status_change(status: AgentStatusList) {
 pub async fn start_server(port: u16) {
     let state = Arc::new(AppState::new());
 
-    // Initialize global status broadcaster for use from lifecycle commands
+    // Initialize global broadcasters for use from commands
     set_status_broadcaster(state.status_tx.clone());
+    set_history_broadcaster(state.history_tx.clone());
 
     // Configure CORS for cross-origin requests
     let cors = CorsLayer::new()

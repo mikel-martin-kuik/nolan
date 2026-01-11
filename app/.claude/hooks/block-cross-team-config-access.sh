@@ -37,15 +37,37 @@ if [[ -z "$nolan_root" ]]; then
     exit 0
 fi
 
-# Workflow agent list
-workflow_agents="ana bill carl enzo frank"
+# Check if agent is a workflow participant (dynamically from team config)
 is_workflow_agent=false
-for wa in $workflow_agents; do
-    if [[ "$agent_name" == "$wa" ]]; then
-        is_workflow_agent=true
+if [[ -n "$nolan_root" ]] && [[ -n "$agent_team" ]] && [[ -n "$agent_name" ]]; then
+    workflow_check=$(python3 -c "
+import yaml, sys
+from pathlib import Path
+
+nolan_root = Path('$nolan_root')
+team_name = '$agent_team'
+agent_name = '$agent_name'.lower()
+
+# Search for team config
+config_path = None
+for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+    config_path = path
+    break
+
+if not config_path:
+    sys.exit(0)
+
+config = yaml.safe_load(config_path.read_text())
+agents = config.get('team', {}).get('agents', [])
+
+for agent in agents:
+    if agent.get('name', '').lower() == agent_name:
+        if agent.get('workflow_participant', False):
+            print('yes')
         break
-    fi
-done
+" 2>/dev/null)
+    [[ "$workflow_check" == "yes" ]] && is_workflow_agent=true
+fi
 
 # Infrastructure files
 if [[ "$is_workflow_agent" == true ]]; then

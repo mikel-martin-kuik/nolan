@@ -645,13 +645,52 @@ pub async fn launch_team(
         emit_status_change(&app_clone).await;
     });
 
-    // If coordinator was launched and we have a prompt, wait for Claude to be ready then send it
-    let coordinator = team.coordinator().to_string();
-    if launched.contains(&coordinator) {
-        if let Some(prompt) = effective_prompt {
-            // Prepend project context so coordinator knows which project to work on
-            let prompt_with_context = format!("[Project: {}] {}", project_name, prompt);
-            let coordinator_session = format!("agent-{}-{}", team_name, coordinator);
+    // Determine who should receive the initial prompt based on schema version
+    // v2+ (auto-progression): Send to first phase owner (e.g., Ana for Research)
+    // v1 (legacy): Send to coordinator (Dan)
+    if let Some(prompt) = effective_prompt {
+        let uses_auto_progression = team.uses_auto_progression();
+        let target_agent: String;
+        let target_session: String;
+        let prompt_with_context: String;
+
+        if uses_auto_progression {
+            // Schema v2: Auto-assign to first phase owner
+            if let Some(first_phase) = team.first_phase() {
+                target_agent = first_phase.owner.clone();
+                target_session = format!("agent-{}-{}", team_name, target_agent);
+                prompt_with_context = format!("[Project: {}] {}", project_name, prompt);
+
+                // Call assign.sh to formally assign the first phase
+                let assign_script = nolan_root.join("app").join("scripts").join("assign.sh");
+                let phase_name = first_phase.name.clone();
+                let project_name_clone = project_name.clone();
+                let nolan_root_clone = nolan_root.clone();
+
+                tokio::spawn(async move {
+                    // Small delay to let agents initialize
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+
+                    let _ = Command::new(&assign_script)
+                        .env("NOLAN_ROOT", nolan_root_clone.to_string_lossy().to_string())
+                        .args(&[&project_name_clone, &phase_name, &format!("Initial assignment: {}", prompt)])
+                        .output();
+                });
+            } else {
+                // No phases defined, fall back to coordinator
+                target_agent = team.coordinator().to_string();
+                target_session = format!("agent-{}-{}", team_name, target_agent);
+                prompt_with_context = format!("[Project: {}] {}", project_name, prompt);
+            }
+        } else {
+            // Schema v1 (legacy): Send to coordinator
+            target_agent = team.coordinator().to_string();
+            target_session = format!("agent-{}-{}", team_name, target_agent);
+            prompt_with_context = format!("[Project: {}] {}", project_name, prompt);
+        }
+
+        // Only send prompt if target agent was launched
+        if launched.contains(&target_agent) {
             tokio::spawn(async move {
                 // Wait for Claude to be ready (poll for status line indicator)
                 let max_attempts = 30; // 30 seconds max
@@ -662,7 +701,7 @@ pub async fn launch_team(
 
                     // Check if Claude is ready by looking for the status line
                     let output = Command::new("tmux")
-                        .args(&["capture-pane", "-t", &coordinator_session, "-p", "-S", "-3"])
+                        .args(&["capture-pane", "-t", &target_session, "-p", "-S", "-3"])
                         .output();
 
                     if let Ok(o) = output {
@@ -673,15 +712,15 @@ pub async fn launch_team(
                             // Small extra delay for UI to settle
                             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-                            // Send the prompt to coordinator
+                            // Send the prompt to target agent
                             let _ = Command::new("tmux")
-                                .args(&["send-keys", "-t", &coordinator_session, "-l", &prompt_with_context])
+                                .args(&["send-keys", "-t", &target_session, "-l", &prompt_with_context])
                                 .output();
 
                             // Small delay then send Enter
                             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
                             let _ = Command::new("tmux")
-                                .args(&["send-keys", "-t", &coordinator_session, "C-m"])
+                                .args(&["send-keys", "-t", &target_session, "C-m"])
                                 .output();
 
                             break;

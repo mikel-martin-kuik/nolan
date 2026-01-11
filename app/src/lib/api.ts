@@ -94,7 +94,11 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   set_project_team: { method: 'PUT', path: (args) => `/api/projects/${getArg(args, 'project_name')}/team` },
   update_project_status: { method: 'PUT', path: (args) => `/api/projects/${getArg(args, 'project_name')}/status` },
   update_file_marker: { method: 'PUT', path: (args) => `/api/projects/${getArg(args, 'project_name')}/file-marker` },
-  read_roadmap: { method: 'GET', path: '/api/projects/roadmap' },
+  read_roadmap: { method: 'GET', path: (args) => {
+    const file = args?.filename || 'roadmap.md';
+    return `/api/projects/roadmap?file=${encodeURIComponent(file as string)}`;
+  }},
+  list_roadmap_files: { method: 'GET', path: '/api/projects/roadmap/files' },
 
   // Terminal
   start_terminal_stream: { method: 'POST', path: '/api/terminal/start' },
@@ -161,6 +165,27 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   subscribe_cron_output: { method: 'POST', path: '/api/noop' },  // WebSocket only - no-op in REST
   get_cron_next_runs: { method: 'GET', path: (args) => `/api/cronos/cron/next?expression=${encodeURIComponent(getArg(args, 'expression') as string)}&count=${args.count || 5}` },
   describe_cron_expression: { method: 'GET', path: (args) => `/api/cronos/cron/describe?expression=${encodeURIComponent(getArg(args, 'expression') as string)}` },
+
+  // Feedback (feature requests & ideas)
+  list_feature_requests: { method: 'GET', path: '/api/feedback/requests' },
+  create_feature_request: { method: 'POST', path: '/api/feedback/requests' },
+  update_feature_request_status: { method: 'PUT', path: (args) => `/api/feedback/requests/${args.id}/status` },
+  vote_feature_request: { method: 'POST', path: (args) => `/api/feedback/requests/${args.id}/vote` },
+  delete_feature_request: { method: 'DELETE', path: (args) => `/api/feedback/requests/${args.id}` },
+  list_ideas: { method: 'GET', path: '/api/feedback/ideas' },
+  create_idea: { method: 'POST', path: '/api/feedback/ideas' },
+  update_idea_status: { method: 'PUT', path: (args) => `/api/feedback/ideas/${args.id}/status` },
+  delete_idea: { method: 'DELETE', path: (args) => `/api/feedback/ideas/${args.id}` },
+  get_feedback_stats: { method: 'GET', path: '/api/feedback/stats' },
+  get_user_votes: { method: 'GET', path: '/api/feedback/votes' },
+
+  // Ollama (local LLM)
+  ollama_status: { method: 'GET', path: '/api/ollama/status' },
+  ollama_models: { method: 'GET', path: '/api/ollama/models' },
+  ollama_generate: { method: 'POST', path: '/api/ollama/generate' },
+  ollama_chat: { method: 'POST', path: '/api/ollama/chat' },
+  ollama_get_config: { method: 'GET', path: '/api/ollama/config' },
+  ollama_set_config: { method: 'PUT', path: '/api/ollama/config' },
 };
 
 /**

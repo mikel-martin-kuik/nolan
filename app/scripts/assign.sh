@@ -2,9 +2,16 @@
 #
 # assign.sh - Update Current Assignment section in coordinator's output file
 #
-# Usage:
-#   assign.sh <project-name> <agent> <phase> <task-description>
-#   assign.sh nolan-native-terminal enzo QA "Review Carl's implementation"
+# Usage (preferred - agent derived from phase):
+#   assign.sh <project-name> <phase> <task-description>
+#   assign.sh nolan-native-terminal Research "Investigate the terminal integration"
+#
+# Usage (explicit agent - for edge cases):
+#   assign.sh <project-name> --agent <agent> <phase> <task-description>
+#   assign.sh nolan-native-terminal --agent enzo "Plan Review" "Review Carl's implementation"
+#
+# The agent is automatically determined from the phase owner in team config.
+# This makes assignment deterministic and agent-transparent.
 #
 # This script:
 # 1. Updates the Current Assignment section in coordinator's output file
@@ -15,17 +22,38 @@
 
 set -euo pipefail
 
-# Validate arguments
-if [[ $# -lt 4 ]]; then
-    echo "Usage: assign.sh <project-name> <agent> <phase> <task-description>" >&2
-    echo "Example: assign.sh nolan-native-terminal enzo QA 'Review implementation'" >&2
+# Parse arguments
+EXPLICIT_AGENT=""
+PROJECT_NAME=""
+PHASE=""
+TASK=""
+
+# Check for --agent flag
+if [[ $# -ge 4 ]] && [[ "$2" == "--agent" ]]; then
+    # Explicit agent mode: assign.sh <project> --agent <agent> <phase> <task>
+    if [[ $# -lt 5 ]]; then
+        echo "Usage: assign.sh <project-name> --agent <agent> <phase> <task-description>" >&2
+        exit 1
+    fi
+    PROJECT_NAME="$1"
+    EXPLICIT_AGENT="$3"
+    PHASE="$4"
+    TASK="$5"
+elif [[ $# -ge 3 ]]; then
+    # Auto-agent mode: assign.sh <project> <phase> <task>
+    PROJECT_NAME="$1"
+    PHASE="$2"
+    TASK="$3"
+else
+    echo "Usage: assign.sh <project-name> <phase> <task-description>" >&2
+    echo "       assign.sh <project-name> --agent <agent> <phase> <task-description>" >&2
+    echo "" >&2
+    echo "Examples:" >&2
+    echo "  assign.sh my-project Research 'Investigate the problem'" >&2
+    echo "  assign.sh my-project Planning 'Create implementation plan'" >&2
+    echo "  assign.sh my-project --agent enzo 'Plan Review' 'Review the plan'" >&2
     exit 1
 fi
-
-PROJECT_NAME="$1"
-AGENT="$2"
-PHASE="$3"
-TASK="$4"
 
 # Get projects directory
 PROJECTS_DIR="${PROJECTS_DIR:-${NOLAN_ROOT:-$HOME/nolan}/projects}"
@@ -68,6 +96,64 @@ try:
 except:
     # Fallback to plain text
     print(content.strip())
+"
+}
+
+# Get phase owner from team config
+# Usage: agent=$(get_phase_owner "$project_path" "$phase")
+get_phase_owner() {
+    local project_path="$1"
+    local phase="$2"
+
+    python3 -c "
+import yaml, os, sys
+from pathlib import Path
+
+project_path = Path('$project_path')
+phase_name = '$phase'
+
+# Parse team name from .team file
+team_file = project_path / '.team'
+content = team_file.read_text()
+try:
+    data = yaml.safe_load(content)
+    if isinstance(data, dict) and 'team' in data:
+        team_name = data['team']
+    else:
+        team_name = content.strip()
+except:
+    team_name = content.strip()
+
+nolan_root = Path(os.environ.get('NOLAN_ROOT', os.path.expanduser('~/nolan')))
+
+# Search for team config
+config_path = None
+for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+    config_path = path
+    break
+
+if config_path is None:
+    print(f'ERROR: Team config not found: {team_name}', file=sys.stderr)
+    sys.exit(1)
+
+config = yaml.safe_load(config_path.read_text())
+phases = config.get('team', {}).get('workflow', {}).get('phases', [])
+
+# Find phase owner (case-insensitive match)
+for phase in phases:
+    if phase.get('name', '').lower() == phase_name.lower():
+        owner = phase.get('owner', '')
+        if owner:
+            print(owner)
+            sys.exit(0)
+        else:
+            print(f'ERROR: Phase \"{phase_name}\" has no owner defined', file=sys.stderr)
+            sys.exit(1)
+
+# Phase not found - list available phases
+available = [p.get('name', '') for p in phases]
+print(f'ERROR: Phase \"{phase_name}\" not found. Available: {available}', file=sys.stderr)
+sys.exit(1)
 "
 }
 
@@ -193,6 +279,19 @@ COORDINATOR=$(get_coordinator "$PROJECT_DIR")
 COORDINATOR_FILE=$(get_coordinator_file "$PROJECT_DIR")
 COORDINATOR_PATH="$PROJECT_DIR/$COORDINATOR_FILE"
 
+# Determine AGENT: use explicit if provided, otherwise derive from phase owner
+if [[ -n "$EXPLICIT_AGENT" ]]; then
+    AGENT="$EXPLICIT_AGENT"
+    echo "Using explicit agent: $AGENT"
+else
+    AGENT=$(get_phase_owner "$PROJECT_DIR" "$PHASE")
+    if [[ -z "$AGENT" ]]; then
+        echo "Error: Could not determine agent for phase: $PHASE" >&2
+        exit 1
+    fi
+    echo "Phase '$PHASE' -> Agent: $AGENT"
+fi
+
 # Validate coordinator file exists
 if [[ ! -f "$COORDINATOR_PATH" ]]; then
     echo "Error: Coordinator file not found: $COORDINATOR_PATH" >&2
@@ -257,7 +356,7 @@ get_phase_instructions() {
     local project_path="$2"
 
     python3 -c "
-import yaml, os
+import yaml, os, sys
 from pathlib import Path
 
 project_path = Path('$project_path')
@@ -275,7 +374,18 @@ except:
     team_name = content.strip()
 
 nolan_root = Path(os.environ.get('NOLAN_ROOT', os.path.expanduser('~/nolan')))
-config = yaml.safe_load((nolan_root / 'teams' / f'{team_name}.yaml').read_text())
+
+# Search for team config in teams directory (supports subdirectories)
+config_path = None
+for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+    config_path = path
+    break
+
+if config_path is None:
+    print(f'ERROR: Team config not found: {team_name}', file=sys.stderr)
+    sys.exit(1)
+
+config = yaml.safe_load(config_path.read_text())
 
 for phase_config in config['team']['workflow']['phases']:
     if phase_config['name'] == '$phase':
@@ -294,7 +404,7 @@ get_predecessor_files() {
     local project_path="$2"
 
     python3 -c "
-import yaml, os
+import yaml, os, sys
 from pathlib import Path
 
 project_path = Path('$project_path')
@@ -312,7 +422,18 @@ except:
     team_name = content.strip()
 
 nolan_root = Path(os.environ.get('NOLAN_ROOT', os.path.expanduser('~/nolan')))
-config = yaml.safe_load((nolan_root / 'teams' / f'{team_name}.yaml').read_text())
+
+# Search for team config in teams directory (supports subdirectories)
+config_path = None
+for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+    config_path = path
+    break
+
+if config_path is None:
+    # Silent exit - predecessor files are optional
+    sys.exit(0)
+
+config = yaml.safe_load(config_path.read_text())
 
 for phase_config in config['team']['workflow']['phases']:
     if phase_config['name'] == '$phase':
@@ -368,7 +489,7 @@ ASSIGNMENT_SECTION+=$'\n'"---"
 
 # Update coordinator's output file using Python (safer for special characters)
 # 1. Remove old Current Assignment section if exists
-# 2. Insert new assignment after status marker
+# 2. Insert new assignment after title
 # 3. Update Current Status section
 # 4. Add Handoff Log entry
 
@@ -386,7 +507,6 @@ msg_id = sys.argv[6]
 timestamp_full = sys.argv[7]
 coordinator = sys.argv[8]
 project_name = sys.argv[9]
-timestamp_date = timestamp_full.split()[0]
 
 content = coord_path.read_text()
 
@@ -424,13 +544,8 @@ Update `{output_file}` with all required sections.
 ---
 '''
 
-# Insert after status marker
-status_pattern = r'(<!-- PROJECT:STATUS:[^\n]+\n)'
-if re.search(status_pattern, content):
-    content = re.sub(status_pattern, r'\1\n' + assignment_section, content)
-else:
-    # No status marker, insert at beginning after title
-    content = re.sub(r'(^# [^\n]+\n)', r'\1\n' + assignment_section, content)
+# Insert after title
+content = re.sub(r'(^# [^\n]+\n)', r'\1\n' + assignment_section, content)
 
 # 3. Update Current Status section
 content = re.sub(r'\*\*Phase\*\*: [^\n]+', f'**Phase**: {phase}', content)
@@ -492,7 +607,7 @@ echo ""
 # Set agent's active project state file
 # This is CRITICAL - the stop hook uses this to know which project to validate
 TEAM_NAME=$(get_team_name "$PROJECT_DIR")
-STATE_DIR="$PROJECTS_DIR/.state/$TEAM_NAME"
+STATE_DIR="$NOLAN_ROOT/.state/$TEAM_NAME"
 mkdir -p "$STATE_DIR"
 echo "$PROJECT_NAME" > "$STATE_DIR/active-$AGENT.txt"
 echo "✅ Set active project for $AGENT"

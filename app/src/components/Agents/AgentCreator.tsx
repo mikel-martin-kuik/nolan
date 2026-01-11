@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { invoke } from '@/lib/api';
 import { useToastStore } from '../../store/toastStore';
+import { useOllamaStore } from '../../store/ollamaStore';
 import {
   Select,
   SelectContent,
@@ -18,6 +19,7 @@ import {
 import { Tooltip } from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Sparkles, Loader2 } from 'lucide-react';
 import type { ClaudeModel } from '@/types';
 
 interface AgentCreatorProps {
@@ -30,7 +32,35 @@ export const AgentCreator: React.FC<AgentCreatorProps> = ({ onSave, onCancel }) 
   const [role, setRole] = useState('');
   const [model, setModel] = useState<ClaudeModel>('opus');
   const [creating, setCreating] = useState(false);
+  const [generating, setGenerating] = useState(false);
   const { error: showError } = useToastStore();
+  const { status: ollamaStatus, checkConnection, generate: ollamaGenerate } = useOllamaStore();
+
+  // Check Ollama connection on mount
+  useEffect(() => {
+    checkConnection();
+  }, [checkConnection]);
+
+  // Generate role description using Ollama
+  const handleGenerateRole = async () => {
+    if (!name.trim()) {
+      showError('Enter an agent name first');
+      return;
+    }
+
+    setGenerating(true);
+    try {
+      const systemPrompt = `You are a helpful assistant that generates concise role descriptions for AI agents in a software development team. Keep descriptions to 1-2 sentences.`;
+      const prompt = `Generate a role description for an AI agent named "${name}". The description should explain what this agent does in a development team. Be specific and actionable.`;
+
+      const result = await ollamaGenerate(prompt, systemPrompt);
+      setRole(result.trim());
+    } catch (err) {
+      showError(`Failed to generate: ${err}`);
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   // Validate agent name format
   const validateName = (name: string): string | null => {
@@ -127,12 +157,33 @@ export const AgentCreator: React.FC<AgentCreatorProps> = ({ onSave, onCancel }) 
                 Role Description
               </label>
             </Tooltip>
-            <Input
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              placeholder="e.g., Researcher, Developer, QA Reviewer"
-              disabled={creating}
-            />
+            <div className="flex gap-2">
+              <Input
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+                placeholder="e.g., Researcher, Developer, QA Reviewer"
+                disabled={creating || generating}
+                className="flex-1"
+              />
+              {ollamaStatus === 'connected' && (
+                <Tooltip content="Generate role description using local AI" side="top">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={handleGenerateRole}
+                    disabled={creating || generating || !name.trim()}
+                    className="shrink-0"
+                  >
+                    {generating ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Sparkles className="h-4 w-4" />
+                    )}
+                  </Button>
+                </Tooltip>
+              )}
+            </div>
           </div>
 
           {/* Model */}

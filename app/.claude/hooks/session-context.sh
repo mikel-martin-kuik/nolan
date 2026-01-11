@@ -19,7 +19,6 @@ if [[ -z "${PROJECTS_DIR:-}" ]]; then
     exit 0
 fi
 PROJECTS_BASE="$PROJECTS_DIR"
-HANDOFFS_QUEUE="$PROJECTS_BASE/.handoffs/pending.log"
 
 # Validate identity
 if [[ -z "${AGENT_NAME:-}" ]]; then
@@ -137,12 +136,12 @@ if [[ -n "${AGENT_NAME:-}" ]]; then
     INSTRUCTIONS_BASE=""
 
     # First try current team
-    if [[ -L "$PROJECTS_BASE/.state/$CURRENT_TEAM/instructions/_current/${AGENT_NAME}.yaml" ]]; then
-        INSTRUCTIONS_BASE="$PROJECTS_BASE/.state/$CURRENT_TEAM/instructions"
+    if [[ -L "$NOLAN_ROOT/.state/$CURRENT_TEAM/instructions/_current/${AGENT_NAME}.yaml" ]]; then
+        INSTRUCTIONS_BASE="$NOLAN_ROOT/.state/$CURRENT_TEAM/instructions"
         INSTRUCTION_FILE="$INSTRUCTIONS_BASE/_current/${AGENT_NAME}.yaml"
     else
         # Search other teams for this agent's current task
-        for team_dir in "$PROJECTS_BASE/.state"/*/; do
+        for team_dir in "$NOLAN_ROOT/.state"/*/; do
             [[ -d "$team_dir" ]] || continue
             local_team=$(basename "$team_dir")
             if [[ -L "${team_dir}instructions/_current/${AGENT_NAME}.yaml" ]]; then
@@ -192,10 +191,7 @@ try:
         print(f'> {instructions}')
         print()
 
-    project = data.get('project', 'unknown')
     print(f\"**Output file:** \`{data.get('output_file', 'unknown')}\`\")
-    print(f\"**Instruction file:** \`$INSTRUCTION_FILE\`\")
-    print(f\"**Audit trail:** \`$INSTRUCTIONS_BASE/{project}/\`\")
 except Exception as e:
     print(f'Error reading instructions: {e}')
 " 2>/dev/null || echo "_(Error parsing instruction file)_"
@@ -206,22 +202,32 @@ except Exception as e:
 fi
 
 # Handoff directories
-PENDING_DIR="$PROJECTS_BASE/.handoffs/pending"
-PROCESSED_DIR="$PROJECTS_BASE/.handoffs/processed"
+PENDING_DIR="$NOLAN_ROOT/.state/handoffs/pending"
+PROCESSED_DIR="$NOLAN_ROOT/.state/handoffs/processed"
 
 # Process handoffs for coordinator
 COORDINATOR=$(python3 -c "
 import yaml, os, sys
 try:
     config = yaml.safe_load(open('$TEAM_CONFIG'))
-    print(config['team']['workflow']['coordinator'])
-except:
-    print('dan')
-" 2>/dev/null || echo "dan")
+    coordinator = config.get('team', {}).get('workflow', {}).get('coordinator')
+    if not coordinator:
+        print('ERROR: No coordinator defined in team config', file=sys.stderr)
+        sys.exit(1)
+    print(coordinator)
+except Exception as e:
+    print(f'ERROR: Failed to get coordinator: {e}', file=sys.stderr)
+    sys.exit(1)
+" 2>/dev/null)
+
+if [[ -z "$COORDINATOR" ]]; then
+    echo "ERROR: Could not determine coordinator from team config."
+    exit 0
+fi
 
 if [[ "${AGENT_NAME:-}" == "$COORDINATOR" ]] && [[ -d "$PENDING_DIR" ]]; then
     mkdir -p "$PROCESSED_DIR"
-    LOCK_FILE="$PROJECTS_BASE/.handoffs/.lock-pending"
+    LOCK_FILE="$NOLAN_ROOT/.state/handoffs/.lock-pending"
 
     # Use flock for atomic batch ACK (prevents race with other processes)
     ack_count=0
@@ -266,15 +272,22 @@ fi
 
 # Only show pending handoff details to coordinator
 if [[ $pending_count -gt 0 ]]; then
-    # Load coordinator from current team config
-    COORDINATOR=$(python3 -c "
+    # Load coordinator from current team config (no fallback - require explicit config)
+    COORDINATOR_2=$(python3 -c "
 import yaml, os, sys
 try:
     config = yaml.safe_load(open('$TEAM_CONFIG'))
-    print(config['team']['workflow']['coordinator'])
-except Exception as e:
-    print('dan', file=sys.stderr)  # Fallback to dan
-" 2>/dev/null || echo "dan")
+    coordinator = config.get('team', {}).get('workflow', {}).get('coordinator')
+    if coordinator:
+        print(coordinator)
+except Exception:
+    pass
+" 2>/dev/null)
+
+    # Use first COORDINATOR if available, otherwise second lookup
+    if [[ -z "$COORDINATOR" ]] && [[ -n "$COORDINATOR_2" ]]; then
+        COORDINATOR="$COORDINATOR_2"
+    fi
 
     # Check if agent is Ralph (support agent with full access)
     is_ralph=false
@@ -317,58 +330,34 @@ except Exception as e:
     fi
 fi
 
-# Legacy queue support (for backwards compatibility during transition)
-if [[ -f "$HANDOFFS_QUEUE" ]] && [[ -s "$HANDOFFS_QUEUE" ]]; then
-    echo "### ⚠️ Legacy Handoffs (Queued - old format)"
-    echo ""
-    echo "| Timestamp | Agent | Project | Status |"
-    echo "|-----------|-------|---------|--------|"
-    while IFS='|' read -r timestamp agent project status; do
-        [[ -z "$timestamp" ]] && continue
-        echo "| $timestamp | $agent | $project | $status |"
-    done < "$HANDOFFS_QUEUE"
-    echo ""
-    echo "Clear legacy queue: \`rm \"$HANDOFFS_QUEUE\"\`"
-    echo ""
-fi
-
-# ===== PROJECT STATUS DETECTION (MARKER-ONLY) =====
-# Single source of truth: structured markers only
-# No heuristics, no legacy pattern matching
+# ===== PROJECT STATUS DETECTION (FILE-BASED) =====
+# Status determined by file content, not markers:
+# - inprogress: Has Current Assignment section with Agent
+# - pending: No active assignment
+# - complete: Backend determines via required headers (not checked here)
 #
-# Returns via global: PROJECT_STATUS = "complete" | "inprogress" | "pending"
+# Returns via global: PROJECT_STATUS = "inprogress" | "pending"
 get_project_status() {
     local coord_path="$1"
     PROJECT_STATUS="pending"
 
     [[ ! -f "$coord_path" ]] && return
 
-    # MARKER-ONLY: Check for structured markers
-    if grep -q '<!-- PROJECT:STATUS:COMPLETE' "$coord_path" 2>/dev/null; then
-        PROJECT_STATUS="complete"
-        return
-    fi
-    if grep -q '<!-- PROJECT:STATUS:CLOSED' "$coord_path" 2>/dev/null; then
-        PROJECT_STATUS="complete"
-        return
-    fi
-    if grep -q '<!-- PROJECT:STATUS:ARCHIVED' "$coord_path" 2>/dev/null; then
-        PROJECT_STATUS="complete"
-        return
-    fi
-    if grep -q '<!-- PROJECT:STATUS:INPROGRESS' "$coord_path" 2>/dev/null; then
-        PROJECT_STATUS="inprogress"
-        return
+    # Check for active assignment (Current Assignment with Agent field)
+    if grep -q '## Current Assignment' "$coord_path" 2>/dev/null; then
+        if grep -q '\*\*Agent\*\*:' "$coord_path" 2>/dev/null; then
+            PROJECT_STATUS="inprogress"
+            return
+        fi
     fi
 
-    # No marker = pending (explicit marking required)
+    # No active assignment = pending
     PROJECT_STATUS="pending"
 }
 
 # Collect projects by status
 pending_projects=""
 active_count=0
-complete_count=0
 pending_count=0
 
 for dir in "$PROJECTS_BASE"/*/; do
@@ -391,13 +380,10 @@ for dir in "$PROJECTS_BASE"/*/; do
     coordinator_file=$(get_coordinator_file "$dir" 2>/dev/null) || continue
     coord_path="$dir/$coordinator_file"
 
-    # Get status from marker
+    # Get status from file content
     get_project_status "$coord_path"
 
     case "$PROJECT_STATUS" in
-        complete)
-            ((complete_count++)) || true
-            ;;
         inprogress)
             ((active_count++)) || true
             echo "### $project"
@@ -428,11 +414,11 @@ for dir in "$PROJECTS_BASE"/*/; do
     esac
 done
 
-# Show pending projects (no marker)
+# Show pending projects (no active assignment)
 if [[ -n "$pending_projects" ]]; then
     pending_clean=$(echo -e "$pending_projects" | grep -v '^$' | sort)
     if [[ -n "$pending_clean" ]]; then
-        echo "### Pending (needs marker)"
+        echo "### Pending (no assignment)"
         echo "$pending_clean"
         echo ""
     fi
@@ -441,12 +427,11 @@ fi
 # Summary line
 echo "---"
 if [[ $active_count -eq 0 && $pending_count -eq 0 ]]; then
-    echo "All projects complete. ($complete_count total)"
+    echo "No active projects."
 else
     summary=""
     [[ $active_count -gt 0 ]] && summary="${active_count} active"
     [[ $pending_count -gt 0 ]] && summary="${summary}${summary:+, }${pending_count} pending"
-    [[ $complete_count -gt 0 ]] && summary="${summary}${summary:+, }${complete_count} complete"
     echo "_${summary}_"
 fi
 

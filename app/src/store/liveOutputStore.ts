@@ -45,6 +45,11 @@ interface LiveOutputStore {
 
 // Helper to create unique key for deduplication
 const getEntryKey = (entry: HistoryEntry): string => {
+  // Prefer UUID for deduplication when available (most reliable)
+  if (entry.uuid) {
+    return entry.uuid;
+  }
+  // Fallback to timestamp + session + message prefix
   const messagePrefix = entry.message.slice(0, 100);
   return `${entry.timestamp}-${entry.tmux_session || 'unknown'}-${messagePrefix}`;
 };

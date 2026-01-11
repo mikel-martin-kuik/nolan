@@ -32,7 +32,9 @@ pub async fn list_projects() -> Result<Json<Vec<ProjectInfo>>, impl IntoResponse
 /// Create project request
 #[derive(Deserialize)]
 pub struct CreateProjectRequest {
+    #[serde(alias = "projectName")]
     name: String,
+    #[serde(alias = "teamName")]
     team_name: Option<String>,
 }
 

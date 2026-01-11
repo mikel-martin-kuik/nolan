@@ -478,15 +478,10 @@ export const TeamsPanel: React.FC = () => {
   }, [contextMenu, handleClickOutside]);
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">Team Configurations</h1>
-          <p className="text-sm text-muted-foreground">Manage agent teams and workflows</p>
-        </div>
-        <Button onClick={openCreateTeamModal}>
-          <Plus />
+    <div className="h-full flex flex-col gap-4">
+      {/* Toolbar */}
+      <div className="flex items-center gap-2">
+        <Button size="sm" onClick={openCreateTeamModal}>
           New Team
         </Button>
       </div>

@@ -47,14 +47,14 @@ check_env() {
 # Get instructions base directory for a specific team
 get_instructions_base() {
     local team="${1:-$TEAM_NAME}"
-    echo "$PROJECTS_DIR/.state/$team/instructions"
+    echo "$NOLAN_ROOT/.state/$team/instructions"
 }
 
 # Find agent's current task symlink across all teams
 # Returns: path to symlink if found, empty if not
 find_agent_current_symlink() {
     local agent="$1"
-    local state_base="$PROJECTS_DIR/.state"
+    local state_base="$NOLAN_ROOT/.state"
 
     # First try current team
     local current_link="$state_base/$TEAM_NAME/instructions/_current/${agent}.yaml"
@@ -124,7 +124,6 @@ cmd_complete() {
     local project=$(python3 -c "import yaml; print(yaml.safe_load(open('$task_file')).get('project', 'unknown'))" 2>/dev/null)
     local msg_id=$(python3 -c "import yaml; print(yaml.safe_load(open('$task_file')).get('msg_id', 'unknown'))" 2>/dev/null)
     local phase=$(python3 -c "import yaml; print(yaml.safe_load(open('$task_file')).get('phase', 'unknown'))" 2>/dev/null)
-
     # Add completion timestamp to the task file
     local completed_at=$(date +"%Y-%m-%d %H:%M")
     python3 -c "
@@ -171,7 +170,7 @@ coord_path.write_text(content)
         fi
 
         # Create handoff file for coordinator to ACK
-        local handoff_dir="$PROJECTS_DIR/.handoffs/pending"
+        local handoff_dir="$NOLAN_ROOT/.state/handoffs/pending"
         mkdir -p "$handoff_dir"
         local handoff_id="${msg_id/MSG_/HO_}"
         local handoff_file="$handoff_dir/${handoff_id}.handoff"
@@ -195,7 +194,7 @@ HANDOFF_EOF
     rm -f "$current_link"
 
     # Clear active project state
-    local state_file="$PROJECTS_DIR/.state/$TEAM_NAME/active-${agent}.txt"
+    local state_file="$NOLAN_ROOT/.state/$TEAM_NAME/active-${agent}.txt"
     rm -f "$state_file"
 
     echo -e "${GREEN}✓ Task completed${NC}"
@@ -562,8 +561,7 @@ ENVIRONMENT:
   AGENT_NAME     Current agent (optional, for 'complete')
 
 AUDIT TRAIL:
-  Tasks are stored in: .state/{team}/instructions/{project}/{agent}/{MSG_ID}.yaml
-  Current tasks linked: .state/{team}/instructions/_current/{agent}.yaml
+  Tasks are tracked internally with full history.
 
 EXAMPLES:
   task assign my-project carl implement "Fix bug in line 42"

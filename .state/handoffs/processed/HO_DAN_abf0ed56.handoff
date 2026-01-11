@@ -1,0 +1,12 @@
+# Auto-handoff from carl
+id: HO_DAN_abf0ed56
+task_id: MSG_DAN_abf0ed56
+from_agent: carl
+project: ollama-nolan-integration
+phase: Implementation
+timestamp: '2026-01-11 12:51'
+team: default
+instruction_file: /home/mmartin/Proyectos/nolan/.state/default/instructions/ollama-nolan-integration/carl/MSG_DAN_abf0ed56.yaml
+output_file: /home/mmartin/Proyectos/nolan/projects/ollama-nolan-integration/progress.md
+status: pending_review
+auto_generated: true

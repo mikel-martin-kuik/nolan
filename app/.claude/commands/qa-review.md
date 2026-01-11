@@ -6,13 +6,13 @@ allowed-tools: Read, Glob, Grep, Bash(cat:*), Bash(ls:*)
 # QA Review: $1
 
 ## Environment Setup
-!`if [ -z "$1" ]; then echo "❌ ERROR: No project specified."; echo "Notifying Dan..."; source "$NOLAN_ROOT/app/scripts/team-aliases.sh" 2>/dev/null && send dan "Enzo needs project name to start QA review. Which project should I review?" 2>/dev/null || echo "(Could not reach Dan - ask manually)"; echo ""; echo "⏸️  BLOCKED: Wait for Dan to specify project, then run: /qa-review <project-name> [document]"; exit 1; fi; if [ ! -d "$PROJECTS_DIR/$1" ]; then echo "❌ ERROR: Project '$1' not found in $PROJECTS_DIR"; echo "Available projects:"; ls -1 "$PROJECTS_DIR" | grep -v "^\." | head -10; exit 1; fi; export DOCS_PATH="$PROJECTS_DIR/$1"; mkdir -p "$PROJECTS_DIR/.state"; echo "$1" > "$PROJECTS_DIR/.state/active-${AGENT_NAME:-enzo}.txt"; echo "✅ DOCS_PATH set to: $DOCS_PATH"`
+!`if [ -z "$1" ]; then echo "❌ ERROR: No project specified."; echo "Notifying Dan..."; source "$NOLAN_ROOT/app/scripts/team-aliases.sh" 2>/dev/null && send dan "Enzo needs project name to start QA review. Which project should I review?" 2>/dev/null || echo "(Could not reach Dan - ask manually)"; echo ""; echo "⏸️  BLOCKED: Wait for Dan to specify project, then run: /qa-review <project-name> [document]"; exit 1; fi; if [ ! -d "$PROJECTS_DIR/$1" ]; then echo "❌ ERROR: Project '$1' not found in $PROJECTS_DIR"; echo "Available projects:"; ls -1 "$PROJECTS_DIR" | grep -v "^\." | head -10; exit 1; fi; export DOCS_PATH="$PROJECTS_DIR/$1"; mkdir -p "$NOLAN_ROOT/.state/${TEAM_NAME:-default}"; echo "$1" > "$NOLAN_ROOT/.state/${TEAM_NAME:-default}/active-${AGENT_NAME:-enzo}.txt"; echo "✅ DOCS_PATH set to: $DOCS_PATH"`
 
 ## Project Context
 !`if [ -z "$1" ]; then exit 1; fi; docs_path="$PROJECTS_DIR/$1"; if [ -f "$docs_path/context.md" ]; then head -50 "$docs_path/context.md"; else echo "ERROR: context.md not found at $docs_path"; fi`
 
 ## Document to Review
-!`docs_path="$PROJECTS_DIR/$1"; doc=$2; if [ -z "$doc" ]; then doc="plan.md"; fi; if [ -f "$docs_path/$doc" ]; then echo "=== $doc ==="; cat "$docs_path/$doc"; else echo "Document not found: $docs_path/$doc"; echo "Available documents:"; ls -la "$docs_path"/*.md 2>/dev/null || echo "No .md files found"; fi`
+!`docs_path="$PROJECTS_DIR/$1"; doc=$2; if [ -z "$doc" ]; then doc="plan.md"; fi; if [ -f "$docs_path/$doc" ]; then echo "=== $doc ==="; grep -v '<!-- STATUS:' "$docs_path/$doc" || cat "$docs_path/$doc"; else echo "Document not found: $docs_path/$doc"; echo "Available documents:"; ls -la "$docs_path"/*.md 2>/dev/null || echo "No .md files found"; fi`
 
 ## QA Review Instructions
 
@@ -49,7 +49,6 @@ You are Enzo, the QA agent. Your task:
 **Reviewer:** Enzo
 **Document:** [project]/[document]
 **Author:** [original author]
-<!-- STATUS:COMPLETE:[today] -->
 
 ## Summary
 
@@ -98,4 +97,4 @@ Overall quality: [assessment]
 ## When Complete
 
 1. Update qa-review.md with final findings
-2. Finish your response - handoff to Dan happens automatically
+2. Stop - the system handles handoff automatically

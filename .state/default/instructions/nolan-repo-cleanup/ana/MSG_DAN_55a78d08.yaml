@@ -1,0 +1,27 @@
+# Task Assignment for Ana
+# Generated: 2026-01-11 01:57
+# ID: MSG_DAN_55a78d08
+
+project: nolan-repo-cleanup
+project_path: /home/mmartin/Proyectos/nolan/projects/nolan-repo-cleanup
+agent: ana
+phase: Research
+task: |
+  Analyze the entire nolan repository structure. Document every folder and file type, determine its purpose, origin, and whether it's active/needed or obsolete. Identify: source code vs scripts vs config vs logs vs docs vs project files vs crons vs old iterations. Flag candidates for removal. Assess current data/config handling approach and identify what would need to change for production deployment, server hosting, and multi-user workspaces. Provide a comprehensive inventory with recommendations.
+assigned: "2026-01-11 01:57"
+msg_id: MSG_DAN_55a78d08
+coordinator: dan
+output_file: research.md
+
+# Files to Review
+predecessor_files:
+  - context.md
+
+
+# Phase Instructions
+instructions: |
+  Investigate and research the problem as described in context.md
+
+# Completion
+status: completed
+completed_at: "2026-01-11 02:02"

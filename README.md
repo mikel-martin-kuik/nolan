@@ -1,6 +1,6 @@
 # Nolan
 
-AI agent team coordination system with 5 specialized Claude agents.
+The AI Digital Business
 
 ## Quick Start
 

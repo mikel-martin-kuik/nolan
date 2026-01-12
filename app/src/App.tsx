@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Home, FolderOpen, DollarSign, MessageCircle, Users, FileUser, Clock, Settings, Lightbulb } from 'lucide-react';
+import { Home, FolderOpen, DollarSign, MessageCircle, Users, FileUser, Settings, Lightbulb } from 'lucide-react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { listen } from '@/lib/events';
 import { invoke, isBrowserMode } from '@/lib/api';
@@ -12,7 +12,6 @@ import { ProjectsPanel } from './components/Projects/ProjectsPanel';
 import { UsageAndMetricsPanel } from './components/Usage';
 import { TeamsPanel } from './components/Teams';
 import { ChatView } from './components/Chat';
-import { AgentManager } from './components/Agents';
 import { CronosPanel } from './components/Cronos';
 import { SupportPanel } from './components/Support';
 import { ToastContainer } from './components/shared/Toast';
@@ -34,7 +33,7 @@ import { cn } from './lib/utils';
 import { HistoryEntry } from './types';
 import './App.css';
 
-type Tab = 'status' | 'chat' | 'projects' | 'teams' | 'agents' | 'cronos' | 'usage' | 'support' | 'settings';
+type Tab = 'status' | 'chat' | 'projects' | 'teams' | 'cronos' | 'usage' | 'support' | 'settings';
 
 function App() {
   const [activeTab, setActiveTabLocal] = useState<Tab>('status');
@@ -202,8 +201,7 @@ function App() {
     { id: 'chat' as Tab, label: 'Chat', tooltip: 'Chat', icon: MessageCircle },
     { id: 'projects' as Tab, label: 'Projects', tooltip: 'Projects', icon: FolderOpen },
     { id: 'teams' as Tab, label: 'Teams', tooltip: 'Teams', icon: Users },
-    { id: 'agents' as Tab, label: 'Agents', tooltip: 'Agents', icon: FileUser },
-    { id: 'cronos' as Tab, label: 'Cronos', tooltip: 'Scheduled Tasks', icon: Clock },
+    { id: 'cronos' as Tab, label: 'Agents', tooltip: 'Agents', icon: FileUser },
     { id: 'usage' as Tab, label: 'Usage', tooltip: 'Usage', icon: DollarSign },
   ];
 
@@ -306,7 +304,6 @@ function App() {
                 {activeTab === 'chat' && <ChatView />}
                 {activeTab === 'projects' && <ProjectsPanel />}
                 {activeTab === 'teams' && <TeamsPanel />}
-                {activeTab === 'agents' && <AgentManager />}
                 {activeTab === 'cronos' && <CronosPanel />}
                 {activeTab === 'usage' && <UsageAndMetricsPanel />}
                 {activeTab === 'support' && <SupportPanel />}

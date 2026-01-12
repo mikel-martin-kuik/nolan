@@ -239,58 +239,124 @@ export const CronosPanel: React.FC = () => {
         <div className="flex-1 min-h-0 overflow-auto space-y-4">
           {agents.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-              <p>No cron agents configured</p>
-              <p className="text-sm mt-1">Create your first scheduled agent</p>
+              <p>No agents configured</p>
+              <p className="text-sm mt-1">Create your first agent</p>
             </div>
           ) : (
             <>
-              {/* Render each group */}
-              {groups.map((group) => {
-                const groupAgents = groupedAgents.grouped[group.id] || [];
-                if (groupAgents.length === 0) return null;
+              {/* Type labels for agent_type groups */}
+              {(() => {
+                const typeLabels: Record<string, string> = {
+                  'type:predefined': 'On-Demand',
+                  'type:cron': 'Scheduled',
+                  'type:event': 'Event-Driven',
+                  'type:team': 'Teams',
+                };
 
-                const collapsed = isCollapsed(group.id);
-                const enabledCount = groupAgents.filter(a => a.enabled).length;
-                const runningCount = groupAgents.filter(a => a.is_running).length;
+                // Get type-based groups from grouped agents
+                const typeGroups = Object.keys(groupedAgents.grouped).filter(k => k.startsWith('type:'));
 
                 return (
-                  <Collapsible
-                    key={group.id}
-                    open={!collapsed}
-                    onOpenChange={() => toggleCollapsed(group.id)}
-                  >
-                    <div className="border border-border/50 rounded-lg overflow-hidden">
-                      <CollapsibleTrigger asChild>
-                        <div
-                          className="flex items-center gap-3 px-3 py-2 bg-secondary/20 hover:bg-secondary/30 cursor-pointer transition-colors"
+                  <>
+                    {/* Render type-based groups first */}
+                    {typeGroups.map((groupKey) => {
+                      const groupAgents = groupedAgents.grouped[groupKey] || [];
+                      if (groupAgents.length === 0) return null;
+
+                      const collapsed = isCollapsed(groupKey);
+                      const enabledCount = groupAgents.filter(a => a.enabled).length;
+                      const runningCount = groupAgents.filter(a => a.is_running).length;
+                      const displayName = typeLabels[groupKey] || groupKey.replace('type:', '');
+
+                      return (
+                        <Collapsible
+                          key={groupKey}
+                          open={!collapsed}
+                          onOpenChange={() => toggleCollapsed(groupKey)}
                         >
-                          {collapsed ? (
-                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                          )}
-                          <span className="font-medium text-sm">{group.name}</span>
-                          <div className="ml-auto flex items-center gap-2">
-                            {runningCount > 0 && (
-                              <Badge variant="default" className="text-[10px] px-1.5 py-0.5 bg-blue-500">
-                                {runningCount} running
-                              </Badge>
-                            )}
-                            <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
-                              {enabledCount}/{groupAgents.length}
-                            </Badge>
+                          <div className="border border-border/50 rounded-lg overflow-hidden">
+                            <CollapsibleTrigger asChild>
+                              <div
+                                className="flex items-center gap-3 px-3 py-2 bg-secondary/20 hover:bg-secondary/30 cursor-pointer transition-colors"
+                              >
+                                {collapsed ? (
+                                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                ) : (
+                                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                )}
+                                <span className="font-medium text-sm">{displayName}</span>
+                                <div className="ml-auto flex items-center gap-2">
+                                  {runningCount > 0 && (
+                                    <Badge variant="default" className="text-[10px] px-1.5 py-0.5 bg-blue-500">
+                                      {runningCount} running
+                                    </Badge>
+                                  )}
+                                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                                    {enabledCount}/{groupAgents.length}
+                                  </Badge>
+                                </div>
+                              </div>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              <div className="p-3">
+                                {renderAgentCards(groupAgents)}
+                              </div>
+                            </CollapsibleContent>
                           </div>
-                        </div>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent>
-                        <div className="p-3">
-                          {renderAgentCards(groupAgents)}
-                        </div>
-                      </CollapsibleContent>
-                    </div>
-                  </Collapsible>
+                        </Collapsible>
+                      );
+                    })}
+
+                    {/* Render custom groups */}
+                    {groups.map((group) => {
+                      const groupAgents = groupedAgents.grouped[group.id] || [];
+                      if (groupAgents.length === 0) return null;
+
+                      const collapsed = isCollapsed(group.id);
+                      const enabledCount = groupAgents.filter(a => a.enabled).length;
+                      const runningCount = groupAgents.filter(a => a.is_running).length;
+
+                      return (
+                        <Collapsible
+                          key={group.id}
+                          open={!collapsed}
+                          onOpenChange={() => toggleCollapsed(group.id)}
+                        >
+                          <div className="border border-border/50 rounded-lg overflow-hidden">
+                            <CollapsibleTrigger asChild>
+                              <div
+                                className="flex items-center gap-3 px-3 py-2 bg-secondary/20 hover:bg-secondary/30 cursor-pointer transition-colors"
+                              >
+                                {collapsed ? (
+                                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                ) : (
+                                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                )}
+                                <span className="font-medium text-sm">{group.name}</span>
+                                <div className="ml-auto flex items-center gap-2">
+                                  {runningCount > 0 && (
+                                    <Badge variant="default" className="text-[10px] px-1.5 py-0.5 bg-blue-500">
+                                      {runningCount} running
+                                    </Badge>
+                                  )}
+                                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                                    {enabledCount}/{groupAgents.length}
+                                  </Badge>
+                                </div>
+                              </div>
+                            </CollapsibleTrigger>
+                            <CollapsibleContent>
+                              <div className="p-3">
+                                {renderAgentCards(groupAgents)}
+                              </div>
+                            </CollapsibleContent>
+                          </div>
+                        </Collapsible>
+                      );
+                    })}
+                  </>
                 );
-              })}
+              })()}
 
               {/* Ungrouped agents */}
               {groupedAgents.ungrouped.length > 0 && (
@@ -359,9 +425,9 @@ export const CronosPanel: React.FC = () => {
       <Dialog open={creatorOpen} onOpenChange={setCreatorOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>Create Cron Agent</DialogTitle>
+            <DialogTitle>Create Agent</DialogTitle>
             <DialogDescription>
-              Create a new scheduled automation agent
+              Create a new automation agent
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">

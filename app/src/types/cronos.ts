@@ -139,11 +139,32 @@ export interface CronRunLog {
   // New fields
   attempt: number;
   trigger: RunTrigger;
+  // Session tracking for relaunch capability
+  session_name?: string;
+  run_dir?: string;
+  claude_session_id?: string;
   // Cost tracking
   total_cost_usd?: number;
+  // Worktree isolation
+  worktree_path?: string;
+  worktree_branch?: string;
+  base_commit?: string;
+  // Analyzer verdict (populated after analyzer agent runs)
+  analyzer_verdict?: AnalyzerVerdict;
 }
 
-export type CronRunStatus = 'running' | 'success' | 'failed' | 'timeout' | 'cancelled' | 'skipped' | 'retrying';
+export type CronRunStatus = 'running' | 'success' | 'failed' | 'timeout' | 'cancelled' | 'skipped' | 'retrying' | 'interrupted';
+
+// Analyzer verdict types
+export type AnalyzerVerdictType = 'COMPLETE' | 'FOLLOWUP' | 'FAILED';
+
+export interface AnalyzerVerdict {
+  verdict: AnalyzerVerdictType;
+  reason: string;
+  follow_up_prompt?: string;
+  findings: string[];
+  analyzer_run_id?: string;
+}
 
 export type RunTrigger = 'scheduled' | 'manual' | 'retry' | 'catch_up';
 

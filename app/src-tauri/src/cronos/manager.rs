@@ -15,7 +15,7 @@ pub struct CronosManager {
     scheduler: JobScheduler,
     cronos_root: PathBuf,        // Agent definitions (source code) in NOLAN_ROOT/cronos
     cronos_data_root: PathBuf,   // Run logs (user data) in NOLAN_DATA_ROOT/cronos
-    nolan_root: PathBuf,         // Source code root
+    _nolan_root: PathBuf,        // Source code root (kept for future use)
     nolan_data_root: PathBuf,    // User data root (for state storage)
     running: RunningProcesses,
     state: Arc<RwLock<SchedulerState>>,
@@ -49,7 +49,7 @@ impl CronosManager {
             scheduler,
             cronos_root,
             cronos_data_root,
-            nolan_root,
+            _nolan_root: nolan_root,
             nolan_data_root,
             running: Arc::new(RwLock::new(HashMap::new())),
             state: Arc::new(RwLock::new(state)),
@@ -175,6 +175,29 @@ impl CronosManager {
         run_dir: Option<PathBuf>,
         cancellation_token: Option<CancellationToken>,
     ) {
+        self.register_running_with_worktree(
+            run_id, agent_name, pid, log_file, json_file,
+            session_name, run_dir, cancellation_token,
+            None, None, None, None,
+        ).await;
+    }
+
+    /// Register a running process with worktree isolation info
+    pub async fn register_running_with_worktree(
+        &self,
+        run_id: &str,
+        agent_name: &str,
+        pid: Option<u32>,
+        log_file: PathBuf,
+        json_file: PathBuf,
+        session_name: Option<String>,
+        run_dir: Option<PathBuf>,
+        cancellation_token: Option<CancellationToken>,
+        worktree_path: Option<PathBuf>,
+        worktree_branch: Option<String>,
+        base_commit: Option<String>,
+        claude_session_id: Option<String>,
+    ) {
         let mut running = self.running.write().await;
         running.insert(agent_name.to_string(), RunningProcess {
             run_id: run_id.to_string(),
@@ -186,6 +209,10 @@ impl CronosManager {
             session_name,
             run_dir,
             cancellation_token,
+            claude_session_id,
+            worktree_path,
+            worktree_branch,
+            base_commit,
         });
     }
 
@@ -402,7 +429,12 @@ impl CronosManager {
                         trigger: trigger.clone(),
                         session_name: Some(session_name.clone()),
                         run_dir: run_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
+                        claude_session_id: None,  // Session ID not available during recovery
                         total_cost_usd: None,  // Cost not available during recovery
+                        worktree_path: None,   // Worktree info not available during recovery
+                        worktree_branch: None,
+                        base_commit: None,
+                        analyzer_verdict: None,
                     };
 
                     // Write final log
@@ -481,7 +513,12 @@ impl CronosManager {
             trigger: run_log.trigger.clone(),
             session_name: run_log.session_name.clone(),
             run_dir: run_log.run_dir.clone(),
+            claude_session_id: run_log.claude_session_id.clone(),  // Preserve original session ID
             total_cost_usd: None,  // Cost not available during recovery
+            worktree_path: run_log.worktree_path.clone(),
+            worktree_branch: run_log.worktree_branch.clone(),
+            base_commit: run_log.base_commit.clone(),
+            analyzer_verdict: run_log.analyzer_verdict.clone(),  // Preserve any existing verdict
         };
 
         let json = serde_json::to_string_pretty(&final_log)
@@ -592,29 +629,14 @@ impl CronosManager {
     // Agent Configuration Management
     // ========================
 
-    /// Load all agent configs from disk (cron, predefined, and event agents)
+    /// Load all agent configs from disk (all agent types in unified directory)
     pub async fn load_agents(&self) -> Result<Vec<CronAgentConfig>, String> {
-        let mut configs = Vec::new();
-
-        // Load cron agents from cronos/agents
-        let cronos_agents_dir = self.cronos_root.join("agents");
-        configs.extend(self.load_agents_from_dir(&cronos_agents_dir, AgentType::Cron)?);
-
-        // Load predefined agents from predefined/agents
-        if let Ok(predefined_dir) = paths::get_predefined_agents_dir() {
-            configs.extend(self.load_agents_from_dir(&predefined_dir, AgentType::Predefined)?);
-        }
-
-        // Load event agents from event/agents
-        if let Ok(event_dir) = paths::get_event_agents_dir() {
-            configs.extend(self.load_agents_from_dir(&event_dir, AgentType::Event)?);
-        }
-
-        Ok(configs)
+        let agents_dir = paths::get_agents_dir()?;
+        self.load_agents_from_dir(&agents_dir)
     }
 
-    /// Load agents from a specific directory, applying a default agent type if not specified
-    fn load_agents_from_dir(&self, dir: &std::path::Path, default_type: AgentType) -> Result<Vec<CronAgentConfig>, String> {
+    /// Load agents from a directory
+    fn load_agents_from_dir(&self, dir: &std::path::Path) -> Result<Vec<CronAgentConfig>, String> {
         let mut configs = Vec::new();
 
         if let Ok(entries) = std::fs::read_dir(dir) {
@@ -623,12 +645,7 @@ impl CronosManager {
                     let config_path = entry.path().join("agent.yaml");
                     if config_path.exists() {
                         if let Ok(content) = std::fs::read_to_string(&config_path) {
-                            if let Ok(mut config) = serde_yaml::from_str::<CronAgentConfig>(&content) {
-                                // Apply default type if not explicitly set
-                                // (for backward compatibility with existing cron agents)
-                                if config.agent_type == AgentType::Cron && default_type != AgentType::Cron {
-                                    config.agent_type = default_type.clone();
-                                }
+                            if let Ok(config) = serde_yaml::from_str::<CronAgentConfig>(&content) {
                                 configs.push(config);
                             }
                         }
@@ -641,50 +658,24 @@ impl CronosManager {
     }
 
     /// Get agent config by name
-    /// Searches in all agent directories based on name prefix
     pub async fn get_agent(&self, name: &str) -> Result<CronAgentConfig, String> {
-        // Determine which directories to search based on name prefix
-        let search_dirs = if name.starts_with("pred-") {
-            vec![paths::get_predefined_agents_dir().ok()]
-        } else if name.starts_with("event-") {
-            vec![paths::get_event_agents_dir().ok()]
-        } else if name.starts_with("cron-") {
-            vec![Some(self.cronos_root.join("agents"))]
-        } else {
-            // Search all directories for backward compatibility
-            vec![
-                Some(self.cronos_root.join("agents")),
-                paths::get_predefined_agents_dir().ok(),
-                paths::get_event_agents_dir().ok(),
-            ]
-        };
+        let agents_dir = paths::get_agents_dir()?;
+        let config_path = agents_dir.join(name).join("agent.yaml");
 
-        for dir_opt in search_dirs.into_iter().flatten() {
-            let config_path = dir_opt.join(name).join("agent.yaml");
-            if config_path.exists() {
-                let content = std::fs::read_to_string(&config_path)
-                    .map_err(|e| format!("Failed to read agent '{}': {}", name, e))?;
-                return serde_yaml::from_str(&content)
-                    .map_err(|e| format!("Invalid agent config: {}", e));
-            }
+        if config_path.exists() {
+            let content = std::fs::read_to_string(&config_path)
+                .map_err(|e| format!("Failed to read agent '{}': {}", name, e))?;
+            return serde_yaml::from_str(&content)
+                .map_err(|e| format!("Invalid agent config: {}", e));
         }
 
         Err(format!("Agent '{}' not found", name))
     }
 
-    /// Save agent config to the appropriate directory based on agent type
+    /// Save agent config to the agents directory
     pub async fn save_agent(&self, config: &CronAgentConfig) -> Result<(), String> {
-        let agent_dir = match config.agent_type {
-            AgentType::Cron => self.cronos_root.join("agents").join(&config.name),
-            AgentType::Predefined => {
-                let base = paths::get_predefined_agents_dir()?;
-                base.join(&config.name)
-            }
-            AgentType::Event => {
-                let base = paths::get_event_agents_dir()?;
-                base.join(&config.name)
-            }
-        };
+        let agents_dir = paths::get_agents_dir()?;
+        let agent_dir = agents_dir.join(&config.name);
 
         std::fs::create_dir_all(&agent_dir)
             .map_err(|e| format!("Failed to create agent directory: {}", e))?;
@@ -699,22 +690,10 @@ impl CronosManager {
         Ok(())
     }
 
-    /// Delete agent from the appropriate directory
+    /// Delete agent from the agents directory
     pub async fn delete_agent(&self, name: &str) -> Result<(), String> {
-        // First find the agent to determine its type
-        let config = self.get_agent(name).await?;
-
-        let agent_dir = match config.agent_type {
-            AgentType::Cron => self.cronos_root.join("agents").join(name),
-            AgentType::Predefined => {
-                let base = paths::get_predefined_agents_dir()?;
-                base.join(name)
-            }
-            AgentType::Event => {
-                let base = paths::get_event_agents_dir()?;
-                base.join(name)
-            }
-        };
+        let agents_dir = paths::get_agents_dir()?;
+        let agent_dir = agents_dir.join(name);
 
         if agent_dir.exists() {
             std::fs::remove_dir_all(&agent_dir)

@@ -103,8 +103,8 @@ pub struct AgentStats {
 #[derive(Debug, Deserialize)]
 struct HistoryEntry {
     display: String,
-    timestamp: u64,
-    project: String,
+    _timestamp: u64,
+    _project: String,
     #[serde(rename = "sessionId")]
     session_id: String,
 }

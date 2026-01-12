@@ -13,6 +13,7 @@ use super::types::*;
 use super::manager::CronosManager;
 use crate::utils::paths;
 use crate::tmux::session;
+use crate::git::worktree;
 
 /// Extract total cost from Claude output log file
 /// The cost is in a JSON line with type: "result" and total_cost_usd field
@@ -102,7 +103,12 @@ pub async fn execute_cron_agent_with_env(
             trigger: trigger.clone(),
             session_name: None,
             run_dir: None,
+            claude_session_id: None,
             total_cost_usd: None,
+            worktree_path: None,
+            worktree_branch: None,
+            base_commit: None,
+            analyzer_verdict: None,
         };
 
         // Emit skip event
@@ -196,7 +202,6 @@ async fn execute_single_run(
     // Setup paths
     let nolan_root = paths::get_nolan_root()?;
     let nolan_data_root = paths::get_nolan_data_root()?;
-    let cronos_root = nolan_root.join("cronos");  // Agent definitions (source)
     let cronos_runs_dir = paths::get_cronos_runs_dir()?;
     let runs_dir = cronos_runs_dir.join(&date_str);
     std::fs::create_dir_all(&runs_dir)
@@ -222,6 +227,9 @@ async fn execute_single_run(
     // Generate tmux session name
     let session_name = format!("cron-{}-{}", config.name, &run_id);
 
+    // Generate Claude session ID for --resume capability
+    let claude_session_id = Uuid::new_v4().to_string();
+
     // Create or use cancellation token (needed for cancel_cron_agent to signal cancellation)
     let cancel_token = cancellation.unwrap_or_else(|| Arc::new(RwLock::new(false)));
 
@@ -237,10 +245,10 @@ async fn execute_single_run(
     }
 
     // Read agent's CLAUDE.md for prompt
-    let agent_dir = cronos_root.join("agents").join(&config.name);
+    let agent_dir = paths::get_agents_dir()?.join(&config.name);
     let claude_md_path = agent_dir.join("CLAUDE.md");
     let prompt = std::fs::read_to_string(&claude_md_path)
-        .map_err(|e| format!("Failed to read CLAUDE.md: {}", e))?;
+        .map_err(|e| format!("Failed to read CLAUDE.md from {:?}: {}", claude_md_path, e))?;
 
     // For dry run, just validate
     if dry_run {
@@ -260,7 +268,12 @@ async fn execute_single_run(
             trigger,
             session_name: None,
             run_dir: None,
+            claude_session_id: None,
             total_cost_usd: None,
+            worktree_path: None,
+            worktree_branch: None,
+            base_commit: None,
+            analyzer_verdict: None,
         });
     }
 
@@ -298,13 +311,89 @@ async fn execute_single_run(
 
     // Build shell command that:
     // 1. Sets environment variables
-    // 2. Runs claude with output redirected to log file
+    // 2. Runs claude with output redirected to log file (with --session-id for relaunch)
     // 3. Captures exit code
     // 4. Keeps shell alive briefly for debugging (exec bash at end)
-    let work_dir = config.context.working_directory
-        .as_ref()
-        .map(PathBuf::from)
-        .unwrap_or_else(|| nolan_root.clone());
+
+    // Git worktree isolation setup
+    let (work_dir, worktree_info) = if let Some(ref wt_config) = config.worktree {
+        if wt_config.enabled {
+            // Determine repo path - either from config or working_directory or nolan_root
+            let repo_path = wt_config.repo_path.as_ref()
+                .map(PathBuf::from)
+                .or_else(|| config.context.working_directory.as_ref().map(PathBuf::from))
+                .unwrap_or_else(|| nolan_root.clone());
+
+            // Verify it's a git repository
+            if let Some(git_root) = worktree::detect_git_root(&repo_path) {
+                // Generate unique branch name
+                let branch_name = worktree::generate_branch_name(&config.name, &run_id);
+
+                // Create worktree in data directory
+                let worktrees_dir = worktree::get_worktrees_dir()
+                    .map_err(|e| format!("Failed to get worktrees directory: {}", e))?;
+                let worktree_path = worktrees_dir.join(&config.name).join(&run_id);
+
+                // Create the worktree
+                match worktree::create_worktree(
+                    &git_root,
+                    &worktree_path,
+                    &branch_name,
+                    wt_config.base_branch.as_deref(),
+                ) {
+                    Ok(base_commit) => {
+                        // Emit status event about worktree creation
+                        if let Some(ref sender) = output_sender {
+                            let _ = sender.send(CronOutputEvent {
+                                run_id: run_id.clone(),
+                                agent_name: config.name.clone(),
+                                event_type: OutputEventType::Status,
+                                content: format!("Created worktree: {} (branch: {})", worktree_path.display(), branch_name),
+                                timestamp: Utc::now().to_rfc3339(),
+                            });
+                        }
+
+                        (worktree_path.clone(), Some((worktree_path, branch_name, base_commit)))
+                    }
+                    Err(e) => {
+                        // Log warning but continue without worktree
+                        eprintln!("[Cronos] Warning: Failed to create worktree for {}: {}", config.name, e);
+                        if let Some(ref sender) = output_sender {
+                            let _ = sender.send(CronOutputEvent {
+                                run_id: run_id.clone(),
+                                agent_name: config.name.clone(),
+                                event_type: OutputEventType::Status,
+                                content: format!("Warning: Running without worktree isolation: {}", e),
+                                timestamp: Utc::now().to_rfc3339(),
+                            });
+                        }
+                        let fallback = config.context.working_directory.as_ref()
+                            .map(PathBuf::from)
+                            .unwrap_or_else(|| nolan_root.clone());
+                        (fallback, None)
+                    }
+                }
+            } else {
+                // Not a git repo, fall back to normal working directory
+                let fallback = config.context.working_directory.as_ref()
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| nolan_root.clone());
+                (fallback, None)
+            }
+        } else {
+            // Worktree config exists but disabled
+            let fallback = config.context.working_directory.as_ref()
+                .map(PathBuf::from)
+                .unwrap_or_else(|| nolan_root.clone());
+            (fallback, None)
+        }
+    } else {
+        // No worktree config
+        let fallback = config.context.working_directory.as_ref()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| nolan_root.clone());
+        (fallback, None)
+    };
 
     // Build environment variable exports
     let mut env_exports = format!("export CRON_RUN_ID='{}' CRON_AGENT='{}' NOLAN_ROOT='{}' NOLAN_DATA_ROOT='{}'",
@@ -322,9 +411,9 @@ async fn execute_single_run(
     // Change to working directory
     cmd_parts.push(format!("cd '{}'", work_dir.to_string_lossy()));
 
-    // Build claude command with all args
-    let mut claude_cmd = format!("claude -p '{}' --dangerously-skip-permissions --verbose --output-format stream-json --model {}",
-        prompt_escaped, config.model);
+    // Build claude command with all args (including --session-id for relaunch capability)
+    let mut claude_cmd = format!("claude -p '{}' --dangerously-skip-permissions --verbose --output-format stream-json --model {} --session-id '{}'",
+        prompt_escaped, config.model, claude_session_id);
 
     if !config.guardrails.allowed_tools.is_empty() {
         claude_cmd.push_str(&format!(" --allowedTools '{}'", config.guardrails.allowed_tools.join(",")));
@@ -350,6 +439,16 @@ async fn execute_single_run(
 
     let shell_cmd = cmd_parts.join("; ");
 
+    // Extract worktree info for logging
+    let (wt_path, wt_branch, wt_commit) = match &worktree_info {
+        Some((path, branch, commit)) => (
+            Some(path.to_string_lossy().to_string()),
+            Some(branch.clone()),
+            Some(commit.clone()),
+        ),
+        None => (None, None, None),
+    };
+
     // Write initial run log (marks as running for recovery)
     let initial_log = CronRunLog {
         run_id: run_id.clone(),
@@ -365,7 +464,12 @@ async fn execute_single_run(
         trigger: trigger.clone(),
         session_name: Some(session_name.clone()),
         run_dir: Some(run_dir.to_string_lossy().to_string()),
+        claude_session_id: Some(claude_session_id.clone()),
         total_cost_usd: None,
+        worktree_path: wt_path.clone(),
+        worktree_branch: wt_branch.clone(),
+        base_commit: wt_commit.clone(),
+        analyzer_verdict: None,
     };
 
     let json = serde_json::to_string_pretty(&initial_log)
@@ -404,7 +508,7 @@ async fn execute_single_run(
     }
 
     // Register as running in manager (with cancellation token for cancel_cron_agent)
-    manager.register_running_with_session(
+    manager.register_running_with_worktree(
         &run_id,
         &config.name,
         None,  // PID not directly available from tmux
@@ -413,6 +517,10 @@ async fn execute_single_run(
         Some(session_name.clone()),
         Some(run_dir.clone()),
         Some(cancel_token.clone()),
+        worktree_info.as_ref().map(|(p, _, _)| p.clone()),
+        worktree_info.as_ref().map(|(_, b, _)| b.clone()),
+        worktree_info.as_ref().map(|(_, _, c)| c.clone()),
+        Some(claude_session_id.clone()),
     ).await;
 
     // Wait for completion with timeout and cancellation
@@ -477,7 +585,12 @@ async fn execute_single_run(
         trigger,
         session_name: Some(session_name.clone()),
         run_dir: Some(run_dir.to_string_lossy().to_string()),
+        claude_session_id: Some(claude_session_id.clone()),
         total_cost_usd,
+        worktree_path: wt_path,
+        worktree_branch: wt_branch,
+        base_commit: wt_commit,
+        analyzer_verdict: None,
     };
 
     // Write final JSON log
@@ -501,6 +614,8 @@ async fn execute_single_run(
     // Keep it on failure for debugging
     if status == CronRunStatus::Success {
         let _ = std::fs::remove_dir_all(&run_dir);
+        // Note: Worktrees are NOT cleaned up automatically - they remain for QA/merge workflow
+        // Worktree cleanup is handled by the merge agent or manual cleanup
     }
 
     Ok(run_log)
@@ -617,7 +732,6 @@ pub async fn execute_cron_agent_simple(
 
     // Setup run log directory
     let nolan_root = paths::get_nolan_root()?;
-    let cronos_root = nolan_root.join("cronos");  // Agent definitions (source)
     let cronos_runs_dir = paths::get_cronos_runs_dir()?;  // Run logs (data)
     let runs_dir = cronos_runs_dir.join(&date_str);
     std::fs::create_dir_all(&runs_dir)
@@ -626,11 +740,11 @@ pub async fn execute_cron_agent_simple(
     let log_file = runs_dir.join(format!("{}-{}.log", config.name, timestamp));
     let json_file = runs_dir.join(format!("{}-{}.json", config.name, timestamp));
 
-    // Read agent's CLAUDE.md for prompt (from source, not data)
-    let agent_dir = cronos_root.join("agents").join(&config.name);
+    // Read agent's CLAUDE.md for prompt
+    let agent_dir = paths::get_agents_dir()?.join(&config.name);
     let claude_md_path = agent_dir.join("CLAUDE.md");
     let prompt = std::fs::read_to_string(&claude_md_path)
-        .map_err(|e| format!("Failed to read CLAUDE.md: {}", e))?;
+        .map_err(|e| format!("Failed to read CLAUDE.md from {:?}: {}", claude_md_path, e))?;
 
     // For dry run, just validate
     if dry_run {
@@ -648,7 +762,12 @@ pub async fn execute_cron_agent_simple(
             trigger: RunTrigger::Manual,
             session_name: None,
             run_dir: None,
+            claude_session_id: None,
             total_cost_usd: None,
+            worktree_path: None,
+            worktree_branch: None,
+            base_commit: None,
+            analyzer_verdict: None,
         });
     }
 
@@ -763,7 +882,12 @@ pub async fn execute_cron_agent_simple(
         trigger: RunTrigger::Manual,
         session_name: None,  // Simple mode doesn't use tmux
         run_dir: None,
+        claude_session_id: None,  // Simple mode doesn't track session
         total_cost_usd,
+        worktree_path: None,  // Simple mode doesn't use worktrees
+        worktree_branch: None,
+        base_commit: None,
+        analyzer_verdict: None,
     };
 
     let json = serde_json::to_string_pretty(&run_log)
@@ -772,4 +896,46 @@ pub async fn execute_cron_agent_simple(
         .map_err(|e| format!("Failed to write run log: {}", e))?;
 
     Ok(run_log)
+}
+
+/// Check if a post-run analyzer should be triggered and return the trigger info
+/// Returns None if no analyzer is configured or status doesn't match trigger conditions
+pub fn get_analyzer_trigger_info(
+    config: &CronAgentConfig,
+    run_log: &CronRunLog,
+) -> Option<AnalyzerTriggerInfo> {
+    let analyzer_config = config.post_run_analyzer.as_ref()?;
+
+    let should_trigger = match run_log.status {
+        CronRunStatus::Success => analyzer_config.on_success,
+        CronRunStatus::Failed => analyzer_config.on_failure,
+        CronRunStatus::Timeout => analyzer_config.on_timeout,
+        _ => false,
+    };
+
+    if !should_trigger {
+        return None;
+    }
+
+    // Build environment variables for the analyzer
+    let mut env_vars = ExtraEnvVars::new();
+    env_vars.insert("ANALYZED_RUN_ID".to_string(), run_log.run_id.clone());
+    env_vars.insert("ANALYZED_AGENT".to_string(), run_log.agent_name.clone());
+    env_vars.insert("ANALYZED_OUTPUT_FILE".to_string(), run_log.output_file.clone());
+    env_vars.insert("ANALYZED_STATUS".to_string(), format!("{:?}", run_log.status).to_lowercase());
+    if let Some(ref session_id) = run_log.claude_session_id {
+        env_vars.insert("ANALYZED_SESSION_ID".to_string(), session_id.clone());
+    }
+
+    Some(AnalyzerTriggerInfo {
+        analyzer_agent: analyzer_config.analyzer_agent.clone(),
+        env_vars,
+    })
+}
+
+/// Information needed to trigger a post-run analyzer
+#[derive(Clone, Debug)]
+pub struct AnalyzerTriggerInfo {
+    pub analyzer_agent: String,
+    pub env_vars: ExtraEnvVars,
 }

@@ -13,7 +13,7 @@ import { useToastStore } from '@/store/toastStore';
 import { useOllamaStore } from '@/store/ollamaStore';
 import { useCronOutputStore } from '@/store/cronOutputStore';
 import { Tooltip } from '@/components/ui/tooltip';
-import { Sparkles, Loader2 } from 'lucide-react';
+import { Sparkles, Loader2, RefreshCcw } from 'lucide-react';
 import { CRON_PRESETS, CRON_MODELS } from '@/types/cronos';
 import { CronAgentOutputPanel } from './CronAgentOutputPanel';
 import type { CronAgentInfo, CronAgentConfig, CronRunLog } from '@/types';
@@ -43,6 +43,9 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
   const [saving, setSaving] = useState(false);
   const [hasConfigChanges, setHasConfigChanges] = useState(false);
   const [generatingInstructions, setGeneratingInstructions] = useState(false);
+  const [relaunchRunId, setRelaunchRunId] = useState<string | null>(null);
+  const [relaunchPrompt, setRelaunchPrompt] = useState('');
+  const [relaunching, setRelaunching] = useState(false);
   const { error: showError, success: showSuccess } = useToastStore();
   const { status: ollamaStatus, checkConnection, generate: ollamaGenerate } = useOllamaStore();
 
@@ -52,15 +55,6 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
       setAgent(agents.find(a => a.name === agentName) || null);
     } catch (err) {
       showError(`Failed to load agent: ${err}`);
-    }
-  }, [agentName, showError]);
-
-  const fetchConfig = useCallback(async () => {
-    try {
-      const cfg = await invoke<CronAgentConfig>('get_cron_agent', { name: agentName });
-      setConfig(cfg);
-    } catch (err) {
-      showError(`Failed to load config: ${err}`);
     }
   }, [agentName, showError]);
 
@@ -81,10 +75,12 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      // Fetch all data in parallel, but handle individual failures gracefully
+      // Fetch all data in parallel
       await Promise.all([
         fetchAgent().catch(() => {}),
-        fetchConfig().catch(() => {}),
+        invoke<CronAgentConfig>('get_cron_agent', { name: agentName })
+          .then(cfg => setConfig(cfg))
+          .catch(() => {}),
         fetchRunHistory().catch(() => {}),
         fetchInstructions().catch(() => {}),
       ]);
@@ -94,7 +90,7 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
       console.error('Failed to load agent details:', err);
       setLoading(false);
     });
-  }, [fetchAgent, fetchConfig, fetchRunHistory, fetchInstructions]);
+  }, [agentName, fetchAgent, fetchRunHistory, fetchInstructions]);
 
   // Check Ollama connection
   useEffect(() => {
@@ -148,6 +144,59 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
     if (!config) return;
     setConfig({ ...config, ...updates });
     setHasConfigChanges(true);
+  };
+
+  const handleRelaunch = async () => {
+    if (!relaunchRunId || !relaunchPrompt.trim()) return;
+    setRelaunching(true);
+    try {
+      await invoke('relaunch_cron_session', {
+        run_id: relaunchRunId,
+        followUpPrompt: relaunchPrompt.trim(),
+      });
+      showSuccess('Session relaunched');
+      setRelaunchRunId(null);
+      setRelaunchPrompt('');
+      // Refresh run history after a moment
+      setTimeout(fetchRunHistory, 1000);
+    } catch (err) {
+      showError(`Failed to relaunch: ${err}`);
+    } finally {
+      setRelaunching(false);
+    }
+  };
+
+  const canRelaunch = (run: CronRunLog) => {
+    // Can relaunch if:
+    // 1. Run has a claude_session_id (newer runs)
+    // 2. Either: status is failed/interrupted/timeout, OR analyzer verdict is FOLLOWUP
+    if (!run.claude_session_id) return false;
+    if (['failed', 'interrupted', 'timeout'].includes(run.status)) return true;
+    if (run.analyzer_verdict?.verdict === 'FOLLOWUP') return true;
+    return false;
+  };
+
+  const getVerdictBadge = (run: CronRunLog) => {
+    if (!run.analyzer_verdict) return null;
+    const { verdict } = run.analyzer_verdict;
+    const colors = {
+      COMPLETE: 'bg-green-500/20 text-green-400 border-green-500/30',
+      FOLLOWUP: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+      FAILED: 'bg-red-500/20 text-red-400 border-red-500/30',
+    };
+    return (
+      <span className={`text-[10px] px-1.5 py-0.5 rounded border ${colors[verdict]}`}>
+        {verdict}
+      </span>
+    );
+  };
+
+  const getRelaunchPrompt = (run: CronRunLog) => {
+    // Use analyzer's follow_up_prompt if available, otherwise default
+    if (run.analyzer_verdict?.follow_up_prompt) {
+      return run.analyzer_verdict.follow_up_prompt;
+    }
+    return 'Complete the remaining tasks from the previous run.';
   };
 
   if (loading) {
@@ -396,20 +445,46 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
                                   {new Date(run.started_at).toLocaleString()}
                                   {run.attempt > 1 && ` (attempt ${run.attempt})`}
                                 </p>
-                                <p className="text-xs text-muted-foreground">
-                                  {run.status}
-                                  {run.trigger !== 'scheduled' && ` · ${run.trigger}`}
-                                </p>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-xs text-muted-foreground">
+                                    {run.status}
+                                    {run.trigger !== 'scheduled' && ` · ${run.trigger}`}
+                                  </p>
+                                  {getVerdictBadge(run)}
+                                </div>
                               </div>
-                              <div className="text-xs text-muted-foreground text-right">
-                                {run.duration_secs !== undefined && run.duration_secs !== null && (
-                                  <span>{(run.duration_secs / 60).toFixed(1)}m</span>
+                              <div className="flex items-center gap-2">
+                                {canRelaunch(run) && (
+                                  <Tooltip content={run.analyzer_verdict?.verdict === 'FOLLOWUP' ? 'Continue with analyzer suggestion' : 'Relaunch to continue this session'} side="top">
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className={`h-6 w-6 p-0 ${run.analyzer_verdict?.verdict === 'FOLLOWUP' ? 'text-yellow-400' : ''}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setRelaunchRunId(run.run_id);
+                                        setRelaunchPrompt(getRelaunchPrompt(run));
+                                      }}
+                                    >
+                                      <RefreshCcw className="h-3 w-3" />
+                                    </Button>
+                                  </Tooltip>
                                 )}
-                                {run.total_cost_usd !== undefined && run.total_cost_usd !== null && (
-                                  <span className="ml-2">${run.total_cost_usd.toFixed(2)}</span>
-                                )}
+                                <div className="text-xs text-muted-foreground text-right">
+                                  {run.duration_secs !== undefined && run.duration_secs !== null && (
+                                    <span>{(run.duration_secs / 60).toFixed(1)}m</span>
+                                  )}
+                                  {run.total_cost_usd !== undefined && run.total_cost_usd !== null && (
+                                    <span className="ml-2">${run.total_cost_usd.toFixed(2)}</span>
+                                  )}
+                                </div>
                               </div>
                             </div>
+                            {run.analyzer_verdict && (
+                              <p className="text-xs text-muted-foreground mt-1 truncate" title={run.analyzer_verdict.reason}>
+                                {run.analyzer_verdict.reason}
+                              </p>
+                            )}
                             {run.error && <p className="text-xs text-destructive mt-1 truncate">{run.error}</p>}
                           </Card>
                         );
@@ -441,6 +516,63 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
           </div>
         )}
       </div>
+
+      {/* Relaunch Modal */}
+      {relaunchRunId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <Card className="w-full max-w-md mx-4">
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                <RefreshCcw className="h-4 w-4" />
+                Relaunch Session
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Continue the previous session with a follow-up prompt. The agent will resume where it left off.
+              </p>
+              <div>
+                <label className="text-sm font-medium">Follow-up Prompt</label>
+                <Textarea
+                  className="mt-1"
+                  rows={4}
+                  placeholder="What would you like the agent to do?"
+                  value={relaunchPrompt}
+                  onChange={(e) => setRelaunchPrompt(e.target.value)}
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setRelaunchRunId(null);
+                    setRelaunchPrompt('');
+                  }}
+                  disabled={relaunching}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleRelaunch}
+                  disabled={relaunching || !relaunchPrompt.trim()}
+                >
+                  {relaunching ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Relaunching...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCcw className="h-4 w-4 mr-2" />
+                      Relaunch
+                    </>
+                  )}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };

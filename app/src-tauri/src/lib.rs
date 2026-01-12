@@ -6,6 +6,7 @@ pub mod constants;
 pub mod cronos;
 pub mod error;
 pub mod events;
+pub mod git;
 pub mod ollama;
 pub mod shell;
 pub mod tmux;
@@ -309,6 +310,17 @@ mod tests {
         EventTrigger::export_all().expect("Failed to export EventTrigger");
         InvocationConfig::export_all().expect("Failed to export InvocationConfig");
         AgentCommand::export_all().expect("Failed to export AgentCommand");
+        WorktreeConfig::export_all().expect("Failed to export WorktreeConfig");
+    }
+
+    #[test]
+    fn export_git_types() {
+        use crate::git::worktree::*;
+
+        // Export git worktree types
+        WorktreeInfo::export_all().expect("Failed to export WorktreeInfo");
+        WorktreeStatus::export_all().expect("Failed to export WorktreeStatus");
+        WorktreeListEntry::export_all().expect("Failed to export WorktreeListEntry");
     }
 
     #[test]

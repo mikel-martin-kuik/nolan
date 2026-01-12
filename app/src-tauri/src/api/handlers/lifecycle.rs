@@ -197,6 +197,14 @@ pub async fn list_sessions() -> Result<Json<Vec<String>>, impl IntoResponse> {
     }
 }
 
+/// List session labels - returns all custom session labels
+pub async fn list_session_labels() -> Result<Json<crate::commands::session_labels::SessionLabelsListResponse>, impl IntoResponse> {
+    match crate::commands::session_labels::list_session_labels().await {
+        Ok(labels) => Ok(Json(labels)),
+        Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
 /// Recovery response
 #[derive(Serialize)]
 pub struct RecoveryResponse {

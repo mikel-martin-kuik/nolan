@@ -71,6 +71,7 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   // Lifecycle
   get_agent_status: { method: 'GET', path: '/api/lifecycle/status/all' },
   list_sessions: { method: 'GET', path: '/api/sessions' },
+  list_session_labels: { method: 'GET', path: '/api/sessions/labels' },
   launch_team: { method: 'POST', path: '/api/lifecycle/launch-team' },
   kill_team: { method: 'POST', path: '/api/lifecycle/kill-team' },
   start_agent: { method: 'POST', path: '/api/lifecycle/start-agent' },
@@ -164,6 +165,7 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
     return limit ? `/api/cronos/history?limit=${limit}` : '/api/cronos/history';
   }},
   get_cron_run_log: { method: 'GET', path: (args) => `/api/cronos/runs/${getArg(args, 'run_id')}/log` },
+  relaunch_cron_session: { method: 'POST', path: (args) => `/api/cronos/runs/${getArg(args, 'run_id')}/relaunch` },
   read_cron_agent_claude_md: { method: 'GET', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/claude-md` },
   write_cron_agent_claude_md: { method: 'PUT', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/claude-md` },
   init_cronos: { method: 'POST', path: '/api/cronos/init' },
@@ -183,6 +185,10 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   update_cron_group: { method: 'PUT', path: (args) => `/api/cronos/groups/${(args.group as { id: string })?.id}` },
   delete_cron_group: { method: 'DELETE', path: (args) => `/api/cronos/groups/${getArg(args, 'group_id')}` },
   set_agent_group: { method: 'PUT', path: (args) => `/api/cronos/agents/${getArg(args, 'agent_name')}/group` },
+  // Worktrees
+  list_worktrees: { method: 'GET', path: '/api/cronos/worktrees' },
+  cleanup_worktrees: { method: 'POST', path: '/api/cronos/worktrees/cleanup' },
+  remove_worktree: { method: 'POST', path: '/api/cronos/worktrees/remove' },
 
   // Feedback (feature requests & ideas)
   list_feature_requests: { method: 'GET', path: '/api/feedback/requests' },

@@ -47,6 +47,147 @@ pub async fn shutdown_cronos() -> Result<(), String> {
     Ok(())
 }
 
+/// Trigger a post-run analyzer agent with the given context
+/// This is called after an agent completes to analyze its output
+async fn trigger_post_run_analyzer(
+    trigger_info: executor::AnalyzerTriggerInfo,
+    output_sender: broadcast::Sender<CronOutputEvent>,
+) {
+    let analyzed_run_id = trigger_info.env_vars.get("ANALYZED_RUN_ID").cloned().unwrap_or_default();
+    let analyzed_agent = trigger_info.env_vars.get("ANALYZED_AGENT").cloned().unwrap_or_default();
+
+    // Emit status event about triggering analyzer
+    let _ = output_sender.send(CronOutputEvent {
+        run_id: analyzed_run_id.clone(),
+        agent_name: analyzed_agent.clone(),
+        event_type: OutputEventType::Status,
+        content: format!("Triggering post-run analyzer: {}", trigger_info.analyzer_agent),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+    });
+
+    // Load and execute the analyzer agent
+    let guard = CRONOS.read().await;
+    if let Some(manager) = guard.as_ref() {
+        if let Ok(analyzer_config) = manager.get_agent(&trigger_info.analyzer_agent).await {
+            drop(guard);  // Release lock before executing
+
+            let guard = CRONOS.read().await;
+            if let Some(manager) = guard.as_ref() {
+                match executor::execute_cron_agent_with_env(
+                    &analyzer_config,
+                    manager,
+                    RunTrigger::Manual,
+                    false,
+                    Some(output_sender.clone()),
+                    None,
+                    Some(trigger_info.env_vars),
+                ).await {
+                    Ok(analyzer_run_log) => {
+                        // After analyzer completes, read the verdict file and update original run
+                        if let Err(e) = process_analyzer_verdict(
+                            &analyzed_run_id,
+                            &analyzer_run_log.run_id,
+                            &output_sender,
+                        ).await {
+                            eprintln!("[Cronos] Failed to process analyzer verdict: {}", e);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[Cronos] Post-run analyzer {} failed: {}", trigger_info.analyzer_agent, e);
+                    }
+                }
+            }
+        } else {
+            eprintln!("[Cronos] Post-run analyzer {} not found", trigger_info.analyzer_agent);
+        }
+    } else {
+        eprintln!("[Cronos] CRONOS not initialized for post-run analyzer");
+    }
+}
+
+/// Process the analyzer verdict file and update the original run's log
+async fn process_analyzer_verdict(
+    analyzed_run_id: &str,
+    analyzer_run_id: &str,
+    output_sender: &broadcast::Sender<CronOutputEvent>,
+) -> Result<(), String> {
+    let data_root = crate::utils::paths::get_nolan_data_root()?;
+    let verdict_file = data_root
+        .join(".state")
+        .join("analyzer-verdicts")
+        .join(format!("{}.json", analyzed_run_id));
+
+    // Read and parse the verdict file
+    let verdict_content = std::fs::read_to_string(&verdict_file)
+        .map_err(|e| format!("Failed to read verdict file: {}", e))?;
+
+    let mut verdict: AnalyzerVerdict = serde_json::from_str(&verdict_content)
+        .map_err(|e| format!("Failed to parse verdict JSON: {}", e))?;
+
+    // Add the analyzer run ID to the verdict
+    verdict.analyzer_run_id = Some(analyzer_run_id.to_string());
+
+    // Find and update the original run's JSON log
+    let runs_dir = crate::utils::paths::get_cronos_runs_dir()?;
+    let mut updated = false;
+
+    // Search through date directories for the original run
+    for date_entry in std::fs::read_dir(&runs_dir).into_iter().flatten().flatten() {
+        if !date_entry.path().is_dir() {
+            continue;
+        }
+        for file_entry in std::fs::read_dir(date_entry.path()).into_iter().flatten().flatten() {
+            let path = file_entry.path();
+            if path.extension().map(|e| e == "json").unwrap_or(false) {
+                if let Ok(content) = std::fs::read_to_string(&path) {
+                    if let Ok(mut run_log) = serde_json::from_str::<CronRunLog>(&content) {
+                        if run_log.run_id == analyzed_run_id {
+                            // Update the run log with the verdict
+                            run_log.analyzer_verdict = Some(verdict.clone());
+
+                            // Write back the updated log
+                            let updated_json = serde_json::to_string_pretty(&run_log)
+                                .map_err(|e| format!("Failed to serialize updated run log: {}", e))?;
+                            std::fs::write(&path, updated_json)
+                                .map_err(|e| format!("Failed to write updated run log: {}", e))?;
+
+                            updated = true;
+
+                            // Emit status event about verdict
+                            let _ = output_sender.send(CronOutputEvent {
+                                run_id: analyzed_run_id.to_string(),
+                                agent_name: run_log.agent_name.clone(),
+                                event_type: OutputEventType::Status,
+                                content: format!(
+                                    "Analyzer verdict: {} - {}",
+                                    match verdict.verdict {
+                                        AnalyzerVerdictType::Complete => "COMPLETE",
+                                        AnalyzerVerdictType::Followup => "FOLLOWUP",
+                                        AnalyzerVerdictType::Failed => "FAILED",
+                                    },
+                                    verdict.reason
+                                ),
+                                timestamp: chrono::Utc::now().to_rfc3339(),
+                            });
+
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        if updated {
+            break;
+        }
+    }
+
+    if !updated {
+        return Err(format!("Original run {} not found", analyzed_run_id));
+    }
+
+    Ok(())
+}
+
 // ========================
 // Session Recovery
 // ========================
@@ -193,6 +334,11 @@ pub async fn create_cron_agent(config: CronAgentConfig) -> Result<(), String> {
                 return Err("Event agents require an event_trigger".to_string());
             }
         }
+        AgentType::Team => {
+            if !config.name.starts_with("team-") {
+                return Err("Team agent name must start with 'team-'".to_string());
+            }
+        }
     }
 
     let guard = CRONOS.read().await;
@@ -205,6 +351,7 @@ pub async fn create_cron_agent(config: CronAgentConfig) -> Result<(), String> {
         AgentType::Cron => nolan_root.join("cronos/agents"),
         AgentType::Predefined => nolan_root.join("predefined/agents"),
         AgentType::Event => nolan_root.join("event/agents"),
+        AgentType::Team => crate::utils::paths::get_agents_dir()?,
     };
 
     let claude_md = agents_dir.join(&config.name).join("CLAUDE.md");
@@ -388,15 +535,21 @@ pub async fn trigger_cron_agent(name: String, app: AppHandle) -> Result<String, 
     tokio::spawn(async move {
         let guard = CRONOS.read().await;
         if let Some(manager) = guard.as_ref() {
-            if let Err(e) = executor::execute_cron_agent(
+            match executor::execute_cron_agent(
                 &config,
                 manager,
                 RunTrigger::Manual,
                 false,
-                Some(output_sender),
+                Some(output_sender.clone()),
                 None,
             ).await {
-                eprintln!("Cron agent {} failed: {}", agent_name, e);
+                Ok(run_log) => {
+                    // Check if post-run analyzer should be triggered
+                    if let Some(trigger_info) = executor::get_analyzer_trigger_info(&config, &run_log) {
+                        trigger_post_run_analyzer(trigger_info, output_sender).await;
+                    }
+                }
+                Err(e) => eprintln!("Cron agent {} failed: {}", agent_name, e),
             }
         }
     });
@@ -425,15 +578,21 @@ pub async fn trigger_cron_agent_api(name: String) -> Result<String, String> {
     tokio::spawn(async move {
         let guard = CRONOS.read().await;
         if let Some(manager) = guard.as_ref() {
-            if let Err(e) = executor::execute_cron_agent(
+            match executor::execute_cron_agent(
                 &config,
                 manager,
                 RunTrigger::Manual,
                 false,
-                Some(output_sender),
+                Some(output_sender.clone()),
                 None,
             ).await {
-                eprintln!("Cron agent {} failed: {}", agent_name, e);
+                Ok(run_log) => {
+                    // Check if post-run analyzer should be triggered
+                    if let Some(trigger_info) = executor::get_analyzer_trigger_info(&config, &run_log) {
+                        trigger_post_run_analyzer(trigger_info, output_sender).await;
+                    }
+                }
+                Err(e) => eprintln!("Cron agent {} failed: {}", agent_name, e),
             }
         }
     });
@@ -460,14 +619,19 @@ pub async fn trigger_cron_agent_scheduled(name: String) -> Result<String, String
     // Execute (not spawned - let the caller handle spawning)
     let guard = CRONOS.read().await;
     if let Some(manager) = guard.as_ref() {
-        executor::execute_cron_agent(
+        let run_log = executor::execute_cron_agent(
             &config,
             manager,
             RunTrigger::Scheduled,
             false,
-            Some(output_sender),
+            Some(output_sender.clone()),
             None,
         ).await?;
+
+        // Check if post-run analyzer should be triggered
+        if let Some(trigger_info) = executor::get_analyzer_trigger_info(&config, &run_log) {
+            trigger_post_run_analyzer(trigger_info, output_sender).await;
+        }
     }
 
     Ok(format!("Scheduled run completed for {}", name))
@@ -479,6 +643,322 @@ pub async fn cancel_cron_agent(name: String) -> Result<(), String> {
     let manager = guard.as_ref().ok_or("Cronos not initialized")?;
 
     executor::cancel_cron_agent(manager, &name).await
+}
+
+// ========================
+// Session Relaunch
+// ========================
+
+/// Relaunch a cron agent session using Claude's --resume flag
+/// This allows continuing a previous session to complete tasks or answer questions
+#[tauri::command]
+pub async fn relaunch_cron_session(
+    run_id: String,
+    follow_up_prompt: String,
+    app: AppHandle,
+) -> Result<String, String> {
+    relaunch_cron_session_impl(run_id, follow_up_prompt, Some(app)).await
+}
+
+/// Relaunch via HTTP API (no AppHandle)
+pub async fn relaunch_cron_session_api(
+    run_id: String,
+    follow_up_prompt: String,
+) -> Result<String, String> {
+    relaunch_cron_session_impl(run_id, follow_up_prompt, None).await
+}
+
+/// Implementation of session relaunch
+async fn relaunch_cron_session_impl(
+    run_id: String,
+    follow_up_prompt: String,
+    app: Option<AppHandle>,
+) -> Result<String, String> {
+    // Find the original run log
+    let runs_dir = crate::utils::paths::get_cronos_runs_dir()?;
+    let mut original_run: Option<CronRunLog> = None;
+
+    // Search through date directories for the run
+    for date_entry in std::fs::read_dir(&runs_dir).into_iter().flatten().flatten() {
+        if date_entry.path().is_dir() {
+            for file_entry in std::fs::read_dir(date_entry.path()).into_iter().flatten().flatten() {
+                let path = file_entry.path();
+                if path.extension().map(|e| e == "json").unwrap_or(false) {
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        if let Ok(log) = serde_json::from_str::<CronRunLog>(&content) {
+                            if log.run_id == run_id {
+                                original_run = Some(log);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if original_run.is_some() { break; }
+    }
+
+    let original = original_run.ok_or_else(|| format!("Run {} not found", run_id))?;
+
+    // Verify we have a claude_session_id
+    let claude_session_id = original.claude_session_id
+        .ok_or_else(|| "Original run has no claude_session_id (older run before this feature)".to_string())?;
+
+    // Get agent config
+    let guard = CRONOS.read().await;
+    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+    let config = manager.get_agent(&original.agent_name).await?;
+
+    // Check if agent is already running
+    if !config.concurrency.allow_parallel && manager.is_running(&original.agent_name).await {
+        return Err(format!("Agent '{}' is already running", original.agent_name));
+    }
+    drop(guard);
+
+    // Generate new run ID for the relaunch
+    let new_run_id = uuid::Uuid::new_v4().to_string()[..8].to_string();
+    let started_at = chrono::Utc::now();
+    let timestamp = started_at.format("%H%M%S").to_string();
+    let date_str = started_at.format("%Y-%m-%d").to_string();
+
+    // Setup paths
+    let nolan_root = crate::utils::paths::get_nolan_root()?;
+    let runs_dir = crate::utils::paths::get_cronos_runs_dir()?.join(&date_str);
+    std::fs::create_dir_all(&runs_dir)
+        .map_err(|e| format!("Failed to create runs directory: {}", e))?;
+
+    let log_file = runs_dir.join(format!("{}-{}-resume.log", original.agent_name, timestamp));
+    let json_file = runs_dir.join(format!("{}-{}-resume.json", original.agent_name, timestamp));
+
+    // Create run directory
+    let run_dir = runs_dir.join(format!("{}-{}-resume", original.agent_name, new_run_id));
+    std::fs::create_dir_all(&run_dir)
+        .map_err(|e| format!("Failed to create run directory: {}", e))?;
+
+    // Symlink .claude to app root
+    #[cfg(unix)]
+    {
+        let claude_link = run_dir.join(".claude");
+        if !claude_link.exists() {
+            let _ = std::os::unix::fs::symlink(nolan_root.join(".claude"), &claude_link);
+        }
+    }
+
+    // Generate tmux session name (distinguishes as a resume)
+    let session_name = format!("cron-{}-{}-resume", original.agent_name, &new_run_id);
+
+    // Escape the follow-up prompt for shell
+    let prompt_escaped = follow_up_prompt.replace("'", "'\\''");
+
+    // Build environment exports
+    let nolan_data_root = crate::utils::paths::get_nolan_data_root()?;
+    let env_exports = format!(
+        "export CRON_RUN_ID='{}' CRON_AGENT='{}' CRON_ORIGINAL_RUN='{}' NOLAN_ROOT='{}' NOLAN_DATA_ROOT='{}'",
+        new_run_id, original.agent_name, run_id, nolan_root.to_string_lossy(), nolan_data_root.to_string_lossy()
+    );
+
+    // Determine working directory (use original run_dir if still exists, or config working_directory)
+    let work_dir = original.run_dir
+        .as_ref()
+        .filter(|d| std::path::Path::new(d).exists())
+        .map(std::path::PathBuf::from)
+        .or_else(|| config.context.working_directory.as_ref().map(std::path::PathBuf::from))
+        .unwrap_or_else(|| nolan_root.clone());
+
+    // Build claude command with --resume flag
+    let claude_cmd = format!(
+        "claude --resume '{}' -p '{}' --dangerously-skip-permissions --verbose --output-format stream-json --model {}",
+        claude_session_id, prompt_escaped, config.model
+    );
+
+    // Build full shell command
+    let exit_code_file = run_dir.join("exit_code");
+    let shell_cmd = format!(
+        "{}; cd '{}'; {} 2>&1 | tee '{}'; echo ${{PIPESTATUS[0]}} > '{}'",
+        env_exports,
+        work_dir.to_string_lossy(),
+        claude_cmd,
+        log_file.to_string_lossy(),
+        exit_code_file.to_string_lossy()
+    );
+
+    // Write initial run log
+    let initial_log = CronRunLog {
+        run_id: new_run_id.clone(),
+        agent_name: original.agent_name.clone(),
+        started_at: started_at.to_rfc3339(),
+        completed_at: None,
+        status: CronRunStatus::Running,
+        duration_secs: None,
+        exit_code: None,
+        output_file: log_file.to_string_lossy().to_string(),
+        error: None,
+        attempt: 1,
+        trigger: RunTrigger::Manual,
+        session_name: Some(session_name.clone()),
+        run_dir: Some(run_dir.to_string_lossy().to_string()),
+        claude_session_id: Some(claude_session_id.clone()),  // Reuse original session ID
+        total_cost_usd: None,
+        worktree_path: original.worktree_path.clone(),  // Inherit worktree if any
+        worktree_branch: original.worktree_branch.clone(),
+        base_commit: original.base_commit.clone(),
+        analyzer_verdict: None,  // Relaunched runs start fresh without verdict
+    };
+
+    let json = serde_json::to_string_pretty(&initial_log)
+        .map_err(|e| format!("Failed to serialize run log: {}", e))?;
+    std::fs::write(&json_file, &json)
+        .map_err(|e| format!("Failed to write run log: {}", e))?;
+
+    // Create tmux session
+    let output = std::process::Command::new("tmux")
+        .args(&[
+            "new-session", "-d", "-s", &session_name,
+            "-c", &run_dir.to_string_lossy(),
+            "bash", "-c", &shell_cmd
+        ])
+        .output()
+        .map_err(|e| format!("Failed to create tmux session: {}", e))?;
+
+    if !output.status.success() {
+        let _ = std::fs::remove_dir_all(&run_dir);
+        return Err(format!(
+            "Failed to start tmux session: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    // Register session
+    if let Err(e) = crate::commands::lifecycle::register_session(
+        &session_name,
+        &original.agent_name,
+        &run_dir.to_string_lossy(),
+        "",
+    ) {
+        eprintln!("Warning: Failed to register cron session: {}", e);
+    }
+
+    // Get output sender and setup frontend forwarding if we have AppHandle
+    let output_sender = OUTPUT_SENDER.clone();
+    if let Some(app) = app {
+        let mut receiver = output_sender.subscribe();
+        tokio::spawn(async move {
+            while let Ok(event) = receiver.recv().await {
+                let _ = app.emit("cronos:output", &event);
+            }
+        });
+    }
+
+    // Emit start event
+    let _ = output_sender.send(CronOutputEvent {
+        run_id: new_run_id.clone(),
+        agent_name: original.agent_name.clone(),
+        event_type: OutputEventType::Status,
+        content: format!("Relaunching session {} (original run: {})", claude_session_id, run_id),
+        timestamp: started_at.to_rfc3339(),
+    });
+
+    // Spawn a task to monitor completion and update the log
+    let agent_name = original.agent_name.clone();
+    let config_timeout = config.timeout;
+    let result_run_id = new_run_id.clone();  // Clone before move into async block
+    tokio::spawn(async move {
+        let timeout_duration = std::time::Duration::from_secs(config_timeout as u64);
+        let start = std::time::Instant::now();
+        let check_interval = std::time::Duration::from_secs(2);
+
+        loop {
+            // Check exit code file
+            if exit_code_file.exists() {
+                tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+                break;
+            }
+
+            // Check if session exists
+            if let Ok(output) = std::process::Command::new("tmux")
+                .args(&["has-session", "-t", &session_name])
+                .output()
+            {
+                if !output.status.success() {
+                    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                    break;
+                }
+            }
+
+            // Check timeout
+            if start.elapsed() > timeout_duration {
+                // Kill session on timeout
+                let _ = std::process::Command::new("tmux")
+                    .args(&["kill-session", "-t", &session_name])
+                    .output();
+                break;
+            }
+
+            tokio::time::sleep(check_interval).await;
+        }
+
+        // Determine final status
+        let completed_at = chrono::Utc::now();
+        let duration = (completed_at - started_at).num_seconds() as u32;
+
+        let exit_code = std::fs::read_to_string(&exit_code_file)
+            .ok()
+            .and_then(|s| s.trim().parse::<i32>().ok());
+
+        let (status, error) = if start.elapsed() > timeout_duration {
+            (CronRunStatus::Timeout, Some(format!("Timeout after {}s", config_timeout)))
+        } else if exit_code == Some(0) {
+            (CronRunStatus::Success, None)
+        } else {
+            (CronRunStatus::Failed, Some("Non-zero exit code".to_string()))
+        };
+
+        // Extract cost from log
+        let total_cost_usd = executor::extract_cost_from_log_file(&log_file.to_string_lossy());
+
+        // Update the JSON log
+        let final_log = CronRunLog {
+            run_id: new_run_id.clone(),
+            agent_name: agent_name.clone(),
+            started_at: started_at.to_rfc3339(),
+            completed_at: Some(completed_at.to_rfc3339()),
+            status: status.clone(),
+            duration_secs: Some(duration),
+            exit_code,
+            output_file: log_file.to_string_lossy().to_string(),
+            error,
+            attempt: 1,
+            trigger: RunTrigger::Manual,
+            session_name: Some(session_name.clone()),
+            run_dir: Some(run_dir.to_string_lossy().to_string()),
+            claude_session_id: Some(claude_session_id),
+            total_cost_usd,
+            worktree_path: None,
+            worktree_branch: None,
+            base_commit: None,
+            analyzer_verdict: None,
+        };
+
+        if let Ok(json) = serde_json::to_string_pretty(&final_log) {
+            let _ = std::fs::write(&json_file, json);
+        }
+
+        // Emit completion event
+        let _ = output_sender.send(CronOutputEvent {
+            run_id: new_run_id,
+            agent_name,
+            event_type: OutputEventType::Complete,
+            content: format!("Relaunch completed with status: {:?}", status),
+            timestamp: completed_at.to_rfc3339(),
+        });
+
+        // Cleanup run directory on success
+        if status == CronRunStatus::Success {
+            let _ = std::fs::remove_dir_all(&run_dir);
+        }
+    });
+
+    Ok(format!("Relaunched session for run {} as new run {}", run_id, result_run_id))
 }
 
 // ========================
@@ -620,16 +1100,16 @@ pub async fn get_cron_run_log(run_id: String) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn read_cron_agent_claude_md(name: String) -> Result<String, String> {
-    let nolan_root = crate::utils::paths::get_nolan_root()?;
-    let path = nolan_root.join("cronos/agents").join(&name).join("CLAUDE.md");
+    let agents_dir = crate::utils::paths::get_agents_dir()?;
+    let path = agents_dir.join(&name).join("CLAUDE.md");
     std::fs::read_to_string(&path)
         .map_err(|e| format!("Failed to read CLAUDE.md: {}", e))
 }
 
 #[tauri::command]
 pub async fn write_cron_agent_claude_md(name: String, content: String) -> Result<(), String> {
-    let nolan_root = crate::utils::paths::get_nolan_root()?;
-    let path = nolan_root.join("cronos/agents").join(&name).join("CLAUDE.md");
+    let agents_dir = crate::utils::paths::get_agents_dir()?;
+    let path = agents_dir.join(&name).join("CLAUDE.md");
     std::fs::write(&path, content)
         .map_err(|e| format!("Failed to write CLAUDE.md: {}", e))
 }
@@ -1021,7 +1501,8 @@ pub async fn dispatch_single_idea(idea_id: String, app: AppHandle) -> Result<Str
 #[derive(Clone, Debug, serde::Deserialize)]
 struct ReviewForRouting {
     item_id: String,
-    review_status: String,
+    #[serde(rename = "review_status")]
+    _review_status: String,
     #[serde(default)]
     complexity: Option<String>,
     proposal: Option<ProposalForRouting>,
@@ -1099,16 +1580,22 @@ pub async fn route_accepted_idea(idea_id: String) -> Result<RouteResult, String>
             tokio::spawn(async move {
                 let guard = CRONOS.read().await;
                 if let Some(manager) = guard.as_ref() {
-                    if let Err(e) = executor::execute_cron_agent_with_env(
+                    match executor::execute_cron_agent_with_env(
                         &config,
                         manager,
                         RunTrigger::Manual,
                         false,
-                        Some(output_sender),
+                        Some(output_sender.clone()),
                         None,
                         Some(extra_env),
                     ).await {
-                        eprintln!("Idea implementer failed: {}", e);
+                        Ok(run_log) => {
+                            // Check if post-run analyzer should be triggered
+                            if let Some(trigger_info) = executor::get_analyzer_trigger_info(&config, &run_log) {
+                                trigger_post_run_analyzer(trigger_info, output_sender).await;
+                            }
+                        }
+                        Err(e) => eprintln!("Idea implementer failed: {}", e),
                     }
                 }
             });

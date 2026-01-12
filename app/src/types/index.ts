@@ -10,6 +10,9 @@ export * from './feedback';
 // Re-export metrics types
 export * from './metrics';
 
+// Re-export git types
+export * from './git';
+
 export interface AgentStatus {
   name: string;
   team: string;  // Team this agent belongs to (empty for ralph)

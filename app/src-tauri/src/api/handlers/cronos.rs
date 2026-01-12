@@ -155,7 +155,25 @@ pub async fn get_run_log(
     }
 }
 
-/// Read CLAUDE.md for a cron agent
+/// Relaunch session request
+#[derive(Deserialize)]
+pub struct RelaunchSessionRequest {
+    #[serde(rename = "followUpPrompt")]
+    follow_up_prompt: String,
+}
+
+/// Relaunch a cron agent session using Claude's --resume flag
+pub async fn relaunch_session(
+    Path(run_id): Path<String>,
+    Json(req): Json<RelaunchSessionRequest>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::relaunch_cron_session_api(run_id, req.follow_up_prompt).await {
+        Ok(result) => Ok(Json(serde_json::json!({ "result": result }))),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+/// Read CLAUDE.md for an agent
 pub async fn read_claude_md(
     Path(name): Path<String>,
 ) -> Result<Json<String>, impl IntoResponse> {
@@ -171,7 +189,7 @@ pub struct WriteClaudeMdRequest {
     content: String,
 }
 
-/// Write CLAUDE.md for a cron agent
+/// Write CLAUDE.md for an agent
 pub async fn write_claude_md(
     Path(name): Path<String>,
     Json(req): Json<WriteClaudeMdRequest>,
@@ -328,5 +346,64 @@ pub async fn dispatch_ideas() -> Result<Json<serde_json::Value>, impl IntoRespon
     match commands::dispatch_ideas_api().await {
         Ok(result) => Ok(Json(serde_json::json!(result))),
         Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+// ========================
+// Worktree Management
+// ========================
+
+use crate::git::worktree;
+
+/// List all active worktrees
+pub async fn list_worktrees() -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    // Get the nolan root to find git repo
+    let nolan_root = match crate::utils::paths::get_nolan_root() {
+        Ok(root) => root,
+        Err(e) => return Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    };
+
+    match worktree::list_worktrees(&nolan_root) {
+        Ok(worktrees) => Ok(Json(serde_json::json!(worktrees))),
+        Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+/// Cleanup orphaned worktrees (no associated running process)
+pub async fn cleanup_orphaned_worktrees() -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    let nolan_root = match crate::utils::paths::get_nolan_root() {
+        Ok(root) => root,
+        Err(e) => return Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    };
+
+    // Prune any stale worktree entries
+    if let Err(e) = worktree::prune_worktrees(&nolan_root) {
+        return Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e));
+    }
+
+    Ok(Json(serde_json::json!({ "success": true })))
+}
+
+/// Remove worktree request
+#[derive(Deserialize)]
+pub struct RemoveWorktreeRequest {
+    pub path: String,
+    #[serde(default)]
+    pub force: bool,
+}
+
+/// Remove a specific worktree
+pub async fn remove_worktree(
+    Json(req): Json<RemoveWorktreeRequest>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    let nolan_root = match crate::utils::paths::get_nolan_root() {
+        Ok(root) => root,
+        Err(e) => return Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    };
+
+    let worktree_path = std::path::PathBuf::from(&req.path);
+    match worktree::remove_worktree(&nolan_root, &worktree_path, req.force) {
+        Ok(_) => Ok(Json(serde_json::json!({ "success": true }))),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
     }
 }

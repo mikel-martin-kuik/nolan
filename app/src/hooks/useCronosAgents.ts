@@ -44,7 +44,7 @@ export function useCronosAgents(): UseCronosAgentsResult {
   } = useFetchData({
     fetcher: () => invoke<CronAgentInfo[]>('list_cron_agents'),
     defaultValue: [],
-    errorMessage: 'Failed to load cron agents',
+    errorMessage: 'Failed to load agents',
     init: () => invoke('init_cronos'),
   });
 
@@ -74,11 +74,14 @@ export function useCronosAgents(): UseCronosAgentsResult {
     const ungrouped: CronAgentInfo[] = [];
 
     for (const agent of agents) {
-      if (agent.group) {
-        if (!grouped[agent.group]) {
-          grouped[agent.group] = [];
+      // Use custom group if set, otherwise group by agent_type
+      const groupKey = agent.group || (agent.agent_type ? `type:${agent.agent_type}` : null);
+
+      if (groupKey) {
+        if (!grouped[groupKey]) {
+          grouped[groupKey] = [];
         }
-        grouped[agent.group].push(agent);
+        grouped[groupKey].push(agent);
       } else {
         ungrouped.push(agent);
       }
@@ -109,7 +112,7 @@ export function useCronosAgents(): UseCronosAgentsResult {
 
     try {
       await invoke('create_cron_agent', { config: agentConfig });
-      showSuccess(`Created cron agent: ${agentName}`);
+      showSuccess(`Created agent: ${agentName}`);
       refreshAgents();
       return true;
     } catch (err) {

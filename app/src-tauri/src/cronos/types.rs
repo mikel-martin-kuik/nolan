@@ -12,6 +12,7 @@ pub enum AgentType {
     Cron,       // Time-scheduled (existing behavior)
     Predefined, // Manual trigger only
     Event,      // Event-driven trigger
+    Team,       // Team workflow (group of agents)
 }
 
 /// Event trigger configuration (for Event type agents)
@@ -80,6 +81,47 @@ pub struct CronAgentConfig {
     pub event_trigger: Option<EventTrigger>,  // For Event type
     #[serde(default)]
     pub invocation: Option<InvocationConfig>, // For Predefined type
+    // Git worktree isolation for demanding feature tasks
+    #[serde(default)]
+    pub worktree: Option<WorktreeConfig>,
+    // Post-run analyzer configuration
+    // If set, this agent will be triggered after completion to analyze results
+    #[serde(default)]
+    pub post_run_analyzer: Option<PostRunAnalyzerConfig>,
+}
+
+/// Configuration for automatic post-run analysis
+/// The analyzer agent receives context about the completed run and can decide
+/// whether to trigger a relaunch with follow-up instructions
+#[derive(Clone, Debug, Serialize, Deserialize, Default, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+pub struct PostRunAnalyzerConfig {
+    /// Name of the analyzer agent to trigger after this agent completes
+    pub analyzer_agent: String,
+    /// Trigger analyzer on success (default: true)
+    #[serde(default = "default_true")]
+    pub on_success: bool,
+    /// Trigger analyzer on failure (default: true)
+    #[serde(default = "default_true")]
+    pub on_failure: bool,
+    /// Trigger analyzer on timeout (default: true)
+    #[serde(default = "default_true")]
+    pub on_timeout: bool,
+}
+
+fn default_true() -> bool { true }
+
+/// Configuration for git worktree isolation
+#[derive(Clone, Debug, Serialize, Deserialize, Default, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+pub struct WorktreeConfig {
+    /// Enable worktree isolation for this agent
+    #[serde(default)]
+    pub enabled: bool,
+    /// Repository path to create worktree from (defaults to NOLAN_ROOT)
+    pub repo_path: Option<String>,
+    /// Base branch to create worktree from (defaults to current branch)
+    pub base_branch: Option<String>,
 }
 
 /// Cron agent group definition (stored in cronos/groups.yaml)
@@ -193,9 +235,49 @@ pub struct CronRunLog {
     pub session_name: Option<String>,  // tmux session name for recovery
     #[serde(default)]
     pub run_dir: Option<String>,       // ephemeral working directory
+    // Claude session ID for --resume capability (distinct from tmux session_name)
+    #[serde(default)]
+    pub claude_session_id: Option<String>,
     // Cost tracking (extracted from Claude output)
     #[serde(default)]
     pub total_cost_usd: Option<f32>,
+    // Git worktree isolation fields
+    #[serde(default)]
+    pub worktree_path: Option<String>,   // Path to the worktree if used
+    #[serde(default)]
+    pub worktree_branch: Option<String>, // Branch name for the worktree
+    #[serde(default)]
+    pub base_commit: Option<String>,     // Commit at worktree creation
+    // Analyzer verdict (populated after analyzer agent runs)
+    #[serde(default)]
+    pub analyzer_verdict: Option<AnalyzerVerdict>,
+}
+
+/// Verdict from a post-run analyzer agent
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+pub struct AnalyzerVerdict {
+    /// The verdict: COMPLETE, FOLLOWUP, or FAILED
+    pub verdict: AnalyzerVerdictType,
+    /// Brief explanation of the verdict
+    pub reason: String,
+    /// If FOLLOWUP, the prompt to use for session relaunch
+    pub follow_up_prompt: Option<String>,
+    /// List of specific findings from analysis
+    pub findings: Vec<String>,
+    /// Run ID of the analyzer that produced this verdict
+    #[serde(default)]
+    pub analyzer_run_id: Option<String>,
+}
+
+/// Type of analyzer verdict
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+#[serde(rename_all = "UPPERCASE")]
+pub enum AnalyzerVerdictType {
+    Complete,
+    Followup,
+    Failed,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TS)]
@@ -260,6 +342,11 @@ pub struct RunningProcess {
     pub session_name: Option<String>,  // tmux session name for recovery
     pub run_dir: Option<std::path::PathBuf>,  // ephemeral working directory
     pub cancellation_token: Option<CancellationToken>,  // For stopping the process
+    pub claude_session_id: Option<String>,    // Claude --session-id for relaunch
+    // Git worktree isolation fields
+    pub worktree_path: Option<std::path::PathBuf>,  // Path to the worktree if enabled
+    pub worktree_branch: Option<String>,            // Branch name for the worktree
+    pub base_commit: Option<String>,                // Commit at worktree creation
 }
 
 /// Orphaned cron session detected on startup (for recovery)

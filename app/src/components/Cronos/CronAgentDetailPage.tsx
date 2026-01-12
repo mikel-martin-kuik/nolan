@@ -223,15 +223,17 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
                   <label className="text-sm font-medium">Description</label>
                   <Input className="mt-1" value={config.description} onChange={(e) => updateConfig({ description: e.target.value })} />
                 </div>
-                <div>
-                  <label className="text-sm font-medium">Schedule</label>
-                  <Select value={config.schedule.cron} onValueChange={(v) => updateConfig({ schedule: { cron: v } })}>
-                    <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {CRON_PRESETS.map((p) => <SelectItem key={p.cron} value={p.cron}>{p.label} ({p.cron})</SelectItem>)}
-                    </SelectContent>
-                  </Select>
-                </div>
+                {config.schedule && (
+                  <div>
+                    <label className="text-sm font-medium">Schedule</label>
+                    <Select value={config.schedule.cron} onValueChange={(v) => updateConfig({ schedule: { cron: v } })}>
+                      <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {CRON_PRESETS.map((p) => <SelectItem key={p.cron} value={p.cron}>{p.label} ({p.cron})</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <div>
                   <label className="text-sm font-medium">Model</label>
                   <Select value={config.model} onValueChange={(v) => updateConfig({ model: v })}>

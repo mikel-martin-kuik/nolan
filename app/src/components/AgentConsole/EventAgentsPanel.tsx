@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React from 'react';
 import { useEventAgents } from '@/hooks/useEventAgents';
 import { EventAgentCard } from './EventAgentCard';
 import { Button } from '@/components/ui/button';

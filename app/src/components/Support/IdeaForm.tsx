@@ -12,10 +12,11 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { invoke } from '@/lib/api';
 import { Idea } from '@/types';
-import { Loader2, Sparkles } from 'lucide-react';
+import { Loader2, Sparkles, Mic, MicOff } from 'lucide-react';
 import { useOllamaStore } from '@/store/ollamaStore';
 import { Tooltip } from '@/components/ui/tooltip';
 import { useToastStore } from '@/store/toastStore';
+import { useSpeechToText } from '@/hooks/useSpeechToText';
 
 interface IdeaFormProps {
   open: boolean;
@@ -29,6 +30,25 @@ export function IdeaForm({ open, onOpenChange }: IdeaFormProps) {
   const [generating, setGenerating] = useState(false);
   const { status: ollamaStatus, checkConnection, generate: ollamaGenerate } = useOllamaStore();
   const { error: showError } = useToastStore();
+
+  // Speech-to-text for description field
+  const handleSpeechTranscript = (text: string) => {
+    setDescription((prev) => (prev ? prev + ' ' + text : text));
+  };
+  const {
+    isSupported: speechSupported,
+    isRecording,
+    transcript: interimTranscript,
+    error: speechError,
+    toggleRecording,
+  } = useSpeechToText(handleSpeechTranscript);
+
+  // Show speech error as toast
+  useEffect(() => {
+    if (speechError) {
+      showError(speechError);
+    }
+  }, [speechError, showError]);
 
   // Check Ollama connection on mount
   useEffect(() => {
@@ -105,33 +125,63 @@ export function IdeaForm({ open, onOpenChange }: IdeaFormProps) {
               <label htmlFor="idea-description" className="text-sm font-medium">
                 Description
               </label>
-              {ollamaStatus === 'connected' && (
-                <Tooltip content="Improve description using local AI" side="top">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleGenerateDescription}
-                    disabled={generating || createMutation.isPending || !title.trim()}
-                    className="h-6 px-2"
+              <div className="flex items-center gap-1">
+                {speechSupported && (
+                  <Tooltip
+                    content={isRecording ? 'Stop recording' : 'Dictate description'}
+                    side="top"
                   >
-                    {generating ? (
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                    ) : (
-                      <Sparkles className="h-3 w-3" />
-                    )}
-                  </Button>
-                </Tooltip>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={toggleRecording}
+                      disabled={generating || createMutation.isPending}
+                      className={`h-6 px-2 ${isRecording ? 'text-red-500 hover:text-red-600' : ''}`}
+                    >
+                      {isRecording ? (
+                        <MicOff className="h-3 w-3" />
+                      ) : (
+                        <Mic className="h-3 w-3" />
+                      )}
+                    </Button>
+                  </Tooltip>
+                )}
+                {ollamaStatus === 'connected' && (
+                  <Tooltip content="Improve description using local AI" side="top">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleGenerateDescription}
+                      disabled={generating || createMutation.isPending || !title.trim()}
+                      className="h-6 px-2"
+                    >
+                      {generating ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3 w-3" />
+                      )}
+                    </Button>
+                  </Tooltip>
+                )}
+              </div>
+            </div>
+            <div className="relative">
+              <Textarea
+                id="idea-description"
+                placeholder="Describe your idea for the roadmap..."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={5}
+                maxLength={2000}
+              />
+              {isRecording && interimTranscript && (
+                <div className="absolute bottom-2 left-2 right-2 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded">
+                  {interimTranscript}...
+                </div>
               )}
             </div>
-            <Textarea
-              id="idea-description"
-              placeholder="Describe your idea for the roadmap..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={5}
-              maxLength={2000}
-            />
           </div>
 
           <DialogFooter>

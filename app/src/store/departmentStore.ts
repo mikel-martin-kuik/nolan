@@ -1,38 +1,81 @@
+/**
+ * Department Store - UI-only state
+ *
+ * Part of the layered state management architecture:
+ * - React Query: Server state (see hooks/useDepartments.ts)
+ * - Zustand: UI-only state (THIS - collapsed departments, collapsed pillars)
+ *
+ * MIGRATION NOTE: Components should migrate to:
+ * - useDepartments() hook for departments and teamInfos (server state)
+ * - This store for collapsed state and helper functions
+ * - Legacy server state is kept for backward compatibility
+ */
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { invoke } from '@/lib/api';
 import type { DepartmentsConfig, DepartmentGroup, TeamInfo, PillarGroup } from '../types';
 
 interface DepartmentState {
-  // Data from backend
-  departments: DepartmentsConfig | null;
-  teamInfos: TeamInfo[];
-
-  // UI state (persisted to localStorage)
+  // UI state (persisted to localStorage) - PRIMARY PURPOSE
   collapsedDepartments: string[];
   collapsedPillars: string[];
 
-  // Actions
-  loadDepartments: () => Promise<void>;
-  loadTeamInfos: () => Promise<void>;
-  saveDepartments: (config: DepartmentsConfig) => Promise<void>;
+  // Legacy server state (deprecated - use React Query hooks instead)
+  departments: DepartmentsConfig | null;
+  teamInfos: TeamInfo[];
+
+  // UI Actions
   toggleDepartmentCollapsed: (departmentName: string) => void;
   setDepartmentCollapsed: (departmentName: string, collapsed: boolean) => void;
   togglePillarCollapsed: (pillarId: string) => void;
 
-  // Computed helpers
-  getGroupedTeams: (availableTeams: string[]) => DepartmentGroup[];
-  getGroupedByPillar: () => PillarGroup[];
+  // Legacy actions (deprecated - use React Query hooks instead)
+  loadDepartments: () => Promise<void>;
+  loadTeamInfos: () => Promise<void>;
+  saveDepartments: (config: DepartmentsConfig) => Promise<void>;
+
+  // Pure helper functions (these work with any data source)
+  getGroupedTeams: (availableTeams: string[], departments?: DepartmentsConfig | null) => DepartmentGroup[];
+  getGroupedByPillar: (teamInfos?: TeamInfo[]) => PillarGroup[];
 }
 
 export const useDepartmentStore = create<DepartmentState>()(
   persist(
     (set, get) => ({
-      departments: null,
-      teamInfos: [],
+      // UI state - PRIMARY
       collapsedDepartments: [],
       collapsedPillars: [],
 
+      // Legacy server state
+      departments: null,
+      teamInfos: [],
+
+      // UI Actions
+      toggleDepartmentCollapsed: (departmentName: string) => {
+        set((state) => ({
+          collapsedDepartments: state.collapsedDepartments.includes(departmentName)
+            ? state.collapsedDepartments.filter(d => d !== departmentName)
+            : [...state.collapsedDepartments, departmentName],
+        }));
+      },
+
+      setDepartmentCollapsed: (departmentName: string, collapsed: boolean) => {
+        set((state) => ({
+          collapsedDepartments: collapsed
+            ? [...new Set([...state.collapsedDepartments, departmentName])]
+            : state.collapsedDepartments.filter(d => d !== departmentName),
+        }));
+      },
+
+      togglePillarCollapsed: (pillarId: string) => {
+        set((state) => ({
+          collapsedPillars: state.collapsedPillars.includes(pillarId)
+            ? state.collapsedPillars.filter(p => p !== pillarId)
+            : [...state.collapsedPillars, pillarId],
+        }));
+      },
+
+      // Legacy actions - kept for backward compatibility
       loadDepartments: async () => {
         try {
           const config = await invoke<DepartmentsConfig>('get_departments_config');
@@ -58,32 +101,10 @@ export const useDepartmentStore = create<DepartmentState>()(
         set({ departments: config });
       },
 
-      toggleDepartmentCollapsed: (departmentName: string) => {
-        set((state) => ({
-          collapsedDepartments: state.collapsedDepartments.includes(departmentName)
-            ? state.collapsedDepartments.filter(d => d !== departmentName)
-            : [...state.collapsedDepartments, departmentName],
-        }));
-      },
-
-      setDepartmentCollapsed: (departmentName: string, collapsed: boolean) => {
-        set((state) => ({
-          collapsedDepartments: collapsed
-            ? [...new Set([...state.collapsedDepartments, departmentName])]
-            : state.collapsedDepartments.filter(d => d !== departmentName),
-        }));
-      },
-
-      togglePillarCollapsed: (pillarId: string) => {
-        set((state) => ({
-          collapsedPillars: state.collapsedPillars.includes(pillarId)
-            ? state.collapsedPillars.filter(p => p !== pillarId)
-            : [...state.collapsedPillars, pillarId],
-        }));
-      },
-
-      getGroupedTeams: (availableTeams: string[]): DepartmentGroup[] => {
-        const { departments } = get();
+      // Pure helper - accepts data from any source (store or React Query)
+      getGroupedTeams: (availableTeams: string[], departmentsParam?: DepartmentsConfig | null): DepartmentGroup[] => {
+        // Use provided departments or fall back to store state
+        const departments = departmentsParam !== undefined ? departmentsParam : get().departments;
 
         if (!departments || departments.departments.length === 0) {
           // No departments configured - all teams in "Other"
@@ -132,8 +153,10 @@ export const useDepartmentStore = create<DepartmentState>()(
         return groups;
       },
 
-      getGroupedByPillar: (): PillarGroup[] => {
-        const { teamInfos } = get();
+      // Pure helper - accepts data from any source (store or React Query)
+      getGroupedByPillar: (teamInfosParam?: TeamInfo[]): PillarGroup[] => {
+        // Use provided teamInfos or fall back to store state
+        const teamInfos = teamInfosParam !== undefined ? teamInfosParam : get().teamInfos;
 
         if (teamInfos.length === 0) {
           return [];

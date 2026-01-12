@@ -1,6 +1,6 @@
-import React, { useCallback, useMemo, memo } from 'react';
+import React, { useCallback, useMemo, memo, useState } from 'react';
 import { invoke } from '@/lib/api';
-import { MessageSquareX, Eraser, Clock, Terminal, MessageCircle } from 'lucide-react';
+import { MessageSquareX, Eraser, Clock, Terminal, MessageCircle, Pencil } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { AgentStatus, AGENT_DESCRIPTIONS, AgentWorkflowState, getWorkflowSteps } from '../../types';
 import { useTeamStore } from '../../store/teamStore';
@@ -14,6 +14,7 @@ import { getBlockerMessage } from '../../lib/workflowStatus';
 import { cn } from '../../lib/utils';
 import { TerminalView } from '../Terminal/TerminalView';
 import { FEATURES } from '../../lib/features';
+import { useSessionLabelsStore } from '../../store/sessionLabelsStore';
 
 interface AgentLiveCardProps {
   agent: AgentStatus;
@@ -36,13 +37,21 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
   const openTerminalModal = useTerminalStore((state) => state.openModal);
   const setActiveTeam = useChatViewStore((state) => state.setActiveTeam);
   const setAgentFilter = useChatViewStore((state) => state.setAgentFilter);
-  const { error: showError } = useToastStore();
+  const { error: showError, success: showSuccess } = useToastStore();
   const currentTeam = useTeamStore((state) => state.currentTeam);
   const workflowSteps = getWorkflowSteps(currentTeam);
   const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number } | null>(null);
   const [showTerminal, setShowTerminal] = React.useState(false);
+  const [showRenameInput, setShowRenameInput] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
   const contextMenuRef = React.useRef<HTMLDivElement>(null);
+  const renameInputRef = React.useRef<HTMLInputElement>(null);
   const menuId = React.useRef(`live-card-menu-${agent.session}`);
+
+  // Get custom label for this session (only for Ralph)
+  const { setLabel, clearLabel, getLabel } = useSessionLabelsStore();
+  const customLabel = getLabel(agent.session);
+  const isRalph = agent.name === 'ralph';
 
   const entries = output?.entries || [];
   const isActive = output?.isActive || false;
@@ -58,7 +67,9 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
   };
 
   const description = AGENT_DESCRIPTIONS[agent.name as keyof typeof AGENT_DESCRIPTIONS] || 'Agent';
-  const displayName = getAgentVisualName(agent.name);
+  // Show custom label if set (for Ralph), otherwise use visual name
+  const baseDisplayName = getAgentVisualName(agent.name);
+  const displayName = customLabel || baseDisplayName;
 
   // Get blocker message if blocked
   const blockerMessage = workflowState ? getBlockerMessage(workflowState) : null;
@@ -114,8 +125,8 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    // Only show menu if there are messages OR agent is active (for clear context)
-    if (entries.length === 0 && !agent.active) return;
+    // Only show menu if there are messages OR agent is active (for clear context) OR it's Ralph (for rename)
+    if (entries.length === 0 && !agent.active && !isRalph) return;
 
     // Broadcast event to close all other menus
     window.dispatchEvent(new CustomEvent('live-card-menu-open', { detail: menuId.current }));
@@ -168,6 +179,47 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
     } catch (error) {
       console.error('Failed to clear context:', error);
       showError(`Failed to clear context: ${error}`);
+    }
+  };
+
+  // Handle rename for Ralph sessions
+  const handleRenameFromMenu = () => {
+    setContextMenu(null);
+    setRenameValue(customLabel || '');
+    setShowRenameInput(true);
+    // Focus the input after render
+    setTimeout(() => renameInputRef.current?.focus(), 0);
+  };
+
+  const handleRenameSubmit = async () => {
+    const trimmedValue = renameValue.trim();
+    if (!trimmedValue) {
+      // Clear the label if empty
+      try {
+        await clearLabel(agent.session);
+        showSuccess('Label cleared');
+      } catch (error) {
+        showError(`Failed to clear label: ${error}`);
+      }
+    } else {
+      try {
+        await setLabel(agent.session, trimmedValue);
+        showSuccess(`Renamed to "${trimmedValue}"`);
+      } catch (error) {
+        showError(`Failed to rename: ${error}`);
+      }
+    }
+    setShowRenameInput(false);
+    setRenameValue('');
+  };
+
+  const handleRenameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleRenameSubmit();
+    } else if (e.key === 'Escape') {
+      setShowRenameInput(false);
+      setRenameValue('');
     }
   };
 
@@ -392,6 +444,64 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
             Open Terminal Modal
           </button>
         )}
+        {/* Rename option - only for Ralph agents (works for active or inactive) */}
+        {isRalph && (
+          <button
+            onClick={handleRenameFromMenu}
+            className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
+          >
+            <Pencil className="w-4 h-4" />
+            {customLabel ? 'Rename Session' : 'Set Custom Label'}
+          </button>
+        )}
+      </div>
+    )}
+
+    {/* Rename input overlay */}
+    {showRenameInput && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+        onClick={() => {
+          setShowRenameInput(false);
+          setRenameValue('');
+        }}
+      >
+        <div
+          className="bg-secondary border border-border rounded-lg p-4 shadow-xl min-w-[300px]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="text-sm font-medium mb-2">Set Custom Label</div>
+          <div className="text-xs text-muted-foreground mb-3">
+            Give this Ralph session a project name for easy identification
+          </div>
+          <input
+            ref={renameInputRef}
+            type="text"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={handleRenameKeyDown}
+            placeholder="e.g., nolan, royme, my-project"
+            className="w-full px-3 py-2 bg-background border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+            maxLength={30}
+          />
+          <div className="flex gap-2 mt-3 justify-end">
+            <button
+              onClick={() => {
+                setShowRenameInput(false);
+                setRenameValue('');
+              }}
+              className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleRenameSubmit}
+              className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors"
+            >
+              {renameValue.trim() ? 'Save' : 'Clear Label'}
+            </button>
+          </div>
+        </div>
       </div>
     )}
     </>

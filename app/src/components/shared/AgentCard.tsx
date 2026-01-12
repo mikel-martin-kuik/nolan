@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { invoke } from '@/lib/api';
-import { Terminal, Play, Trash2, MessageSquare, Send, X, FileEdit, Save } from 'lucide-react';
+import { Terminal, Play, Trash2, MessageSquare, Send, X, FileEdit, Save, Pencil } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Tooltip } from '@/components/ui/tooltip';
 import { useAgentStore } from '@/store/agentStore';
@@ -10,6 +10,7 @@ import { useTerminalStore } from '@/store/terminalStore';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { AGENT_DESCRIPTIONS } from '@/types';
 import { getAgentDisplayNameForUI, isRalphSession, parseRalphSession } from '@/lib/agentIdentity';
+import { useSessionLabelsStore } from '@/store/sessionLabelsStore';
 import type { AgentStatus as AgentStatusType } from '@/types';
 
 interface AgentCardProps {
@@ -56,8 +57,15 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   const [claudeMdContent, setClaudeMdContent] = useState('');
   const [isSavingClaudeMd, setIsSavingClaudeMd] = useState(false);
   const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number } | null>(null);
+  const [showRenameInput, setShowRenameInput] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
   const contextMenuRef = React.useRef<HTMLDivElement>(null);
   const messageInputRef = React.useRef<HTMLTextAreaElement>(null);
+  const renameInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Get custom label for this session (only for Ralph)
+  const { setLabel, clearLabel, getLabel } = useSessionLabelsStore();
+  const customLabel = getLabel(agent.session);
 
   // Check if this is a free agent (Ralph) vs team agent
   // Ralph sessions: agent-ralph-{name}
@@ -65,10 +73,11 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   const isRalphAgent = agent.name === 'ralph' || isRalphSession(agent.session);
 
   // Get visual display name
-  // For Ralph: use the name from session (e.g., "ziggy" -> "Ziggy")
+  // For Ralph: use custom label if set, otherwise use the name from session (e.g., "ziggy" -> "Ziggy")
   // For team agents: capitalize the name (e.g., "ana" -> "Ana")
   const effectiveRalphName = ralphName || (isRalphAgent ? parseRalphSession(agent.session) : undefined);
-  const displayName = getAgentDisplayNameForUI(agent.name, effectiveRalphName);
+  const baseDisplayName = getAgentDisplayNameForUI(agent.name, effectiveRalphName);
+  const displayName = (isRalphAgent && customLabel) ? customLabel : baseDisplayName;
 
   // Get agent description from team config (if available)
   const description = AGENT_DESCRIPTIONS[agent.name] || agent.name;
@@ -228,6 +237,47 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   const handleOpenTerminal = () => {
     setContextMenu(null);
     openTerminalModal(agent.session, agent.name);
+  };
+
+  // Handle rename for Ralph sessions
+  const handleRenameFromMenu = () => {
+    setContextMenu(null);
+    setRenameValue(customLabel || '');
+    setShowRenameInput(true);
+    // Focus the input after render
+    setTimeout(() => renameInputRef.current?.focus(), 0);
+  };
+
+  const handleRenameSubmit = async () => {
+    const trimmedValue = renameValue.trim();
+    if (!trimmedValue) {
+      // Clear the label if empty
+      try {
+        await clearLabel(agent.session);
+        showSuccess('Label cleared');
+      } catch (error) {
+        showError(`Failed to clear label: ${error}`);
+      }
+    } else {
+      try {
+        await setLabel(agent.session, trimmedValue);
+        showSuccess(`Renamed to "${trimmedValue}"`);
+      } catch (error) {
+        showError(`Failed to rename: ${error}`);
+      }
+    }
+    setShowRenameInput(false);
+    setRenameValue('');
+  };
+
+  const handleRenameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleRenameSubmit();
+    } else if (e.key === 'Escape') {
+      setShowRenameInput(false);
+      setRenameValue('');
+    }
   };
 
   // Handle save CLAUDE.md
@@ -394,6 +444,16 @@ export const AgentCard: React.FC<AgentCardProps> = ({
             <FileEdit className="w-4 h-4" />
             Edit CLAUDE.md
           </button>
+          {/* Rename option - only for Ralph agents */}
+          {isRalphAgent && (
+            <button
+              onClick={handleRenameFromMenu}
+              className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
+            >
+              <Pencil className="w-4 h-4" />
+              {customLabel ? 'Rename Instance' : 'Set Custom Name'}
+            </button>
+          )}
           {agent.active && (
             <button
               onClick={handleKillFromMenu}
@@ -498,6 +558,54 @@ export const AgentCard: React.FC<AgentCardProps> = ({
               >
                 <Save className="w-4 h-4" />
                 Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rename input overlay */}
+      {showRenameInput && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+          onClick={() => {
+            setShowRenameInput(false);
+            setRenameValue('');
+          }}
+        >
+          <div
+            className="bg-secondary border border-border rounded-lg p-4 shadow-xl min-w-[300px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="text-sm font-medium mb-2">Set Custom Name</div>
+            <div className="text-xs text-muted-foreground mb-3">
+              Give this instance a name for easy identification
+            </div>
+            <input
+              ref={renameInputRef}
+              type="text"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={handleRenameKeyDown}
+              placeholder="e.g., nolan, royme, my-project"
+              className="w-full px-3 py-2 bg-background border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              maxLength={30}
+            />
+            <div className="flex gap-2 mt-3 justify-end">
+              <button
+                onClick={() => {
+                  setShowRenameInput(false);
+                  setRenameValue('');
+                }}
+                className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleRenameSubmit}
+                className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors"
+              >
+                {renameValue.trim() ? 'Save' : 'Clear Name'}
               </button>
             </div>
           </div>

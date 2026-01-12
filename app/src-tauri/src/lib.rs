@@ -19,6 +19,7 @@ use commands::projects::*;
 use commands::usage::*;
 use commands::feedback::*;
 use commands::ollama::*;
+use commands::session_labels::*;
 use commands::*;
 use tauri::Manager;
 
@@ -255,6 +256,11 @@ pub fn run() {
             ollama_chat,
             ollama_get_config,
             ollama_set_config,
+            // Session label commands
+            set_session_label,
+            get_session_label,
+            list_session_labels,
+            clear_session_label,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

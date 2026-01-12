@@ -1,7 +1,7 @@
-name: cron-roadmap
-description: Updates Nolan Roadmap
+name: cron-roadmap-alignment
+description: Validate if an idea aligns with the roadmap
 model: opus
-timeout: 1800
+timeout: 300
 enabled: false
 agent_type: cron
 schedule:

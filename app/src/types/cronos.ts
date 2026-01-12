@@ -1,12 +1,41 @@
 // Cronos - Cron Agents Type Definitions
 
+// Agent type discriminator
+export type AgentType = 'cron' | 'predefined' | 'event';
+
+// Supported event types for event-driven agents
+export type EventType =
+  | 'idea_approved'
+  | 'idea_received'
+  | 'team_workflow_started'
+  | 'team_workflow_finished'
+  | 'user_logged_in'
+  | 'git_push'
+  | 'file_changed'
+  | 'state_change';
+
+// Event trigger configuration (for Event type agents)
+export interface EventTrigger {
+  event_type: EventType;
+  pattern?: string;       // Optional regex/glob pattern
+  debounce_ms: number;    // Debounce to avoid rapid re-triggers
+}
+
+// Invocation configuration (for Predefined type agents)
+export interface InvocationConfig {
+  command?: string;       // Slash command: /security-scan
+  button_label: string;   // UI button text
+  icon?: string;          // Icon name (lucide icon)
+}
+
 export interface CronAgentConfig {
   name: string;
   description: string;
   model: string;
   timeout: number;
   enabled: boolean;
-  schedule: CronSchedule;
+  agent_type?: AgentType;           // Type discriminator (default: cron)
+  schedule?: CronSchedule;          // Only required for Cron type
   guardrails: CronGuardrails;
   context: CronContext;
   // Group assignment (references groups.yaml)
@@ -15,6 +44,8 @@ export interface CronAgentConfig {
   concurrency: ConcurrencyPolicy;
   retry: RetryPolicy;
   catch_up: CatchUpPolicy;
+  event_trigger?: EventTrigger;     // For Event type
+  invocation?: InvocationConfig;    // For Predefined type
 }
 
 // Cron agent group definition
@@ -60,6 +91,7 @@ export interface CronAgentInfo {
   description: string;
   model: string;
   enabled: boolean;
+  agent_type: AgentType;           // Agent type discriminator
   schedule: string;
   cron_expression: string;
   next_run?: string;
@@ -72,6 +104,9 @@ export interface CronAgentInfo {
   consecutive_failures: number;
   health: AgentHealth;
   stats: AgentStats;
+  // New fields for predefined/event agents
+  event_trigger?: EventTrigger;
+  invocation?: InvocationConfig;
 }
 
 export interface AgentHealth {

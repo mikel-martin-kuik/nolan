@@ -5,10 +5,11 @@ import { listen } from '@/lib/events';
 import { invoke, isBrowserMode } from '@/lib/api';
 import { queryClient } from './lib/queryClient';
 import { ThemeProvider } from './lib/theme';
+import { TeamProvider } from './contexts';
 import { AppErrorBoundary } from './components/shared/AppErrorBoundary';
 import { StatusPanel } from './components/Status/StatusPanel';
 import { ProjectsPanel } from './components/Projects/ProjectsPanel';
-import { UsagePanel } from './components/Usage/UsagePanel';
+import { UsageAndMetricsPanel } from './components/Usage';
 import { TeamsPanel } from './components/Teams';
 import { ChatView } from './components/Chat';
 import { AgentManager } from './components/Agents';
@@ -27,6 +28,7 @@ import { useToastStore } from './store/toastStore';
 import { useLiveOutputStore } from './store/liveOutputStore';
 import { useTeamStore } from './store/teamStore';
 import { useNavigationStore } from './store/navigationStore';
+import { useSessionLabelsStore, initSessionLabelsListener, cleanupSessionLabelsListener } from './store/sessionLabelsStore';
 import { Tooltip } from './components/ui/tooltip';
 import { cn } from './lib/utils';
 import { HistoryEntry } from './types';
@@ -42,6 +44,7 @@ function App() {
 
   const addEntry = useLiveOutputStore((state) => state.addEntry);
   const loadTeam = useTeamStore((state) => state.loadTeam);
+  const fetchSessionLabels = useSessionLabelsStore((state) => state.fetchLabels);
 
   // Sync local state with navigation store
   const setActiveTab = (tab: Tab) => {
@@ -66,6 +69,13 @@ function App() {
       console.error('Failed to load default team:', err);
     });
   }, [loadTeam]);
+
+  // Initialize session labels (for Ralph custom naming)
+  useEffect(() => {
+    fetchSessionLabels();
+    initSessionLabelsListener();
+    return () => cleanupSessionLabelsListener();
+  }, [fetchSessionLabels]);
 
   // Listen for navigate-to-chat events from other components
   useEffect(() => {
@@ -222,6 +232,7 @@ function App() {
     <AppErrorBoundary>
       <ThemeProvider defaultTheme="dark" storageKey="nolan-ui-theme">
         <QueryClientProvider client={queryClient}>
+        <TeamProvider defaultTeam="default">
         {/* Gradient background */}
         <div className="h-screen bg-background relative overflow-hidden">
 
@@ -297,7 +308,7 @@ function App() {
                 {activeTab === 'teams' && <TeamsPanel />}
                 {activeTab === 'agents' && <AgentManager />}
                 {activeTab === 'cronos' && <CronosPanel />}
-                {activeTab === 'usage' && <UsagePanel />}
+                {activeTab === 'usage' && <UsageAndMetricsPanel />}
                 {activeTab === 'support' && <SupportPanel />}
                 {activeTab === 'settings' && (
                   <div className="max-w-2xl space-y-6">
@@ -328,6 +339,7 @@ function App() {
           {/* Terminal modal */}
           <TerminalModal />
         </div>
+        </TeamProvider>
         </QueryClientProvider>
       </ThemeProvider>
     </AppErrorBoundary>

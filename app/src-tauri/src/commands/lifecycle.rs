@@ -1170,6 +1170,8 @@ pub async fn kill_instance(app_handle: AppHandle, session: String) -> Result<Str
     // Kill the session if it exists
     if session_existed {
         crate::tmux::session::kill_session(&session)?;
+        // Clean up any custom session label
+        crate::commands::session_labels::on_session_killed(&session);
     }
 
     // For ephemeral Ralph agents, ALWAYS delete the agent directory (agent-ralph-{name})
@@ -1247,6 +1249,9 @@ pub async fn kill_all_instances(app_handle: AppHandle, _team_name: String, agent
             }
         }
     }
+
+    // Clean up all Ralph session labels
+    crate::commands::session_labels::clear_all_ralph_labels();
 
     // Also clean up orphaned ephemeral directories (no running session)
     // These can occur if the session crashed or was killed externally
@@ -1588,17 +1593,20 @@ pub async fn open_agent_terminal(session: String) -> Result<String, String> {
 
     // Detach any existing clients from this session first
     // This closes existing terminal windows and prevents duplicates
+    // Use = prefix for exact session matching to avoid tmux prefix matching
     let _ = Command::new("tmux")
         .arg("detach-client")
         .arg("-s")
-        .arg(&session)
+        .arg(format!("={}", session))
         .output();
 
     // Reset tmux window to auto-size mode
     // This allows the external terminal to resize the pane to its own dimensions
     // instead of being locked to the embedded terminal's size
+    // Use = prefix for exact session matching
+    let exact_session = format!("={}", session);
     let _ = Command::new("tmux")
-        .args(&["resize-window", "-t", &session, "-A"])
+        .args(&["resize-window", "-t", &exact_session, "-A"])
         .output();
 
     // Small delay to allow terminal window to close

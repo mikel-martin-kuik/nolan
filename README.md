@@ -1,6 +1,6 @@
 # Nolan
 
-The AI Digital Business
+The natural language software development platform of the future.
 
 ## Quick Start
 

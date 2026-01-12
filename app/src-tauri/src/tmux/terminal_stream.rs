@@ -285,7 +285,10 @@ async fn stream_pipe_to_frontend(
         }
     }
 
-    let mut file = file.expect("File should be Some after successful open");
+    let mut file = match file {
+        Some(f) => f,
+        None => return Err("Failed to open FIFO: no successful attempt".to_string()),
+    };
 
     // ✅ FIX BUG-6 + BUG-7: Use byte-level streaming with smart batching
     // - Real-time mode: Emit immediately when data arrives slowly (< 16ms between reads)

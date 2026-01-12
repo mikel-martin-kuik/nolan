@@ -5,10 +5,13 @@ import { Idea, IdeaReview, IdeaComplexity } from '@/types';
 import { IdeaCard } from './IdeaCard';
 import { IdeaDetailPage } from './IdeaDetailPage';
 import { IdeaEditDialog } from './IdeaEditDialog';
+import { TeamLaunchModal } from '@/components/shared/TeamLaunchModal';
 import { Button } from '@/components/ui/button';
 import { Loader2, Play, ChevronDown, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToastStore } from '@/store/toastStore';
+import { useNavigationStore } from '@/store/navigationStore';
+import { useAgentStore } from '@/store/agentStore';
 import {
   DndContext,
   DragOverlay,
@@ -141,8 +144,15 @@ export function IdeasTab() {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
 
+  // Team launch modal state (for high complexity ideas)
+  const [teamLaunchOpen, setTeamLaunchOpen] = useState(false);
+  const [pendingProjectName, setPendingProjectName] = useState<string>('');
+  const [isLaunching, setIsLaunching] = useState(false);
+
   const toast = useToastStore();
   const queryClient = useQueryClient();
+  const { navigateTo } = useNavigationStore();
+  const { launchTeam } = useAgentStore();
 
   // Configure drag sensor with distance constraint so clicks work
   const sensors = useSensors(
@@ -214,7 +224,9 @@ export function IdeasTab() {
       queryClient.invalidateQueries({ queryKey: ['idea-reviews'] });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       if (result.route === 'project') {
-        toast.success(`Created project: ${result.route_detail}`);
+        // High complexity: show team selection modal
+        setPendingProjectName(result.route_detail);
+        setTeamLaunchOpen(true);
       } else {
         toast.success('Idea accepted and queued for implementation');
       }
@@ -223,6 +235,21 @@ export function IdeasTab() {
       toast.error(`Failed to accept: ${error}`);
     },
   });
+
+  // Handle team launch from modal
+  const handleTeamLaunch = async (teamName: string) => {
+    setIsLaunching(true);
+    try {
+      await launchTeam(teamName, pendingProjectName);
+      toast.success(`Launched ${teamName} team for project: ${pendingProjectName}`);
+      setTeamLaunchOpen(false);
+      navigateTo('projects', { projectName: pendingProjectName });
+    } catch (error) {
+      toast.error(`Failed to launch team: ${error}`);
+    } finally {
+      setIsLaunching(false);
+    }
+  };
 
   // Delete review (for analysis/ready → new, resets idea)
   const deleteReviewMutation = useMutation({
@@ -595,6 +622,15 @@ export function IdeasTab() {
         idea={editModalIdea}
         open={!!editModalIdea}
         onOpenChange={(open) => !open && setEditModalIdea(null)}
+      />
+
+      {/* Team Launch Modal for high complexity ideas */}
+      <TeamLaunchModal
+        open={teamLaunchOpen}
+        onOpenChange={setTeamLaunchOpen}
+        onLaunch={handleTeamLaunch}
+        projectName={pendingProjectName}
+        isLaunching={isLaunching}
       />
     </div>
   );

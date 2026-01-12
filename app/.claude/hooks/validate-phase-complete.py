@@ -251,24 +251,16 @@ def get_projects_base() -> Optional[Path]:
     """Get PROJECTS_DIR base path."""
     if os.environ.get('PROJECTS_DIR'):
         return Path(os.environ['PROJECTS_DIR'])
-    elif os.environ.get('AGENT_DIR'):
-        agent_dir = Path(os.environ['AGENT_DIR'])
-        repo_root = agent_dir.parent.parent.parent
-        return repo_root / "projects"
-    elif os.environ.get('NOLAN_ROOT'):
-        return Path(os.environ['NOLAN_ROOT']) / "projects"
-    return None
+    # Use NOLAN_DATA_ROOT for data directories (with fallback to ~/.nolan)
+    nolan_data_root = os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan'))
+    return Path(nolan_data_root) / "projects"
 
 
 def get_state_base() -> Optional[Path]:
-    """Get state directory base path (.state at NOLAN_ROOT level)."""
-    if os.environ.get('NOLAN_ROOT'):
-        return Path(os.environ['NOLAN_ROOT']) / ".state"
-    elif os.environ.get('AGENT_DIR'):
-        agent_dir = Path(os.environ['AGENT_DIR'])
-        repo_root = agent_dir.parent.parent.parent
-        return repo_root / ".state"
-    return None
+    """Get state directory base path (.state in data directory)."""
+    # Use NOLAN_DATA_ROOT for data directories (with fallback to ~/.nolan)
+    nolan_data_root = os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan'))
+    return Path(nolan_data_root) / ".state"
 
 
 def acquire_lock(lockfile: Path, timeout: int = 5) -> Optional[int]:
@@ -328,12 +320,12 @@ def load_team_config(project_path: Path) -> dict:
         raise FileNotFoundError(f".team file not found in {project_path}")
     team_name = parse_team_name(team_file)
 
-    nolan_root = os.environ.get('NOLAN_ROOT')
-    if not nolan_root:
-        raise EnvironmentError("NOLAN_ROOT environment variable not set")
+    # Use NOLAN_DATA_ROOT for teams (with fallback to ~/.nolan)
+    # NOLAN_ROOT points to source code, NOLAN_DATA_ROOT points to data directory
+    nolan_data_root = os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan'))
 
     # Search for team config in teams directory (supports subdirectories)
-    teams_dir = Path(nolan_root) / 'teams'
+    teams_dir = Path(nolan_data_root) / 'teams'
     config_path = None
     for path in teams_dir.rglob(f'{team_name}.yaml'):
         config_path = path
@@ -579,11 +571,10 @@ def notify_next_agent(agent: str, project_name: str, handoff_id: str,
 def notify_coordinator(agent: str, project_name: str, handoff_id: str, team_name: str = "default"):
     """Legacy wrapper - now uses agent-to-agent notification."""
     # Try to determine next agent from team config
-    nolan_root = os.environ.get('NOLAN_ROOT')
-    if not nolan_root:
-        return False
+    # Use NOLAN_DATA_ROOT for teams (with fallback to ~/.nolan)
+    nolan_data_root = os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan'))
 
-    teams_dir = Path(nolan_root) / 'teams'
+    teams_dir = Path(nolan_data_root) / 'teams'
     config_path = None
     for path in teams_dir.rglob(f'{team_name}.yaml'):
         config_path = path

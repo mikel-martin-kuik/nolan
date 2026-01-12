@@ -40,7 +40,10 @@ export function usePollingEffect({
     if (!enabled) return;
 
     const id = setInterval(() => {
-      callbackRef.current();
+      // Handle both sync and async callbacks, catching any errors
+      Promise.resolve(callbackRef.current()).catch((err) => {
+        console.error('Polling callback error:', err);
+      });
     }, interval);
 
     return () => clearInterval(id);

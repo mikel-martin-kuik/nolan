@@ -399,13 +399,13 @@ fn aggregate_stats(filtered_entries: &[UsageEntry]) -> UsageStats {
     let total_sessions = filtered_entries.len() as u64;
 
     let mut by_model: Vec<ModelUsage> = model_stats.into_values().collect();
-    by_model.sort_by(|a, b| b.total_cost.partial_cmp(&a.total_cost).unwrap());
+    by_model.sort_by(|a, b| b.total_cost.total_cmp(&a.total_cost));
 
     let mut by_date: Vec<DailyUsage> = daily_stats.into_values().collect();
     by_date.sort_by(|a, b| b.date.cmp(&a.date));
 
     let mut by_project: Vec<ProjectUsage> = project_stats.into_values().collect();
-    by_project.sort_by(|a, b| b.total_cost.partial_cmp(&a.total_cost).unwrap());
+    by_project.sort_by(|a, b| b.total_cost.total_cmp(&a.total_cost));
 
     UsageStats {
         total_cost,

@@ -178,6 +178,9 @@ function listenTerminalOutput(
   };
 }
 
+// Status listeners (for browser mode)
+const statusListeners = new Set<(event: EventPayload<unknown>) => void>();
+
 /**
  * Listen to agent status changes (browser mode)
  */
@@ -186,48 +189,101 @@ function listenAgentStatus(
 ): UnlistenFn {
   const wsKey = 'status';
 
+  // Add callback to listeners
+  statusListeners.add(callback);
+
   // Create WebSocket if not exists
   if (!activeConnections.has(wsKey)) {
-    const wsUrl = getWebSocketUrl('/api/ws/status');
-    const ws = new WebSocket(wsUrl);
-
-    ws.onmessage = (e) => {
-      try {
-        const payload = JSON.parse(e.data);
-        callback({ payload });
-      } catch (err) {
-        console.error('Failed to parse status WebSocket message:', err);
-      }
-    };
-
-    ws.onerror = (err) => {
-      console.error('Status WebSocket error:', err);
-    };
-
-    ws.onclose = () => {
-      activeConnections.delete(wsKey);
-      // Attempt reconnect after 3 seconds
-      setTimeout(() => {
-        if (!activeConnections.has(wsKey)) {
-          listenAgentStatus(callback);
-        }
-      }, 3000);
-    };
-
-    activeConnections.set(wsKey, ws);
+    createStatusWebSocket(wsKey);
   }
 
   return () => {
-    const ws = activeConnections.get(wsKey);
-    if (ws) {
-      ws.close();
+    statusListeners.delete(callback);
+    // Close WebSocket if no more listeners
+    if (statusListeners.size === 0) {
+      const ws = activeConnections.get(wsKey);
+      if (ws) {
+        ws.close();
+      }
+      activeConnections.delete(wsKey);
     }
-    activeConnections.delete(wsKey);
   };
+}
+
+/**
+ * Create WebSocket for status updates (internal helper)
+ */
+function createStatusWebSocket(wsKey: string): void {
+  const wsUrl = getWebSocketUrl('/api/ws/status');
+  const ws = new WebSocket(wsUrl);
+
+  ws.onmessage = (e) => {
+    try {
+      const payload = JSON.parse(e.data);
+      // Notify all listeners
+      statusListeners.forEach(cb => cb({ payload }));
+    } catch (err) {
+      console.error('Failed to parse status WebSocket message:', err);
+    }
+  };
+
+  ws.onerror = (err) => {
+    console.error('Status WebSocket error:', err);
+  };
+
+  ws.onclose = () => {
+    activeConnections.delete(wsKey);
+    // Only reconnect if there are still listeners
+    if (statusListeners.size > 0) {
+      setTimeout(() => {
+        if (!activeConnections.has(wsKey) && statusListeners.size > 0) {
+          createStatusWebSocket(wsKey);
+        }
+      }, 3000);
+    }
+  };
+
+  activeConnections.set(wsKey, ws);
 }
 
 // History entry listeners (for browser mode)
 const historyListeners = new Set<(event: EventPayload<unknown>) => void>();
+
+/**
+ * Create WebSocket for history updates (internal helper)
+ */
+function createHistoryWebSocket(wsKey: string): void {
+  const wsUrl = getWebSocketUrl('/api/ws/history');
+  const ws = new WebSocket(wsUrl);
+
+  ws.onmessage = (e) => {
+    try {
+      const payload = JSON.parse(e.data);
+      // Notify all listeners
+      historyListeners.forEach(cb => cb({ payload }));
+    } catch (err) {
+      console.error('Failed to parse history WebSocket message:', err);
+    }
+  };
+
+  ws.onerror = (err) => {
+    console.error('History WebSocket error:', err);
+  };
+
+  ws.onclose = () => {
+    activeConnections.delete(wsKey);
+    // Only reconnect if there are still listeners
+    if (historyListeners.size > 0) {
+      setTimeout(() => {
+        if (!activeConnections.has(wsKey) && historyListeners.size > 0) {
+          createHistoryWebSocket(wsKey);
+        }
+      }, 3000);
+    }
+  };
+
+  activeConnections.set(wsKey, ws);
+}
 
 /**
  * Listen to history entry updates (browser mode)
@@ -242,38 +298,7 @@ function listenHistoryEntry(
 
   // Create WebSocket if not exists
   if (!activeConnections.has(wsKey)) {
-    const wsUrl = getWebSocketUrl('/api/ws/history');
-    const ws = new WebSocket(wsUrl);
-
-    ws.onmessage = (e) => {
-      try {
-        const payload = JSON.parse(e.data);
-        // Notify all listeners
-        historyListeners.forEach(cb => cb({ payload }));
-      } catch (err) {
-        console.error('Failed to parse history WebSocket message:', err);
-      }
-    };
-
-    ws.onerror = (err) => {
-      console.error('History WebSocket error:', err);
-    };
-
-    ws.onclose = () => {
-      activeConnections.delete(wsKey);
-      // Attempt reconnect after 3 seconds if there are still listeners
-      setTimeout(() => {
-        if (!activeConnections.has(wsKey) && historyListeners.size > 0) {
-          // Reconnect with the first listener (they'll all be notified)
-          const firstListener = historyListeners.values().next().value;
-          if (firstListener) {
-            listenHistoryEntry(firstListener);
-          }
-        }
-      }, 3000);
-    };
-
-    activeConnections.set(wsKey, ws);
+    createHistoryWebSocket(wsKey);
   }
 
   // Return unlisten function

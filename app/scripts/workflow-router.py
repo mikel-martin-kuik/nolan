@@ -92,12 +92,11 @@ def load_team_config(project_path: Path) -> dict:
 
     team_name = parse_team_name(team_file)
 
-    nolan_root = os.environ.get('NOLAN_ROOT')
-    if not nolan_root:
-        raise EnvironmentError("NOLAN_ROOT environment variable not set")
+    # Use NOLAN_DATA_ROOT for data directories (with fallback to ~/.nolan)
+    nolan_data_root = os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan'))
 
     # Search for team config in teams directory (supports subdirectories)
-    teams_dir = Path(nolan_root) / 'teams'
+    teams_dir = Path(nolan_data_root) / 'teams'
     config_path = None
     for path in teams_dir.rglob(f'{team_name}.yaml'):
         config_path = path

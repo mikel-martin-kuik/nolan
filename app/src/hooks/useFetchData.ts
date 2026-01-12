@@ -97,7 +97,12 @@ export function useFetchData<T>({
       }
     };
 
-    load();
+    load().catch((err) => {
+      // Only log if not cancelled (component still mounted)
+      if (!cancelled) {
+        console.error('Failed to load data:', err);
+      }
+    });
 
     return () => { cancelled = true; };
   }, [immediate, refresh]);

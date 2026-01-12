@@ -1065,8 +1065,10 @@ pub async fn route_accepted_idea(idea_id: String) -> Result<RouteResult, String>
 
                         // Add answered questions with descriptions
                         for gap in answered_gaps {
-                            qa.push_str(&format!("**{}**: {}\n", gap.label, gap.value.as_ref().unwrap()));
-                            qa.push_str(&format!("*{}*\n\n", gap.description));
+                            if let Some(value) = &gap.value {
+                                qa.push_str(&format!("**{}**: {}\n", gap.label, value));
+                                qa.push_str(&format!("*{}*\n\n", gap.description));
+                            }
                         }
 
                         // Add unanswered required questions as TODOs

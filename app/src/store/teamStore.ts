@@ -2,11 +2,13 @@ import { create } from 'zustand';
 import { invoke } from '@/lib/api';
 import type { TeamConfig, AgentDirectoryInfo } from '../types';
 import { updateAgentDescriptions } from '../types';
+import { useToastStore } from './toastStore';
 
 interface TeamState {
   currentTeam: TeamConfig | null;
   availableTeams: string[];
   teamConfigs: Map<string, TeamConfig>;
+  error: string | null;
   loadTeam: (name: string) => Promise<void>;
   loadAvailableTeams: () => Promise<void>;
   loadAllTeams: () => Promise<void>;
@@ -17,23 +19,36 @@ export const useTeamStore = create<TeamState>((set, get) => ({
   currentTeam: null,
   availableTeams: [],
   teamConfigs: new Map(),
+  error: null,
 
   loadTeam: async (name: string) => {
-    const team = await invoke<TeamConfig>('get_team_config', { teamName: name });
-    set({ currentTeam: team });
-
-    // Fetch agent directories to get roles from agent.json files
     try {
-      const agentInfos = await invoke<AgentDirectoryInfo[]>('list_agent_directories');
-      updateAgentDescriptions(agentInfos);
+      const team = await invoke<TeamConfig>('get_team_config', { teamName: name });
+      set({ currentTeam: team, error: null });
+
+      // Fetch agent directories to get roles from agent.json files
+      try {
+        const agentInfos = await invoke<AgentDirectoryInfo[]>('list_agent_directories');
+        updateAgentDescriptions(agentInfos);
+      } catch (e) {
+        console.error('Failed to load agent directories for descriptions:', e);
+      }
     } catch (e) {
-      console.error('Failed to load agent directories for descriptions:', e);
+      const message = e instanceof Error ? e.message : String(e);
+      set({ error: message });
+      useToastStore.getState().error(`Failed to load team ${name}: ${message}`);
     }
   },
 
   loadAvailableTeams: async () => {
-    const teams = await invoke<string[]>('list_teams');
-    set({ availableTeams: teams });
+    try {
+      const teams = await invoke<string[]>('list_teams');
+      set({ availableTeams: teams, error: null });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      set({ error: message });
+      useToastStore.getState().error(`Failed to load teams: ${message}`);
+    }
   },
 
   loadAllTeams: async () => {
@@ -53,6 +68,13 @@ export const useTeamStore = create<TeamState>((set, get) => ({
   },
 
   deleteTeam: async (name: string) => {
-    await invoke('delete_team', { teamName: name });
+    try {
+      await invoke('delete_team', { teamName: name });
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e);
+      set({ error: message });
+      useToastStore.getState().error(`Failed to delete team ${name}: ${message}`);
+      throw e; // Re-throw so callers know it failed
+    }
   },
 }));

@@ -15,7 +15,8 @@ pub struct CronosManager {
     scheduler: JobScheduler,
     cronos_root: PathBuf,        // Agent definitions (source code) in NOLAN_ROOT/cronos
     cronos_data_root: PathBuf,   // Run logs (user data) in NOLAN_DATA_ROOT/cronos
-    nolan_root: PathBuf,
+    nolan_root: PathBuf,         // Source code root
+    nolan_data_root: PathBuf,    // User data root (for state storage)
     running: RunningProcesses,
     state: Arc<RwLock<SchedulerState>>,
 }
@@ -49,6 +50,7 @@ impl CronosManager {
             cronos_root,
             cronos_data_root,
             nolan_root,
+            nolan_data_root,
             running: Arc::new(RwLock::new(HashMap::new())),
             state: Arc::new(RwLock::new(state)),
         })
@@ -78,12 +80,12 @@ impl CronosManager {
     // Persistent State Management
     // ========================
 
-    fn state_file_path(nolan_root: &PathBuf) -> PathBuf {
-        nolan_root.join(".state").join("scheduler").join("state.json")
+    fn state_file_path(data_root: &PathBuf) -> PathBuf {
+        data_root.join(".state").join("scheduler").join("state.json")
     }
 
-    fn load_state(nolan_root: &PathBuf) -> Result<SchedulerState, String> {
-        let path = Self::state_file_path(nolan_root);
+    fn load_state(data_root: &PathBuf) -> Result<SchedulerState, String> {
+        let path = Self::state_file_path(data_root);
         if path.exists() {
             let content = std::fs::read_to_string(&path)
                 .map_err(|e| format!("Failed to read scheduler state: {}", e))?;
@@ -95,7 +97,7 @@ impl CronosManager {
     }
 
     pub async fn save_state(&self) -> Result<(), String> {
-        let path = Self::state_file_path(&self.nolan_root);
+        let path = Self::state_file_path(&self.nolan_data_root);
         let mut state = self.state.write().await;
         state.last_updated = Some(Utc::now().to_rfc3339());
 

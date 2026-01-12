@@ -49,22 +49,36 @@ impl OllamaConfig {
 
 /// Get the current Ollama URL
 pub fn get_url() -> String {
-    OLLAMA_CONFIG.read().unwrap().url.clone()
+    OLLAMA_CONFIG
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .url
+        .clone()
 }
 
 /// Get the current default model
 pub fn get_model() -> String {
-    OLLAMA_CONFIG.read().unwrap().model.clone()
+    OLLAMA_CONFIG
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .model
+        .clone()
 }
 
 /// Update the Ollama URL
 pub fn set_url(url: String) {
-    OLLAMA_CONFIG.write().unwrap().url = url;
+    OLLAMA_CONFIG
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .url = url;
 }
 
 /// Update the default model
 pub fn set_model(model: String) {
-    OLLAMA_CONFIG.write().unwrap().model = model;
+    OLLAMA_CONFIG
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .model = model;
 }
 
 /// Create a reqwest client for Ollama requests

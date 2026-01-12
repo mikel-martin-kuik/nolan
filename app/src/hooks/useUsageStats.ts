@@ -54,6 +54,7 @@ export function useUsageStats(): UseUsageStatsResult {
   const [selectedDateRange, setSelectedDateRange] = useState<DateRange>('7d');
 
   const cacheRef = useRef<Map<string, CacheEntry>>(new Map());
+  const hasLoadedRef = useRef(false);
 
   const formatCurrency = useCallback((amount: number): string => {
     return new Intl.NumberFormat('en-US', {
@@ -116,11 +117,13 @@ export function useUsageStats(): UseUsageStatsResult {
       setStats(cachedStats);
       setSessionStats(cachedSessions);
       setLoading(false);
+      hasLoadedRef.current = true;
       return;
     }
 
     try {
-      if (!stats && !sessionStats) {
+      // Only show loading on initial load, not on refreshes
+      if (!hasLoadedRef.current) {
         setLoading(true);
       }
       setError(null);
@@ -168,13 +171,14 @@ export function useUsageStats(): UseUsageStatsResult {
       setSessionStats(sessionData);
       setCachedData(`${cacheKey}-stats`, statsData);
       setCachedData(`${cacheKey}-sessions`, sessionData);
+      hasLoadedRef.current = true;
     } catch (err) {
       console.error('Failed to load usage stats:', err);
       setError('Failed to load usage statistics. Please try again.');
     } finally {
       setLoading(false);
     }
-  }, [selectedDateRange, getCachedData, setCachedData, stats, sessionStats]);
+  }, [selectedDateRange, getCachedData, setCachedData]);
 
   const timelineChartData = useMemo((): TimelineChartData | null => {
     if (!stats?.by_date || stats.by_date.length === 0) return null;

@@ -31,8 +31,10 @@ team_name="${TEAM_NAME:-default}"
 
 # Check if agent is a workflow participant (dynamically from team config)
 # Note: Ralph is NOT restricted - support agents need infrastructure access
+# Use NOLAN_DATA_ROOT for data directories (with fallback to ~/.nolan)
+nolan_data_root="${NOLAN_DATA_ROOT:-$HOME/.nolan}"
 is_restricted=false
-if [[ -n "$nolan_root" ]] && [[ -n "$agent_name" ]]; then
+if [[ -n "$nolan_data_root" ]] && [[ -n "$agent_name" ]]; then
     # Ralph agents are never restricted
     if [[ "$agent_name" == "ralph" ]] || [[ "$agent_name" =~ ^ralph- ]]; then
         is_restricted=false
@@ -40,14 +42,15 @@ if [[ -n "$nolan_root" ]] && [[ -n "$agent_name" ]]; then
         workflow_check=$(python3 -c "
 import yaml, sys
 from pathlib import Path
+import os
 
-nolan_root = Path('$nolan_root')
+nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 team_name = '$team_name'
 agent_name = '$agent_name'.lower()
 
-# Search for team config
+# Search for team config in data directory
 config_path = None
-for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
     config_path = path
     break
 

@@ -38,19 +38,22 @@ if [[ -z "$nolan_root" ]]; then
 fi
 
 # Check if agent is a workflow participant (dynamically from team config)
+# Use NOLAN_DATA_ROOT for data directories (with fallback to ~/.nolan)
+nolan_data_root="${NOLAN_DATA_ROOT:-$HOME/.nolan}"
 is_workflow_agent=false
-if [[ -n "$nolan_root" ]] && [[ -n "$agent_team" ]] && [[ -n "$agent_name" ]]; then
+if [[ -n "$nolan_data_root" ]] && [[ -n "$agent_team" ]] && [[ -n "$agent_name" ]]; then
     workflow_check=$(python3 -c "
 import yaml, sys
 from pathlib import Path
+import os
 
-nolan_root = Path('$nolan_root')
+nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 team_name = '$agent_team'
 agent_name = '$agent_name'.lower()
 
-# Search for team config
+# Search for team config in data directory
 config_path = None
-for path in (nolan_root / 'teams').rglob(f'{team_name}.yaml'):
+for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
     config_path = path
     break
 
@@ -109,8 +112,8 @@ if [[ "$is_workflow_agent" == true ]]; then
     fi
 fi
 
-# Team configs
-teams_dir="$nolan_root/teams"
+# Team configs - use NOLAN_DATA_ROOT for data directories
+teams_dir="$nolan_data_root/teams"
 
 if [[ "$file_path" =~ ^"$teams_dir"/.+\.yaml$ ]]; then
     target_team=$(basename "$file_path" .yaml)

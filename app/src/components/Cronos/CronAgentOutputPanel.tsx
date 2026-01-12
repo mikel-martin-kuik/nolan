@@ -181,14 +181,23 @@ export const CronAgentOutputPanel: React.FC<CronAgentOutputPanelProps> = ({ embe
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { error: showError, success: showSuccess } = useToastStore();
+  const isMountedRef = useRef(true);
+
+  // Track mounted state to prevent state updates after unmount
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => { isMountedRef.current = false; };
+  }, []);
 
   const fetchAgent = useCallback(async () => {
     if (!agentName) return;
     try {
       const agents = await invoke<CronAgentInfo[]>('list_cron_agents');
+      if (!isMountedRef.current) return;
       const found = agents.find(a => a.name === agentName);
       setAgent(found || null);
     } catch (err) {
+      if (!isMountedRef.current) return;
       showError(`Failed to load agent: ${err}`);
     }
   }, [agentName, showError]);
@@ -236,6 +245,7 @@ export const CronAgentOutputPanel: React.FC<CronAgentOutputPanelProps> = ({ embe
     const fetchLog = async () => {
       try {
         const result = await invoke<string | { log: string }>('get_cron_run_log', { runId });
+        if (!isMountedRef.current) return;
         const logContent = typeof result === 'string' ? result : result?.log ?? '';
         if (logContent) {
           const events: CronOutputEvent[] = logContent.split('\n').filter(Boolean).map(line => ({
@@ -248,6 +258,7 @@ export const CronAgentOutputPanel: React.FC<CronAgentOutputPanelProps> = ({ embe
         }
         setLoading(false);
       } catch (err) {
+        if (!isMountedRef.current) return;
         console.error('Failed to fetch cron log:', err);
         setError(`Failed to load log: ${err}`);
         setLoading(false);

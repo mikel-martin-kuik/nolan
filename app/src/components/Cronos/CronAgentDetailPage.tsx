@@ -81,10 +81,19 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      await Promise.all([fetchAgent(), fetchConfig(), fetchRunHistory(), fetchInstructions()]);
+      // Fetch all data in parallel, but handle individual failures gracefully
+      await Promise.all([
+        fetchAgent().catch(() => {}),
+        fetchConfig().catch(() => {}),
+        fetchRunHistory().catch(() => {}),
+        fetchInstructions().catch(() => {}),
+      ]);
       setLoading(false);
     };
-    load();
+    load().catch((err) => {
+      console.error('Failed to load agent details:', err);
+      setLoading(false);
+    });
   }, [fetchAgent, fetchConfig, fetchRunHistory, fetchInstructions]);
 
   // Check Ollama connection

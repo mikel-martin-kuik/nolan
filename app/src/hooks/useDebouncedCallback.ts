@@ -57,7 +57,13 @@ export function useDebouncedCallback(
 
     // Schedule new callback
     timeoutRef.current = setTimeout(() => {
-      callbackRef.current(value);
+      try {
+        Promise.resolve(callbackRef.current(value)).catch((err) => {
+          console.error('Debounced callback error:', err);
+        });
+      } catch (err) {
+        console.error('Debounced callback error:', err);
+      }
     }, delay);
 
     return () => {
@@ -112,7 +118,13 @@ export function useDebouncedFn<T extends (...args: unknown[]) => void | Promise<
       }
 
       timeoutRef.current = setTimeout(() => {
-        callbackRef.current(...args);
+        try {
+          Promise.resolve(callbackRef.current(...args)).catch((err) => {
+            console.error('Debounced function error:', err);
+          });
+        } catch (err) {
+          console.error('Debounced function error:', err);
+        }
       }, delay);
     }) as T,
     [delay],

@@ -2,8 +2,10 @@ use chrono::{DateTime, Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use tauri::command;
+use ts_rs::TS;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UsageEntry {
@@ -32,7 +34,7 @@ pub struct UsageStats {
     pub by_project: Vec<ProjectUsage>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
 pub struct ModelUsage {
     pub model: String,
     pub total_cost: f64,
@@ -44,7 +46,7 @@ pub struct ModelUsage {
     pub session_count: u64,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, TS)]
 pub struct DailyUsage {
     pub date: String,
     pub total_cost: f64,
@@ -60,6 +62,51 @@ pub struct ProjectUsage {
     pub total_tokens: u64,
     pub session_count: u64,
     pub last_used: String,
+}
+
+/// Stats for a single agent session
+#[derive(Debug, Serialize, Deserialize, Clone, TS)]
+#[ts(export)]
+pub struct AgentSessionStats {
+    pub session_id: String,
+    pub tmux_session: String,
+    pub original_prompt: String,
+    pub start_time: String,
+    pub end_time: String,
+    pub duration_secs: u64,
+    pub model: String,
+    pub cost_usd: f64,
+    pub input_tokens: u64,
+    pub output_tokens: u64,
+    pub cache_read_tokens: u64,
+    pub cache_write_tokens: u64,
+    pub total_tokens: u64,
+}
+
+/// Aggregated stats for an agent
+#[derive(Debug, Serialize, Deserialize, TS)]
+#[ts(export)]
+pub struct AgentStats {
+    pub agent_name: String,
+    pub total_sessions: u64,
+    pub total_cost: f64,
+    pub total_tokens: u64,
+    pub total_duration_secs: u64,
+    pub avg_cost_per_session: f64,
+    pub avg_duration_secs: u64,
+    pub by_model: Vec<ModelUsage>,
+    pub by_date: Vec<DailyUsage>,
+    pub sessions: Vec<AgentSessionStats>,
+}
+
+/// Entry from history.jsonl for prompt extraction
+#[derive(Debug, Deserialize)]
+struct HistoryEntry {
+    display: String,
+    timestamp: u64,
+    project: String,
+    #[serde(rename = "sessionId")]
+    session_id: String,
 }
 
 // Claude 4.5 pricing constants (per million tokens, 5m cache)
@@ -585,4 +632,174 @@ pub fn get_session_stats(
     }
 
     Ok(by_session)
+}
+
+/// Load original prompts from history.jsonl, indexed by session_id
+fn load_session_prompts(claude_path: &PathBuf) -> HashMap<String, String> {
+    let history_path = claude_path.join("history.jsonl");
+    let mut prompts: HashMap<String, String> = HashMap::new();
+
+    if let Ok(file) = fs::File::open(&history_path) {
+        let reader = BufReader::new(file);
+        for line in reader.lines().flatten() {
+            if let Ok(entry) = serde_json::from_str::<HistoryEntry>(&line) {
+                // Only store the first prompt for each session (the original)
+                if !prompts.contains_key(&entry.session_id) && !entry.display.is_empty() {
+                    prompts.insert(entry.session_id, entry.display);
+                }
+            }
+        }
+    }
+
+    prompts
+}
+
+/// Get usage stats for a specific agent (e.g., "ralph")
+#[command]
+pub fn get_agent_usage_stats(agent_name: String, days: Option<u32>) -> Result<AgentStats, String> {
+    let claude_path = dirs::home_dir()
+        .ok_or("Failed to get home directory")?
+        .join(".claude");
+
+    let cutoff_date = days.map(|d| {
+        Local::now().naive_local().date() - chrono::Duration::days(d as i64)
+    });
+
+    let max_files = match days {
+        Some(d) if d <= 7 => 500,
+        Some(d) if d <= 30 => 1000,
+        _ => 2000,
+    };
+
+    let entries = get_usage_entries_limited(&claude_path, max_files, cutoff_date);
+
+    let agent_pattern = format!("agent-{}", agent_name.to_lowercase());
+    let agent_entries: Vec<_> = entries
+        .into_iter()
+        .filter(|e| {
+            e.project_path.to_lowercase().contains(&agent_pattern)
+                || e.project_path.to_lowercase().contains(&format!("agents/{}", agent_name.to_lowercase()))
+        })
+        .collect();
+
+    if agent_entries.is_empty() {
+        return Ok(AgentStats {
+            agent_name: agent_name.clone(),
+            total_sessions: 0,
+            total_cost: 0.0,
+            total_tokens: 0,
+            total_duration_secs: 0,
+            avg_cost_per_session: 0.0,
+            avg_duration_secs: 0,
+            by_model: vec![],
+            by_date: vec![],
+            sessions: vec![],
+        });
+    }
+
+    let prompts = load_session_prompts(&claude_path);
+
+    let mut session_map: HashMap<String, Vec<&UsageEntry>> = HashMap::new();
+    for entry in &agent_entries {
+        session_map.entry(entry.session_id.clone()).or_default().push(entry);
+    }
+
+    let mut sessions: Vec<AgentSessionStats> = Vec::new();
+    let mut model_stats: HashMap<String, ModelUsage> = HashMap::new();
+    let mut daily_stats: HashMap<String, DailyUsage> = HashMap::new();
+
+    for (session_id, entries) in &session_map {
+        if entries.is_empty() { continue; }
+
+        let mut sorted_entries: Vec<_> = entries.iter().collect();
+        sorted_entries.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
+
+        let first = sorted_entries.first().unwrap();
+        let last = sorted_entries.last().unwrap();
+
+        let start_time = &first.timestamp;
+        let end_time = &last.timestamp;
+        let duration_secs = if let (Ok(start_dt), Ok(end_dt)) = (
+            DateTime::parse_from_rfc3339(start_time),
+            DateTime::parse_from_rfc3339(end_time),
+        ) {
+            (end_dt - start_dt).num_seconds().max(0) as u64
+        } else { 0 };
+
+        let mut total_input = 0u64;
+        let mut total_output = 0u64;
+        let mut total_cache_read = 0u64;
+        let mut total_cache_write = 0u64;
+        let mut total_cost = 0.0f64;
+        let mut model = String::from("unknown");
+
+        for entry in &sorted_entries {
+            total_input += entry.input_tokens;
+            total_output += entry.output_tokens;
+            total_cache_read += entry.cache_read_tokens;
+            total_cache_write += entry.cache_creation_tokens;
+            total_cost += entry.cost;
+            if entry.model != "unknown" { model = entry.model.clone(); }
+        }
+
+        let tmux_session = first.project_path.split('/').last().unwrap_or("unknown").to_string();
+        let original_prompt = prompts.get(session_id).cloned().unwrap_or_else(|| "No prompt recorded".to_string());
+
+        sessions.push(AgentSessionStats {
+            session_id: session_id.clone(),
+            tmux_session,
+            original_prompt,
+            start_time: start_time.clone(),
+            end_time: end_time.clone(),
+            duration_secs,
+            model: model.clone(),
+            cost_usd: total_cost,
+            input_tokens: total_input,
+            output_tokens: total_output,
+            cache_read_tokens: total_cache_read,
+            cache_write_tokens: total_cache_write,
+            total_tokens: total_input + total_output + total_cache_read + total_cache_write,
+        });
+
+        let model_stat = model_stats.entry(model.clone()).or_insert(ModelUsage {
+            model: model.clone(), total_cost: 0.0, total_tokens: 0, input_tokens: 0,
+            output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, session_count: 0,
+        });
+        model_stat.total_cost += total_cost;
+        model_stat.input_tokens += total_input;
+        model_stat.output_tokens += total_output;
+        model_stat.cache_creation_tokens += total_cache_write;
+        model_stat.cache_read_tokens += total_cache_read;
+        model_stat.total_tokens += total_input + total_output + total_cache_read + total_cache_write;
+        model_stat.session_count += 1;
+
+        let date = start_time.split('T').next().unwrap_or(start_time).to_string();
+        let daily_stat = daily_stats.entry(date.clone()).or_insert(DailyUsage {
+            date, total_cost: 0.0, total_tokens: 0, models_used: vec![],
+        });
+        daily_stat.total_cost += total_cost;
+        daily_stat.total_tokens += total_input + total_output + total_cache_read + total_cache_write;
+        if !daily_stat.models_used.contains(&model) { daily_stat.models_used.push(model); }
+    }
+
+    sessions.sort_by(|a, b| b.start_time.cmp(&a.start_time));
+
+    let total_sessions = sessions.len() as u64;
+    let total_cost: f64 = sessions.iter().map(|s| s.cost_usd).sum();
+    let total_tokens: u64 = sessions.iter().map(|s| s.total_tokens).sum();
+    let total_duration_secs: u64 = sessions.iter().map(|s| s.duration_secs).sum();
+
+    let avg_cost_per_session = if total_sessions > 0 { total_cost / total_sessions as f64 } else { 0.0 };
+    let avg_duration_secs = if total_sessions > 0 { total_duration_secs / total_sessions } else { 0 };
+
+    let mut by_model: Vec<ModelUsage> = model_stats.into_values().collect();
+    by_model.sort_by(|a, b| b.session_count.cmp(&a.session_count));
+
+    let mut by_date: Vec<DailyUsage> = daily_stats.into_values().collect();
+    by_date.sort_by(|a, b| b.date.cmp(&a.date));
+
+    Ok(AgentStats {
+        agent_name, total_sessions, total_cost, total_tokens, total_duration_secs,
+        avg_cost_per_session, avg_duration_secs, by_model, by_date, sessions,
+    })
 }

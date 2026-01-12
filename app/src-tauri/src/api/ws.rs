@@ -42,7 +42,7 @@ async fn handle_terminal_stream(mut socket: WebSocket, session: String, state: A
         Ok(_) => {},
         Err(e) => {
             eprintln!("Failed to start terminal broadcast for {}: {}", session, e);
-            let _ = socket.send(Message::Text(format!(r#"{{"error": "{}"}}"#, e))).await;
+            let _ = socket.send(Message::Text(format!(r#"{{"error": "{}"}}"#, e).into())).await;
             return;
         }
     }
@@ -56,7 +56,7 @@ async fn handle_terminal_stream(mut socket: WebSocket, session: String, state: A
                         // Filter to only send output for this session
                         if output.session == session {
                             let json = serde_json::to_string(&output).unwrap_or_default();
-                            if socket.send(Message::Text(json)).await.is_err() {
+                            if socket.send(Message::Text(json.into())).await.is_err() {
                                 break;
                             }
                         }
@@ -153,7 +153,7 @@ pub async fn start_terminal_broadcast(
             };
             let json = serde_json::to_string(&output).unwrap_or_default();
             // Send directly to WebSocket (not broadcast, since we're the only listener)
-            let _ = socket.send(Message::Text(json)).await;
+            let _ = socket.send(Message::Text(json.into())).await;
         }
     }
 
@@ -223,7 +223,7 @@ async fn handle_status_stream(mut socket: WebSocket, state: Arc<AppState>) {
     // Send initial status
     if let Ok(status) = get_agent_status().await {
         let json = serde_json::to_string(&status).unwrap_or_default();
-        if socket.send(Message::Text(json)).await.is_err() {
+        if socket.send(Message::Text(json.into())).await.is_err() {
             return;
         }
     }
@@ -235,7 +235,7 @@ async fn handle_status_stream(mut socket: WebSocket, state: Arc<AppState>) {
                 match result {
                     Ok(status) => {
                         let json = serde_json::to_string(&status).unwrap_or_default();
-                        if socket.send(Message::Text(json)).await.is_err() {
+                        if socket.send(Message::Text(json.into())).await.is_err() {
                             break;
                         }
                     }
@@ -272,7 +272,7 @@ async fn handle_history_stream(mut socket: WebSocket, state: Arc<AppState>) {
                 match result {
                     Ok(entry) => {
                         let json = serde_json::to_string(&entry).unwrap_or_default();
-                        if socket.send(Message::Text(json)).await.is_err() {
+                        if socket.send(Message::Text(json.into())).await.is_err() {
                             break;
                         }
                     }

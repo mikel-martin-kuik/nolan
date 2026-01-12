@@ -176,7 +176,9 @@ function App() {
       }
     };
 
-    setup();
+    setup().catch((err) => {
+      console.error('Failed to setup live output streaming:', err);
+    });
 
     return () => {
       if (unlisten) unlisten();

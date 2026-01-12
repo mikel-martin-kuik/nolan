@@ -132,10 +132,18 @@ export function useUsageStats(): UseUsageStatsResult {
       let sessionData: ProjectUsage[] = [];
 
       if (selectedDateRange === 'all') {
+        // Fetch in parallel with individual error handling
         const [statsResult, sessionResult] = await Promise.all([
-          invoke<UsageStats>('get_usage_stats'),
-          invoke<ProjectUsage[]>('get_session_stats')
+          invoke<UsageStats>('get_usage_stats').catch((err) => {
+            console.error('Failed to fetch usage stats:', err);
+            return null;
+          }),
+          invoke<ProjectUsage[]>('get_session_stats').catch((err) => {
+            console.error('Failed to fetch session stats:', err);
+            return [];
+          })
         ]);
+        if (!statsResult) throw new Error('Failed to load usage statistics');
         statsData = statsResult;
         sessionData = sessionResult;
       } else {
@@ -151,18 +159,26 @@ export function useUsageStats(): UseUsageStatsResult {
           return `${year}${month}${day}`;
         };
 
+        // Fetch in parallel with individual error handling
         const [statsResult, sessionResult] = await Promise.all([
           invoke<UsageStats>('get_usage_by_date_range', {
             startDate: startDate.toISOString(),
             endDate: endDate.toISOString()
+          }).catch((err) => {
+            console.error('Failed to fetch usage by date range:', err);
+            return null;
           }),
           invoke<ProjectUsage[]>('get_session_stats', {
             since: formatDateForApi(startDate),
             until: formatDateForApi(endDate),
             order: 'desc'
+          }).catch((err) => {
+            console.error('Failed to fetch session stats:', err);
+            return [];
           })
         ]);
 
+        if (!statsResult) throw new Error('Failed to load usage statistics');
         statsData = statsResult;
         sessionData = sessionResult;
       }

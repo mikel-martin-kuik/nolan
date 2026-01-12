@@ -18,7 +18,14 @@ export function useAuth() {
   const checkAuthStatus = useCallback(async () => {
     try {
       const response = await fetch(`${getApiBase()}/api/auth/status`);
+      if (!response.ok) {
+        throw new Error(`Auth status check failed: ${response.status}`);
+      }
       const data = await response.json();
+
+      // Validate response has expected fields
+      const authRequired = data.auth_required ?? false;
+      const passwordConfigured = data.password_configured ?? false;
 
       // Validate token by making an authenticated request
       let isAuthenticated = false;
@@ -40,10 +47,11 @@ export function useAuth() {
 
       setStatus({
         authenticated: isAuthenticated,
-        authRequired: data.auth_required,
-        passwordConfigured: data.password_configured,
+        authRequired,
+        passwordConfigured,
       });
     } catch (e) {
+      console.error('Auth status check error:', e);
       setError('Failed to check auth status');
     } finally {
       setLoading(false);

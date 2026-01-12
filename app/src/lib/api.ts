@@ -36,9 +36,14 @@ function isTauri(): boolean {
  * Most commands map directly, some need special handling
  */
 // Helper to get arg with camelCase or snake_case fallback
-const getArg = (args: Record<string, unknown>, snakeCase: string): unknown => {
+// Throws if required arg is missing to prevent "undefined" in URLs
+const getArg = (args: Record<string, unknown>, snakeCase: string, required = true): unknown => {
   const camelCase = snakeCase.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
-  return args[snakeCase] ?? args[camelCase];
+  const value = args[snakeCase] ?? args[camelCase];
+  if (required && (value === undefined || value === null)) {
+    throw new Error(`Missing required argument: ${snakeCase}`);
+  }
+  return value;
 };
 
 const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Record<string, unknown>) => string) }> = {
@@ -134,6 +139,12 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
     return qs ? `/api/usage/sessions?${qs}` : '/api/usage/sessions';
   }},
   get_usage_by_date_range: { method: 'GET', path: (args) => `/api/usage/range?startDate=${encodeURIComponent(getArg(args, 'start_date') as string)}&endDate=${encodeURIComponent(getArg(args, 'end_date') as string)}` },
+  get_agent_usage_stats: { method: 'GET', path: (args) => {
+    const params = new URLSearchParams();
+    params.set('agent', getArg(args, 'agent_name') as string);
+    if (args?.days) params.set('days', String(args.days));
+    return `/api/usage/agent?${params.toString()}`;
+  }},
 
   // Cronos (cron agents)
   list_cron_agents: { method: 'GET', path: '/api/cronos/agents' },

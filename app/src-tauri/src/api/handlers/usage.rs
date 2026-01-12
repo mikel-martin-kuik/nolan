@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::commands::usage::{self, UsageStats, ProjectUsage};
+use crate::commands::usage::{self, UsageStats, ProjectUsage, AgentStats};
 
 /// Error response
 #[derive(Serialize)]
@@ -68,6 +68,23 @@ pub async fn get_by_date_range(
     Query(query): Query<DateRangeQuery>,
 ) -> Result<Json<UsageStats>, impl IntoResponse> {
     match usage::get_usage_by_date_range(query.start_date, query.end_date) {
+        Ok(stats) => Ok(Json(stats)),
+        Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+/// Get agent usage stats query params
+#[derive(Deserialize)]
+pub struct AgentStatsQuery {
+    agent: String,
+    days: Option<u32>,
+}
+
+/// Get usage stats for a specific agent
+pub async fn get_agent_stats(
+    Query(query): Query<AgentStatsQuery>,
+) -> Result<Json<AgentStats>, impl IntoResponse> {
+    match usage::get_agent_usage_stats(query.agent, query.days) {
         Ok(stats) => Ok(Json(stats)),
         Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
     }

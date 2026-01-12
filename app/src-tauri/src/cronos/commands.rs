@@ -7,7 +7,7 @@ use super::types::*;
 use super::executor;
 
 /// Global cronos manager instance
-static CRONOS: once_cell::sync::Lazy<tokio::sync::RwLock<Option<super::CronosManager>>> =
+pub static CRONOS: once_cell::sync::Lazy<tokio::sync::RwLock<Option<super::CronosManager>>> =
     once_cell::sync::Lazy::new(|| tokio::sync::RwLock::new(None));
 
 /// Global output broadcast channel for real-time streaming
@@ -117,14 +117,29 @@ pub async fn list_cron_agents() -> Result<Vec<CronAgentInfo>, String> {
         let stats = manager.calculate_agent_stats(&config.name, 50).await;
         let agent_state = manager.get_agent_state(&config.name).await;
 
+        // Handle schedule based on agent type (only Cron type has schedule)
+        let (schedule_str, cron_expr, next_run) = match &config.schedule {
+            Some(sched) => (
+                describe_cron(&sched.cron),
+                sched.cron.clone(),
+                calculate_next_run(&sched.cron),
+            ),
+            None => (
+                String::new(),
+                String::new(),
+                None,
+            ),
+        };
+
         infos.push(CronAgentInfo {
             name: config.name.clone(),
             description: config.description.clone(),
             model: config.model.clone(),
             enabled: config.enabled,
-            schedule: describe_cron(&config.schedule.cron),
-            cron_expression: config.schedule.cron.clone(),
-            next_run: calculate_next_run(&config.schedule.cron),
+            agent_type: config.agent_type.clone(),
+            schedule: schedule_str,
+            cron_expression: cron_expr,
+            next_run,
             last_run,
             group: config.group.clone(),
             is_running,
@@ -132,6 +147,8 @@ pub async fn list_cron_agents() -> Result<Vec<CronAgentInfo>, String> {
             consecutive_failures: agent_state.map(|s| s.consecutive_failures).unwrap_or(0),
             health,
             stats,
+            event_trigger: config.event_trigger.clone(),
+            invocation: config.invocation.clone(),
         });
     }
 
@@ -147,27 +164,50 @@ pub async fn get_cron_agent(name: String) -> Result<CronAgentConfig, String> {
 
 #[tauri::command]
 pub async fn create_cron_agent(config: CronAgentConfig) -> Result<(), String> {
-    // Validate name format: cron-{task}
-    if !config.name.starts_with("cron-") {
-        return Err("Agent name must start with 'cron-'".to_string());
-    }
+    // Validate name format based on agent type
     if !config.name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
         return Err("Agent name must contain only lowercase letters, digits, and hyphens".to_string());
     }
 
-    // Validate cron expression
-    validate_cron(&config.schedule.cron)?;
+    // Validate based on agent type
+    match config.agent_type {
+        AgentType::Cron => {
+            if !config.name.starts_with("cron-") {
+                return Err("Cron agent name must start with 'cron-'".to_string());
+            }
+            if config.schedule.is_none() {
+                return Err("Cron agents require a schedule".to_string());
+            }
+            validate_cron(&config.schedule.as_ref().unwrap().cron)?;
+        }
+        AgentType::Predefined => {
+            if !config.name.starts_with("pred-") {
+                return Err("Predefined agent name must start with 'pred-'".to_string());
+            }
+        }
+        AgentType::Event => {
+            if !config.name.starts_with("event-") {
+                return Err("Event agent name must start with 'event-'".to_string());
+            }
+            if config.event_trigger.is_none() {
+                return Err("Event agents require an event_trigger".to_string());
+            }
+        }
+    }
 
     let guard = CRONOS.read().await;
     let manager = guard.as_ref().ok_or("Cronos not initialized")?;
     manager.save_agent(&config).await?;
 
-    // Create default CLAUDE.md
+    // Determine the correct agents directory based on type
     let nolan_root = crate::utils::paths::get_nolan_root()?;
-    let claude_md = nolan_root
-        .join("cronos/agents")
-        .join(&config.name)
-        .join("CLAUDE.md");
+    let agents_dir = match config.agent_type {
+        AgentType::Cron => nolan_root.join("cronos/agents"),
+        AgentType::Predefined => nolan_root.join("predefined/agents"),
+        AgentType::Event => nolan_root.join("event/agents"),
+    };
+
+    let claude_md = agents_dir.join(&config.name).join("CLAUDE.md");
 
     if !claude_md.exists() {
         let template = format!(
@@ -186,7 +226,15 @@ pub async fn update_cron_agent(name: String, config: CronAgentConfig) -> Result<
     if config.name != name {
         return Err("Cannot change agent name".to_string());
     }
-    validate_cron(&config.schedule.cron)?;
+
+    // Only validate cron expression for Cron type agents
+    if config.agent_type == AgentType::Cron {
+        if let Some(ref sched) = config.schedule {
+            validate_cron(&sched.cron)?;
+        } else {
+            return Err("Cron agents require a schedule".to_string());
+        }
+    }
 
     let guard = CRONOS.read().await;
     let manager = guard.as_ref().ok_or("Cronos not initialized")?;
@@ -431,6 +479,67 @@ pub async fn cancel_cron_agent(name: String) -> Result<(), String> {
     let manager = guard.as_ref().ok_or("Cronos not initialized")?;
 
     executor::cancel_cron_agent(manager, &name).await
+}
+
+// ========================
+// Predefined Agent Commands
+// ========================
+
+/// Trigger a predefined agent (manual trigger)
+#[tauri::command]
+pub async fn trigger_predefined_agent(name: String, app: AppHandle) -> Result<String, String> {
+    let guard = CRONOS.read().await;
+    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+    let config = manager.get_agent(&name).await?;
+
+    // Verify it's a predefined agent
+    if config.agent_type != AgentType::Predefined {
+        return Err(format!("Agent '{}' is not a predefined agent", name));
+    }
+
+    // Check if already running (unless parallel allowed)
+    if !config.concurrency.allow_parallel && manager.is_running(&name).await {
+        return Err(format!("Agent '{}' is already running", name));
+    }
+
+    drop(guard);
+
+    // Reuse existing trigger logic
+    trigger_cron_agent(name, app).await
+}
+
+/// List all available slash commands from predefined agents
+#[tauri::command]
+pub async fn list_agent_commands() -> Result<Vec<AgentCommand>, String> {
+    let guard = CRONOS.read().await;
+    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+
+    let agents = manager.load_agents().await?;
+    let commands: Vec<AgentCommand> = agents.iter()
+        .filter(|a| a.agent_type == AgentType::Predefined)
+        .filter_map(|a| {
+            a.invocation.as_ref().and_then(|inv| {
+                inv.command.as_ref().map(|cmd| AgentCommand {
+                    command: cmd.clone(),
+                    agent_name: a.name.clone(),
+                    description: a.description.clone(),
+                    icon: inv.icon.clone(),
+                })
+            })
+        })
+        .collect();
+
+    Ok(commands)
+}
+
+/// Agent slash command info for UI integration
+#[derive(Clone, Debug, serde::Serialize, ts_rs::TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+pub struct AgentCommand {
+    pub command: String,
+    pub agent_name: String,
+    pub description: String,
+    pub icon: Option<String>,
 }
 
 #[tauri::command]

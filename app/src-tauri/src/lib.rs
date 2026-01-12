@@ -5,6 +5,7 @@ pub mod config;
 pub mod constants;
 pub mod cronos;
 pub mod error;
+pub mod events;
 pub mod ollama;
 pub mod shell;
 pub mod tmux;
@@ -79,6 +80,9 @@ pub fn run() {
             // Non-fatal - continue startup
         }
     }
+
+    // Start event listener for event-driven agents
+    runtime.block_on(events::handlers::start_event_listener());
 
     // Start HTTP API server in background
     // Port configurable via NOLAN_API_PORT environment variable (default: 3030)
@@ -180,6 +184,7 @@ pub fn run() {
             get_usage_stats,
             get_usage_by_date_range,
             get_session_stats,
+            get_agent_usage_stats,
             // Cronos commands
             cronos::commands::list_cron_agents,
             cronos::commands::get_cron_agent,
@@ -211,6 +216,9 @@ pub fn run() {
             // Idea dispatch commands
             cronos::commands::dispatch_ideas,
             cronos::commands::dispatch_single_idea,
+            // Predefined agent commands
+            cronos::commands::trigger_predefined_agent,
+            cronos::commands::list_agent_commands,
             // Feedback commands
             list_feature_requests,
             create_feature_request,
@@ -262,6 +270,7 @@ mod tests {
     #[test]
     fn export_cronos_types() {
         use crate::cronos::types::*;
+        use crate::cronos::commands::AgentCommand;
 
         // Export all cronos types
         CronAgentConfig::export_all().expect("Failed to export CronAgentConfig");
@@ -287,6 +296,21 @@ mod tests {
         CronOutputEvent::export_all().expect("Failed to export CronOutputEvent");
         OutputEventType::export_all().expect("Failed to export OutputEventType");
         CronosHealthSummary::export_all().expect("Failed to export CronosHealthSummary");
+
+        // Export new agent type system types
+        AgentType::export_all().expect("Failed to export AgentType");
+        EventType::export_all().expect("Failed to export EventType");
+        EventTrigger::export_all().expect("Failed to export EventTrigger");
+        InvocationConfig::export_all().expect("Failed to export InvocationConfig");
+        AgentCommand::export_all().expect("Failed to export AgentCommand");
+    }
+
+    #[test]
+    fn export_events_types() {
+        use crate::events::types::*;
+
+        // Export event bus types
+        SystemEvent::export_all().expect("Failed to export SystemEvent");
     }
 
     #[test]

@@ -36,6 +36,8 @@ export const AgentCard: React.FC<AgentCardProps> = ({
     setIsCreatingClaudeMd(true);
     try {
       await onCreateClaudeMd(name);
+    } catch (err) {
+      console.error(`Failed to create CLAUDE.md for ${name}:`, err);
     } finally {
       setIsCreatingClaudeMd(false);
     }
@@ -46,6 +48,8 @@ export const AgentCard: React.FC<AgentCardProps> = ({
     setIsCreatingAgentJson(true);
     try {
       await onCreateAgentJson(name);
+    } catch (err) {
+      console.error(`Failed to create agent.json for ${name}:`, err);
     } finally {
       setIsCreatingAgentJson(false);
     }

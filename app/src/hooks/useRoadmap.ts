@@ -240,9 +240,16 @@ export function useRoadmap(): UseRoadmapResult {
   }, [summaryItems]);
 
   useEffect(() => {
-    loadRoadmapFiles();
-    loadRoadmap();
-  }, []);
+    const init = async () => {
+      try {
+        await loadRoadmapFiles();
+        await loadRoadmap();
+      } catch (err) {
+        console.error('Failed to initialize roadmap:', err);
+      }
+    };
+    init();
+  }, [loadRoadmapFiles, loadRoadmap]);
 
   return {
     content,

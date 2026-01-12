@@ -208,62 +208,83 @@ fi
 PENDING_DIR="$NOLAN_DATA_ROOT/.state/handoffs/pending"
 PROCESSED_DIR="$NOLAN_DATA_ROOT/.state/handoffs/processed"
 
-# Process handoffs for note_taker (replaces coordinator pattern)
+# Get note_taker for display purposes later
 NOTE_TAKER=$(python3 -c "
 import yaml, os, sys
 try:
     config = yaml.safe_load(open('$TEAM_CONFIG'))
     # Try note_taker first (new pattern), fall back to coordinator (legacy)
     note_taker = config.get('team', {}).get('workflow', {}).get('note_taker') or config.get('team', {}).get('workflow', {}).get('coordinator')
-    if not note_taker:
-        print('ERROR: No note_taker or coordinator defined in team config', file=sys.stderr)
-        sys.exit(1)
-    print(note_taker)
-except Exception as e:
-    print(f'ERROR: Failed to get note_taker: {e}', file=sys.stderr)
-    sys.exit(1)
+    if note_taker:
+        print(note_taker)
+except Exception:
+    pass
 " 2>/dev/null)
 
-if [[ -z "$NOTE_TAKER" ]]; then
-    echo "ERROR: Could not determine note_taker from team config."
-    exit 0
-fi
-
-if [[ "${AGENT_NAME:-}" == "$NOTE_TAKER" ]] && [[ -d "$PENDING_DIR" ]]; then
+# ACK handoffs addressed to this agent (to_agent field matches AGENT_NAME)
+# Each agent is responsible for ACKing their own incoming handoffs
+if [[ -n "${AGENT_NAME:-}" ]] && [[ -d "$PENDING_DIR" ]]; then
     mkdir -p "$PROCESSED_DIR"
     LOCK_FILE="$NOLAN_DATA_ROOT/.state/handoffs/.lock-pending"
 
-    # Use flock for atomic batch ACK (prevents race with other processes)
+    # Use flock for atomic ACK (prevents race with other processes)
     ack_count=0
+    acked_handoffs=""
+
     if command -v flock >/dev/null 2>&1; then
-        # Count files before lock for comparison
-        before_count=$(find "$PROCESSED_DIR" -name "*.handoff" -type f 2>/dev/null | wc -l)
-
-        (
-            flock -w 10 200 || exit 1
-            shopt -s nullglob
-            for f in "$PENDING_DIR"/*.handoff; do
-                [[ -f "$f" ]] || continue
-                mv "$f" "$PROCESSED_DIR/" 2>/dev/null || true
-            done
-            shopt -u nullglob
-        ) 200>"$LOCK_FILE"
-
-        # Count files after to determine how many were moved
-        after_count=$(find "$PROCESSED_DIR" -name "*.handoff" -type f 2>/dev/null | wc -l)
-        ack_count=$((after_count - before_count))
+        # ACK handoffs where to_agent matches current agent
+        acked_handoffs=$(
+            flock -w 10 "$LOCK_FILE" -c "
+                shopt -s nullglob
+                for f in \"$PENDING_DIR\"/*.handoff; do
+                    [[ -f \"\$f\" ]] || continue
+                    # Check if to_agent matches current agent
+                    to_agent=\$(python3 -c \"
+import yaml, sys
+try:
+    with open('\$f') as fh:
+        data = yaml.safe_load(fh)
+    print(data.get('to_agent', ''))
+except:
+    pass
+\" 2>/dev/null)
+                    if [[ \"\$to_agent\" == \"${AGENT_NAME}\" ]]; then
+                        if mv \"\$f\" \"$PROCESSED_DIR/\" 2>/dev/null; then
+                            echo \"\$(basename \"\$f\")\"
+                        fi
+                    fi
+                done
+                shopt -u nullglob
+            " 2>/dev/null
+        )
+        ack_count=$(echo "$acked_handoffs" | grep -c '.handoff$' 2>/dev/null || echo 0)
     else
         # Fallback without flock (less safe but functional)
         shopt -s nullglob
         for f in "$PENDING_DIR"/*.handoff; do
             [[ -f "$f" ]] || continue
-            mv "$f" "$PROCESSED_DIR/" 2>/dev/null && ((ack_count++)) || true
+            # Check if to_agent matches current agent
+            to_agent=$(python3 -c "
+import yaml, sys
+try:
+    with open('$f') as fh:
+        data = yaml.safe_load(fh)
+    print(data.get('to_agent', ''))
+except:
+    pass
+" 2>/dev/null)
+            if [[ "$to_agent" == "${AGENT_NAME}" ]]; then
+                if mv "$f" "$PROCESSED_DIR/" 2>/dev/null; then
+                    ((ack_count++)) || true
+                    acked_handoffs="${acked_handoffs}$(basename "$f")\n"
+                fi
+            fi
         done
         shopt -u nullglob
     fi
 
     if [[ $ack_count -gt 0 ]]; then
-        echo "### Processed $ack_count handoff(s)"
+        echo "### ACK'd $ack_count handoff(s) for ${AGENT_NAME}"
         echo ""
     fi
 fi

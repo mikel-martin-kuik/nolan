@@ -3,7 +3,55 @@ use ts_rs::TS;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+/// Agent type discriminator
+#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+#[serde(rename_all = "snake_case")]
+pub enum AgentType {
+    #[default]
+    Cron,       // Time-scheduled (existing behavior)
+    Predefined, // Manual trigger only
+    Event,      // Event-driven trigger
+}
+
+/// Event trigger configuration (for Event type agents)
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+pub struct EventTrigger {
+    pub event_type: EventType,
+    pub pattern: Option<String>,      // Optional regex/glob pattern
+    #[serde(default = "default_debounce")]
+    pub debounce_ms: u32,             // Debounce to avoid rapid re-triggers
+}
+
+fn default_debounce() -> u32 { 1000 }
+
+/// Supported event types
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+#[serde(rename_all = "snake_case")]
+pub enum EventType {
+    IdeaApproved,
+    IdeaReceived,
+    TeamWorkflowStarted,
+    TeamWorkflowFinished,
+    UserLoggedIn,
+    GitPush,
+    FileChanged,
+    StateChange,
+}
+
+/// Invocation configuration (for Predefined type agents)
+#[derive(Clone, Debug, Serialize, Deserialize, Default, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+pub struct InvocationConfig {
+    pub command: Option<String>,    // Slash command: /security-scan
+    pub button_label: String,       // UI button text
+    pub icon: Option<String>,       // Icon name (lucide icon)
+}
+
 /// Cron agent configuration (stored in cronos/agents/{name}/agent.yaml)
+/// Now supports multiple agent types: Cron, Predefined, and Event
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/types/generated/cronos/")]
 pub struct CronAgentConfig {
@@ -12,7 +60,10 @@ pub struct CronAgentConfig {
     pub model: String,  // sonnet, haiku, opus
     pub timeout: u32,   // seconds
     pub enabled: bool,
-    pub schedule: CronSchedule,
+    #[serde(default)]
+    pub agent_type: AgentType,              // Type discriminator (default: Cron)
+    #[serde(default)]
+    pub schedule: Option<CronSchedule>,     // Only required for Cron type
     pub guardrails: CronGuardrails,
     pub context: CronContext,
     // Group assignment (references groups.yaml)
@@ -25,6 +76,10 @@ pub struct CronAgentConfig {
     pub retry: RetryPolicy,
     #[serde(default)]
     pub catch_up: CatchUpPolicy,
+    #[serde(default)]
+    pub event_trigger: Option<EventTrigger>,  // For Event type
+    #[serde(default)]
+    pub invocation: Option<InvocationConfig>, // For Predefined type
 }
 
 /// Cron agent group definition (stored in cronos/groups.yaml)
@@ -266,8 +321,9 @@ pub struct CronAgentInfo {
     pub description: String,
     pub model: String,
     pub enabled: bool,
-    pub schedule: String,     // Human-readable
-    pub cron_expression: String, // Raw cron expression
+    pub agent_type: AgentType,              // Agent type discriminator
+    pub schedule: String,                    // Human-readable (empty for non-cron)
+    pub cron_expression: String,             // Raw cron expression (empty for non-cron)
     pub next_run: Option<String>,
     pub last_run: Option<CronRunLog>,
     // Group assignment
@@ -278,6 +334,9 @@ pub struct CronAgentInfo {
     pub consecutive_failures: u32,
     pub health: AgentHealth,
     pub stats: AgentStats,
+    // New fields for predefined/event agents
+    pub event_trigger: Option<EventTrigger>,
+    pub invocation: Option<InvocationConfig>,
 }
 
 /// Agent health status

@@ -217,7 +217,9 @@ export const CronAgentOutputModal: React.FC<CronAgentOutputModalProps> = ({
           }
         });
         cleanup = unsubscribe;
-      } catch { /* ignore */ }
+      } catch (err) {
+        console.error('Failed to subscribe to cronos output:', err);
+      }
     })();
     return () => cleanup?.();
   }, [agentName]);
@@ -226,7 +228,12 @@ export const CronAgentOutputModal: React.FC<CronAgentOutputModalProps> = ({
   useEffect(() => {
     if (!agentName) return;
     const poll = setInterval(async () => {
-      await fetchAgent();
+      try {
+        await fetchAgent();
+      } catch (err) {
+        console.error('Failed to fetch agent during polling:', err);
+        return;
+      }
       const runId = agent?.current_run_id || agent?.last_run?.run_id;
       if (runId) {
         try {
@@ -238,7 +245,9 @@ export const CronAgentOutputModal: React.FC<CronAgentOutputModalProps> = ({
             }));
             setLiveOutput(events);
           }
-        } catch { /* ignore */ }
+        } catch (err) {
+          console.error('Failed to fetch cron run log:', err);
+        }
       }
     }, 1500);
     return () => clearInterval(poll);

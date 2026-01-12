@@ -100,6 +100,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/usage/stats", get(handlers::usage::get_stats))
         .route("/api/usage/sessions", get(handlers::usage::get_sessions))
         .route("/api/usage/range", get(handlers::usage::get_by_date_range))
+        .route("/api/usage/agent", get(handlers::usage::get_agent_stats))
         // Cronos (cron agents)
         .route("/api/cronos/agents", get(handlers::cronos::list_agents))
         .route("/api/cronos/agents", post(handlers::cronos::create_agent))

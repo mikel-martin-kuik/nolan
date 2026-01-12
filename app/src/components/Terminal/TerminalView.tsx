@@ -208,9 +208,9 @@ export function TerminalView({ session, agentName, onClose, fontSize = 13 }: Ter
         clearTimeout(scrollTimeoutRef.current);
       }
 
-      // Unsubscribe from events
-      unsubscribeOutput.then(unsub => unsub());
-      unsubscribeDisconnected.then(unsub => unsub());
+      // Unsubscribe from events (handle potential rejections during cleanup)
+      unsubscribeOutput.then(unsub => unsub?.()).catch(() => {});
+      unsubscribeDisconnected.then(unsub => unsub?.()).catch(() => {});
 
       // Stop terminal stream
       invoke('stop_terminal_stream', { session }).catch((err) => {

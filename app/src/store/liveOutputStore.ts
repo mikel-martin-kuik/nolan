@@ -54,36 +54,51 @@ const getEntryKey = (entry: HistoryEntry): string => {
   return `${entry.timestamp}-${entry.tmux_session || 'unknown'}-${messagePrefix}`;
 };
 
+// Module-level interval reference for cleanup
+let decayInterval: ReturnType<typeof setInterval> | null = null;
+
+// Exported cleanup function for app teardown
+export const cleanupLiveOutputStore = () => {
+  if (decayInterval) {
+    clearInterval(decayInterval);
+    decayInterval = null;
+  }
+};
+
 export const useLiveOutputStore = create<LiveOutputStore>((set, get) => {
   // Set up activity decay timer - only runs when there are active sessions
-  let decayInterval: ReturnType<typeof setInterval> | null = null;
 
   const startDecayTimer = () => {
     if (decayInterval) return;
 
     decayInterval = setInterval(() => {
-      const state = get();
-      const hasActiveSessions = Object.values(state.agentOutputs).some(output => output.isActive);
+      try {
+        const state = get();
+        const hasActiveSessions = Object.values(state.agentOutputs).some(output => output.isActive);
 
-      // Stop timer if no active sessions to save CPU
-      if (!hasActiveSessions) {
-        stopDecayTimer();
-        return;
-      }
-
-      const now = Date.now();
-      let hasChanges = false;
-      const newOutputs = { ...state.agentOutputs };
-
-      for (const [session, output] of Object.entries(newOutputs)) {
-        if (output.isActive && now - output.lastUpdate > ACTIVITY_THRESHOLD_MS) {
-          newOutputs[session] = { ...output, isActive: false };
-          hasChanges = true;
+        // Stop timer if no active sessions to save CPU
+        if (!hasActiveSessions) {
+          stopDecayTimer();
+          return;
         }
-      }
 
-      if (hasChanges) {
-        set({ agentOutputs: newOutputs });
+        const now = Date.now();
+        let hasChanges = false;
+        const newOutputs = { ...state.agentOutputs };
+
+        for (const [session, output] of Object.entries(newOutputs)) {
+          if (output.isActive && now - output.lastUpdate > ACTIVITY_THRESHOLD_MS) {
+            newOutputs[session] = { ...output, isActive: false };
+            hasChanges = true;
+          }
+        }
+
+        if (hasChanges) {
+          set({ agentOutputs: newOutputs });
+        }
+      } catch (err) {
+        console.error('Decay timer error:', err);
+        stopDecayTimer();
       }
     }, 1000);
   };
@@ -184,7 +199,7 @@ export const useLiveOutputStore = create<LiveOutputStore>((set, get) => {
     clearSession: (tmuxSession) => {
       set((state) => {
         const existing = state.agentOutputs[tmuxSession];
-        if (!existing || existing.entries.length === 0) {
+        if (!existing || !Array.isArray(existing.entries) || existing.entries.length === 0) {
           return state;
         }
 

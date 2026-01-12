@@ -286,11 +286,13 @@ export const ChatView: React.FC = () => {
         {/* Input bar */}
         <ChatInput
           session={noteTakerSession ?? ''}
-          disabled={!isAnyTeamAgentActive}
+          disabled={!isAnyTeamAgentActive || !noteTakerSession}
           placeholder={
-            isAnyTeamAgentActive
-              ? `Message ${teamState.teamName} team...`
-              : 'No active agents in team'
+            !noteTakerSession
+              ? 'No note-taker configured for team'
+              : isAnyTeamAgentActive
+                ? `Message ${teamState.teamName} team...`
+                : 'No active agents in team'
           }
         />
       </>

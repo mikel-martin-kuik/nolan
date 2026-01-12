@@ -154,7 +154,11 @@ export const useOllamaStore = create<OllamaStore>((set, get) => {
       localStorage.setItem(STORAGE_MODEL_KEY, model);
 
       // Also update backend config
-      invoke('ollama_set_config', { model }).catch(console.warn);
+      invoke('ollama_set_config', { model }).catch((err) => {
+        console.warn('Failed to save model config to backend:', err);
+        // Recheck connection to sync state
+        get().checkConnection();
+      });
     },
 
     // Set Ollama URL
@@ -165,7 +169,11 @@ export const useOllamaStore = create<OllamaStore>((set, get) => {
       // Update backend config and recheck connection
       invoke('ollama_set_config', { url })
         .then(() => get().checkConnection())
-        .catch(console.warn);
+        .catch((err) => {
+          console.warn('Failed to save URL config to backend:', err);
+          // Still try to check connection with new URL
+          get().checkConnection();
+        });
     },
 
     // Clear error

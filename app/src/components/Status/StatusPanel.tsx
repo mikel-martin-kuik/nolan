@@ -67,7 +67,15 @@ export const StatusPanel: React.FC = () => {
   // Setup event listeners and auto-refresh status
   useEffect(() => {
     updateStatus();
-    setupEventListeners();
+
+    // Setup event listeners in async IIFE with error handling
+    (async () => {
+      try {
+        await setupEventListeners();
+      } catch (err) {
+        console.error('Failed to setup event listeners:', err);
+      }
+    })();
 
     // Still poll every 2s as fallback, but events will provide real-time updates
     const interval = setInterval(() => {
@@ -86,7 +94,9 @@ export const StatusPanel: React.FC = () => {
       await loadAllTeams();
       await loadDepartments();
     };
-    initTeams();
+    initTeams().catch((err) => {
+      console.error('Failed to initialize teams:', err);
+    });
   }, [loadAvailableTeams, loadAllTeams, loadDepartments]);
 
   // Get agents for a specific team

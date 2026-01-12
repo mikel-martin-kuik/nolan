@@ -62,9 +62,14 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       // Only user actions (launch, kill, spawn) should show loading
       const status = await invoke<AgentStatusList>('get_agent_status');
 
+      // Validate response structure before updating state
+      if (!status || typeof status !== 'object') {
+        throw new Error('Invalid status response from server');
+      }
+
       set({
-        teamAgents: status.team,
-        freeAgents: status.free,
+        teamAgents: status.team ?? [],
+        freeAgents: status.free ?? [],
         lastUpdate: Date.now(),
       });
     } catch (error) {
@@ -202,9 +207,13 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
 
     // Use unified event listener (WebSocket in browser, Tauri events in desktop)
     const unlisten = await listen<AgentStatusList>('agent-status-changed', (event) => {
+      // Validate payload before updating state
+      const payload = event.payload;
+      if (!payload || typeof payload !== 'object') return;
+
       set({
-        teamAgents: event.payload.team,
-        freeAgents: event.payload.free,
+        teamAgents: payload.team ?? [],
+        freeAgents: payload.free ?? [],
         lastUpdate: Date.now(),
       });
     });

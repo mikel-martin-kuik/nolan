@@ -592,18 +592,43 @@ impl CronosManager {
     // Agent Configuration Management
     // ========================
 
-    /// Load all agent configs from disk
+    /// Load all agent configs from disk (cron, predefined, and event agents)
     pub async fn load_agents(&self) -> Result<Vec<CronAgentConfig>, String> {
-        let agents_dir = self.cronos_root.join("agents");
         let mut configs = Vec::new();
 
-        if let Ok(entries) = std::fs::read_dir(&agents_dir) {
+        // Load cron agents from cronos/agents
+        let cronos_agents_dir = self.cronos_root.join("agents");
+        configs.extend(self.load_agents_from_dir(&cronos_agents_dir, AgentType::Cron)?);
+
+        // Load predefined agents from predefined/agents
+        if let Ok(predefined_dir) = paths::get_predefined_agents_dir() {
+            configs.extend(self.load_agents_from_dir(&predefined_dir, AgentType::Predefined)?);
+        }
+
+        // Load event agents from event/agents
+        if let Ok(event_dir) = paths::get_event_agents_dir() {
+            configs.extend(self.load_agents_from_dir(&event_dir, AgentType::Event)?);
+        }
+
+        Ok(configs)
+    }
+
+    /// Load agents from a specific directory, applying a default agent type if not specified
+    fn load_agents_from_dir(&self, dir: &std::path::Path, default_type: AgentType) -> Result<Vec<CronAgentConfig>, String> {
+        let mut configs = Vec::new();
+
+        if let Ok(entries) = std::fs::read_dir(dir) {
             for entry in entries.flatten() {
                 if entry.path().is_dir() {
                     let config_path = entry.path().join("agent.yaml");
                     if config_path.exists() {
                         if let Ok(content) = std::fs::read_to_string(&config_path) {
-                            if let Ok(config) = serde_yaml::from_str::<CronAgentConfig>(&content) {
+                            if let Ok(mut config) = serde_yaml::from_str::<CronAgentConfig>(&content) {
+                                // Apply default type if not explicitly set
+                                // (for backward compatibility with existing cron agents)
+                                if config.agent_type == AgentType::Cron && default_type != AgentType::Cron {
+                                    config.agent_type = default_type.clone();
+                                }
                                 configs.push(config);
                             }
                         }
@@ -616,22 +641,51 @@ impl CronosManager {
     }
 
     /// Get agent config by name
+    /// Searches in all agent directories based on name prefix
     pub async fn get_agent(&self, name: &str) -> Result<CronAgentConfig, String> {
-        let config_path = self.cronos_root
-            .join("agents")
-            .join(name)
-            .join("agent.yaml");
+        // Determine which directories to search based on name prefix
+        let search_dirs = if name.starts_with("pred-") {
+            vec![paths::get_predefined_agents_dir().ok()]
+        } else if name.starts_with("event-") {
+            vec![paths::get_event_agents_dir().ok()]
+        } else if name.starts_with("cron-") {
+            vec![Some(self.cronos_root.join("agents"))]
+        } else {
+            // Search all directories for backward compatibility
+            vec![
+                Some(self.cronos_root.join("agents")),
+                paths::get_predefined_agents_dir().ok(),
+                paths::get_event_agents_dir().ok(),
+            ]
+        };
 
-        let content = std::fs::read_to_string(&config_path)
-            .map_err(|e| format!("Agent '{}' not found: {}", name, e))?;
+        for dir_opt in search_dirs.into_iter().flatten() {
+            let config_path = dir_opt.join(name).join("agent.yaml");
+            if config_path.exists() {
+                let content = std::fs::read_to_string(&config_path)
+                    .map_err(|e| format!("Failed to read agent '{}': {}", name, e))?;
+                return serde_yaml::from_str(&content)
+                    .map_err(|e| format!("Invalid agent config: {}", e));
+            }
+        }
 
-        serde_yaml::from_str(&content)
-            .map_err(|e| format!("Invalid agent config: {}", e))
+        Err(format!("Agent '{}' not found", name))
     }
 
-    /// Save agent config
+    /// Save agent config to the appropriate directory based on agent type
     pub async fn save_agent(&self, config: &CronAgentConfig) -> Result<(), String> {
-        let agent_dir = self.cronos_root.join("agents").join(&config.name);
+        let agent_dir = match config.agent_type {
+            AgentType::Cron => self.cronos_root.join("agents").join(&config.name),
+            AgentType::Predefined => {
+                let base = paths::get_predefined_agents_dir()?;
+                base.join(&config.name)
+            }
+            AgentType::Event => {
+                let base = paths::get_event_agents_dir()?;
+                base.join(&config.name)
+            }
+        };
+
         std::fs::create_dir_all(&agent_dir)
             .map_err(|e| format!("Failed to create agent directory: {}", e))?;
 
@@ -645,9 +699,23 @@ impl CronosManager {
         Ok(())
     }
 
-    /// Delete agent
+    /// Delete agent from the appropriate directory
     pub async fn delete_agent(&self, name: &str) -> Result<(), String> {
-        let agent_dir = self.cronos_root.join("agents").join(name);
+        // First find the agent to determine its type
+        let config = self.get_agent(name).await?;
+
+        let agent_dir = match config.agent_type {
+            AgentType::Cron => self.cronos_root.join("agents").join(name),
+            AgentType::Predefined => {
+                let base = paths::get_predefined_agents_dir()?;
+                base.join(name)
+            }
+            AgentType::Event => {
+                let base = paths::get_event_agents_dir()?;
+                base.join(name)
+            }
+        };
+
         if agent_dir.exists() {
             std::fs::remove_dir_all(&agent_dir)
                 .map_err(|e| format!("Failed to delete agent: {}", e))?;
@@ -817,16 +885,18 @@ impl CronosManager {
             .map_err(|e| format!("Failed to start scheduler: {}", e))
     }
 
-    /// Schedule all enabled agents with the cron scheduler
+    /// Schedule all enabled cron agents with the scheduler
+    /// Only Cron type agents are scheduled (not Predefined or Event)
     pub async fn schedule_all_agents(&self) -> Result<(), String> {
         let agents = self.load_agents().await?;
 
         for agent in agents {
-            if agent.enabled {
+            // Only schedule Cron type agents that are enabled and have a schedule
+            if agent.enabled && agent.agent_type == AgentType::Cron && agent.schedule.is_some() {
                 if let Err(e) = self.schedule_agent(&agent).await {
                     eprintln!("[Cronos] Failed to schedule {}: {}", agent.name, e);
-                } else {
-                    println!("[Cronos] Scheduled {} with cron: {}", agent.name, agent.schedule.cron);
+                } else if let Some(ref sched) = agent.schedule {
+                    println!("[Cronos] Scheduled {} with cron: {}", agent.name, sched.cron);
                 }
             }
         }
@@ -834,13 +904,22 @@ impl CronosManager {
         Ok(())
     }
 
-    /// Schedule a single agent
+    /// Schedule a single cron agent
+    /// Only works for Cron type agents with a schedule
     pub async fn schedule_agent(&self, config: &CronAgentConfig) -> Result<(), String> {
+        // Only schedule cron type agents
+        if config.agent_type != AgentType::Cron {
+            return Ok(()); // Silently skip non-cron agents
+        }
+
+        let schedule = config.schedule.as_ref()
+            .ok_or_else(|| format!("Agent '{}' has no schedule", config.name))?;
+
         // Convert 5-field cron to 6-field (add seconds)
-        let cron_expr = if config.schedule.cron.split_whitespace().count() == 5 {
-            format!("0 {}", config.schedule.cron)
+        let cron_expr = if schedule.cron.split_whitespace().count() == 5 {
+            format!("0 {}", schedule.cron)
         } else {
-            config.schedule.cron.clone()
+            schedule.cron.clone()
         };
 
         let agent_name = config.name.clone();

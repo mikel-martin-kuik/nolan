@@ -49,3 +49,33 @@ export interface UsageStats {
   by_date: DailyUsage[];
   by_project: ProjectUsage[];
 }
+
+// Agent session stats types
+export interface AgentSessionStats {
+  session_id: string;
+  tmux_session: string;
+  original_prompt: string;
+  start_time: string;
+  end_time: string;
+  duration_secs: number;
+  model: string;
+  cost_usd: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  total_tokens: number;
+}
+
+export interface AgentStats {
+  agent_name: string;
+  total_sessions: number;
+  total_cost: number;
+  total_tokens: number;
+  total_duration_secs: number;
+  avg_cost_per_session: number;
+  avg_duration_secs: number;
+  by_model: ModelUsage[];
+  by_date: DailyUsage[];
+  sessions: AgentSessionStats[];
+}

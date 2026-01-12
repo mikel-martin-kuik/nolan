@@ -9,4 +9,5 @@ export { useProjects, type UseProjectsResult, type GroupedProjects, type Project
 export { useRoadmap, type UseRoadmapResult, type RoadmapSection, type PhaseInfo, type RoadmapTab } from './useRoadmap';
 export { useTeamMessages } from './useTeamMessages';
 export { useUsageStats, type UseUsageStatsResult, type DateRange, type TimelineChartData, type TimelineBar } from './useUsageStats';
+export { useAgentStats, type UseAgentStatsResult, type DateRange as AgentDateRange } from './useAgentStats';
 export { useWorkflowStatus, type AgentWithWorkflow, type WorkflowStatusResult } from './useWorkflowStatus';

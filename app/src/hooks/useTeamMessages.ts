@@ -68,7 +68,7 @@ export function useTeamMessages(teamName: string | null): TeamChatState | null {
           isAnyWorking = true;
         }
 
-        for (const entry of output.entries) {
+        for (const entry of (output.entries || [])) {
           allMessages.push({
             ...entry,
             agentName: getAgentDisplayName(agent),

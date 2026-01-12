@@ -29,7 +29,7 @@ export const ProjectListItem = memo(function ProjectListItem({
   const teamConfigs = useTeamStore(state => state.teamConfigs);
   const projectTeamConfig = teamConfigs.get(project.team) ?? null;
 
-  const { data: files } = useQuery({
+  const { data: files, error: filesError } = useQuery({
     queryKey: ['project-files', project.name],
     queryFn: async () => invoke<ProjectFile[]>('list_project_files', {
       projectName: project.name
@@ -38,6 +38,11 @@ export const ProjectListItem = memo(function ProjectListItem({
     // Increased refetch interval from 10s to 30s for better performance
     refetchInterval: isExpanded ? 30000 : false,
   });
+
+  // Log file loading errors
+  if (filesError) {
+    console.error(`Failed to load files for project ${project.name}:`, filesError);
+  }
 
   // Get dynamic workflow steps from the project's team config
   const workflowSteps = getWorkflowSteps(projectTeamConfig);
@@ -127,7 +132,12 @@ export const ProjectListItem = memo(function ProjectListItem({
       </div>
 
       {/* File List */}
-      {isExpanded && sortedFiles && (
+      {isExpanded && filesError && (
+        <div className="ml-5 mt-0.5 text-xs text-destructive">
+          Failed to load files
+        </div>
+      )}
+      {isExpanded && sortedFiles && !filesError && (
         <div className="ml-5 mt-0.5 space-y-0.5">
           {sortedFiles.map(file => {
             const isPrompt = file.file_type === 'prompt';

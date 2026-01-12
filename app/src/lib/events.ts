@@ -26,6 +26,9 @@ export type UnlistenFn = () => void;
 // Active WebSocket connections (for browser mode)
 const activeConnections = new Map<string, WebSocket>();
 
+// Track pending reconnection timeouts to cancel them on cleanup
+const pendingReconnects = new Map<string, ReturnType<typeof setTimeout>>();
+
 // Terminal output listeners by session (for browser mode)
 const terminalListeners = new Map<string, Set<(event: EventPayload<unknown>) => void>>();
 
@@ -91,8 +94,12 @@ export async function listen<T>(
 
   ws.onmessage = (e) => {
     try {
-      const payload = JSON.parse(e.data) as T;
-      callback({ payload });
+      const payload = JSON.parse(e.data);
+      if (payload === null || payload === undefined) {
+        console.warn(`Received null/undefined payload for ${event}`);
+        return;
+      }
+      callback({ payload: payload as T });
     } catch (err) {
       console.error(`Failed to parse WebSocket message for ${event}:`, err);
     }
@@ -128,7 +135,7 @@ function listenTerminalOutput(
   if (!terminalListeners.has(session)) {
     terminalListeners.set(session, new Set());
   }
-  terminalListeners.get(session)!.add(callback);
+  terminalListeners.get(session)?.add(callback);
 
   // Create WebSocket if not exists
   if (!activeConnections.has(wsKey)) {
@@ -138,10 +145,20 @@ function listenTerminalOutput(
     ws.onmessage = (e) => {
       try {
         const payload = JSON.parse(e.data);
+        if (payload === null || payload === undefined) {
+          console.warn('Received null/undefined terminal payload');
+          return;
+        }
         // Notify all listeners for this session
         const listeners = terminalListeners.get(session);
         if (listeners) {
-          listeners.forEach(cb => cb({ payload }));
+          listeners.forEach(cb => {
+            try {
+              cb({ payload });
+            } catch (callbackErr) {
+              console.error('Terminal listener callback error:', callbackErr);
+            }
+          });
         }
       } catch (err) {
         console.error(`Failed to parse terminal WebSocket message:`, err);
@@ -220,8 +237,18 @@ function createStatusWebSocket(wsKey: string): void {
   ws.onmessage = (e) => {
     try {
       const payload = JSON.parse(e.data);
+      if (payload === null || payload === undefined) {
+        console.warn('Received null/undefined status payload');
+        return;
+      }
       // Notify all listeners
-      statusListeners.forEach(cb => cb({ payload }));
+      statusListeners.forEach(cb => {
+        try {
+          cb({ payload });
+        } catch (callbackErr) {
+          console.error('Status listener callback error:', callbackErr);
+        }
+      });
     } catch (err) {
       console.error('Failed to parse status WebSocket message:', err);
     }
@@ -235,11 +262,13 @@ function createStatusWebSocket(wsKey: string): void {
     activeConnections.delete(wsKey);
     // Only reconnect if there are still listeners
     if (statusListeners.size > 0) {
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
+        pendingReconnects.delete(wsKey);
         if (!activeConnections.has(wsKey) && statusListeners.size > 0) {
           createStatusWebSocket(wsKey);
         }
       }, 3000);
+      pendingReconnects.set(wsKey, timeoutId);
     }
   };
 
@@ -259,8 +288,18 @@ function createHistoryWebSocket(wsKey: string): void {
   ws.onmessage = (e) => {
     try {
       const payload = JSON.parse(e.data);
+      if (payload === null || payload === undefined) {
+        console.warn('Received null/undefined history payload');
+        return;
+      }
       // Notify all listeners
-      historyListeners.forEach(cb => cb({ payload }));
+      historyListeners.forEach(cb => {
+        try {
+          cb({ payload });
+        } catch (callbackErr) {
+          console.error('History listener callback error:', callbackErr);
+        }
+      });
     } catch (err) {
       console.error('Failed to parse history WebSocket message:', err);
     }
@@ -274,11 +313,13 @@ function createHistoryWebSocket(wsKey: string): void {
     activeConnections.delete(wsKey);
     // Only reconnect if there are still listeners
     if (historyListeners.size > 0) {
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
+        pendingReconnects.delete(wsKey);
         if (!activeConnections.has(wsKey) && historyListeners.size > 0) {
           createHistoryWebSocket(wsKey);
         }
       }, 3000);
+      pendingReconnects.set(wsKey, timeoutId);
     }
   };
 
@@ -336,6 +377,13 @@ export async function emit<T>(event: string, payload: T): Promise<void> {
  * Call this when unmounting or cleaning up
  */
 export function closeAllConnections(): void {
+  // Cancel any pending reconnection attempts
+  for (const timeoutId of pendingReconnects.values()) {
+    clearTimeout(timeoutId);
+  }
+  pendingReconnects.clear();
+
+  // Close all active connections
   for (const ws of activeConnections.values()) {
     ws.close();
   }

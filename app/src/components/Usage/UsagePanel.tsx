@@ -18,8 +18,9 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUsageStats, type DateRange } from '@/hooks';
+import { AgentStatsPanel } from './AgentStatsPanel';
 
-type TabType = 'overview' | 'models' | 'projects' | 'sessions' | 'timeline';
+type TabType = 'overview' | 'models' | 'projects' | 'sessions' | 'timeline' | 'ralph';
 
 export const UsagePanel: React.FC = () => {
   const {
@@ -59,6 +60,7 @@ export const UsagePanel: React.FC = () => {
     { id: 'projects', label: 'By Project' },
     { id: 'sessions', label: 'By Session' },
     { id: 'timeline', label: 'Timeline' },
+    { id: 'ralph', label: 'Ralph' },
   ];
 
   return (
@@ -502,6 +504,10 @@ export const UsagePanel: React.FC = () => {
                     </div>
                   )}
                 </Card>
+              )}
+
+              {activeTab === 'ralph' && (
+                <AgentStatsPanel agentName="ralph" />
               )}
             </div>
           ) : null}

@@ -51,8 +51,12 @@ export function useProjects(): UseProjectsResult {
 
   useEffect(() => {
     const loadTeams = async () => {
-      await loadAvailableTeams();
-      await loadAllTeams();
+      try {
+        await loadAvailableTeams();
+        await loadAllTeams();
+      } catch (err) {
+        console.error('Failed to load teams:', err);
+      }
     };
     loadTeams();
   }, [loadAvailableTeams, loadAllTeams]);
@@ -91,7 +95,7 @@ export function useProjects(): UseProjectsResult {
     if (!project) return null;
     const fileName = selectedFile.split('/').pop() || selectedFile;
     const fileType = fileName.replace('.md', '');
-    return project.file_completions.find(f =>
+    return (project.file_completions || []).find(f =>
       f.file === fileName || f.file === fileType
     ) || null;
   }, [selectedProject, selectedFile, projects]);

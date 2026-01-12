@@ -497,14 +497,113 @@ def get_note_taker(team_config: dict) -> Optional[str]:
     return workflow.get('note_taker') or workflow.get('coordinator')
 
 
-def notify_next_agent(agent: str, project_name: str, handoff_id: str,
-                      next_agent: str, team_name: str = "default"):
-    """Send wake-up notification to next agent via tmux.
+def get_agent_model(agent: str) -> str:
+    """Get agent's model from agent.json, defaulting to 'sonnet'."""
+    import json
+    nolan_data_root = os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan'))
+    agent_json_path = Path(nolan_data_root) / 'agents' / agent / 'agent.json'
 
-    This wakes the next agent from sleep state so they can pick up the handoff.
-    Uses the team-aliases.sh messaging system.
+    try:
+        if agent_json_path.exists():
+            with open(agent_json_path) as f:
+                data = json.load(f)
+                return data.get('model', 'sonnet')
+    except Exception:
+        pass
+    return 'sonnet'
+
+
+def get_agent_output_file(agent: str, team_name: str = "default") -> str:
+    """Get agent's output file from team config."""
+    nolan_data_root = os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan'))
+    teams_dir = Path(nolan_data_root) / 'teams'
+
+    for config_path in teams_dir.rglob(f'{team_name}.yaml'):
+        try:
+            with open(config_path) as f:
+                config = yaml.safe_load(f)
+            for ag in config.get('team', {}).get('agents', []):
+                if ag.get('name') == agent:
+                    return ag.get('output_file', '')
+        except Exception:
+            pass
+    return ''
+
+
+def launch_agent_session(next_agent: str, team_name: str, project_name: str) -> bool:
+    """Launch a new tmux session for an agent.
+
+    Creates the session with proper environment variables so the agent
+    can pick up the handoff via SessionStart hook.
     """
     import subprocess
+
+    nolan_root = os.environ.get('NOLAN_ROOT')
+    nolan_data_root = os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan'))
+    projects_dir = os.environ.get('PROJECTS_DIR', os.path.join(nolan_data_root, 'projects'))
+
+    if not nolan_root:
+        log_stderr("Cannot launch agent: NOLAN_ROOT not set")
+        return False
+
+    # Get agent directory
+    agent_dir = Path(nolan_data_root) / 'agents' / next_agent
+    if not agent_dir.exists():
+        log_stderr(f"Cannot launch agent: directory not found: {agent_dir}")
+        return False
+
+    # Get model and output file
+    model = get_agent_model(next_agent)
+    output_file = get_agent_output_file(next_agent, team_name)
+
+    # Get docs path (project directory)
+    docs_path = os.path.join(projects_dir, project_name) if project_name else ''
+
+    # Build session name
+    session_name = f"agent-{team_name}-{next_agent}"
+
+    # Build the command (matches lifecycle_core.rs pattern)
+    cmd = (
+        f'export AGENT_NAME={next_agent} '
+        f'TEAM_NAME="{team_name}" '
+        f'NOLAN_ROOT="{nolan_root}" '
+        f'NOLAN_DATA_ROOT="{nolan_data_root}" '
+        f'PROJECTS_DIR="{projects_dir}" '
+        f'AGENT_DIR="{agent_dir}" '
+        f'DOCS_PATH="{docs_path}" '
+        f'OUTPUT_FILE="{output_file}"; '
+        f'claude --dangerously-skip-permissions --model {model}; exec bash'
+    )
+
+    try:
+        result = subprocess.run(
+            ['tmux', 'new-session', '-d', '-s', session_name, '-c', str(agent_dir), cmd],
+            capture_output=True, timeout=10
+        )
+        if result.returncode != 0:
+            log_stderr(f"Failed to launch agent session: {result.stderr.decode()}")
+            return False
+
+        log_stderr(f"Launched agent session: {session_name}")
+        return True
+
+    except subprocess.TimeoutExpired:
+        log_stderr(f"Timeout launching agent session: {session_name}")
+        return False
+    except Exception as e:
+        log_stderr(f"Failed to launch agent session: {e}")
+        return False
+
+
+def notify_next_agent(agent: str, project_name: str, handoff_id: str,
+                      next_agent: str, team_name: str = "default"):
+    """Launch next agent and send wake-up notification via tmux.
+
+    If the agent session doesn't exist, this function will launch it first.
+    The agent's SessionStart hook will ACK the handoff automatically.
+    """
+    import subprocess
+    import time
 
     if not next_agent:
         log_stderr("Cannot notify next agent: no next agent specified")
@@ -518,15 +617,20 @@ def notify_next_agent(agent: str, project_name: str, handoff_id: str,
     # Build session name for next agent
     session_name = f"agent-{team_name}-{next_agent}"
 
-    # Check if agent session exists
+    # Check if agent session exists, launch if not
     try:
         result = subprocess.run(
             ['tmux', 'has-session', '-t', session_name],
             capture_output=True, timeout=2
         )
         if result.returncode != 0:
-            log_stderr(f"Agent session '{session_name}' not found - cannot send wake notification")
-            return False
+            # Session doesn't exist - launch it
+            log_stderr(f"Agent session '{session_name}' not found - launching...")
+            if not launch_agent_session(next_agent, team_name, project_name):
+                log_stderr(f"Failed to launch agent session for {next_agent}")
+                return False
+            # Give the session time to initialize
+            time.sleep(1.0)
     except Exception as e:
         log_stderr(f"Failed to check agent session: {e}")
         return False
@@ -543,7 +647,6 @@ def notify_next_agent(agent: str, project_name: str, handoff_id: str,
         )
 
         # Small delay
-        import time
         time.sleep(0.05)
 
         # Send the wake-up message

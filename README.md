@@ -1,6 +1,6 @@
 # Nolan
 
-AI agent team coordination system with 5 specialized Claude agents.
+The natural language software development platform of the future.
 
 ## Quick Start
 

@@ -179,9 +179,9 @@ export const CronGroupEditor: React.FC<CronGroupEditorProps> = ({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle>Manage Cron Agent Groups</DialogTitle>
+            <DialogTitle>Manage Agent Groups</DialogTitle>
             <DialogDescription>
-              Organize your cron agents into groups for better management
+              Organize your agents into groups for better management
             </DialogDescription>
           </DialogHeader>
 

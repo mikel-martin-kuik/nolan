@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { invoke } from '@/lib/api';
 import { Idea } from '@/types';
-import { Loader2, Sparkles, Mic, MicOff } from 'lucide-react';
+import { Loader2, Sparkles, Mic, MicOff, MicVocal } from 'lucide-react';
 import { useOllamaStore } from '@/store/ollamaStore';
 import { Tooltip } from '@/components/ui/tooltip';
 import { useToastStore } from '@/store/toastStore';
@@ -40,8 +40,20 @@ export function IdeaForm({ open, onOpenChange }: IdeaFormProps) {
     isRecording,
     transcript: interimTranscript,
     error: speechError,
+    permissionStatus,
     toggleRecording,
   } = useSpeechToText(handleSpeechTranscript);
+
+  // Get speech button tooltip based on state
+  const getSpeechTooltip = () => {
+    if (!speechSupported) {
+      return 'Speech-to-text not available in this browser';
+    }
+    if (permissionStatus === 'denied') {
+      return 'Microphone access denied. Check browser settings.';
+    }
+    return isRecording ? 'Stop recording' : 'Dictate description';
+  };
 
   // Show speech error as toast
   useEffect(() => {
@@ -126,27 +138,33 @@ export function IdeaForm({ open, onOpenChange }: IdeaFormProps) {
                 Description
               </label>
               <div className="flex items-center gap-1">
-                {speechSupported && (
-                  <Tooltip
-                    content={isRecording ? 'Stop recording' : 'Dictate description'}
-                    side="top"
+                <Tooltip
+                  content={getSpeechTooltip()}
+                  side="top"
+                >
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={speechSupported ? toggleRecording : undefined}
+                    disabled={!speechSupported || generating || createMutation.isPending || permissionStatus === 'denied'}
+                    className={`h-6 px-2 ${
+                      isRecording
+                        ? 'text-red-500 hover:text-red-600'
+                        : !speechSupported
+                          ? 'opacity-50 cursor-not-allowed'
+                          : ''
+                    }`}
                   >
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={toggleRecording}
-                      disabled={generating || createMutation.isPending}
-                      className={`h-6 px-2 ${isRecording ? 'text-red-500 hover:text-red-600' : ''}`}
-                    >
-                      {isRecording ? (
-                        <MicOff className="h-3 w-3" />
-                      ) : (
-                        <Mic className="h-3 w-3" />
-                      )}
-                    </Button>
-                  </Tooltip>
-                )}
+                    {isRecording ? (
+                      <MicOff className="h-3 w-3" />
+                    ) : !speechSupported ? (
+                      <MicVocal className="h-3 w-3" />
+                    ) : (
+                      <Mic className="h-3 w-3" />
+                    )}
+                  </Button>
+                </Tooltip>
                 {ollamaStatus === 'connected' && (
                   <Tooltip content="Improve description using local AI" side="top">
                     <Button

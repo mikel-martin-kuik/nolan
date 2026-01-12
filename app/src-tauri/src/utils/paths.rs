@@ -177,39 +177,6 @@ pub fn get_cronos_runs_dir() -> Result<PathBuf, String> {
     Ok(get_nolan_data_root()?.join("cronos").join("runs"))
 }
 
-/// Get cronos agents directory (user data - agent configurations)
-/// Returns: <nolan_data_root>/cronos/agents
-pub fn get_cronos_agents_dir() -> Result<PathBuf, String> {
-    let path = get_nolan_data_root()?.join("cronos").join("agents");
-    if !path.exists() {
-        std::fs::create_dir_all(&path)
-            .map_err(|e| format!("Failed to create cronos agents dir: {}", e))?;
-    }
-    Ok(path)
-}
-
-/// Get predefined agents directory (user data - predefined agent configurations)
-/// Returns: <nolan_data_root>/predefined/agents
-pub fn get_predefined_agents_dir() -> Result<PathBuf, String> {
-    let path = get_nolan_data_root()?.join("predefined").join("agents");
-    if !path.exists() {
-        std::fs::create_dir_all(&path)
-            .map_err(|e| format!("Failed to create predefined agents dir: {}", e))?;
-    }
-    Ok(path)
-}
-
-/// Get event agents directory (user data - event-driven agent configurations)
-/// Returns: <nolan_data_root>/event/agents
-pub fn get_event_agents_dir() -> Result<PathBuf, String> {
-    let path = get_nolan_data_root()?.join("event").join("agents");
-    if !path.exists() {
-        std::fs::create_dir_all(&path)
-            .map_err(|e| format!("Failed to create event agents dir: {}", e))?;
-    }
-    Ok(path)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

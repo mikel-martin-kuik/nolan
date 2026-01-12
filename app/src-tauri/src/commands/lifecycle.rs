@@ -891,8 +891,12 @@ pub async fn kill_team(app_handle: AppHandle, team_name: String) -> Result<Strin
 
 /// Spawn a new free agent instance (Ralph only)
 /// Team agents have a single session each - use start_agent instead
+///
+/// # Arguments
+/// * `worktree` - If true, creates a git worktree for isolated file changes.
+///   Changes are made in the worktree and merged back via pred-merge-changes.
 #[tauri::command]
-pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: String, force: bool, model: Option<String>, chrome: Option<bool>) -> Result<String, String> {
+pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: String, force: bool, model: Option<String>, chrome: Option<bool>, worktree: Option<bool>) -> Result<String, String> {
     use std::process::Command;
     use std::fs;
     #[cfg(unix)]
@@ -996,26 +1000,90 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
     let projects_dir_str = projects_dir.to_string_lossy();
     let agent_dir_str = agent_dir.to_string_lossy();
 
+    // Worktree support: create isolated git worktree for file changes
+    let (working_dir, worktree_path_str, worktree_branch) = if worktree.unwrap_or(false) {
+        // Detect git root from nolan_root (the app repository)
+        let git_root = crate::git::worktree::detect_git_root(&nolan_root)
+            .ok_or_else(|| "Cannot create worktree: no git repository found".to_string())?;
+
+        // Create worktree directory: ~/.nolan/worktrees/agent-ralph-{name}/
+        let worktrees_dir = crate::git::worktree::get_worktrees_dir()?;
+        let worktree_path = worktrees_dir.join(&session);
+
+        // Generate branch name: worktree/ralph/{instance_id}
+        let branch_name = crate::git::worktree::generate_branch_name("ralph", &instance_id);
+
+        // Create the worktree
+        let _base_commit = crate::git::worktree::create_worktree(
+            &git_root,
+            &worktree_path,
+            &branch_name,
+            Some("main"), // Always branch from main for ralph
+        )?;
+
+        // Copy CLAUDE.md symlink into worktree so agent has instructions
+        #[cfg(unix)]
+        {
+            let base_agent_dir = agents_dir.join(&agent);
+            let claude_md_src = base_agent_dir.join("CLAUDE.md");
+            if claude_md_src.exists() {
+                let claude_md_link = worktree_path.join("CLAUDE.md");
+                if !claude_md_link.exists() {
+                    // Copy the file content (symlinks don't work well in worktrees)
+                    if let Ok(content) = std::fs::read_to_string(&claude_md_src) {
+                        let _ = std::fs::write(&claude_md_link, content);
+                    }
+                }
+            }
+
+            // Copy .claude settings into worktree
+            let ralph_claude = base_agent_dir.join(".claude");
+            if ralph_claude.exists() {
+                let claude_dest = worktree_path.join(".claude");
+                if !claude_dest.exists() {
+                    // Use cp -r for directory copy
+                    let _ = Command::new("cp")
+                        .args(["-r", &ralph_claude.to_string_lossy(), &claude_dest.to_string_lossy()])
+                        .output();
+                }
+            }
+        }
+
+        let wt_str = worktree_path.to_string_lossy().to_string();
+        (worktree_path, Some(wt_str), Some(branch_name))
+    } else {
+        (agent_dir.clone(), None, None)
+    };
+    let working_dir_str = working_dir.to_string_lossy();
+
     // Use provided model or default for Ralph
     let model_str = model.unwrap_or_else(|| get_default_model(&agent));
 
     // Add --chrome flag if requested (enables Chrome DevTools integration)
     let chrome_flag = if chrome.unwrap_or(false) { " --chrome" } else { "" };
 
+    // Build worktree env vars if applicable
+    let worktree_env = if let (Some(ref wt_path), Some(ref wt_branch)) = (&worktree_path_str, &worktree_branch) {
+        format!(" WORKTREE_PATH=\"{}\" WORKTREE_BRANCH=\"{}\"", wt_path, wt_branch)
+    } else {
+        String::new()
+    };
+
     // Create tmux session for Ralph (team-independent, TEAM_NAME is empty)
+    // If worktree is enabled, run from worktree directory for isolated file changes
     let cmd = format!(
-        "export AGENT_NAME={} TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\"; claude --dangerously-skip-permissions --model {}{}; exec bash",
+        "export AGENT_NAME={} TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\"{worktree_env}; claude --dangerously-skip-permissions --model {}{}; exec bash",
         agent, nolan_root_str, nolan_data_root_str, projects_dir_str, agent_dir_str, model_str, chrome_flag
     );
 
     let output = Command::new("tmux")
-        .args(&["new-session", "-d", "-s", &session, "-c", agent_dir_str.as_ref(), &cmd])
+        .args(&["new-session", "-d", "-s", &session, "-c", working_dir_str.as_ref(), &cmd])
         .output()
         .map_err(|e| format!("Failed to create tmux session: {}", e))?;
 
     // Set tmux session environment variables so they're available to all processes (including hooks)
     // This supplements the shell export and ensures hooks can access AGENT_DIR
-    let env_vars = [
+    let mut env_vars: Vec<(&str, &str)> = vec![
         ("AGENT_NAME", agent.as_str()),
         ("TEAM_NAME", ""),
         ("NOLAN_ROOT", nolan_root_str.as_ref()),
@@ -1023,6 +1091,16 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
         ("PROJECTS_DIR", projects_dir_str.as_ref()),
         ("AGENT_DIR", agent_dir_str.as_ref()),
     ];
+
+    // Add worktree env vars if applicable
+    let wt_path_ref: String;
+    let wt_branch_ref: String;
+    if let (Some(ref wt_path), Some(ref wt_branch)) = (&worktree_path_str, &worktree_branch) {
+        wt_path_ref = wt_path.clone();
+        wt_branch_ref = wt_branch.clone();
+        env_vars.push(("WORKTREE_PATH", &wt_path_ref));
+        env_vars.push(("WORKTREE_BRANCH", &wt_branch_ref));
+    }
     for (key, value) in &env_vars {
         let _ = Command::new("tmux")
             .args(&["set-environment", "-t", &session, key, value])
@@ -1557,6 +1635,8 @@ pub async fn launch_terminal(
 
     // Use setsid to run in a new session, and --window to explicitly create a new window
     // This ensures the terminal process is properly detached and runs independently
+    // Use = prefix for exact session matching to avoid tmux prefix matching
+    let exact_session = format!("={}", session);
     let result = Command::new("setsid")
         .arg("--fork")
         .arg("gnome-terminal")
@@ -1567,7 +1647,7 @@ pub async fn launch_terminal(
         .arg("tmux")
         .arg("attach")
         .arg("-t")
-        .arg(&session)
+        .arg(&exact_session)
         .spawn();
 
     match result {

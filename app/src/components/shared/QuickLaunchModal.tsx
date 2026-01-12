@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { invoke } from '@/lib/api';
-import { Send, X, Globe, Zap } from 'lucide-react';
+import { Send, X, Globe, Zap, GitBranch } from 'lucide-react';
 import { CLAUDE_MODELS, type ClaudeModel } from '@/types';
 import { isBrowserMode } from '@/lib/api';
 import { useAgentStore } from '@/store/agentStore';
@@ -18,6 +18,7 @@ export const QuickLaunchModal: React.FC<QuickLaunchModalProps> = ({
 }) => {
   const [selectedModel, setSelectedModel] = useState<ClaudeModel>('opus');
   const [chromeEnabled, setChromeEnabled] = useState(false);
+  const [worktreeEnabled, setWorktreeEnabled] = useState(false);
   const [messageText, setMessageText] = useState('');
   const [isLaunching, setIsLaunching] = useState(false);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
@@ -32,6 +33,7 @@ export const QuickLaunchModal: React.FC<QuickLaunchModalProps> = ({
       // Reset state when opening
       setSelectedModel('opus');
       setChromeEnabled(false);
+      setWorktreeEnabled(false);
       setMessageText('');
       // Focus after a short delay to ensure the modal is rendered
       setTimeout(() => messageInputRef.current?.focus(), 100);
@@ -44,7 +46,7 @@ export const QuickLaunchModal: React.FC<QuickLaunchModalProps> = ({
       // If no message, just spawn without message
       setIsLaunching(true);
       try {
-        await spawnAgent('', 'ralph', false, selectedModel, showChromeOption ? chromeEnabled : undefined);
+        await spawnAgent('', 'ralph', false, selectedModel, showChromeOption ? chromeEnabled : undefined, worktreeEnabled || undefined);
         onOpenChange(false);
       } catch (error) {
         showError(`Failed to spawn Ralph: ${error}`);
@@ -64,7 +66,7 @@ export const QuickLaunchModal: React.FC<QuickLaunchModalProps> = ({
       );
 
       // Spawn the agent
-      await spawnAgent('', 'ralph', false, selectedModel, showChromeOption ? chromeEnabled : undefined);
+      await spawnAgent('', 'ralph', false, selectedModel, showChromeOption ? chromeEnabled : undefined, worktreeEnabled || undefined);
 
       // Wait for the new session to appear (poll for up to 10 seconds)
       const maxAttempts = 20;
@@ -165,6 +167,28 @@ export const QuickLaunchModal: React.FC<QuickLaunchModalProps> = ({
             </div>
           </button>
         )}
+
+        {/* Git Worktree Toggle - Isolate file changes in a branch */}
+        <button
+          onClick={() => setWorktreeEnabled(!worktreeEnabled)}
+          disabled={isLaunching}
+          className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors duration-150 text-left mb-3
+            ${worktreeEnabled
+              ? 'border-green-500/50 bg-green-500/10 text-green-400'
+              : 'border-border/40 hover:border-border/60 text-muted-foreground'
+            }
+            ${isLaunching ? 'opacity-50 cursor-not-allowed' : ''}
+          `}
+        >
+          <GitBranch className={`w-4 h-4 ${worktreeEnabled ? 'text-green-400' : 'text-muted-foreground/50'}`} />
+          <div className="flex-1">
+            <div className="text-sm font-medium">Git Worktree</div>
+            <div className="text-xs text-muted-foreground/60">Isolate changes in a branch (merge later)</div>
+          </div>
+          <div className={`w-8 h-4 rounded-full transition-colors ${worktreeEnabled ? 'bg-green-500' : 'bg-muted'}`}>
+            <div className={`w-3 h-3 rounded-full bg-white mt-0.5 transition-transform ${worktreeEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+          </div>
+        </button>
 
         {/* Model Selection */}
         <div className="flex gap-2 mb-4">

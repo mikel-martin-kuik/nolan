@@ -93,24 +93,24 @@ export const AgentCreator: React.FC<AgentCreatorProps> = ({ onSave, onCancel }) 
     try {
       // Step 1: Get template
       const template = await invoke<string>('get_agent_template', {
-        agentName: name,
+        agent_name: name,
         role: role
       });
 
       // Step 2: Create directory
       await invoke('create_agent_directory', {
-        agentName: name
+        agent_name: name
       });
 
       // Step 3: Save CLAUDE.md
       await invoke('save_agent_role_file', {
-        agentName: name,
+        agent_name: name,
         content: template
       });
 
       // Step 4: Save agent metadata (role and model)
       await invoke('save_agent_metadata', {
-        agentName: name,
+        agent_name: name,
         role: role,
         model: model
       });

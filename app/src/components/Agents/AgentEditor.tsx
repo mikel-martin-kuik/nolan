@@ -46,7 +46,7 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({
     try {
       // Load CLAUDE.md
       const fileContent = await invoke<string | { content: string }>('get_agent_role_file', {
-        agentName
+        agent_name: agentName
       });
       // Handle both raw string (HTTP API) and wrapped object (legacy)
       const contentStr = typeof fileContent === 'string' ? fileContent : fileContent?.content ?? '';
@@ -121,14 +121,14 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({
     try {
       // Save CLAUDE.md
       await invoke('save_agent_role_file', {
-        agentName,
+        agent_name: agentName,
         content
       });
 
       // Save metadata if role or model changed
       if (role !== originalRole || model !== originalModel) {
         await invoke('save_agent_metadata', {
-          agentName,
+          agent_name: agentName,
           role: role || 'Agent',
           model,
         });

@@ -330,25 +330,16 @@ function buildDagFromPhases(
       },
     });
 
-    // Create edges from requires
-    if (phase.requires && phase.requires.length > 0) {
-      phase.requires.forEach((req: string) => {
-        // Find source phase by output file or name
-        const sourcePhase = phases.find(
-          (p) => p.output === req || p.output === `${req}.md` || p.name === req
-        );
-        const sourceId = sourcePhase?.name || req;
-
-        // Only add edge if source exists
-        if (phases.some((p) => p.name === sourceId || p.output === req || p.output === `${req}.md`)) {
-          g.setEdge(sourceId, nodeId);
-          edges.push({
-            id: `${sourceId}-${nodeId}`,
-            source: sourceId,
-            target: nodeId,
-            data: { isRejection: false },
-          });
-        }
+    // Create serial edge to next phase (sequential workflow)
+    if (index < phases.length - 1) {
+      const nextPhase = phases[index + 1];
+      const nextNodeId = nextPhase.name || `phase-${index + 1}`;
+      g.setEdge(nodeId, nextNodeId);
+      edges.push({
+        id: `${nodeId}-${nextNodeId}`,
+        source: nodeId,
+        target: nextNodeId,
+        data: { isRejection: false },
       });
     }
   });

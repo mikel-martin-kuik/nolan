@@ -8,6 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
     "validate-team": "python3 scripts/validate-team-config.py",
     "migrate-teams": "bash scripts/migrate-to-teams.sh"
   },
@@ -58,8 +60,11 @@
     "zustand": "^4.5.7"
   },
   "devDependencies": {
+    "@eslint/js": "^9.17.0",
     "@tailwindcss/typography": "^0.5.19",
     "@tauri-apps/cli": "^2",
+    "eslint": "^9.17.0",
+    "globals": "^15.14.0",
     "@types/dagre": "^0.7.53",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",

@@ -1,16 +1,36 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { FileList } from './FileList';
 import { FileViewer } from './FileViewer';
 import { BreadcrumbNav } from './BreadcrumbNav';
 import { useFileBrowser } from '@/hooks';
 import { useFileBrowserStore } from '@/store/fileBrowserStore';
 import { useNavigationStore } from '@/store/navigationStore';
+import { useToastStore } from '@/store/toastStore';
 import { invoke } from '@/lib/api';
 import { RefreshCw, Search, Eye, EyeOff, Home, Star, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip } from '@/components/ui/tooltip';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 import { cn } from '@/lib/utils';
+import type { FileSystemEntry, SearchResult } from '@/types/filesystem';
 
 export function FileBrowserPanel() {
   // Track the default home path (fetched from backend)
@@ -42,9 +62,22 @@ export function FileBrowserPanel() {
 
   const { lastPath, addRecentPath, favorites, addFavorite, removeFavorite, isFavorite } = useFileBrowserStore();
   const { context, clearContext } = useNavigationStore();
+  const { success: showSuccess, error: showError } = useToastStore();
 
   // Mobile: track whether to show file viewer (vs file list)
   const [showMobileViewer, setShowMobileViewer] = useState(false);
+
+  // Dialog state
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [createDialogType, setCreateDialogType] = useState<'file' | 'folder'>('file');
+  const [createDialogName, setCreateDialogName] = useState('');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<FileSystemEntry | SearchResult | null>(null);
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<FileSystemEntry | SearchResult | null>(null);
+  const [renameNewName, setRenameNewName] = useState('');
+  const createInputRef = useRef<HTMLInputElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch default home path on mount
   useEffect(() => {
@@ -111,77 +144,183 @@ export function FileBrowserPanel() {
   // Default home path (use fetched path or fallback)
   const homePath = defaultHomePath || '/home';
 
+  // File operations - open dialogs
+  const handleCreateFile = useCallback(() => {
+    setCreateDialogType('file');
+    setCreateDialogName('');
+    setCreateDialogOpen(true);
+    setTimeout(() => createInputRef.current?.focus(), 100);
+  }, []);
+
+  const handleCreateFolder = useCallback(() => {
+    setCreateDialogType('folder');
+    setCreateDialogName('');
+    setCreateDialogOpen(true);
+    setTimeout(() => createInputRef.current?.focus(), 100);
+  }, []);
+
+  const handleDelete = useCallback((entry: FileSystemEntry | SearchResult) => {
+    setDeleteTarget(entry);
+    setDeleteDialogOpen(true);
+  }, []);
+
+  const handleRename = useCallback((entry: FileSystemEntry | SearchResult) => {
+    setRenameTarget(entry);
+    setRenameNewName(entry.name);
+    setRenameDialogOpen(true);
+    setTimeout(() => renameInputRef.current?.focus(), 100);
+  }, []);
+
+  // Dialog confirm actions
+  const confirmCreate = useCallback(async () => {
+    if (!createDialogName.trim()) return;
+
+    try {
+      const path = `${currentPath}/${createDialogName.trim()}`;
+      if (createDialogType === 'file') {
+        await invoke('create_file', { path });
+        showSuccess(`Created file: ${createDialogName}`);
+      } else {
+        await invoke('create_directory', { path });
+        showSuccess(`Created folder: ${createDialogName}`);
+      }
+      setCreateDialogOpen(false);
+      refresh();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : `Failed to create ${createDialogType}`);
+    }
+  }, [createDialogName, createDialogType, currentPath, refresh, showSuccess, showError]);
+
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+
+    try {
+      if (deleteTarget.isDirectory) {
+        await invoke('delete_directory', { path: deleteTarget.path, recursive: true });
+      } else {
+        await invoke('delete_file', { path: deleteTarget.path });
+      }
+      showSuccess(`Deleted: ${deleteTarget.name}`);
+      if (selectedFile?.path === deleteTarget.path) {
+        selectFile(null);
+      }
+      setDeleteDialogOpen(false);
+      setDeleteTarget(null);
+      refresh();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to delete');
+    }
+  }, [deleteTarget, refresh, selectedFile, selectFile, showSuccess, showError]);
+
+  const confirmRename = useCallback(async () => {
+    if (!renameTarget || !renameNewName.trim() || renameNewName === renameTarget.name) return;
+
+    const parentPath = renameTarget.path.substring(0, renameTarget.path.lastIndexOf('/'));
+    const newPath = `${parentPath}/${renameNewName.trim()}`;
+
+    try {
+      await invoke('rename_file', { oldPath: renameTarget.path, newPath });
+      showSuccess(`Renamed to: ${renameNewName}`);
+      setRenameDialogOpen(false);
+      setRenameTarget(null);
+      refresh();
+    } catch (err) {
+      showError(err instanceof Error ? err.message : 'Failed to rename');
+    }
+  }, [renameTarget, renameNewName, refresh, showSuccess, showError]);
+
   return (
-    <div className="h-full flex flex-col gap-2 sm:gap-4">
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden gap-2 sm:gap-4 min-h-0">
-        {/* Left: File List */}
-        <div className={cn(
-          "flex flex-col overflow-hidden glass-card p-2 sm:p-3 rounded-lg",
-          // Desktop: fixed width sidebar
-          "md:w-[360px] md:flex-shrink-0",
-          // Mobile: full width, hide when viewing file
-          "w-full",
-          showMobileViewer && "hidden md:flex"
-        )}>
-          {/* Header with controls */}
-          <div className="flex items-center gap-1 sm:gap-2 mb-2 sm:mb-3 flex-wrap">
-            {/* Home button */}
-            <Tooltip content="Go to home directory">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={() => navigateTo(homePath)}
-              >
-                <Home className="w-4 h-4" />
-              </Button>
-            </Tooltip>
+    <div className="h-full flex flex-col gap-2 sm:gap-3">
+      {/* Top Header - Icons and Path */}
+      <div className="glass-card p-2 sm:p-3 rounded-lg flex items-center gap-2 flex-wrap">
+        {/* Mobile back button */}
+        <div className={cn("md:hidden", !showMobileViewer && "hidden")}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowMobileViewer(false)}
+            className="gap-1"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            Back
+          </Button>
+        </div>
 
-            {/* Favorite button */}
-            <Tooltip content={isFavorite(currentPath) ? 'Remove from favorites' : 'Add to favorites'}>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn('h-8 w-8', isFavorite(currentPath) && 'text-yellow-500')}
-                onClick={toggleFavorite}
-              >
-                <Star className={cn('w-4 h-4', isFavorite(currentPath) && 'fill-current')} />
-              </Button>
-            </Tooltip>
+        {/* Navigation controls */}
+        <div className={cn("flex items-center gap-1", showMobileViewer && "hidden md:flex")}>
+          {/* Home button */}
+          <Tooltip content="Go to home directory">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => navigateTo(homePath)}
+            >
+              <Home className="w-4 h-4" />
+            </Button>
+          </Tooltip>
 
-            {/* Show hidden toggle */}
-            <Tooltip content={showHidden ? 'Hide hidden files' : 'Show hidden files'}>
-              <Button
-                variant="ghost"
-                size="icon"
-                className={cn('h-8 w-8', showHidden && 'text-primary')}
-                onClick={toggleShowHidden}
-              >
-                {showHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-              </Button>
-            </Tooltip>
+          {/* Favorite button */}
+          <Tooltip content={isFavorite(currentPath) ? 'Remove from favorites' : 'Add to favorites'}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn('h-8 w-8', isFavorite(currentPath) && 'text-yellow-500')}
+              onClick={toggleFavorite}
+            >
+              <Star className={cn('w-4 h-4', isFavorite(currentPath) && 'fill-current')} />
+            </Button>
+          </Tooltip>
 
-            {/* Refresh */}
-            <Tooltip content="Refresh">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8"
-                onClick={refresh}
-                disabled={isLoading}
-              >
-                <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} />
-              </Button>
-            </Tooltip>
-          </div>
+          {/* Show hidden toggle */}
+          <Tooltip content={showHidden ? 'Hide hidden files' : 'Show hidden files'}>
+            <Button
+              variant="ghost"
+              size="icon"
+              className={cn('h-8 w-8', showHidden && 'text-primary')}
+              onClick={toggleShowHidden}
+            >
+              {showHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+            </Button>
+          </Tooltip>
 
-          {/* Breadcrumb navigation */}
+          {/* Refresh */}
+          <Tooltip content="Refresh">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={refresh}
+              disabled={isLoading}
+            >
+              <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} />
+            </Button>
+          </Tooltip>
+        </div>
+
+        {/* Divider */}
+        <div className={cn("w-px h-6 bg-border", showMobileViewer && "hidden md:block")} />
+
+        {/* Breadcrumb navigation - takes remaining space */}
+        <div className={cn("flex-1 min-w-0", showMobileViewer && "hidden md:block")}>
           <BreadcrumbNav
             breadcrumbs={breadcrumbs}
             onNavigate={navigateTo}
           />
+        </div>
+      </div>
 
+      {/* Main Content - File List and Viewer side by side */}
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden gap-2 sm:gap-3 min-h-0">
+        {/* Left: File List */}
+        <div className={cn(
+          "flex flex-col overflow-hidden glass-card p-2 sm:p-3 rounded-lg",
+          // Desktop: fixed width sidebar
+          "md:w-[320px] md:flex-shrink-0",
+          // Mobile: full width, hide when viewing file
+          "w-full",
+          showMobileViewer && "hidden md:flex"
+        )}>
           {/* Search input */}
           <div className="relative mb-2 sm:mb-3">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -213,6 +352,10 @@ export function FileBrowserPanel() {
               onNavigateUp={navigateUp}
               hasParent={!!directory?.parent}
               isSearchResults={!!searchResults}
+              onCreateFile={handleCreateFile}
+              onCreateFolder={handleCreateFolder}
+              onDelete={handleDelete}
+              onRename={handleRename}
             />
           </div>
 
@@ -241,22 +384,10 @@ export function FileBrowserPanel() {
 
         {/* Right: File Viewer */}
         <div className={cn(
-          "flex-1 flex flex-col overflow-hidden",
+          "flex-1 flex flex-col overflow-hidden glass-card rounded-lg",
           // Mobile: full width, hide when not viewing file
           !showMobileViewer && "hidden md:flex"
         )}>
-          {/* Mobile back button */}
-          <div className="flex md:hidden items-center gap-2 mb-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowMobileViewer(false)}
-              className="gap-1"
-            >
-              <ChevronLeft className="w-4 h-4" />
-              Back to files
-            </Button>
-          </div>
           <FileViewer
             file={selectedFile}
             content={fileContent}
@@ -265,6 +396,88 @@ export function FileBrowserPanel() {
           />
         </div>
       </div>
+
+      {/* Create File/Folder Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {createDialogType === 'file' ? 'Create New File' : 'Create New Folder'}
+            </DialogTitle>
+            <DialogDescription>
+              Enter a name for the new {createDialogType}.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            ref={createInputRef}
+            value={createDialogName}
+            onChange={(e) => setCreateDialogName(e.target.value)}
+            placeholder={createDialogType === 'file' ? 'filename.txt' : 'folder-name'}
+            onKeyDown={(e) => e.key === 'Enter' && confirmCreate()}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={confirmCreate} disabled={!createDialogName.trim()}>
+              Create
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deleteTarget?.isDirectory ? 'Folder' : 'File'}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.isDirectory
+                ? `Are you sure you want to delete the folder "${deleteTarget?.name}" and all its contents? This action cannot be undone.`
+                : `Are you sure you want to delete "${deleteTarget?.name}"? This action cannot be undone.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteTarget(null)}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Rename Dialog */}
+      <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename</DialogTitle>
+            <DialogDescription>
+              Enter a new name for "{renameTarget?.name}".
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            ref={renameInputRef}
+            value={renameNewName}
+            onChange={(e) => setRenameNewName(e.target.value)}
+            placeholder="New name"
+            onKeyDown={(e) => e.key === 'Enter' && confirmRename()}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmRename}
+              disabled={!renameNewName.trim() || renameNewName === renameTarget?.name}
+            >
+              Rename
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -134,7 +134,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     try {
       set({ loading: true, error: null });
 
-      await invoke<string>('kill_team', { teamName });
+      await invoke<string>('kill_team', { team_name: teamName });
 
       set({ loading: false });
       useToastStore.getState().success(`Team ${teamName} terminated`);
@@ -150,7 +150,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     try {
       set({ loading: true, error: null });
 
-      await invoke<string>('spawn_agent', { teamName, agent, force, model, chrome, worktreePath });
+      await invoke<string>('spawn_agent', { team_name: teamName, agent, force, model, chrome, worktree_path: worktreePath });
 
       set({ loading: false });
       useToastStore.getState().success(`Spawned ${agent} instance in team ${teamName}`);
@@ -166,7 +166,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     try {
       set({ loading: true, error: null });
 
-      await invoke<string>('start_agent', { teamName, agent });
+      await invoke<string>('start_agent', { team_name: teamName, agent });
 
       set({ loading: false });
       useToastStore.getState().success(`Started ${agent} in team ${teamName}`);
@@ -198,7 +198,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     try {
       set({ loading: true, error: null });
 
-      const result = await invoke<string>('kill_all_instances', { teamName, agent });
+      const result = await invoke<string>('kill_all_instances', { team_name: teamName, agent });
 
       set({ loading: false });
       useToastStore.getState().success(result);

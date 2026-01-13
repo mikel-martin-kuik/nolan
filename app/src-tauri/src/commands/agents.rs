@@ -11,9 +11,11 @@ pub struct AgentDirectoryInfo {
     pub exists: bool,
     pub has_claude_md: bool,
     pub has_agent_json: bool,
+    pub has_agent_yaml: bool,
     pub path: String,
     pub role: Option<String>,
     pub model: Option<String>,
+    pub agent_type: Option<String>,
 }
 
 /// Agent metadata stored in agent.json
@@ -21,6 +23,19 @@ pub struct AgentDirectoryInfo {
 pub struct AgentMetadata {
     pub role: String,
     pub model: String,
+}
+
+/// Agent metadata from agent.yaml (for cron/predefined agents)
+#[derive(Deserialize)]
+struct AgentYamlMetadata {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub agent_type: Option<String>,
 }
 
 /// Validate agent name format (lowercase, alphanumeric, underscores only)
@@ -64,6 +79,19 @@ fn read_agent_metadata(agent_dir: &PathBuf) -> Option<AgentMetadata> {
     None
 }
 
+/// Read agent metadata from agent.yaml (for cron/predefined agents)
+fn read_agent_yaml_metadata(agent_dir: &PathBuf) -> Option<AgentYamlMetadata> {
+    let yaml_path = agent_dir.join("agent.yaml");
+    if yaml_path.exists() {
+        if let Ok(content) = fs::read_to_string(&yaml_path) {
+            if let Ok(metadata) = serde_yaml::from_str::<AgentYamlMetadata>(&content) {
+                return Some(metadata);
+            }
+        }
+    }
+    None
+}
+
 /// List all agent directories under app/agents/
 #[tauri::command]
 pub async fn list_agent_directories() -> Result<Vec<AgentDirectoryInfo>, String> {
@@ -93,17 +121,33 @@ pub async fn list_agent_directories() -> Result<Vec<AgentDirectoryInfo>, String>
                 let agent_json_path = path.join("agent.json");
                 let has_agent_json = agent_json_path.exists() && agent_json_path.is_file();
 
-                // Read agent metadata if available
-                let metadata = read_agent_metadata(&path);
+                let agent_yaml_path = path.join("agent.yaml");
+                let has_agent_yaml = agent_yaml_path.exists() && agent_yaml_path.is_file();
+
+                // Try to read agent metadata from agent.json first, then agent.yaml
+                let json_metadata = read_agent_metadata(&path);
+                let yaml_metadata = read_agent_yaml_metadata(&path);
+
+                // Use JSON metadata if available, otherwise fall back to YAML
+                let (role, model, agent_type) = if let Some(ref m) = json_metadata {
+                    (Some(m.role.clone()), Some(m.model.clone()), None)
+                } else if let Some(ref m) = yaml_metadata {
+                    // For YAML agents (cron/predefined), use description as role
+                    (m.description.clone(), m.model.clone(), m.agent_type.clone())
+                } else {
+                    (None, None, None)
+                };
 
                 agent_infos.push(AgentDirectoryInfo {
                     name: name.to_string(),
                     exists: true,
                     has_claude_md,
                     has_agent_json,
+                    has_agent_yaml,
                     path: path.to_string_lossy().to_string(),
-                    role: metadata.as_ref().map(|m| m.role.clone()),
-                    model: metadata.as_ref().map(|m| m.model.clone()),
+                    role,
+                    model,
+                    agent_type,
                 });
             }
         }
@@ -116,7 +160,7 @@ pub async fn list_agent_directories() -> Result<Vec<AgentDirectoryInfo>, String>
 }
 
 /// Create agent directory structure
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn create_agent_directory(agent_name: String) -> Result<String, String> {
     // Validate agent name
     validate_agent_name(&agent_name)?;
@@ -157,7 +201,7 @@ pub async fn create_agent_directory(agent_name: String) -> Result<String, String
 }
 
 /// Get CLAUDE.md content for an agent
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_agent_role_file(agent_name: String) -> Result<String, String> {
     // Validate agent name
     validate_agent_name(&agent_name)?;
@@ -184,7 +228,7 @@ pub async fn get_agent_role_file(agent_name: String) -> Result<String, String> {
 }
 
 /// Save CLAUDE.md content for an agent
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn save_agent_role_file(agent_name: String, content: String) -> Result<(), String> {
     // Validate agent name
     validate_agent_name(&agent_name)?;
@@ -220,7 +264,7 @@ pub async fn save_agent_role_file(agent_name: String, content: String) -> Result
 }
 
 /// Delete agent directory
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn delete_agent_directory(agent_name: String, force: bool) -> Result<(), String> {
     // Validate agent name
     validate_agent_name(&agent_name)?;
@@ -254,7 +298,7 @@ pub async fn delete_agent_directory(agent_name: String, force: bool) -> Result<(
 }
 
 /// Save agent metadata to agent.json
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn save_agent_metadata(agent_name: String, role: String, model: String) -> Result<(), String> {
     // Validate agent name
     validate_agent_name(&agent_name)?;
@@ -280,7 +324,7 @@ pub async fn save_agent_metadata(agent_name: String, role: String, model: String
 }
 
 /// Get agent metadata from agent.json
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_agent_metadata(agent_name: String) -> Result<Option<AgentMetadata>, String> {
     // Validate agent name
     validate_agent_name(&agent_name)?;
@@ -296,7 +340,7 @@ pub async fn get_agent_metadata(agent_name: String) -> Result<Option<AgentMetada
 }
 
 /// Get CLAUDE.md template for new agents
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_agent_template(agent_name: String, role: String) -> Result<String, String> {
     // Validate agent name
     validate_agent_name(&agent_name)?;

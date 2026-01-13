@@ -56,7 +56,7 @@ export const useTeamStore = create<TeamState>((set, get) => ({
   // Legacy: kept for backward compatibility, delegates to same logic
   loadTeam: async (name: string) => {
     try {
-      const team = await invoke<TeamConfig>('get_team_config', { teamName: name });
+      const team = await invoke<TeamConfig>('get_team_config', { team_name: name });
       set({ currentTeam: team, currentTeamName: name, error: null });
 
       // Fetch agent directories to get roles from agent.json files
@@ -90,7 +90,7 @@ export const useTeamStore = create<TeamState>((set, get) => ({
 
     for (const teamName of availableTeams) {
       try {
-        const team = await invoke<TeamConfig>('get_team_config', { teamName });
+        const team = await invoke<TeamConfig>('get_team_config', { team_name: teamName });
         configs.set(teamName, team);
       } catch (e) {
         console.error(`Failed to load team config for ${teamName}:`, e);
@@ -102,7 +102,7 @@ export const useTeamStore = create<TeamState>((set, get) => ({
 
   deleteTeam: async (name: string) => {
     try {
-      await invoke('delete_team', { teamName: name });
+      await invoke('delete_team', { team_name: name });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       set({ error: message });

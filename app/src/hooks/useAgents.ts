@@ -106,11 +106,11 @@ export function useLaunchTeam() {
       followupPrompt?: string;
     }) => {
       await invokeWithTimeout<string>('launch_team', {
-        teamName: params.teamName,
-        projectName: params.projectName,
-        initialPrompt: params.initialPrompt,
-        updatedOriginalPrompt: params.updatedOriginalPrompt,
-        followupPrompt: params.followupPrompt,
+        team_name: params.teamName,
+        project_name: params.projectName,
+        initial_prompt: params.initialPrompt,
+        updated_original_prompt: params.updatedOriginalPrompt,
+        followup_prompt: params.followupPrompt,
       }, 60000);
       return params.teamName;
     },
@@ -135,7 +135,7 @@ export function useKillTeam() {
 
   return useMutation({
     mutationFn: async (teamName: string) => {
-      await invoke<string>('kill_team', { teamName });
+      await invoke<string>('kill_team', { team_name: teamName });
       return teamName;
     },
     onSuccess: (teamName) => {
@@ -166,12 +166,12 @@ export function useSpawnAgent() {
       worktreePath?: string;
     }) => {
       await invoke<string>('spawn_agent', {
-        teamName: params.teamName,
+        team_name: params.teamName,
         agent: params.agent,
         force: params.force ?? false,
         model: params.model,
         chrome: params.chrome,
-        worktreePath: params.worktreePath,
+        worktree_path: params.worktreePath,
       });
       return params;
     },
@@ -196,7 +196,7 @@ export function useStartAgent() {
   return useMutation({
     mutationFn: async (params: { teamName: string; agent: AgentName }) => {
       await invoke<string>('start_agent', {
-        teamName: params.teamName,
+        team_name: params.teamName,
         agent: params.agent,
       });
       return params;
@@ -245,7 +245,7 @@ export function useKillAllInstances() {
   return useMutation({
     mutationFn: async (params: { teamName: string; agent: AgentName }) => {
       const result = await invoke<string>('kill_all_instances', {
-        teamName: params.teamName,
+        team_name: params.teamName,
         agent: params.agent,
       });
       return result;

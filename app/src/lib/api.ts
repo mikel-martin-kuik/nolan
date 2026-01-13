@@ -234,6 +234,11 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   search_files: { method: 'GET', path: (args) => `/api/filesystem/search?rootPath=${encodeURIComponent(getArg(args, 'root_path') as string)}&pattern=${encodeURIComponent(getArg(args, 'pattern') as string)}&maxResults=${args.maxResults || args.max_results || 100}` },
   get_file_metadata: { method: 'GET', path: (args) => `/api/filesystem/metadata?path=${encodeURIComponent(getArg(args, 'path') as string)}` },
   get_file_browser_default_path: { method: 'GET', path: '/api/filesystem/default-path' },
+  create_file: { method: 'POST', path: '/api/filesystem/create-file' },
+  create_directory: { method: 'POST', path: '/api/filesystem/create-directory' },
+  delete_file: { method: 'DELETE', path: '/api/filesystem/delete-file' },
+  delete_directory: { method: 'DELETE', path: '/api/filesystem/delete-directory' },
+  rename_file: { method: 'POST', path: '/api/filesystem/rename' },
 };
 
 /**

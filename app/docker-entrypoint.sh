@@ -36,6 +36,7 @@ directories=(
     "$NOLAN_DATA_ROOT/projects"
     "$NOLAN_DATA_ROOT/teams"
     "$NOLAN_DATA_ROOT/agents"
+    "$NOLAN_DATA_ROOT/reports"
     "$NOLAN_DATA_ROOT/.state"
     "$NOLAN_DATA_ROOT/.state/scheduler"
     "$NOLAN_DATA_ROOT/.state/handoffs"

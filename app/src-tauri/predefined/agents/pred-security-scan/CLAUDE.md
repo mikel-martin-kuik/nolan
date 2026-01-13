@@ -33,7 +33,9 @@ Scan the codebase for common security vulnerabilities and generate a report.
 
 ## Output
 
-Save the security report to `./reports/security-scan-{date}.md`
+Save the security report to `$NOLAN_DATA_ROOT/reports/security-scan-{date}.md`
+
+Note: The `$NOLAN_DATA_ROOT` environment variable points to the Nolan data directory (defaults to `~/.nolan`).
 
 ## Safety
 

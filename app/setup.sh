@@ -87,6 +87,11 @@ if [ ! -d "$NOLAN_DATA_ROOT/agents" ]; then
     mkdir -p "$NOLAN_DATA_ROOT/agents"
 fi
 
+if [ ! -d "$NOLAN_DATA_ROOT/reports" ]; then
+    echo "Creating reports directory: $NOLAN_DATA_ROOT/reports"
+    mkdir -p "$NOLAN_DATA_ROOT/reports"
+fi
+
 echo "✓ Data directories configured at: $NOLAN_DATA_ROOT"
 echo ""
 

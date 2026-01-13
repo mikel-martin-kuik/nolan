@@ -4,7 +4,7 @@ use walkdir::WalkDir;
 use crate::config::{TeamConfig, DepartmentsConfig, TeamInfo};
 
 /// Get team configuration by name
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_team_config(team_name: String) -> Result<TeamConfig, String> {
     TeamConfig::load(&team_name)
 }
@@ -12,7 +12,7 @@ pub async fn get_team_config(team_name: String) -> Result<TeamConfig, String> {
 /// Save team configuration to file
 ///
 /// Security: Validates team name to prevent path traversal attacks
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn save_team_config(team_name: String, config: TeamConfig) -> Result<(), String> {
     // Validate team_name doesn't contain path traversal
     if team_name.contains("..") || team_name.contains("/") || team_name.contains("\\") {
@@ -163,7 +163,7 @@ pub async fn list_teams_info() -> Result<Vec<TeamInfo>, String> {
 }
 
 /// Get the team name for a specific project
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_project_team(project_name: String) -> Result<String, String> {
     let projects_dir = std::env::var("PROJECTS_DIR")
         .map_err(|_| "PROJECTS_DIR not set".to_string())?;
@@ -184,7 +184,7 @@ pub async fn get_project_team(project_name: String) -> Result<String, String> {
 /// This renames both the file and updates the team name inside the YAML content.
 /// Security: Validates both names to prevent path traversal attacks
 /// Supports teams in subdirectories - renamed team stays in same directory
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn rename_team_config(old_name: String, new_name: String) -> Result<(), String> {
     // Validate old_name doesn't contain path traversal
     if old_name.contains("..") || old_name.contains("/") || old_name.contains("\\") {
@@ -250,7 +250,7 @@ pub async fn rename_team_config(old_name: String, new_name: String) -> Result<()
 /// Set the team for a specific project
 ///
 /// Security: Validates project name to prevent path traversal attacks (B01)
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn set_project_team(project_name: String, team_name: String) -> Result<(), String> {
     // Validate project_name doesn't contain path traversal (CRITICAL SECURITY - B01)
     if project_name.contains("..") || project_name.contains("/") || project_name.contains("\\") {
@@ -282,7 +282,7 @@ pub async fn set_project_team(project_name: String, team_name: String) -> Result
 /// Security: Validates team name to prevent path traversal attacks
 /// Prevents deletion of the "default" team
 /// Supports teams in subdirectories (pillar_1/, pillar_2/, etc.)
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn delete_team(team_name: String) -> Result<(), String> {
     // Prevent deletion of the default team
     if team_name == "default" {

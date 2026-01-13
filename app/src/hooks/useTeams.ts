@@ -45,7 +45,7 @@ export function useTeamConfig(teamName: string | null) {
     queryFn: async () => {
       if (!teamName) return null;
 
-      const team = await invoke<TeamConfig>('get_team_config', { teamName });
+      const team = await invoke<TeamConfig>('get_team_config', { team_name: teamName });
 
       // Also fetch agent directories to update descriptions
       try {
@@ -76,7 +76,7 @@ export function useAllTeamConfigs() {
 
       for (const teamName of availableTeams) {
         try {
-          const team = await invoke<TeamConfig>('get_team_config', { teamName });
+          const team = await invoke<TeamConfig>('get_team_config', { team_name: teamName });
           configs.set(teamName, team);
         } catch (e) {
           console.error(`Failed to load team config for ${teamName}:`, e);
@@ -99,7 +99,7 @@ export function useDeleteTeam() {
 
   return useMutation({
     mutationFn: async (teamName: string) => {
-      await invoke('delete_team', { teamName });
+      await invoke('delete_team', { team_name: teamName });
       return teamName;
     },
     onSuccess: (_teamName) => {

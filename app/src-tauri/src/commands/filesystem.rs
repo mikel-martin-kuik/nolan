@@ -505,3 +505,129 @@ pub async fn get_file_browser_default_path() -> Result<String, String> {
     let projects_dir = get_projects_dir()?;
     Ok(projects_dir.to_string_lossy().to_string())
 }
+
+/// Create a new file
+#[tauri::command]
+pub async fn create_file(path: String) -> Result<FileSystemEntry, String> {
+    let canonical_parent = validate_path(
+        &PathBuf::from(&path)
+            .parent()
+            .ok_or("Invalid path: no parent directory")?
+            .to_string_lossy()
+    )?;
+
+    let file_path = canonical_parent.join(
+        PathBuf::from(&path)
+            .file_name()
+            .ok_or("Invalid path: no filename")?
+    );
+
+    // Check if file already exists
+    if file_path.exists() {
+        return Err("File already exists".to_string());
+    }
+
+    // Create empty file
+    fs::write(&file_path, "")
+        .map_err(|e| format!("Failed to create file: {}", e))?;
+
+    // Return file metadata
+    get_file_metadata(file_path.to_string_lossy().to_string()).await
+}
+
+/// Create a new directory
+#[tauri::command]
+pub async fn create_directory(path: String) -> Result<FileSystemEntry, String> {
+    let canonical_parent = validate_path(
+        &PathBuf::from(&path)
+            .parent()
+            .ok_or("Invalid path: no parent directory")?
+            .to_string_lossy()
+    )?;
+
+    let dir_path = canonical_parent.join(
+        PathBuf::from(&path)
+            .file_name()
+            .ok_or("Invalid path: no directory name")?
+    );
+
+    // Check if directory already exists
+    if dir_path.exists() {
+        return Err("Directory already exists".to_string());
+    }
+
+    // Create directory
+    fs::create_dir(&dir_path)
+        .map_err(|e| format!("Failed to create directory: {}", e))?;
+
+    // Return directory metadata
+    get_file_metadata(dir_path.to_string_lossy().to_string()).await
+}
+
+/// Delete a file
+#[tauri::command]
+pub async fn delete_file(path: String) -> Result<(), String> {
+    let canonical = validate_path(&path)?;
+
+    if !canonical.is_file() {
+        return Err("Path is not a file".to_string());
+    }
+
+    fs::remove_file(&canonical)
+        .map_err(|e| format!("Failed to delete file: {}", e))?;
+
+    Ok(())
+}
+
+/// Delete a directory (must be empty)
+#[tauri::command]
+pub async fn delete_directory(path: String, recursive: Option<bool>) -> Result<(), String> {
+    let canonical = validate_path(&path)?;
+
+    if !canonical.is_dir() {
+        return Err("Path is not a directory".to_string());
+    }
+
+    if recursive.unwrap_or(false) {
+        fs::remove_dir_all(&canonical)
+            .map_err(|e| format!("Failed to delete directory: {}", e))?;
+    } else {
+        fs::remove_dir(&canonical)
+            .map_err(|e| format!("Failed to delete directory (not empty?): {}", e))?;
+    }
+
+    Ok(())
+}
+
+/// Rename/move a file or directory
+#[tauri::command]
+pub async fn rename_file(old_path: String, new_path: String) -> Result<FileSystemEntry, String> {
+    let canonical_old = validate_path(&old_path)?;
+
+    // Validate the new path's parent directory
+    let new_parent = PathBuf::from(&new_path)
+        .parent()
+        .ok_or("Invalid new path: no parent directory")?
+        .to_string_lossy()
+        .to_string();
+
+    let canonical_parent = validate_path(&new_parent)?;
+
+    let new_file_path = canonical_parent.join(
+        PathBuf::from(&new_path)
+            .file_name()
+            .ok_or("Invalid new path: no filename")?
+    );
+
+    // Check if new path already exists
+    if new_file_path.exists() {
+        return Err("Destination already exists".to_string());
+    }
+
+    // Rename/move
+    fs::rename(&canonical_old, &new_file_path)
+        .map_err(|e| format!("Failed to rename: {}", e))?;
+
+    // Return new file metadata
+    get_file_metadata(new_file_path.to_string_lossy().to_string()).await
+}

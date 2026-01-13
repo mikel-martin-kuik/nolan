@@ -107,10 +107,20 @@ export const TeamsPanel: React.FC = () => {
   const getAgentInfo = (name: string) => agentInfos.find(a => a.name === name);
 
   // Get available agents (not already in team)
+  // Excludes: ephemeral agents (agent-*), automation agents (cron-*, pred-*)
+  // Includes: team-* agents (designed for traditional team workflows)
+  const isTeamEligibleAgent = (a: AgentDirectoryInfo) => {
+    // Must have role and model configured
+    if (!a.role || !a.model) return false;
+    // Exclude ephemeral and automation agents (but NOT team-* agents)
+    const excludedPrefixes = ['agent-', 'cron-', 'pred-'];
+    return !excludedPrefixes.some(prefix => a.name.startsWith(prefix));
+  };
+
   const getAvailableAgentsForAdd = () => {
-    if (!teamConfig) return agentInfos.filter(a => !a.name.startsWith('agent-') && a.role && a.model);
+    if (!teamConfig) return agentInfos.filter(isTeamEligibleAgent);
     const usedNames = teamConfig.team.agents.map(a => a.name);
-    return agentInfos.filter(a => !usedNames.includes(a.name) && !a.name.startsWith('agent-') && a.role && a.model);
+    return agentInfos.filter(a => !usedNames.includes(a.name) && isTeamEligibleAgent(a));
   };
 
   useEffect(() => {
@@ -196,7 +206,7 @@ export const TeamsPanel: React.FC = () => {
         },
       };
 
-      await invoke('save_team_config', { teamName: newTeamName, config: newConfig });
+      await invoke('save_team_config', { team_name: newTeamName, config: newConfig });
       await loadAvailableTeams();
       await handleSelectTeam(newTeamName);
       setCreateTeamModal(false);
@@ -233,7 +243,7 @@ export const TeamsPanel: React.FC = () => {
     }
 
     try {
-      await invoke('delete_team', { teamName });
+      await invoke('delete_team', { team_name: teamName });
       if (selectedTeam === teamName) {
         setSelectedTeam(null);
         setTeamConfig(null);
@@ -255,11 +265,11 @@ export const TeamsPanel: React.FC = () => {
 
       // Handle rename if needed
       if (teamName && teamName !== config.team.name) {
-        await invoke('rename_team_config', { oldName: config.team.name, newName: teamName });
+        await invoke('rename_team_config', { old_name: config.team.name, new_name: teamName });
         config = { ...config, team: { ...config.team, name: teamName } };
       }
 
-      await invoke('save_team_config', { teamName: name, config });
+      await invoke('save_team_config', { team_name: name, config });
       await loadAvailableTeams();
       await handleSelectTeam(name);
       success('Team saved successfully');

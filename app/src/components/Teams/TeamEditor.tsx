@@ -64,8 +64,13 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
   const fetchAvailableAgents = useCallback(async () => {
     try {
       const dirs = await invoke<AgentDirectoryInfo[]>('list_agent_directories');
-      // Filter out ephemeral agents and incomplete agents (missing metadata)
-      const filtered = dirs.filter(d => !d.name.startsWith('agent-') && d.role && d.model);
+      // Filter out ephemeral agents (agent-*), automation agents (cron-*, pred-*),
+      // and incomplete agents (missing metadata)
+      // Note: team-* agents ARE included (designed for traditional team workflows)
+      const excludedPrefixes = ['agent-', 'cron-', 'pred-'];
+      const filtered = dirs.filter(d =>
+        d.role && d.model && !excludedPrefixes.some(prefix => d.name.startsWith(prefix))
+      );
       setAvailableAgents(filtered);
     } catch (err) {
       console.error('Failed to load agents:', err);
@@ -227,7 +232,7 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
     try {
       // If editing an existing team and name changed, rename the file first
       if (originalName && originalName !== name) {
-        await invoke('rename_team_config', { oldName: originalName, newName: name });
+        await invoke('rename_team_config', { old_name: originalName, new_name: name });
       }
 
       // Convert "__none__" placeholder back to undefined
@@ -248,7 +253,7 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
         },
       };
 
-      await invoke('save_team_config', { teamName: name, config });
+      await invoke('save_team_config', { team_name: name, config });
       onSave(name);
     } catch (err) {
       showError(`Failed to save team: ${err}`);

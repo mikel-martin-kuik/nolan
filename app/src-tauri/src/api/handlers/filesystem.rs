@@ -122,3 +122,75 @@ pub async fn get_default_path() -> Result<Json<DefaultPathResponse>, impl IntoRe
         Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
     }
 }
+
+/// Create file request body
+#[derive(Deserialize)]
+pub struct CreateFileRequest {
+    pub path: String,
+}
+
+/// Create a new file
+pub async fn create_file(
+    Json(req): Json<CreateFileRequest>,
+) -> Result<Json<FileSystemEntry>, impl IntoResponse> {
+    match filesystem::create_file(req.path).await {
+        Ok(entry) => Ok(Json(entry)),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+/// Create a new directory
+pub async fn create_directory(
+    Json(req): Json<CreateFileRequest>,
+) -> Result<Json<FileSystemEntry>, impl IntoResponse> {
+    match filesystem::create_directory(req.path).await {
+        Ok(entry) => Ok(Json(entry)),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+/// Delete request body
+#[derive(Deserialize)]
+pub struct DeleteRequest {
+    pub path: String,
+    pub recursive: Option<bool>,
+}
+
+/// Delete a file
+pub async fn delete_file(
+    Json(req): Json<DeleteRequest>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match filesystem::delete_file(req.path).await {
+        Ok(()) => Ok(Json(serde_json::json!({ "success": true }))),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+/// Delete a directory
+pub async fn delete_directory(
+    Json(req): Json<DeleteRequest>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match filesystem::delete_directory(req.path, req.recursive).await {
+        Ok(()) => Ok(Json(serde_json::json!({ "success": true }))),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+/// Rename request body
+#[derive(Deserialize)]
+pub struct RenameRequest {
+    #[serde(alias = "oldPath")]
+    pub old_path: String,
+    #[serde(alias = "newPath")]
+    pub new_path: String,
+}
+
+/// Rename/move a file or directory
+pub async fn rename_file(
+    Json(req): Json<RenameRequest>,
+) -> Result<Json<FileSystemEntry>, impl IntoResponse> {
+    match filesystem::rename_file(req.old_path, req.new_path).await {
+        Ok(entry) => Ok(Json(entry)),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}

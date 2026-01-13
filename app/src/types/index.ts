@@ -149,9 +149,11 @@ export interface AgentDirectoryInfo {
   exists: boolean;
   has_claude_md: boolean;
   has_agent_json: boolean;
+  has_agent_yaml: boolean;
   path: string;
   role: string | null;
   model: string | null;
+  agent_type: string | null;
 }
 
 // Agent metadata stored in agent.json

@@ -550,7 +550,7 @@ fn get_docs_path_from_team_context(team_name: &str) -> Result<String, String> {
 /// - `initial_prompt`: For new projects - written to prompt.md and sent to first phase owner
 /// - `updated_original_prompt`: For existing projects - only written to prompt.md if provided (meaning it was modified)
 /// - `followup_prompt`: For existing projects - sent to note-taker to resume work
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn launch_team(
     app_handle: AppHandle,
     team_name: String,
@@ -826,7 +826,7 @@ pub async fn launch_team(
 }
 
 /// Kill all team agents (requires user confirmation in frontend)
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn kill_team(app_handle: AppHandle, team_name: String) -> Result<String, String> {
     // Load team config for specified team
     let team = TeamConfig::load(&team_name)
@@ -895,7 +895,7 @@ pub async fn kill_team(app_handle: AppHandle, team_name: String) -> Result<Strin
 /// # Arguments
 /// * `worktree_path` - Optional path to an existing worktree to work in.
 ///   Ralph will work on pre-existing worktrees, not create new ones.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: String, force: bool, model: Option<String>, chrome: Option<bool>, worktree_path: Option<String>) -> Result<String, String> {
     use std::process::Command;
     use std::fs;
@@ -1186,7 +1186,7 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
 
 /// Start a team agent (creates team-scoped session: agent-{team}-{name})
 /// Each team agent has exactly one session per team.
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn start_agent(app_handle: AppHandle, team_name: String, agent: String) -> Result<String, String> {
     use std::process::Command;
 
@@ -1339,7 +1339,7 @@ pub async fn kill_instance(app_handle: AppHandle, session: String) -> Result<Str
 
 /// Kill all Ralph instances (free agents)
 /// Team agents have exactly one session - use kill_instance instead
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn kill_all_instances(app_handle: AppHandle, _team_name: String, agent: String) -> Result<String, String> {
     use std::fs;
 
@@ -1748,7 +1748,7 @@ pub async fn open_agent_terminal(session: String) -> Result<String, String> {
 }
 
 /// Launch individual terminals for team agents (team-scoped)
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn open_team_terminals(team_name: String) -> Result<String, String> {
     use std::process::Command;
 

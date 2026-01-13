@@ -75,7 +75,7 @@ Document the expected output and format.
 Outline communication style and guidelines.
 `;
       await invoke('save_agent_role_file', {
-        agentName,
+        agent_name: agentName,
         content: template
       });
       showSuccess(`CLAUDE.md created for ${agentName}`);
@@ -89,7 +89,7 @@ Outline communication style and guidelines.
   const handleCreateAgentJson = useCallback(async (agentName: string) => {
     try {
       await invoke('save_agent_metadata', {
-        agentName,
+        agent_name: agentName,
         role: 'Agent',
         model: 'opus'
       });
@@ -122,7 +122,7 @@ Outline communication style and guidelines.
 
     try {
       await invoke('delete_agent_directory', {
-        agentName: deleteConfirm,
+        agent_name: deleteConfirm,
         force
       });
       showSuccess(`Agent '${deleteConfirm}' deleted`);

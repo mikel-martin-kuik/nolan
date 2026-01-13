@@ -8,7 +8,7 @@ interface BreadcrumbNavProps {
 
 export function BreadcrumbNav({ breadcrumbs, onNavigate }: BreadcrumbNavProps) {
   return (
-    <nav className="flex items-center gap-1 mb-3 text-sm overflow-x-auto">
+    <nav className="flex items-center gap-1 text-sm overflow-x-auto pb-1">
       {breadcrumbs.map((crumb, index) => {
         const isLast = index === breadcrumbs.length - 1;
 

@@ -36,10 +36,18 @@ export const TeamAgentDetailPage: React.FC<TeamAgentDetailPageProps> = ({
   }, [agentName]);
 
   // Fetch team config
-  const { data: teamConfig, isLoading: teamConfigLoading } = useQuery({
+  const { data: teamConfig, isLoading: teamConfigLoading, error: teamConfigError } = useQuery({
     queryKey: ['team-config', teamName],
-    queryFn: async () => invoke<TeamConfig>('get_team_config', { teamName }),
+    queryFn: async () => {
+      try {
+        return await invoke<TeamConfig>('get_team_config', { team_name: teamName });
+      } catch (err) {
+        console.error(`Failed to load team config '${teamName}':`, err);
+        throw err;
+      }
+    },
     enabled: !!teamName,
+    retry: 1,
   });
 
   // Fetch cron agent info (unused but kept for potential future use)
@@ -208,7 +216,7 @@ export const TeamAgentDetailPage: React.FC<TeamAgentDetailPageProps> = ({
 
   const handleShowTerminals = useCallback(async () => {
     try {
-      await invoke('open_team_terminals', { teamName });
+      await invoke('open_team_terminals', { team_name: teamName });
     } catch (err) {
       showError(`Failed to open terminals: ${err}`);
     }
@@ -248,7 +256,14 @@ export const TeamAgentDetailPage: React.FC<TeamAgentDetailPageProps> = ({
   if (!teamConfig) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-4">
-        <p className="text-muted-foreground">Team configuration not found</p>
+        <p className="text-muted-foreground">
+          {teamConfigError
+            ? `Failed to load team '${teamName}': ${teamConfigError}`
+            : `Team configuration not found: ${teamName}`}
+        </p>
+        <p className="text-xs text-muted-foreground/70">
+          Expected at ~/.nolan/teams/{teamName}.yaml
+        </p>
         <Button variant="outline" onClick={onBack}>Back</Button>
       </div>
     );

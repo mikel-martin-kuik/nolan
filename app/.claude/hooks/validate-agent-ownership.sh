@@ -98,13 +98,8 @@ try:
                     except:
                         team_name = team_content.strip()
                     nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
-                    # Search for team config in teams directory (supports subdirectories)
-                    config_path = None
-                    if nolan_data_root:
-                        for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
-                            config_path = path
-                            break
-                        if config_path and config_path.exists():
+                    config_path = nolan_data_root / 'teams' / team_name / 'team.yaml'
+                    if config_path.exists():
                             config = yaml.safe_load(config_path.read_text())
                             # Build protected files list from agent output_files
                             protected = [a['output_file'] for a in config['team']['agents'] if a.get('output_file')]
@@ -144,13 +139,8 @@ try:
         except:
             team_name = team_content.strip()
         nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
-
-        # Search for team config in teams directory (supports subdirectories)
-        config_path = None
-        for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
-            config_path = path
-            break
-        if config_path is None:
+        config_path = nolan_data_root / 'teams' / team_name / 'team.yaml'
+        if not config_path.exists():
             sys.exit(0)  # Team config not found
 
         config = yaml.safe_load(config_path.read_text())

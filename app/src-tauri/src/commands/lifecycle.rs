@@ -1646,27 +1646,22 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
     })
 }
 
-/// List available team names from teams directory (scans subdirectories recursively)
+/// List available team names from teams directory
+/// Format: teams/{team_name}/team.yaml
 fn list_available_teams() -> Result<Vec<String>, String> {
     let teams_dir = crate::utils::paths::get_teams_dir()?;
 
     let mut teams = Vec::new();
-    for entry in WalkDir::new(&teams_dir)
-        .max_depth(2)  // Root (depth 0), immediate children dirs (depth 1), files in subdirs (depth 2)
-        .into_iter()
-        .filter_map(|e| e.ok())
-    {
-        let path = entry.path();
-
-        // Skip directories and non-yaml files
-        if !path.is_file() || path.extension().and_then(|s| s.to_str()) != Some("yaml") {
-            continue;
-        }
-
-        // Get team name from file stem, skip departments.yaml
-        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-            if stem != "departments" {
-                teams.push(stem.to_string());
+    if let Ok(entries) = std::fs::read_dir(&teams_dir) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_dir() {
+                let team_yaml = path.join("team.yaml");
+                if team_yaml.exists() {
+                    if let Some(team_name) = path.file_name().and_then(|s| s.to_str()) {
+                        teams.push(team_name.to_string());
+                    }
+                }
             }
         }
     }

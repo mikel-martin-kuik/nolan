@@ -11,10 +11,12 @@
  * - Typed access to all config sections
  *
  * The config is fetched once at app startup and cached indefinitely.
+ * When config loads, it syncs runtime values (from env vars) to stores.
  */
 
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, useEffect, type ReactNode } from 'react';
 import { useUIConfig } from '../hooks/useUIConfig';
+import { useOllamaStore } from '../store/ollamaStore';
 import type { UIConfig } from '../types/config';
 
 interface ConfigContextValue {
@@ -34,9 +36,20 @@ interface ConfigProviderProps {
  *
  * Fetches config from backend and provides it to all children.
  * Should be placed high in the component tree, inside QueryClientProvider.
+ *
+ * When config loads, syncs runtime values (from Docker env vars) to stores:
+ * - ollamaStore: ollama_defaults (OLLAMA_URL, OLLAMA_MODEL)
  */
 export function ConfigProvider({ children }: ConfigProviderProps) {
   const { config, isLoading, error } = useUIConfig();
+  const syncOllamaConfig = useOllamaStore((state) => state.syncWithBackendConfig);
+
+  // Sync runtime config to stores when config loads
+  useEffect(() => {
+    if (config?.ollama_defaults) {
+      syncOllamaConfig(config.ollama_defaults);
+    }
+  }, [config?.ollama_defaults, syncOllamaConfig]);
 
   const value = useMemo<ConfigContextValue>(
     () => ({

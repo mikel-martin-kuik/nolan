@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { invoke } from '@/lib/api';
-import { FeedbackStats, Idea, IdeaReview, TeamDecision } from '@/types';
+import { FeedbackStats, Idea, IdeaReview, TeamDecision, Hotfix } from '@/types';
 import { FeatureRequestsTab } from './FeatureRequestsTab';
 import { IdeasTab } from './IdeasTab';
+import { HotfixesTab } from './HotfixesTab';
 import { DecisionsTab } from './DecisionsTab';
 import { IdeaForm } from './IdeaForm';
 import { FeatureRequestForm } from './FeatureRequestForm';
@@ -11,9 +12,9 @@ import { DecisionForm } from './DecisionForm';
 import { RoadmapViewer } from '../Projects/RoadmapViewer';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Compass, FileCheck } from 'lucide-react';
+import { Compass, FileCheck, Zap } from 'lucide-react';
 
-type TabType = 'requests' | 'ideas' | 'decisions' | 'roadmap';
+type TabType = 'requests' | 'ideas' | 'hotfixes' | 'decisions' | 'roadmap';
 
 export function SupportPanel() {
   const [activeTab, setActiveTab] = useState<TabType>('requests');
@@ -56,6 +57,17 @@ export function SupportPanel() {
     refetchInterval: 30000,
   });
 
+  const { data: hotfixes = [] } = useQuery({
+    queryKey: ['hotfixes'],
+    queryFn: () => invoke<Hotfix[]>('list_hotfixes'),
+    refetchInterval: 30000,
+  });
+
+  // Count pending hotfixes
+  const pendingHotfixesCount = useMemo(() => {
+    return hotfixes.filter(h => h.status === 'pending').length;
+  }, [hotfixes]);
+
   // Count approved decisions
   const approvedDecisionsCount = useMemo(() => {
     return decisions.filter(d => d.status === 'approved').length;
@@ -89,7 +101,7 @@ export function SupportPanel() {
     <div className="h-full flex flex-col gap-2 sm:gap-4">
       {/* Header with New Button and Tabs */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-        {activeTab !== 'roadmap' && (
+        {activeTab !== 'roadmap' && activeTab !== 'hotfixes' && (
           <Button size="sm" onClick={handleNewClick} className="w-full sm:w-auto">
             New
           </Button>
@@ -122,6 +134,22 @@ export function SupportPanel() {
             {pendingIdeasCount > 0 && (
               <span className="text-[10px] px-1 rounded bg-foreground/10">
                 {pendingIdeasCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('hotfixes')}
+            className={cn(
+              "flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded text-xs font-medium transition-all whitespace-nowrap",
+              activeTab === 'hotfixes' && "bg-foreground/10 text-foreground",
+              activeTab !== 'hotfixes' && "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <Zap className="w-3 h-3 hidden sm:block" />
+            <span>Hotfixes</span>
+            {pendingHotfixesCount > 0 && (
+              <span className="text-[10px] px-1 rounded bg-foreground/10">
+                {pendingHotfixesCount}
               </span>
             )}
           </button>
@@ -159,6 +187,7 @@ export function SupportPanel() {
       <div className="flex-1 overflow-auto">
         {activeTab === 'requests' && <FeatureRequestsTab />}
         {activeTab === 'ideas' && <IdeasTab />}
+        {activeTab === 'hotfixes' && <HotfixesTab />}
         {activeTab === 'decisions' && <DecisionsTab />}
         {activeTab === 'roadmap' && <RoadmapViewer />}
       </div>

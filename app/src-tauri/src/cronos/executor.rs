@@ -114,6 +114,7 @@ pub async fn execute_cron_agent_with_env(
             label: None,
             analyzer_verdict: None,
             pipeline_id: None,
+            parent_run_id: None,
         };
 
         // Emit skip event
@@ -301,6 +302,7 @@ async fn execute_single_run(
             label,
             analyzer_verdict: None,
             pipeline_id: None,
+            parent_run_id: None,
         });
     }
 
@@ -423,8 +425,13 @@ async fn execute_single_run(
     };
 
     // Build environment variable exports
-    let mut env_exports = format!("export CRON_RUN_ID='{}' CRON_AGENT='{}' NOLAN_ROOT='{}' NOLAN_DATA_ROOT='{}'",
-        run_id, config.name, nolan_root.to_string_lossy(), nolan_data_root.to_string_lossy());
+    // AGENT_WORK_ROOT is set to worktree path if using worktree, otherwise the working directory
+    // AGENT_DIR points to the cron agent's configuration directory
+    let agent_dir = paths::get_agents_dir()?.join(&config.name);
+    let agent_work_root = work_dir.to_string_lossy().to_string();
+    let mut env_exports = format!("export CRON_RUN_ID='{}' CRON_AGENT='{}' NOLAN_ROOT='{}' NOLAN_DATA_ROOT='{}' AGENT_WORK_ROOT='{}' AGENT_DIR='{}'",
+        run_id, config.name, nolan_root.to_string_lossy(), nolan_data_root.to_string_lossy(),
+        agent_work_root, agent_dir.to_string_lossy());
 
     // Add extra environment variables (e.g., IDEA_ID for parameterized runs)
     if let Some(ref extra) = extra_env {
@@ -467,13 +474,20 @@ async fn execute_single_run(
     let shell_cmd = cmd_parts.join("; ");
 
     // Extract worktree info for logging
+    // If no worktree was created, check for inherited worktree info from parent run (for analyzer runs)
     let (wt_path, wt_branch, wt_commit) = match &worktree_info {
         Some((path, branch, commit)) => (
             Some(path.to_string_lossy().to_string()),
             Some(branch.clone()),
             Some(commit.clone()),
         ),
-        None => (None, None, None),
+        None => {
+            // Fall back to inherited worktree info from parent run (e.g., for analyzer runs)
+            let inherited_path = extra_env.as_ref().and_then(|e| e.get("ANALYZED_WORKTREE_PATH").cloned());
+            let inherited_branch = extra_env.as_ref().and_then(|e| e.get("ANALYZED_WORKTREE_BRANCH").cloned());
+            let inherited_commit = extra_env.as_ref().and_then(|e| e.get("ANALYZED_BASE_COMMIT").cloned());
+            (inherited_path, inherited_branch, inherited_commit)
+        }
     };
 
     // Write initial run log (marks as running for recovery)
@@ -499,6 +513,7 @@ async fn execute_single_run(
         label: label.clone(),
         analyzer_verdict: None,
         pipeline_id: None,
+        parent_run_id: extra_env.as_ref().and_then(|e| e.get("ANALYZED_RUN_ID").cloned()),
     };
 
     let json = serde_json::to_string_pretty(&initial_log)
@@ -622,6 +637,7 @@ async fn execute_single_run(
         label,
         analyzer_verdict: None,
         pipeline_id: None,
+        parent_run_id: extra_env.as_ref().and_then(|e| e.get("ANALYZED_RUN_ID").cloned()),
     };
 
     // Write final JSON log
@@ -803,6 +819,7 @@ pub async fn execute_cron_agent_simple(
             label: None,
             analyzer_verdict: None,
             pipeline_id: None,
+            parent_run_id: None,
         });
     }
 
@@ -925,6 +942,7 @@ pub async fn execute_cron_agent_simple(
         label: None,  // Simple mode doesn't support labels
         analyzer_verdict: None,
         pipeline_id: None,
+        parent_run_id: None,  // Simple mode doesn't track parent
     };
 
     let json = serde_json::to_string_pretty(&run_log)
@@ -962,6 +980,16 @@ pub fn get_analyzer_trigger_info(
     env_vars.insert("ANALYZED_STATUS".to_string(), format!("{:?}", run_log.status).to_lowercase());
     if let Some(ref session_id) = run_log.claude_session_id {
         env_vars.insert("ANALYZED_SESSION_ID".to_string(), session_id.clone());
+    }
+    // Pass worktree info from parent run so analyzer run can trigger QA
+    if let Some(ref wt_path) = run_log.worktree_path {
+        env_vars.insert("ANALYZED_WORKTREE_PATH".to_string(), wt_path.clone());
+    }
+    if let Some(ref wt_branch) = run_log.worktree_branch {
+        env_vars.insert("ANALYZED_WORKTREE_BRANCH".to_string(), wt_branch.clone());
+    }
+    if let Some(ref base_commit) = run_log.base_commit {
+        env_vars.insert("ANALYZED_BASE_COMMIT".to_string(), base_commit.clone());
     }
 
     Some(AnalyzerTriggerInfo {

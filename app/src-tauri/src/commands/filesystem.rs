@@ -121,10 +121,11 @@ fn get_mime_type(extension: &str) -> String {
 
 /// Check if a file is editable (text-based)
 fn is_editable(extension: &str, mime_type: &str) -> bool {
-    // Only .md and .txt are editable per requirements
-    matches!(extension.to_lowercase().as_str(), "md" | "txt")
+    // .md, .txt, and .yaml/.yml are editable
+    matches!(extension.to_lowercase().as_str(), "md" | "txt" | "yaml" | "yml")
         || mime_type.starts_with("text/markdown")
         || mime_type == "text/plain"
+        || mime_type == "text/yaml"
 }
 
 /// Validate path is within allowed root directories
@@ -346,7 +347,7 @@ pub async fn write_file_content(path: String, content: String) -> Result<(), Str
     let mime_type = get_mime_type(&extension);
 
     if !is_editable(&extension, &mime_type) {
-        return Err("File is not editable (only .md and .txt files can be edited)".to_string());
+        return Err("File is not editable (only .md, .txt, and .yaml files can be edited)".to_string());
     }
 
     fs::write(&canonical, content)

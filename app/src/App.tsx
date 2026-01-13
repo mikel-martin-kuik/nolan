@@ -5,6 +5,7 @@ import { listen } from '@/lib/events';
 import { invoke, isBrowserMode } from '@/lib/api';
 import { queryClient } from './lib/queryClient';
 import { ThemeProvider } from './lib/theme';
+import { STORAGE_UI_THEME, STORAGE_SERVER_URL, DEFAULT_NOLAN_URL, EVENT_HISTORY_ENTRY } from '@/lib/constants';
 import { TeamProvider } from './contexts';
 import { ConfigProvider } from './contexts/ConfigContext';
 import { AppErrorBoundary } from './components/shared/AppErrorBoundary';
@@ -175,7 +176,7 @@ function App() {
 
     const setup = async () => {
       // Listen for history entries and route to live output store
-      unlisten = await listen<HistoryEntry>('history-entry', (event) => {
+      unlisten = await listen<HistoryEntry>(EVENT_HISTORY_ENTRY, (event) => {
         const entry = event.payload;
         // Only add entries that have a tmux_session (active agent)
         if (entry.tmux_session) {
@@ -231,7 +232,7 @@ function App() {
   // Show password prompt if auth is required
   if (needsAuth || needsSetup) {
     return (
-      <ThemeProvider defaultTheme="dark" storageKey="nolan-ui-theme">
+      <ThemeProvider defaultTheme="dark" storageKey={STORAGE_UI_THEME}>
         <PasswordPrompt
           isSetup={needsSetup}
           onSubmit={needsSetup ? setupPassword : login}
@@ -242,7 +243,7 @@ function App() {
 
   return (
     <AppErrorBoundary>
-      <ThemeProvider defaultTheme="dark" storageKey="nolan-ui-theme">
+      <ThemeProvider defaultTheme="dark" storageKey={STORAGE_UI_THEME}>
         <QueryClientProvider client={queryClient}>
         <ConfigProvider>
         <TeamProvider defaultTeam="default">
@@ -354,7 +355,7 @@ function App() {
                   <div className="max-w-2xl space-y-4 sm:space-y-6 pb-8">
                     <h1 className="text-xl sm:text-2xl font-bold">Settings</h1>
                     <ServerSelector
-                      currentUrl={localStorage.getItem('nolan-server-url') || 'http://localhost:3030'}
+                      currentUrl={localStorage.getItem(STORAGE_SERVER_URL) || DEFAULT_NOLAN_URL}
                       onConnect={() => {
                         window.location.reload();
                       }}

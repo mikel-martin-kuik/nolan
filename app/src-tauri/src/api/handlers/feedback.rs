@@ -248,3 +248,75 @@ pub async fn update_review_gaps(
         Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
     }
 }
+
+// ============================================================================
+// Hotfixes - Simple fixes that bypass the full idea pipeline
+// ============================================================================
+
+/// List all hotfixes
+pub async fn list_hotfixes() -> Result<Json<Vec<feedback::Hotfix>>, impl IntoResponse> {
+    match feedback::list_hotfixes() {
+        Ok(hotfixes) => Ok(Json(hotfixes)),
+        Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct CreateHotfixBody {
+    pub title: String,
+    pub description: String,
+    pub scope: Option<Vec<String>>,
+    pub created_by: Option<String>,
+}
+
+/// Create a new hotfix
+pub async fn create_hotfix(
+    Json(body): Json<CreateHotfixBody>,
+) -> Result<Json<feedback::Hotfix>, impl IntoResponse> {
+    match feedback::create_hotfix(body.title, body.description, body.scope, body.created_by) {
+        Ok(hotfix) => Ok(Json(hotfix)),
+        Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct UpdateHotfixBody {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub scope: Option<Vec<String>>,
+}
+
+/// Update a hotfix
+pub async fn update_hotfix(
+    Path(id): Path<String>,
+    Json(body): Json<UpdateHotfixBody>,
+) -> Result<Json<feedback::Hotfix>, impl IntoResponse> {
+    match feedback::update_hotfix(id, body.title, body.description, body.scope) {
+        Ok(hotfix) => Ok(Json(hotfix)),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct UpdateHotfixStatusBody {
+    pub status: String,
+}
+
+/// Update hotfix status
+pub async fn update_hotfix_status(
+    Path(id): Path<String>,
+    Json(body): Json<UpdateHotfixStatusBody>,
+) -> Result<Json<feedback::Hotfix>, impl IntoResponse> {
+    match feedback::update_hotfix_status(id, body.status) {
+        Ok(hotfix) => Ok(Json(hotfix)),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+/// Delete a hotfix
+pub async fn delete_hotfix(Path(id): Path<String>) -> Result<Json<()>, impl IntoResponse> {
+    match feedback::delete_hotfix(id) {
+        Ok(_) => Ok(Json(())),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}

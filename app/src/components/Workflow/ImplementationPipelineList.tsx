@@ -16,14 +16,17 @@ import {
   Loader2,
   Clock,
   ArrowRight,
-  FileCode
+  FileCode,
+  AlertCircle,
+  Ban
 } from 'lucide-react';
-import type { ImplementationPipeline } from '../../types/workflow';
+import type { Pipeline } from '../../types/generated/cronos/Pipeline';
 import type { PipelineDefinition } from '../../types/generated/cronos/PipelineDefinition';
+import type { PipelineStageStatus } from '../../types/generated/cronos/PipelineStageStatus';
 import { invoke } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
-const stageIcons = {
+const stageIcons: Record<string, typeof Code> = {
   idea: Lightbulb,
   implementer: Code,
   analyzer: Search,
@@ -31,24 +34,26 @@ const stageIcons = {
   merger: GitMerge,
 };
 
-const statusIcons = {
+const statusIcons: Record<PipelineStageStatus, typeof Clock> = {
   pending: Clock,
   running: Loader2,
   success: CheckCircle,
   failed: XCircle,
-  skipped: Clock,
+  skipped: Ban,
+  blocked: AlertCircle,
 };
 
-const statusColors = {
+const statusColors: Record<PipelineStageStatus, string> = {
   pending: 'text-gray-400',
   running: 'text-blue-500 animate-spin',
   success: 'text-green-500',
   failed: 'text-red-500',
   skipped: 'text-gray-300',
+  blocked: 'text-orange-500',
 };
 
 interface ImplementationPipelineListProps {
-  onPipelineSelect?: (pipeline: ImplementationPipeline) => void;
+  onPipelineSelect?: (pipeline: Pipeline) => void;
 }
 
 export function ImplementationPipelineList({ onPipelineSelect }: ImplementationPipelineListProps) {
@@ -56,13 +61,19 @@ export function ImplementationPipelineList({ onPipelineSelect }: ImplementationP
   const selectedPipelineId = useWorkflowVisualizerStore((state) => state.selectedPipelineId);
   const setSelectedPipelineId = useWorkflowVisualizerStore((state) => state.setSelectedPipelineId);
   const isLoading = useWorkflowVisualizerStore((state) => state.isLoading);
+  const fetchPipelines = useWorkflowVisualizerStore((state) => state.fetchPipelines);
+
+  // Fetch pipelines on mount
+  useEffect(() => {
+    fetchPipelines();
+  }, [fetchPipelines]);
 
   // Group pipelines by idea
   const groupedPipelines = useMemo(() => {
-    const groups = new Map<string, ImplementationPipeline[]>();
+    const groups = new Map<string, Pipeline[]>();
 
     pipelines.forEach((pipeline) => {
-      const ideaId = pipeline.ideaId;
+      const ideaId = pipeline.idea_id;
       if (!groups.has(ideaId)) {
         groups.set(ideaId, []);
       }
@@ -119,9 +130,9 @@ export function ImplementationPipelineList({ onPipelineSelect }: ImplementationP
 }
 
 interface PipelineGroupProps {
-  pipelines: ImplementationPipeline[];
+  pipelines: Pipeline[];
   selectedPipelineId: string | null;
-  onSelect: (pipeline: ImplementationPipeline) => void;
+  onSelect: (pipeline: Pipeline) => void;
 }
 
 function PipelineGroup({ pipelines, selectedPipelineId, onSelect }: PipelineGroupProps) {
@@ -137,7 +148,7 @@ function PipelineGroup({ pipelines, selectedPipelineId, onSelect }: PipelineGrou
         )}
         <Lightbulb className="h-4 w-4 text-yellow-500" />
         <span className="font-medium truncate flex-1 text-left">
-          {pipelines[0].ideaTitle}
+          {pipelines[0].idea_title}
         </span>
         <Badge variant="outline">{pipelines.length}</Badge>
       </CollapsibleTrigger>
@@ -156,12 +167,18 @@ function PipelineGroup({ pipelines, selectedPipelineId, onSelect }: PipelineGrou
 }
 
 interface PipelineRowProps {
-  pipeline: ImplementationPipeline;
+  pipeline: Pipeline;
   isSelected: boolean;
   onSelect: () => void;
 }
 
 function PipelineRow({ pipeline, isSelected, onSelect }: PipelineRowProps) {
+  const statusVariant =
+    pipeline.status === 'completed' ? 'default' :
+    pipeline.status === 'failed' || pipeline.status === 'aborted' ? 'destructive' :
+    pipeline.status === 'blocked' ? 'outline' :
+    'secondary';
+
   return (
     <button
       onClick={onSelect}
@@ -173,28 +190,27 @@ function PipelineRow({ pipeline, isSelected, onSelect }: PipelineRowProps) {
       )}
     >
       <div className="flex items-center gap-2 mb-2">
-        <Badge
-          variant={
-            pipeline.overallStatus === 'completed' ? 'default' :
-            pipeline.overallStatus === 'failed' ? 'destructive' :
-            'secondary'
-          }
-          className="text-xs"
-        >
-          {pipeline.overallStatus}
+        <Badge variant={statusVariant} className="text-xs">
+          {pipeline.status}
         </Badge>
         <span className="text-xs text-muted-foreground">
-          {new Date(pipeline.createdAt).toLocaleDateString()}
+          {new Date(pipeline.created_at).toLocaleDateString()}
         </span>
+        {pipeline.worktree_branch && (
+          <span className="text-xs text-muted-foreground font-mono truncate max-w-[120px]">
+            {pipeline.worktree_branch}
+          </span>
+        )}
       </div>
 
       {/* Stage progress */}
       <div className="flex items-center gap-1">
         {(['implementer', 'analyzer', 'qa', 'merger'] as const).map((stageType) => {
-          const stage = pipeline.stages.find((s) => s.type === stageType);
+          const stage = pipeline.stages.find((s) => s.stage_type === stageType);
           const StageIcon = stageIcons[stageType];
-          const StatusIcon = statusIcons[stage?.status || 'pending'];
-          const statusColor = statusColors[stage?.status || 'pending'];
+          const stageStatus: PipelineStageStatus = stage?.status || 'pending';
+          const StatusIcon = statusIcons[stageStatus];
+          const statusColor = statusColors[stageStatus];
 
           return (
             <div key={stageType} className="flex items-center">

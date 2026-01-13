@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react';
+import { STORAGE_UI_THEME } from './constants';
 
 type Theme = 'dark' | 'light' | 'system';
 
@@ -18,7 +19,7 @@ const ThemeProviderContext = createContext<ThemeProviderState | undefined>(undef
 export function ThemeProvider({
   children,
   defaultTheme = 'system',
-  storageKey = 'nolan-ui-theme',
+  storageKey = STORAGE_UI_THEME,
   ...props
 }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(() => {

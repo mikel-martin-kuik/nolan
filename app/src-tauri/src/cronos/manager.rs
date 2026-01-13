@@ -373,6 +373,11 @@ impl CronosManager {
         let output_file = run_log.output_file.clone();
         let attempt = run_log.attempt;
         let trigger = run_log.trigger.clone();
+        let worktree_path = run_log.worktree_path.clone();
+        let worktree_branch = run_log.worktree_branch.clone();
+        let base_commit = run_log.base_commit.clone();
+        let label = run_log.label.clone();
+        let parent_run_id = run_log.parent_run_id.clone();
         let running = Arc::clone(&self.running);
 
         tokio::spawn(async move {
@@ -431,12 +436,13 @@ impl CronosManager {
                         run_dir: run_dir.as_ref().map(|p| p.to_string_lossy().to_string()),
                         claude_session_id: None,  // Session ID not available during recovery
                         total_cost_usd: None,  // Cost not available during recovery
-                        worktree_path: None,   // Worktree info not available during recovery
-                        worktree_branch: None,
-                        base_commit: None,
+                        worktree_path: worktree_path.clone(),
+                        worktree_branch: worktree_branch.clone(),
+                        base_commit: base_commit.clone(),
                         analyzer_verdict: None,
                         pipeline_id: None,
-                        label: None,  // Label not available during recovery
+                        label: label.clone(),
+                        parent_run_id: parent_run_id.clone(),
                     };
 
                     // Write final log
@@ -523,6 +529,7 @@ impl CronosManager {
             analyzer_verdict: run_log.analyzer_verdict.clone(),  // Preserve any existing verdict
             pipeline_id: run_log.pipeline_id.clone(),  // Preserve pipeline ID
             label: run_log.label.clone(),  // Preserve original label
+            parent_run_id: run_log.parent_run_id.clone(),  // Preserve parent run ID
         };
 
         let json = serde_json::to_string_pretty(&final_log)

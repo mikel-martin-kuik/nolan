@@ -10,7 +10,7 @@ import yaml, os, sys
 from pathlib import Path
 nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 team_name = os.environ.get('TEAM_NAME') or 'default'
-config_path = next((nolan_data_root / 'teams').rglob(f'{team_name}.yaml'), None)
+config_path = nolan_data_root / 'teams' / team_name / 'team.yaml'
 if not config_path:
     print(f'ERROR: Team config not found: {team_name}', file=sys.stderr)
     sys.exit(1)

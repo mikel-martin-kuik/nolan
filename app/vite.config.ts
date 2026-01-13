@@ -36,5 +36,16 @@ export default defineConfig(async () => ({
       // 3. tell Vite to ignore watching `src-tauri`
       ignored: ["**/src-tauri/**"],
     },
+    // Proxy API requests to backend server for browser-mode development
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3030',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://localhost:3030',
+        ws: true,
+      },
+    },
   },
 }));

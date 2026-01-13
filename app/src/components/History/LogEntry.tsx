@@ -1,6 +1,6 @@
 import React from 'react';
 import { HistoryEntry } from '../../types';
-import { RE_TEAM_SESSION, parseRalphSession } from '@/lib/agentIdentity';
+import { RE_TEAM_SESSION, RE_TEAM_SPAWNED_SESSION, parseRalphSession } from '@/lib/agentIdentity';
 
 interface LogEntryProps {
   entry: HistoryEntry;
@@ -47,8 +47,8 @@ export const LogEntry: React.FC<LogEntryProps> = ({ entry, onSelect, isSelected 
     }
 
     // Team-scoped spawned: agent-{team}-{name}-{instance} (e.g., agent-default-ana-2)
-    // Team and agent names use underscores, hyphens are delimiters only
-    const teamSpawnedMatch = agent.match(/^agent-([a-z][a-z0-9_]*)-([a-z][a-z0-9_]*)-(\d+)$/);
+    // Uses centralized pattern from agentIdentity.ts
+    const teamSpawnedMatch = agent.match(RE_TEAM_SPAWNED_SESSION);
     if (teamSpawnedMatch) {
       const agentName = teamSpawnedMatch[2];
       const instanceNumber = teamSpawnedMatch[3];

@@ -10,6 +10,12 @@
  *   const agents = await invoke<AgentInfo[]>('list_agent_directories');
  */
 
+import {
+  STORAGE_SERVER_URL,
+  STORAGE_SESSION_TOKEN,
+  DEFAULT_NOLAN_URL,
+} from './constants';
+
 // API server base URL
 const getApiBaseUrl = (): string => {
   // In browser mode (not Tauri), always use same-origin (nginx proxy)
@@ -19,7 +25,7 @@ const getApiBaseUrl = (): string => {
 
   // In Tauri mode, check localStorage for remote server preference
   if (typeof window !== 'undefined') {
-    const stored = localStorage.getItem('nolan-server-url');
+    const stored = localStorage.getItem(STORAGE_SERVER_URL);
     if (stored) return stored;
   }
 
@@ -28,7 +34,7 @@ const getApiBaseUrl = (): string => {
   if (envUrl !== undefined && envUrl !== null) {
     return envUrl;
   }
-  return 'http://localhost:3030';
+  return DEFAULT_NOLAN_URL;
 };
 
 const API_BASE = getApiBaseUrl();
@@ -67,6 +73,9 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   read_agent_claude_md: { method: 'GET', path: (args) => `/api/agents/${args.agent}/claude-md` },
   write_agent_claude_md: { method: 'PUT', path: (args) => `/api/agents/${args.agent}/claude-md` },
   get_agent_template: { method: 'GET', path: (args) => `/api/agents/template?name=${encodeURIComponent(getArg(args, 'agent_name') as string)}&role=${encodeURIComponent(args.role as string)}` },
+  list_agent_templates: { method: 'GET', path: '/api/agents/templates' },
+  install_agent_template: { method: 'POST', path: '/api/noop' },  // Tauri-only
+  uninstall_agent_template: { method: 'POST', path: '/api/noop' },  // Tauri-only
 
   // Teams
   list_teams: { method: 'GET', path: '/api/teams' },
@@ -81,6 +90,8 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   get_agent_status: { method: 'GET', path: '/api/lifecycle/status/all' },
   list_sessions: { method: 'GET', path: '/api/sessions' },
   list_session_labels: { method: 'GET', path: '/api/sessions/labels' },
+  set_session_label: { method: 'POST', path: '/api/noop' },  // Tauri-only for now
+  clear_session_label: { method: 'POST', path: '/api/noop' },  // Tauri-only for now
   launch_team: { method: 'POST', path: '/api/lifecycle/launch-team' },
   kill_team: { method: 'POST', path: '/api/lifecycle/kill-team' },
   start_agent: { method: 'POST', path: '/api/lifecycle/start-agent' },
@@ -200,6 +211,17 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   list_worktrees: { method: 'GET', path: '/api/cronos/worktrees' },
   cleanup_worktrees: { method: 'POST', path: '/api/cronos/worktrees/cleanup' },
   remove_worktree: { method: 'POST', path: '/api/cronos/worktrees/remove' },
+  // Pipelines
+  list_pipelines: { method: 'GET', path: '/api/cronos/pipelines' },
+  get_pipeline: { method: 'GET', path: (args) => `/api/cronos/pipelines/${getArg(args, 'id')}` },
+  list_pipeline_definitions: { method: 'GET', path: '/api/cronos/pipelines/definitions' },
+  get_pipeline_definition: { method: 'GET', path: (args) => `/api/cronos/pipelines/definitions/${getArg(args, 'name')}` },
+  get_default_pipeline_definition: { method: 'GET', path: '/api/cronos/pipelines/definitions/default' },
+  // Run triggers
+  trigger_predefined_agent: { method: 'POST', path: '/api/noop' },  // Tauri-only for now
+  trigger_analyzer_for_run: { method: 'POST', path: '/api/noop' },  // Tauri-only for now
+  trigger_qa_for_run: { method: 'POST', path: '/api/noop' },  // Tauri-only for now
+  trigger_merge_for_run: { method: 'POST', path: '/api/noop' },  // Tauri-only for now
 
   // Feedback (feature requests & ideas)
   list_feature_requests: { method: 'GET', path: '/api/feedback/requests' },
@@ -212,14 +234,31 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   update_idea: { method: 'PUT', path: (args) => `/api/feedback/ideas/${args.id}` },
   update_idea_status: { method: 'PUT', path: (args) => `/api/feedback/ideas/${args.id}/status` },
   delete_idea: { method: 'DELETE', path: (args) => `/api/feedback/ideas/${args.id}` },
+  // Hotfixes
+  list_hotfixes: { method: 'GET', path: '/api/feedback/hotfixes' },
+  create_hotfix: { method: 'POST', path: '/api/feedback/hotfixes' },
+  update_hotfix: { method: 'PUT', path: (args) => `/api/feedback/hotfixes/${args.id}` },
+  update_hotfix_status: { method: 'PUT', path: (args) => `/api/feedback/hotfixes/${args.id}/status` },
+  delete_hotfix: { method: 'DELETE', path: (args) => `/api/feedback/hotfixes/${args.id}` },
   dispatch_ideas: { method: 'POST', path: '/api/feedback/ideas/dispatch' },
+  dispatch_single_idea: { method: 'POST', path: '/api/noop' },  // Tauri-only for now
   list_idea_reviews: { method: 'GET', path: '/api/feedback/reviews' },
   accept_review: { method: 'POST', path: (args) => `/api/feedback/reviews/${args.item_id}/accept` },
   accept_and_route_review: { method: 'POST', path: (args) => `/api/feedback/reviews/${args.item_id}/accept` },
+  unaccept_review: { method: 'POST', path: '/api/noop' },  // Tauri-only for now
   update_review_proposal: { method: 'PUT', path: (args) => `/api/feedback/reviews/${args.item_id}/proposal` },
   update_review_gaps: { method: 'PUT', path: (args) => `/api/feedback/reviews/${args.item_id}/gaps` },
+  delete_idea_review: { method: 'DELETE', path: '/api/noop' },  // Tauri-only for now
   get_feedback_stats: { method: 'GET', path: '/api/feedback/stats' },
   get_user_votes: { method: 'GET', path: '/api/feedback/votes' },
+
+  // Design decisions (Tauri-only for now)
+  list_decisions: { method: 'GET', path: '/api/noop' },
+  create_decision: { method: 'POST', path: '/api/noop' },
+  update_decision_status: { method: 'PUT', path: '/api/noop' },
+  approve_decision: { method: 'POST', path: '/api/noop' },
+  deprecate_decision: { method: 'POST', path: '/api/noop' },
+  delete_decision: { method: 'DELETE', path: '/api/noop' },
 
   // Ollama (local LLM)
   ollama_status: { method: 'GET', path: '/api/ollama/status' },
@@ -270,7 +309,7 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
 
   // Get session token from localStorage
   const sessionToken = typeof window !== 'undefined'
-    ? localStorage.getItem('nolan-session-token')
+    ? localStorage.getItem(STORAGE_SESSION_TOKEN)
     : null;
 
   const options: RequestInit = {
@@ -291,7 +330,7 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
   if (!response.ok) {
     // Handle unauthorized - clear token and reload to trigger login
     if (response.status === 401) {
-      localStorage.removeItem('nolan-session-token');
+      localStorage.removeItem(STORAGE_SESSION_TOKEN);
       // Reload the page to trigger the auth check flow
       window.location.reload();
       // Throw to prevent further execution
@@ -332,7 +371,7 @@ export function getApiBase(): string {
 export function getWebSocketUrl(endpoint: string): string {
   const base = API_BASE.replace(/^http/, 'ws');
   const sessionToken = typeof window !== 'undefined'
-    ? localStorage.getItem('nolan-session-token')
+    ? localStorage.getItem(STORAGE_SESSION_TOKEN)
     : null;
 
   const separator = endpoint.includes('?') ? '&' : '?';

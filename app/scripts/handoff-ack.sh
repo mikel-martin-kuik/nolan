@@ -39,13 +39,8 @@ agent_name = os.environ.get('AGENT_NAME', '').lower()
 if not agent_name:
     sys.exit(0)  # Allow if can't determine
 
-# Search for team config in data root
-config_path = None
-for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
-    config_path = path
-    break
-
-if not config_path:
+config_path = nolan_data_root / 'teams' / team_name / 'team.yaml'
+if not config_path.exists():
     sys.exit(0)  # Allow if config not found
 
 config = yaml.safe_load(config_path.read_text())
@@ -267,12 +262,8 @@ except:
     team_name = content.strip()
 
 nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
-config_path = None
-for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
-    config_path = path
-    break
-
-if not config_path:
+config_path = nolan_data_root / 'teams' / team_name / 'team.yaml'
+if not config_path.exists():
     sys.exit(1)
 
 config = yaml.safe_load(config_path.read_text())

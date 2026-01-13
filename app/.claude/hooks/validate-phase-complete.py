@@ -324,14 +324,9 @@ def load_team_config(project_path: Path) -> dict:
     # NOLAN_ROOT points to source code, NOLAN_DATA_ROOT points to data directory
     nolan_data_root = os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan'))
 
-    # Search for team config in teams directory (supports subdirectories)
-    teams_dir = Path(nolan_data_root) / 'teams'
-    config_path = None
-    for path in teams_dir.rglob(f'{team_name}.yaml'):
-        config_path = path
-        break
-
-    if config_path is None:
+    # Team config format: teams/{team_name}/team.yaml
+    config_path = Path(nolan_data_root) / 'teams' / team_name / 'team.yaml'
+    if not config_path.exists():
         raise FileNotFoundError(f"Team config not found: {team_name}")
 
     # DoS protection: Check file size (1MB max)
@@ -516,17 +511,16 @@ def get_agent_model(agent: str) -> str:
 def get_agent_output_file(agent: str, team_name: str = "default") -> str:
     """Get agent's output file from team config."""
     nolan_data_root = os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan'))
-    teams_dir = Path(nolan_data_root) / 'teams'
+    config_path = Path(nolan_data_root) / 'teams' / team_name / 'team.yaml'
 
-    for config_path in teams_dir.rglob(f'{team_name}.yaml'):
-        try:
-            with open(config_path) as f:
-                config = yaml.safe_load(f)
-            for ag in config.get('team', {}).get('agents', []):
-                if ag.get('name') == agent:
-                    return ag.get('output_file', '')
-        except Exception:
-            pass
+    try:
+        with open(config_path) as f:
+            config = yaml.safe_load(f)
+        for ag in config.get('team', {}).get('agents', []):
+            if ag.get('name') == agent:
+                return ag.get('output_file', '')
+    except Exception:
+        pass
     return ''
 
 
@@ -673,17 +667,10 @@ def notify_next_agent(agent: str, project_name: str, handoff_id: str,
 # Legacy alias for backwards compatibility
 def notify_coordinator(agent: str, project_name: str, handoff_id: str, team_name: str = "default"):
     """Legacy wrapper - now uses agent-to-agent notification."""
-    # Try to determine next agent from team config
-    # Use NOLAN_DATA_ROOT for teams (with fallback to ~/.nolan)
     nolan_data_root = os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan'))
+    config_path = Path(nolan_data_root) / 'teams' / team_name / 'team.yaml'
 
-    teams_dir = Path(nolan_data_root) / 'teams'
-    config_path = None
-    for path in teams_dir.rglob(f'{team_name}.yaml'):
-        config_path = path
-        break
-
-    if not config_path:
+    if not config_path.exists():
         return False
 
     try:

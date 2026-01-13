@@ -112,40 +112,6 @@ workflow_statuses:
     label: "Complete"
     color: "bg-teal-500"
 
-pipeline_stages:
-  - value: idea
-    label: "Idea"
-    icon: "Lightbulb"
-  - value: implementer
-    label: "Implementation"
-    icon: "Code"
-  - value: analyzer
-    label: "Analysis"
-    icon: "Search"
-  - value: qa
-    label: "QA"
-    icon: "TestTube"
-  - value: merger
-    label: "Merge"
-    icon: "GitMerge"
-
-pipeline_statuses:
-  - value: pending
-    label: "Pending"
-    color: "text-gray-400"
-  - value: running
-    label: "Running"
-    color: "text-blue-500"
-  - value: success
-    label: "Success"
-    color: "text-green-500"
-  - value: failed
-    label: "Failed"
-    color: "text-red-500"
-  - value: skipped
-    label: "Skipped"
-    color: "text-gray-300"
-
 feature_request_statuses:
   - value: new
     label: "New"

@@ -12,13 +12,6 @@ export interface StatusConfig {
   color: string;
 }
 
-/** Pipeline stage configuration with icon name */
-export interface PipelineStageConfig {
-  value: string;
-  label: string;
-  icon: string;
-}
-
 /** Agent display name entry */
 export interface AgentDisplayName {
   name: string;
@@ -37,12 +30,22 @@ export interface OllamaDefaults {
   model: string;
 }
 
+/** Runtime configuration from environment variables */
+export interface RuntimeConfig {
+  /** API server port (from NOLAN_API_PORT) */
+  api_port: number;
+  /** Nolan root directory (from NOLAN_ROOT) */
+  nolan_root: string;
+  /** Role file name for agents (e.g., "CLAUDE.md") */
+  role_filename: string;
+  /** Team config file name (e.g., "team.yaml") */
+  team_filename: string;
+}
+
 /** Root UI configuration from backend */
 export interface UIConfig {
   project_statuses: StatusConfig[];
   workflow_statuses: StatusConfig[];
-  pipeline_stages: PipelineStageConfig[];
-  pipeline_statuses: StatusConfig[];
   feature_request_statuses: StatusConfig[];
   idea_statuses: StatusConfig[];
   idea_review_statuses: StatusConfig[];
@@ -51,6 +54,8 @@ export interface UIConfig {
   agent_display_names: AgentDisplayName[];
   session_prefixes: SessionPrefixConfig;
   ollama_defaults: OllamaDefaults;
+  /** Runtime configuration from environment variables */
+  runtime: RuntimeConfig;
 }
 
 /** Helper type for creating lookup maps from status arrays */

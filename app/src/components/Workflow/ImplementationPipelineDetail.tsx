@@ -21,9 +21,12 @@ import {
   RotateCcw,
   SkipForward,
   Square,
-  StopCircle
+  StopCircle,
+  AlertCircle,
+  Ban,
+  FileText
 } from 'lucide-react';
-import type { PipelineStage } from '../../types/workflow';
+import type { PipelineStageStatus } from '../../types/generated/cronos/PipelineStageStatus';
 import { cn } from '@/lib/utils';
 
 const stageConfig = {
@@ -37,12 +40,17 @@ export function ImplementationPipelineDetail() {
   const selectedPipelineId = useWorkflowVisualizerStore((state) => state.selectedPipelineId);
   const pipelines = useWorkflowVisualizerStore((state) => state.pipelines);
   const setSelectedPipelineId = useWorkflowVisualizerStore((state) => state.setSelectedPipelineId);
+  const fetchPipelines = useWorkflowVisualizerStore((state) => state.fetchPipelines);
+  const skipStage = useWorkflowVisualizerStore((state) => state.skipStage);
+  const abortPipeline = useWorkflowVisualizerStore((state) => state.abortPipeline);
+  const retryStage = useWorkflowVisualizerStore((state) => state.retryStage);
   const { success: showSuccess, error: showError } = useToastStore();
 
   // Dialog state
   const [skipDialog, setSkipDialog] = useState<{ open: boolean; stageType: string; runId: string } | null>(null);
   const [abortStageDialog, setAbortStageDialog] = useState<{ open: boolean; agentName: string } | null>(null);
   const [abortPipelineDialog, setAbortPipelineDialog] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
 
   const pipeline = pipelines.find((p) => p.id === selectedPipelineId);
 
@@ -58,57 +66,86 @@ export function ImplementationPipelineDetail() {
 
   // Handlers
   const handleTriggerAgent = async (agentName: string) => {
+    setActionLoading(true);
     try {
       await invoke('trigger_cron_agent', { name: agentName });
       showSuccess(`Triggered ${agentName}`);
+      await fetchPipelines();
     } catch (error) {
       showError(`Failed to trigger ${agentName}: ${error}`);
+    } finally {
+      setActionLoading(false);
     }
   };
 
-  const handleRetry = async (agentName: string) => {
+  const handleRetry = async (runId: string) => {
+    setActionLoading(true);
     try {
-      await invoke('trigger_cron_agent', { name: agentName });
-      showSuccess(`Retrying ${agentName}`);
+      await retryStage(runId);
+      showSuccess('Stage retry initiated');
     } catch (error) {
       showError(`Failed to retry: ${error}`);
+    } finally {
+      setActionLoading(false);
     }
   };
 
-  const handleResume = async (runId: string) => {
+  const handleResume = async (runId: string, prompt?: string) => {
+    setActionLoading(true);
     try {
-      await invoke('relaunch_cron_session', { run_id: runId, follow_up_prompt: '' });
+      await invoke('relaunch_cron_session', { run_id: runId, prompt: prompt || '' });
       showSuccess('Resumed session');
+      await fetchPipelines();
     } catch (error) {
       showError(`Failed to resume: ${error}`);
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleSkip = async (runId: string) => {
+    setActionLoading(true);
     try {
-      await invoke('skip_pipeline_stage', { run_id: runId, reason: 'Manually skipped' });
+      await skipStage(runId, 'Manually skipped by user');
       showSuccess('Stage skipped');
+      setSkipDialog(null);
     } catch (error) {
       showError(`Failed to skip: ${error}`);
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleAbortStage = async (agentName: string) => {
+    setActionLoading(true);
     try {
       await invoke('cancel_cron_agent', { name: agentName });
       showSuccess('Stage aborted');
+      setAbortStageDialog(null);
+      await fetchPipelines();
     } catch (error) {
       showError(`Failed to abort: ${error}`);
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleAbortPipeline = async () => {
+    setActionLoading(true);
     try {
-      await invoke('abort_pipeline', { pipeline_id: pipeline.id, reason: 'Manually aborted' });
+      await abortPipeline(pipeline.id, 'Manually aborted by user');
       showSuccess('Pipeline aborted');
+      setAbortPipelineDialog(false);
     } catch (error) {
       showError(`Failed to abort pipeline: ${error}`);
+    } finally {
+      setActionLoading(false);
     }
+  };
+
+  const handleViewLogs = async (runId: string) => {
+    // TODO: Open log viewer modal
+    showSuccess(`Opening logs for run ${runId}`);
   };
 
   return (
@@ -123,29 +160,30 @@ export function ImplementationPipelineDetail() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
           <div className="flex-1">
-            <CardTitle>{pipeline.ideaTitle}</CardTitle>
-            {pipeline.worktreeBranch && (
+            <CardTitle className="text-base">{pipeline.idea_title}</CardTitle>
+            {pipeline.worktree_branch && (
               <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
                 <GitBranch className="h-3 w-3" />
-                <span className="font-mono text-xs">{pipeline.worktreeBranch}</span>
+                <span className="font-mono text-xs">{pipeline.worktree_branch}</span>
               </div>
             )}
           </div>
           <Badge
             variant={
-              pipeline.overallStatus === 'completed' ? 'default' :
-              pipeline.overallStatus === 'failed' ? 'destructive' :
-              pipeline.overallStatus === 'aborted' ? 'destructive' :
+              pipeline.status === 'completed' ? 'default' :
+              pipeline.status === 'failed' || pipeline.status === 'aborted' ? 'destructive' :
+              pipeline.status === 'blocked' ? 'outline' :
               'secondary'
             }
           >
-            {pipeline.overallStatus}
+            {pipeline.status}
           </Badge>
-          {pipeline.overallStatus === 'in_progress' && (
+          {(pipeline.status === 'in_progress' || pipeline.status === 'created') && (
             <Button
               size="sm"
               variant="destructive"
               onClick={() => setAbortPipelineDialog(true)}
+              disabled={actionLoading}
             >
               <StopCircle className="h-3 w-3 mr-1" />
               Abort
@@ -156,7 +194,7 @@ export function ImplementationPipelineDetail() {
 
       <CardContent className="space-y-4">
         {(['implementer', 'analyzer', 'qa', 'merger'] as const).map((stageType) => {
-          const stage = pipeline.stages.find((s) => s.type === stageType);
+          const stage = pipeline.stages.find((s) => s.stage_type === stageType);
           const config = stageConfig[stageType];
           const Icon = config.icon;
 
@@ -166,18 +204,19 @@ export function ImplementationPipelineDetail() {
                 <div className="flex items-center gap-3">
                   <div className={cn(
                     'p-2 rounded-lg',
-                    stage?.status === 'success' ? 'bg-green-100' :
-                    stage?.status === 'failed' ? 'bg-red-100' :
-                    stage?.status === 'running' ? 'bg-blue-100' :
-                    stage?.status === 'skipped' ? 'bg-yellow-100' :
+                    stage?.status === 'success' ? 'bg-green-100 dark:bg-green-900/30' :
+                    stage?.status === 'failed' ? 'bg-red-100 dark:bg-red-900/30' :
+                    stage?.status === 'running' ? 'bg-blue-100 dark:bg-blue-900/30' :
+                    stage?.status === 'skipped' ? 'bg-yellow-100 dark:bg-yellow-900/30' :
+                    stage?.status === 'blocked' ? 'bg-orange-100 dark:bg-orange-900/30' :
                     'bg-muted'
                   )}>
                     <Icon className={cn('h-5 w-5', config.color)} />
                   </div>
                   <div>
                     <p className="font-medium">{config.label}</p>
-                    {stage?.agentName && (
-                      <p className="text-sm text-muted-foreground">{stage.agentName}</p>
+                    {stage?.agent_name && (
+                      <p className="text-sm text-muted-foreground font-mono">{stage.agent_name}</p>
                     )}
                   </div>
                 </div>
@@ -185,12 +224,25 @@ export function ImplementationPipelineDetail() {
                 <div className="flex items-center gap-2">
                   <StageStatusBadge status={stage?.status} />
 
+                  {/* View Logs - show if has run_id */}
+                  {stage?.run_id && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleViewLogs(stage.run_id!)}
+                      disabled={actionLoading}
+                    >
+                      <FileText className="h-3 w-3" />
+                    </Button>
+                  )}
+
                   {/* Trigger - show for pending stages */}
-                  {stage?.agentName && stage?.status !== 'running' && stage?.status !== 'success' && stage?.status !== 'failed' && (
+                  {stage?.agent_name && stage?.status === 'pending' && (
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleTriggerAgent(stage.agentName!)}
+                      onClick={() => handleTriggerAgent(stage.agent_name)}
+                      disabled={actionLoading}
                     >
                       <Play className="h-3 w-3 mr-1" />
                       Trigger
@@ -198,35 +250,38 @@ export function ImplementationPipelineDetail() {
                   )}
 
                   {/* Retry - show for failed stages */}
-                  {stage?.status === 'failed' && stage?.agentName && (
+                  {stage?.status === 'failed' && stage?.run_id && (
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleRetry(stage.agentName!)}
+                      onClick={() => handleRetry(stage.run_id!)}
+                      disabled={actionLoading}
                     >
                       <RotateCcw className="h-3 w-3 mr-1" />
                       Retry
                     </Button>
                   )}
 
-                  {/* Resume - show if has runId and not running */}
-                  {stage?.runId && stage?.status !== 'running' && stage?.status !== 'pending' && (
+                  {/* Resume - show if has run_id and completed (for follow-up) */}
+                  {stage?.run_id && stage?.status === 'success' && stage?.verdict?.verdict === 'FOLLOWUP' && (
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => handleResume(stage.runId!)}
+                      onClick={() => handleResume(stage.run_id!, stage.verdict?.follow_up_prompt || '')}
+                      disabled={actionLoading}
                     >
                       <Play className="h-3 w-3 mr-1" />
-                      Resume
+                      Continue
                     </Button>
                   )}
 
-                  {/* Skip - show for pending/failed stages with runId */}
-                  {stage?.runId && stage?.status !== 'success' && stage?.status !== 'running' && stage?.status !== 'skipped' && (
+                  {/* Skip - show for pending/failed/blocked stages with run_id */}
+                  {stage?.run_id && (stage?.status === 'pending' || stage?.status === 'failed' || stage?.status === 'blocked') && (
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => setSkipDialog({ open: true, stageType: config.label, runId: stage.runId! })}
+                      onClick={() => setSkipDialog({ open: true, stageType: config.label, runId: stage.run_id! })}
+                      disabled={actionLoading}
                     >
                       <SkipForward className="h-3 w-3 mr-1" />
                       Skip
@@ -234,23 +289,64 @@ export function ImplementationPipelineDetail() {
                   )}
 
                   {/* Abort Stage - show for running stages */}
-                  {stage?.status === 'running' && stage?.agentName && (
+                  {stage?.status === 'running' && stage?.agent_name && (
                     <Button
                       size="sm"
                       variant="destructive"
-                      onClick={() => setAbortStageDialog({ open: true, agentName: stage.agentName! })}
+                      onClick={() => setAbortStageDialog({ open: true, agentName: stage.agent_name })}
+                      disabled={actionLoading}
                     >
                       <Square className="h-3 w-3 mr-1" />
-                      Abort
+                      Stop
                     </Button>
                   )}
                 </div>
               </div>
 
+              {/* Verdict display */}
               {stage?.verdict && (
                 <div className="ml-12 mt-2 p-3 bg-muted rounded-lg">
-                  <p className="text-sm font-medium">Verdict: {stage.verdict.outcome}</p>
-                  <p className="text-sm text-muted-foreground mt-1">{stage.verdict.summary}</p>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant={
+                      stage.verdict.verdict === 'COMPLETE' ? 'default' :
+                      stage.verdict.verdict === 'FOLLOWUP' ? 'secondary' :
+                      'destructive'
+                    }>
+                      {stage.verdict.verdict}
+                    </Badge>
+                  </div>
+                  {stage.verdict.reason && (
+                    <p className="text-sm text-muted-foreground">{stage.verdict.reason}</p>
+                  )}
+                  {stage.verdict.follow_up_prompt && (
+                    <p className="text-sm text-muted-foreground mt-1 italic">
+                      Follow-up: {stage.verdict.follow_up_prompt}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Skip reason display */}
+              {stage?.skip_reason && (
+                <div className="ml-12 mt-2 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg">
+                  <p className="text-sm text-muted-foreground">
+                    <span className="font-medium">Skipped:</span> {stage.skip_reason}
+                  </p>
+                </div>
+              )}
+
+              {/* Timing info */}
+              {stage?.started_at && (
+                <div className="ml-12 mt-2 text-xs text-muted-foreground">
+                  Started: {new Date(stage.started_at).toLocaleString()}
+                  {stage.completed_at && (
+                    <span className="ml-2">
+                      | Completed: {new Date(stage.completed_at).toLocaleString()}
+                    </span>
+                  )}
+                  {stage.attempt > 1 && (
+                    <span className="ml-2">| Attempt #{stage.attempt}</span>
+                  )}
                 </div>
               )}
 
@@ -260,6 +356,15 @@ export function ImplementationPipelineDetail() {
             </div>
           );
         })}
+
+        {/* Pipeline cost summary */}
+        {pipeline.total_cost_usd !== null && pipeline.total_cost_usd > 0 && (
+          <div className="pt-4 border-t">
+            <p className="text-sm text-muted-foreground">
+              Total cost: <span className="font-mono">${pipeline.total_cost_usd.toFixed(4)}</span>
+            </p>
+          </div>
+        )}
       </CardContent>
 
       {/* Skip Confirmation Dialog */}
@@ -297,7 +402,7 @@ export function ImplementationPipelineDetail() {
   );
 }
 
-function StageStatusBadge({ status }: { status?: PipelineStage['status'] }) {
+function StageStatusBadge({ status }: { status?: PipelineStageStatus }) {
   switch (status) {
     case 'success':
       return (
@@ -315,16 +420,23 @@ function StageStatusBadge({ status }: { status?: PipelineStage['status'] }) {
       );
     case 'running':
       return (
-        <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+        <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
           <Loader2 className="h-3 w-3 mr-1 animate-spin" />
           Running
         </Badge>
       );
     case 'skipped':
       return (
-        <Badge variant="secondary" className="bg-yellow-100 text-yellow-700">
-          <SkipForward className="h-3 w-3 mr-1" />
+        <Badge variant="secondary" className="bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300">
+          <Ban className="h-3 w-3 mr-1" />
           Skipped
+        </Badge>
+      );
+    case 'blocked':
+      return (
+        <Badge variant="outline" className="border-orange-500 text-orange-600">
+          <AlertCircle className="h-3 w-3 mr-1" />
+          Blocked
         </Badge>
       );
     default:

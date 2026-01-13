@@ -5,6 +5,8 @@
  * called "ralph" but visually displays as a random fun name from a curated list.
  */
 
+import { STORAGE_RALPH_DISPLAY_NAME, RE_TEAM_SPAWNED_SESSION } from './constants';
+
 // =============================================================================
 // Agent Session Patterns
 // =============================================================================
@@ -21,6 +23,9 @@ export const RE_TEAM_SESSION = /^agent-([a-z][a-z0-9_]*)-([a-z][a-z0-9_]*)$/;
 
 /** Matches Ralph sessions: agent-ralph-{name} */
 export const RE_RALPH_SESSION = /^agent-ralph-([a-z0-9]+)$/;
+
+// Re-export spawned session pattern from constants for backward compatibility
+export { RE_TEAM_SPAWNED_SESSION };
 
 /**
  * Parse a Ralph session name
@@ -97,8 +102,6 @@ export const AGENT_DISPLAY_NAMES = [
 
 export type AgentDisplayName = typeof AGENT_DISPLAY_NAMES[number];
 
-const STORAGE_KEY = 'nolan-ralph-display-name';
-
 /**
  * Get a random display name from the list
  */
@@ -114,7 +117,7 @@ function getRandomDisplayName(): AgentDisplayName {
 export function getRalphDisplayName(): AgentDisplayName {
   try {
     // Check localStorage for existing assignment
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(STORAGE_RALPH_DISPLAY_NAME);
     if (stored && AGENT_DISPLAY_NAMES.includes(stored as AgentDisplayName)) {
       return stored as AgentDisplayName;
     }
@@ -122,7 +125,7 @@ export function getRalphDisplayName(): AgentDisplayName {
     // Assign a new random name and persist it
     const newName = getRandomDisplayName();
     try {
-      localStorage.setItem(STORAGE_KEY, newName);
+      localStorage.setItem(STORAGE_RALPH_DISPLAY_NAME, newName);
     } catch (e) {
       // localStorage is disabled in private mode - silently continue with random name
       console.debug('localStorage unavailable, using in-memory storage');
@@ -142,7 +145,7 @@ export function getRalphDisplayName(): AgentDisplayName {
 export function resetRalphDisplayName(): AgentDisplayName {
   const newName = getRandomDisplayName();
   try {
-    localStorage.setItem(STORAGE_KEY, newName);
+    localStorage.setItem(STORAGE_RALPH_DISPLAY_NAME, newName);
   } catch (e) {
     // localStorage is disabled in private mode - silently continue
     console.debug('localStorage unavailable for reset');

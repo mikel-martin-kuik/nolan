@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Server, Globe, Laptop, Check } from 'lucide-react';
 import { isBrowserMode } from '@/lib/api';
+import { STORAGE_SERVER_URL, DEFAULT_NOLAN_URL } from '@/lib/constants';
 
 interface ServerSelectorProps {
   onConnect: (url: string) => void;
@@ -13,7 +14,7 @@ interface ServerSelectorProps {
 
 export function ServerSelector({ onConnect, currentUrl }: ServerSelectorProps) {
   const inBrowser = isBrowserMode();
-  const storedUrl = localStorage.getItem('nolan-server-url');
+  const storedUrl = localStorage.getItem(STORAGE_SERVER_URL);
 
   const [selectedOption, setSelectedOption] = useState(() => {
     if (!inBrowser) {
@@ -22,7 +23,7 @@ export function ServerSelector({ onConnect, currentUrl }: ServerSelectorProps) {
     }
     // In browser mode
     if (!storedUrl || storedUrl === '') return 'sameserver';
-    if (storedUrl === 'http://localhost:3030') return 'localhost';
+    if (storedUrl === DEFAULT_NOLAN_URL) return 'localhost';
     return 'custom';
   });
   const [customUrl, setCustomUrl] = useState(
@@ -34,22 +35,22 @@ export function ServerSelector({ onConnect, currentUrl }: ServerSelectorProps) {
 
     if (value === 'local') {
       // Tauri mode: use embedded backend
-      localStorage.removeItem('nolan-server-url');
+      localStorage.removeItem(STORAGE_SERVER_URL);
       window.location.reload();
     } else if (value === 'sameserver') {
       // Browser mode: use same origin (nginx proxy)
-      localStorage.setItem('nolan-server-url', '');
+      localStorage.setItem(STORAGE_SERVER_URL, '');
       onConnect('');
     } else if (value === 'localhost') {
       // Browser mode: use localhost (for local development)
-      localStorage.setItem('nolan-server-url', 'http://localhost:3030');
-      onConnect('http://localhost:3030');
+      localStorage.setItem(STORAGE_SERVER_URL, DEFAULT_NOLAN_URL);
+      onConnect(DEFAULT_NOLAN_URL);
     }
   };
 
   const handleCustomSubmit = () => {
     if (customUrl) {
-      localStorage.setItem('nolan-server-url', customUrl);
+      localStorage.setItem(STORAGE_SERVER_URL, customUrl);
       onConnect(customUrl);
     }
   };

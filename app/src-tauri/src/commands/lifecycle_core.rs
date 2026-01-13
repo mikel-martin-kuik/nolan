@@ -10,9 +10,11 @@ use crate::tmux::session;
 use crate::constants::RALPH_NAMES;
 
 /// Kill a tmux session and clean up ephemeral directory for Ralph instances
+/// Also cleans up any associated deployment (worktree, branch, .claude traces)
 pub fn kill_session(session_name: &str) -> Result<String, String> {
     use std::fs;
     use crate::constants::parse_ralph_session;
+    use crate::commands::deployment::{find_deployment_by_session, full_deployment_cleanup};
 
     // Track whether session existed for response message
     let session_existed = session::session_exists(session_name)?;
@@ -49,6 +51,14 @@ pub fn kill_session(session_name: &str) -> Result<String, String> {
                     dir_deleted = true;
                 }
             }
+        }
+    }
+
+    // Check if this session has an associated deployment and clean it up
+    if let Ok(Some(deployment)) = find_deployment_by_session(session_name) {
+        if let Err(e) = full_deployment_cleanup(&deployment.id) {
+            eprintln!("Warning: Deployment cleanup failed for {}: {}", deployment.id, e);
+            // Don't fail the kill - session termination is more important
         }
     }
 
@@ -160,13 +170,17 @@ pub async fn start_agent_core(team_name: &str, agent: &str) -> Result<String, St
     let model = crate::commands::lifecycle::get_default_model(agent);
 
     // Build Claude command
+    // AGENT_WORK_ROOT defaults to agent_dir for normal team agents (can be overridden for external repo deployments)
+    // AGENT_DIR always points to the agent's configuration directory
     let cmd = format!(
-        "export AGENT_NAME={} TEAM_NAME={} NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\"; claude --dangerously-skip-permissions --model {}; exec bash",
+        "export AGENT_NAME={} TEAM_NAME={} NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\"; claude --dangerously-skip-permissions --model {}; exec bash",
         agent,
         team_name,
         nolan_root.to_string_lossy(),
         nolan_data_root.to_string_lossy(),
         projects_dir.to_string_lossy(),
+        agent_dir.to_string_lossy(),
+        agent_dir.to_string_lossy(),
         model
     );
 
@@ -335,12 +349,22 @@ pub async fn spawn_ralph_core(model: Option<String>, force: bool, worktree_path:
     };
 
     // Build command
+    // For Ralph: AGENT_WORK_ROOT is set to worktree path if using worktree, otherwise agent_dir
+    // AGENT_DIR always points to the Ralph agent's configuration directory
     let model_str = model.unwrap_or_else(|| crate::commands::lifecycle::get_default_model("ralph"));
+    let agents_dir_for_env = crate::utils::paths::get_agents_dir()?.join("ralph");
+    let agent_work_root = if worktree_path.is_some() {
+        working_dir.to_string_lossy().to_string()
+    } else {
+        agent_dir.to_string_lossy().to_string()
+    };
     let cmd = format!(
-        "export AGENT_NAME=ralph TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\"{worktree_env}; claude --dangerously-skip-permissions --model {}; exec bash",
+        "export AGENT_NAME=ralph TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\"{worktree_env}; claude --dangerously-skip-permissions --model {}; exec bash",
         nolan_root.to_string_lossy(),
         nolan_data_root.to_string_lossy(),
         projects_dir.to_string_lossy(),
+        agent_work_root,
+        agents_dir_for_env.to_string_lossy(),
         model_str
     );
 
@@ -466,11 +490,14 @@ pub async fn recover_ralph_instance(instance: &OrphanedRalphInstance, model: Opt
 
     // Build command with --continue flag to resume the previous Claude session
     let model_str = model.unwrap_or_else(|| crate::commands::lifecycle::get_default_model("ralph"));
+    let agents_dir_for_env = crate::utils::paths::get_agents_dir()?.join("ralph");
     let cmd = format!(
-        "export AGENT_NAME=ralph TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\"; claude --dangerously-skip-permissions --model {} --continue; exec bash",
+        "export AGENT_NAME=ralph TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\"; claude --dangerously-skip-permissions --model {} --continue; exec bash",
         nolan_root.to_string_lossy(),
         nolan_data_root.to_string_lossy(),
         projects_dir.to_string_lossy(),
+        instance.agent_dir.to_string_lossy(),
+        agents_dir_for_env.to_string_lossy(),
         model_str
     );
 
@@ -743,13 +770,15 @@ pub async fn recover_team_session(orphan: &OrphanedTeamSession) -> Result<String
     let model = crate::commands::lifecycle::get_default_model(&orphan.agent);
 
     // Build command with --continue flag to resume the previous Claude session
+    // AGENT_WORK_ROOT defaults to agent_dir for recovery (same as agent_dir for team agents)
     let cmd = format!(
-        "export AGENT_NAME={} TEAM_NAME=\"{}\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\" DOCS_PATH=\"{}\" OUTPUT_FILE=\"{}\"; claude --dangerously-skip-permissions --model {} --continue; exec bash",
+        "export AGENT_NAME={} TEAM_NAME=\"{}\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\" DOCS_PATH=\"{}\" OUTPUT_FILE=\"{}\"; claude --dangerously-skip-permissions --model {} --continue; exec bash",
         orphan.agent,
         orphan.team,
         nolan_root.to_string_lossy(),
         nolan_data_root.to_string_lossy(),
         projects_dir.to_string_lossy(),
+        orphan.agent_dir.to_string_lossy(),
         orphan.agent_dir.to_string_lossy(),
         docs_path,
         output_file,

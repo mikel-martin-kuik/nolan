@@ -57,13 +57,8 @@ from pathlib import Path
 data_root = os.environ["HOOK_DATA_ROOT"]
 team_name = os.environ["HOOK_TEAM_NAME"]
 
-teams_dir = Path(data_root) / "teams"
-config_path = None
-for path in teams_dir.rglob(f"{team_name}.yaml"):
-    config_path = path
-    break
-
-if config_path is None:
+config_path = Path(data_root) / "teams" / team_name / "team.yaml"
+if not config_path.exists():
     print(f"Error: Team config not found for {team_name}", file=__import__("sys").stderr)
     exit(1)
 
@@ -112,13 +107,8 @@ from pathlib import Path
 data_root = os.environ["HOOK_DATA_ROOT"]
 team_name = os.environ["HOOK_TEAM_NAME"]
 
-teams_dir = Path(data_root) / "teams"
-config_path = None
-for path in teams_dir.rglob(f"{team_name}.yaml"):
-    config_path = path
-    break
-
-if config_path is None:
+config_path = Path(data_root) / "teams" / team_name / "team.yaml"
+if not config_path.exists():
     print(f"Error: Team config not found for {team_name}", file=__import__("sys").stderr)
     exit(1)
 
@@ -166,13 +156,8 @@ data_root = os.environ["HOOK_DATA_ROOT"]
 team_name = os.environ["HOOK_TEAM_NAME"]
 current_agent = os.environ["HOOK_CURRENT_AGENT"]
 
-teams_dir = Path(data_root) / "teams"
-config_path = None
-for path in teams_dir.rglob(f"{team_name}.yaml"):
-    config_path = path
-    break
-
-if config_path is None:
+config_path = Path(data_root) / "teams" / team_name / "team.yaml"
+if not config_path.exists():
     exit(0)  # Return empty on error
 
 config = yaml.safe_load(config_path.read_text())
@@ -220,13 +205,8 @@ data_root = os.environ["HOOK_DATA_ROOT"]
 team_name = os.environ["HOOK_TEAM_NAME"]
 agent_name = os.environ["HOOK_AGENT"]
 
-teams_dir = Path(data_root) / "teams"
-config_path = None
-for path in teams_dir.rglob(f"{team_name}.yaml"):
-    config_path = path
-    break
-
-if config_path is None:
+config_path = Path(data_root) / "teams" / team_name / "team.yaml"
+if not config_path.exists():
     exit(1)
 
 config = yaml.safe_load(config_path.read_text())

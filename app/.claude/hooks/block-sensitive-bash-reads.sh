@@ -48,13 +48,8 @@ nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.
 team_name = '$team_name'
 agent_name = '$agent_name'.lower()
 
-# Search for team config in data directory
-config_path = None
-for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
-    config_path = path
-    break
-
-if not config_path:
+config_path = nolan_data_root / 'teams' / team_name / 'team.yaml'
+if not config_path.exists():
     sys.exit(0)
 
 config = yaml.safe_load(config_path.read_text())

@@ -27,6 +27,36 @@ export interface Idea {
   created_by?: string;
 }
 
+// Hotfix types - simple fixes that bypass the full idea pipeline
+export type HotfixStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
+
+export interface Hotfix {
+  id: string;
+  title: string;
+  description: string;
+  status: HotfixStatus;
+  scope: string[];
+  created_at: string;
+  completed_at?: string;
+  created_by?: string;
+  run_id?: string;
+  error?: string;
+}
+
+export const HOTFIX_STATUS_LABELS: Record<HotfixStatus, string> = {
+  pending: 'Pending',
+  in_progress: 'In Progress',
+  completed: 'Completed',
+  failed: 'Failed',
+};
+
+export const HOTFIX_STATUS_COLORS: Record<HotfixStatus, string> = {
+  pending: 'bg-slate-500/10 text-slate-500 border-slate-500/20',
+  in_progress: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
+  completed: 'bg-green-500/10 text-green-500 border-green-500/20',
+  failed: 'bg-red-500/10 text-red-500 border-red-500/20',
+};
+
 export interface FeedbackStats {
   total_requests: number;
   by_status: Record<string, number>;

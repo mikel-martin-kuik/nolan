@@ -56,7 +56,7 @@ export function WorktreeStatusEnhanced({
   };
 
   const findLinkedPipeline = (branch: string) => {
-    return pipelines.find((p) => p.worktreeBranch === branch);
+    return pipelines.find((p) => p.worktree_branch === branch);
   };
 
   const handlePipelineLink = (pipelineId: string) => {
@@ -162,17 +162,17 @@ export function WorktreeStatusEnhanced({
               {linkedPipeline && (
                 <div className="mt-2 flex items-center gap-2">
                   <Badge variant="outline" className="text-xs">
-                    {linkedPipeline.currentStage}
+                    {linkedPipeline.current_stage}
                   </Badge>
                   <Badge
                     variant={
-                      linkedPipeline.overallStatus === 'completed' ? 'default' :
-                      linkedPipeline.overallStatus === 'failed' ? 'destructive' :
+                      linkedPipeline.status === 'completed' ? 'default' :
+                      linkedPipeline.status === 'failed' ? 'destructive' :
                       'secondary'
                     }
                     className="text-xs"
                   >
-                    {linkedPipeline.overallStatus}
+                    {linkedPipeline.status}
                   </Badge>
                 </div>
               )}

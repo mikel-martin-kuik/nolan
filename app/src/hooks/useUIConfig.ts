@@ -105,18 +105,6 @@ export function useIdeaStatusConfig() {
 }
 
 /**
- * Get pipeline configuration (stages and statuses)
- */
-export function usePipelineConfig() {
-  const { config } = useUIConfig();
-  if (!config) return null;
-  return {
-    stages: config.pipeline_stages,
-    statuses: toStatusMap(config.pipeline_statuses),
-  };
-}
-
-/**
  * Get agent display names array
  */
 export function useAgentDisplayNames() {
@@ -141,4 +129,14 @@ export function useOllamaDefaults() {
   const { config } = useUIConfig();
   if (!config) return null;
   return config.ollama_defaults;
+}
+
+/**
+ * Get runtime configuration from environment variables
+ * Includes: api_port, nolan_root, role_filename, team_filename
+ */
+export function useRuntimeConfig() {
+  const { config } = useUIConfig();
+  if (!config) return null;
+  return config.runtime;
 }

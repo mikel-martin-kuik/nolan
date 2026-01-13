@@ -107,12 +107,8 @@ try:
 
     nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 
-    # Search for team config in teams directory (supports subdirectories)
-    config_path = None
-    for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
-        config_path = path
-        break
-    if config_path is None:
+    config_path = nolan_data_root / 'teams' / team_name / 'team.yaml'
+    if not config_path.exists():
         sys.exit(0)  # Team config not found
 
     config = yaml.safe_load(config_path.read_text())

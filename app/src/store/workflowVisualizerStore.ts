@@ -1,13 +1,14 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { invoke } from '@/lib/api';
 import type {
   WorkflowViewMode,
   WorkflowNode,
   WorkflowEdge,
-  ImplementationPipeline,
   PhaseNodeData,
   PhaseNodeStatus
 } from '../types/workflow';
+import type { Pipeline } from '../types/generated/cronos/Pipeline';
 
 interface NodePosition {
   x: number;
@@ -41,9 +42,15 @@ interface WorkflowVisualizerStore {
   setNodePosition: (nodeId: string, position: NodePosition) => void;
   resetNodePositions: () => void;
 
-  // Pipeline data
-  pipelines: ImplementationPipeline[];
-  setPipelines: (pipelines: ImplementationPipeline[]) => void;
+  // Pipeline data - using generated type
+  pipelines: Pipeline[];
+  setPipelines: (pipelines: Pipeline[]) => void;
+  fetchPipelines: () => Promise<void>;
+
+  // Pipeline actions
+  skipStage: (runId: string, reason?: string) => Promise<void>;
+  abortPipeline: (pipelineId: string, reason?: string) => Promise<void>;
+  retryStage: (runId: string, prompt?: string) => Promise<void>;
 
   // Loading state
   isLoading: boolean;
@@ -54,7 +61,7 @@ interface WorkflowVisualizerStore {
 
 export const useWorkflowVisualizerStore = create<WorkflowVisualizerStore>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       viewMode: 'dag',
       setViewMode: (mode) => set({ viewMode: mode }),
 
@@ -103,6 +110,58 @@ export const useWorkflowVisualizerStore = create<WorkflowVisualizerStore>()(
 
       pipelines: [],
       setPipelines: (pipelines) => set({ pipelines }),
+
+      fetchPipelines: async () => {
+        set({ isLoading: true, error: null });
+        try {
+          const pipelines = await invoke<Pipeline[]>('list_pipelines');
+          set({ pipelines, isLoading: false });
+
+          // Auto-select if only one pipeline and none selected
+          const state = get();
+          if (pipelines.length === 1 && !state.selectedPipelineId) {
+            set({ selectedPipelineId: pipelines[0].id });
+          }
+        } catch (err) {
+          set({
+            error: err instanceof Error ? err.message : 'Failed to fetch pipelines',
+            isLoading: false
+          });
+        }
+      },
+
+      skipStage: async (runId: string, reason?: string) => {
+        try {
+          await invoke('skip_pipeline_stage', { run_id: runId, reason: reason || 'Skipped by user' });
+          // Refresh pipelines after action
+          await get().fetchPipelines();
+        } catch (err) {
+          set({ error: err instanceof Error ? err.message : 'Failed to skip stage' });
+          throw err;
+        }
+      },
+
+      abortPipeline: async (pipelineId: string, reason?: string) => {
+        try {
+          await invoke('abort_pipeline', { pipeline_id: pipelineId, reason: reason || 'Aborted by user' });
+          // Refresh pipelines after action
+          await get().fetchPipelines();
+        } catch (err) {
+          set({ error: err instanceof Error ? err.message : 'Failed to abort pipeline' });
+          throw err;
+        }
+      },
+
+      retryStage: async (runId: string, prompt?: string) => {
+        try {
+          await invoke('relaunch_cron_session', { run_id: runId, prompt });
+          // Refresh pipelines after action
+          await get().fetchPipelines();
+        } catch (err) {
+          set({ error: err instanceof Error ? err.message : 'Failed to retry stage' });
+          throw err;
+        }
+      },
 
       isLoading: false,
       setIsLoading: (loading) => set({ isLoading: loading }),

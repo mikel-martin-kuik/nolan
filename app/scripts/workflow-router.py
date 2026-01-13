@@ -95,14 +95,9 @@ def load_team_config(project_path: Path) -> dict:
     # Use NOLAN_DATA_ROOT for data directories (with fallback to ~/.nolan)
     nolan_data_root = os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan'))
 
-    # Search for team config in teams directory (supports subdirectories)
-    teams_dir = Path(nolan_data_root) / 'teams'
-    config_path = None
-    for path in teams_dir.rglob(f'{team_name}.yaml'):
-        config_path = path
-        break
-
-    if config_path is None:
+    # Team config format: teams/{team_name}/team.yaml
+    config_path = Path(nolan_data_root) / 'teams' / team_name / 'team.yaml'
+    if not config_path.exists():
         raise FileNotFoundError(f"Team config not found: {team_name}")
 
     with open(config_path) as f:

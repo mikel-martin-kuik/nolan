@@ -13,8 +13,6 @@ import type {
   PhaseConfig
 } from '../types';
 import type {
-  ImplementationPipeline,
-  PipelineStage,
   WorkflowNode,
   WorkflowEdge,
   PhaseNodeData,
@@ -26,7 +24,7 @@ import dagre from 'dagre';
 const POLLING_INTERVAL = 10000; // 10 seconds
 
 export interface UseWorkflowDataResult {
-  pipelines: ImplementationPipeline[];
+  pipelines: Pipeline[];
   worktrees: WorktreeListEntry[];
   teamConfig: TeamConfig | null;
   nodes: WorkflowNode[];
@@ -44,11 +42,10 @@ export function useWorkflowData(): UseWorkflowDataResult {
   const viewMode = useWorkflowVisualizerStore((state) => state.viewMode);
 
   // Fetch pipelines from the new pipeline API
-  const fetchPipelines = useCallback(async () => {
+  const fetchPipelines = useCallback(async (): Promise<Pipeline[]> => {
     try {
       const pipelines = await invoke<Pipeline[]>('list_pipelines', { status: null });
-      // Convert backend Pipeline to frontend ImplementationPipeline
-      return pipelines.map(convertPipelineToImplementationPipeline);
+      return pipelines;
     } catch {
       // Fallback to empty array if pipeline API not available
       return [];
@@ -113,15 +110,8 @@ export function useWorkflowData(): UseWorkflowDataResult {
     errorMessage: 'Failed to load team config',
   });
 
-  // Use pipelines from API if available, otherwise fall back to correlation
-  const pipelines = useMemo(() => {
-    if (pipelinesFromApi.length > 0) {
-      return pipelinesFromApi;
-    }
-    // Fallback: correlate from run history
-    if (!runHistory.length) return [];
-    return correlatePipelines(runHistory);
-  }, [pipelinesFromApi, runHistory]);
+  // Use pipelines from API directly
+  const pipelines = pipelinesFromApi;
 
   // DAG construction from team phases
   const { nodes, edges } = useMemo(() => {
@@ -217,133 +207,6 @@ export function useWorkflowData(): UseWorkflowDataResult {
     error: runsError,
     refetch,
   };
-}
-
-// Helper: Correlate runs into pipelines
-// Uses both worktree branch pattern and analyzer_run_id for correlation
-function correlatePipelines(runs: CronRunLog[]): ImplementationPipeline[] {
-  const pipelineMap = new Map<string, ImplementationPipeline>();
-
-  // First pass: create pipelines from worktree branch patterns
-  for (const run of runs) {
-    // Extract correlation info from worktree branch pattern: worktree/{agent}/{run_id}
-    const branchMatch = run.worktree_branch?.match(/worktree\/(\w+)\/(.+)/);
-    if (!branchMatch) continue;
-
-    const [, agentType, runId] = branchMatch;
-    const pipelineId = run.session_name || runId;
-
-    if (!pipelineMap.has(pipelineId)) {
-      pipelineMap.set(pipelineId, {
-        id: pipelineId,
-        ideaId: pipelineId,
-        ideaTitle: run.session_name || `Pipeline ${pipelineId.slice(0, 8)}`,
-        worktreeBranch: run.worktree_branch,
-        stages: [],
-        createdAt: run.started_at,
-        currentStage: 'implementer',
-        overallStatus: 'in_progress',
-      });
-    }
-
-    const pipeline = pipelineMap.get(pipelineId)!;
-    addStageToPipeline(pipeline, run, agentType);
-  }
-
-  // Second pass: link analyzer runs using analyzer_verdict.analyzer_run_id
-  for (const run of runs) {
-    if (run.analyzer_verdict?.analyzer_run_id) {
-      const analyzerRunId = run.analyzer_verdict.analyzer_run_id;
-
-      // Find the pipeline that has this analyzer run
-      for (const pipeline of pipelineMap.values()) {
-        const analyzerStage = pipeline.stages.find(
-          (s) => s.type === 'analyzer' && s.runId === analyzerRunId
-        );
-
-        if (analyzerStage) {
-          // Link this run's pipeline to the analyzer's pipeline if different
-          const currentPipelineId = run.session_name || run.run_id;
-          if (currentPipelineId !== pipeline.id) {
-            // Merge stages from the current run into the analyzer's pipeline
-            const branchMatch = run.worktree_branch?.match(/worktree\/(\w+)\/.+/);
-            if (branchMatch) {
-              addStageToPipeline(pipeline, run, branchMatch[1]);
-            }
-          }
-          break;
-        }
-      }
-    }
-  }
-
-  // Finalize pipelines: sort stages and compute overall status
-  for (const pipeline of pipelineMap.values()) {
-    pipeline.stages.sort((a, b) =>
-      new Date(a.startedAt || 0).getTime() - new Date(b.startedAt || 0).getTime()
-    );
-
-    const lastStage = pipeline.stages[pipeline.stages.length - 1];
-    pipeline.currentStage = lastStage?.type || 'implementer';
-
-    if (lastStage?.status === 'failed') {
-      pipeline.overallStatus = 'failed';
-    } else if (lastStage?.type === 'merger' && lastStage?.status === 'success') {
-      pipeline.overallStatus = 'completed';
-    }
-  }
-
-  return Array.from(pipelineMap.values());
-}
-
-function addStageToPipeline(
-  pipeline: ImplementationPipeline,
-  run: CronRunLog,
-  agentType: string
-): void {
-  // Check if stage already exists
-  const existingStage = pipeline.stages.find(
-    (s) => s.runId === run.run_id
-  );
-  if (existingStage) return;
-
-  const stage: PipelineStage = {
-    type: mapAgentToStageType(agentType),
-    runId: run.run_id,
-    agentName: run.agent_name,
-    status: mapRunStatus(run.exit_code, run.completed_at),
-    startedAt: run.started_at,
-    completedAt: run.completed_at,
-  };
-
-  // Add verdict if analyzer
-  if (run.analyzer_verdict) {
-    stage.verdict = {
-      outcome: run.analyzer_verdict.verdict || 'unknown',
-      summary: run.analyzer_verdict.reason || '',
-    };
-  }
-
-  pipeline.stages.push(stage);
-}
-
-function mapAgentToStageType(agent: string): PipelineStage['type'] {
-  const lowerAgent = agent.toLowerCase();
-  if (lowerAgent.includes('implement')) return 'implementer';
-  if (lowerAgent.includes('analy')) return 'analyzer';
-  if (lowerAgent.includes('qa')) return 'qa';
-  if (lowerAgent.includes('merge')) return 'merger';
-  return 'implementer';
-}
-
-function mapRunStatus(
-  exitCode: number | null | undefined,
-  completedAt: string | null | undefined
-): PipelineStage['status'] {
-  if (!completedAt) return 'running';
-  if (exitCode === 0) return 'success';
-  if (exitCode !== null && exitCode !== undefined) return 'failed';
-  return 'pending';
 }
 
 // Helper: Build DAG from team workflow config
@@ -455,65 +318,4 @@ function buildDagFromPhases(
   }
 
   return { nodes, edges };
-}
-
-// Helper: Convert backend Pipeline to frontend ImplementationPipeline
-function convertPipelineToImplementationPipeline(pipeline: Pipeline): ImplementationPipeline {
-  return {
-    id: pipeline.id,
-    ideaId: pipeline.idea_id,
-    ideaTitle: pipeline.idea_title,
-    worktreeBranch: pipeline.worktree_branch || undefined,
-    createdAt: pipeline.created_at,
-    currentStage: mapBackendStageType(pipeline.current_stage),
-    overallStatus: mapBackendPipelineStatus(pipeline.status),
-    stages: pipeline.stages.map((stage) => ({
-      type: mapBackendStageType(stage.stage_type),
-      runId: stage.run_id || undefined,
-      agentName: stage.agent_name || undefined,
-      status: mapBackendStageStatus(stage.status),
-      startedAt: stage.started_at || undefined,
-      completedAt: stage.completed_at || undefined,
-      verdict: stage.verdict
-        ? {
-            outcome: stage.verdict.verdict || 'unknown',
-            summary: stage.verdict.reason || '',
-          }
-        : undefined,
-    })),
-  };
-}
-
-function mapBackendStageType(stageType: string): PipelineStage['type'] {
-  const mapping: Record<string, PipelineStage['type']> = {
-    implementer: 'implementer',
-    analyzer: 'analyzer',
-    qa: 'qa',
-    merger: 'merger',
-  };
-  return mapping[stageType] || 'implementer';
-}
-
-function mapBackendStageStatus(status: string): PipelineStage['status'] {
-  const mapping: Record<string, PipelineStage['status']> = {
-    pending: 'pending',
-    running: 'running',
-    success: 'success',
-    failed: 'failed',
-    skipped: 'skipped',
-    blocked: 'failed', // Map blocked to failed for UI purposes
-  };
-  return mapping[status] || 'pending';
-}
-
-function mapBackendPipelineStatus(status: string): ImplementationPipeline['overallStatus'] {
-  const mapping: Record<string, ImplementationPipeline['overallStatus']> = {
-    created: 'in_progress',
-    in_progress: 'in_progress',
-    completed: 'completed',
-    failed: 'failed',
-    blocked: 'blocked',
-    aborted: 'aborted',
-  };
-  return mapping[status] || 'in_progress';
 }

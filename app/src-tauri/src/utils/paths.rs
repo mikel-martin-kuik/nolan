@@ -195,6 +195,28 @@ pub fn get_cronos_runs_dir() -> Result<PathBuf, String> {
     Ok(get_nolan_data_root()?.join("cronos").join("runs"))
 }
 
+/// Get the agent's working directory (target repository)
+/// Priority:
+/// 1. AGENT_WORK_ROOT environment variable
+/// 2. Falls back to current working directory
+/// Returns: directory where the agent should operate on files
+pub fn get_agent_work_root() -> Result<PathBuf, String> {
+    if let Ok(root) = env::var("AGENT_WORK_ROOT") {
+        let path = PathBuf::from(root);
+        if path.exists() {
+            return Ok(path);
+        }
+    }
+    // Fallback to current working directory
+    env::current_dir().map_err(|e| format!("Failed to get current directory: {}", e))
+}
+
+/// Get path to deployment manifest file
+/// Returns: <nolan_data_root>/.state/deployments.jsonl
+pub fn get_deployments_path() -> Result<PathBuf, String> {
+    Ok(get_state_dir()?.join("deployments.jsonl"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

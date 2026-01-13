@@ -160,6 +160,10 @@ export interface CronRunLog {
   base_commit?: string;
   // Analyzer verdict (populated after analyzer agent runs)
   analyzer_verdict?: AnalyzerVerdict;
+  // Pipeline ID this run belongs to (if part of a pipeline)
+  pipeline_id?: string;
+  // Parent run ID (for analyzer runs, this points to the implementer run being analyzed)
+  parent_run_id?: string;
 }
 
 export type CronRunStatus = 'running' | 'success' | 'failed' | 'timeout' | 'cancelled' | 'skipped' | 'retrying' | 'interrupted';

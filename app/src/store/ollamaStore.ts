@@ -1,17 +1,16 @@
 import { create } from 'zustand';
 import { invoke } from '@/lib/api';
 import type { OllamaStatus, OllamaChatMessage } from '@/types/ollama';
+import type { OllamaDefaults } from '@/types/config';
+import {
+  STORAGE_OLLAMA_URL,
+  STORAGE_OLLAMA_MODEL,
+  DEFAULT_OLLAMA_URL,
+  DEFAULT_OLLAMA_MODEL,
+} from '@/lib/constants';
 
 /** Connection status type */
 type ConnectionStatus = 'checking' | 'connected' | 'disconnected';
-
-/** LocalStorage keys */
-const STORAGE_URL_KEY = 'nolan-ollama-url';
-const STORAGE_MODEL_KEY = 'nolan-ollama-model';
-
-/** Default values */
-const DEFAULT_URL = 'http://localhost:11434';
-const DEFAULT_MODEL = 'qwen2.5:1.5b';
 
 interface OllamaStore {
   // State
@@ -31,16 +30,18 @@ interface OllamaStore {
   setModel: (model: string) => void;
   setUrl: (url: string) => void;
   clearError: () => void;
+  /** Sync with backend config (call after UIConfig is loaded) */
+  syncWithBackendConfig: (config: OllamaDefaults) => void;
 }
 
 /** Load config from localStorage with fallbacks */
 function loadConfig(): { url: string; model: string } {
   const url = typeof window !== 'undefined'
-    ? localStorage.getItem(STORAGE_URL_KEY) || DEFAULT_URL
-    : DEFAULT_URL;
+    ? localStorage.getItem(STORAGE_OLLAMA_URL) || DEFAULT_OLLAMA_URL
+    : DEFAULT_OLLAMA_URL;
   const model = typeof window !== 'undefined'
-    ? localStorage.getItem(STORAGE_MODEL_KEY) || DEFAULT_MODEL
-    : DEFAULT_MODEL;
+    ? localStorage.getItem(STORAGE_OLLAMA_MODEL) || DEFAULT_OLLAMA_MODEL
+    : DEFAULT_OLLAMA_MODEL;
   return { url, model };
 }
 
@@ -89,7 +90,7 @@ export const useOllamaStore = create<OllamaStore>((set, get) => {
         if (models.length > 0 && !models.includes(selectedModel)) {
           const newModel = models[0];
           set({ selectedModel: newModel });
-          localStorage.setItem(STORAGE_MODEL_KEY, newModel);
+          localStorage.setItem(STORAGE_OLLAMA_MODEL, newModel);
         }
       } catch (error) {
         // Silent failure - models list stays empty
@@ -151,7 +152,7 @@ export const useOllamaStore = create<OllamaStore>((set, get) => {
     // Set selected model
     setModel: (model: string) => {
       set({ selectedModel: model });
-      localStorage.setItem(STORAGE_MODEL_KEY, model);
+      localStorage.setItem(STORAGE_OLLAMA_MODEL, model);
 
       // Also update backend config
       invoke('ollama_set_config', { model }).catch((err) => {
@@ -164,7 +165,7 @@ export const useOllamaStore = create<OllamaStore>((set, get) => {
     // Set Ollama URL
     setUrl: (url: string) => {
       set({ ollamaUrl: url });
-      localStorage.setItem(STORAGE_URL_KEY, url);
+      localStorage.setItem(STORAGE_OLLAMA_URL, url);
 
       // Update backend config and recheck connection
       invoke('ollama_set_config', { url })
@@ -178,5 +179,34 @@ export const useOllamaStore = create<OllamaStore>((set, get) => {
 
     // Clear error
     clearError: () => set({ error: null }),
+
+    // Sync with backend config (for Docker env var support)
+    // Call this after UIConfig is loaded to pick up OLLAMA_URL and OLLAMA_MODEL env vars
+    syncWithBackendConfig: (config: OllamaDefaults) => {
+      const { ollamaUrl, selectedModel } = get();
+
+      // Only update if localStorage doesn't have values (user hasn't customized)
+      const storedUrl = localStorage.getItem(STORAGE_OLLAMA_URL);
+      const storedModel = localStorage.getItem(STORAGE_OLLAMA_MODEL);
+
+      let updated = false;
+
+      // Update URL if not customized and backend has different value
+      if (!storedUrl && config.url !== ollamaUrl) {
+        set({ ollamaUrl: config.url });
+        updated = true;
+      }
+
+      // Update model if not customized and backend has different value
+      if (!storedModel && config.model !== selectedModel) {
+        set({ selectedModel: config.model });
+        updated = true;
+      }
+
+      // Recheck connection if config changed
+      if (updated) {
+        get().checkConnection();
+      }
+    },
   };
 });

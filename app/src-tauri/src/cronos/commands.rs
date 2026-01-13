@@ -1176,6 +1176,7 @@ async fn relaunch_cron_session_impl(
         analyzer_verdict: None,  // Relaunched runs start fresh without verdict
         pipeline_id: original.pipeline_id.clone(),  // Inherit pipeline ID if any
         label: original.label.clone(),  // Inherit label from original run
+        parent_run_id: None,
     };
 
     let json = serde_json::to_string_pretty(&initial_log)
@@ -1317,6 +1318,7 @@ async fn relaunch_cron_session_impl(
             analyzer_verdict: None,
             pipeline_id: None,
             label: original_label,
+            parent_run_id: None,
         };
 
         if let Ok(json) = serde_json::to_string_pretty(&final_log) {
@@ -1396,6 +1398,16 @@ pub async fn trigger_analyzer_for_run(
     env_vars.insert("ANALYZED_STATUS".to_string(), format!("{:?}", run_log.status).to_lowercase());
     if let Some(ref session_id) = run_log.claude_session_id {
         env_vars.insert("ANALYZED_SESSION_ID".to_string(), session_id.clone());
+    }
+    // Pass worktree info from parent run so analyzer run can trigger QA
+    if let Some(ref wt_path) = run_log.worktree_path {
+        env_vars.insert("ANALYZED_WORKTREE_PATH".to_string(), wt_path.clone());
+    }
+    if let Some(ref wt_branch) = run_log.worktree_branch {
+        env_vars.insert("ANALYZED_WORKTREE_BRANCH".to_string(), wt_branch.clone());
+    }
+    if let Some(ref base_commit) = run_log.base_commit {
+        env_vars.insert("ANALYZED_BASE_COMMIT".to_string(), base_commit.clone());
     }
 
     let trigger_info = executor::AnalyzerTriggerInfo {

@@ -123,6 +123,60 @@ pub struct Idea {
     pub created_by: Option<String>,
 }
 
+// ============================================================================
+// Hotfixes - Simple fixes that bypass the full idea pipeline
+// ============================================================================
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "../../src/types/generated/feedback/")]
+#[serde(rename_all = "lowercase")]
+pub enum HotfixStatus {
+    Pending,
+    InProgress,
+    Completed,
+    Failed,
+}
+
+impl Default for HotfixStatus {
+    fn default() -> Self {
+        HotfixStatus::Pending
+    }
+}
+
+impl std::str::FromStr for HotfixStatus {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "pending" => Ok(HotfixStatus::Pending),
+            "in_progress" => Ok(HotfixStatus::InProgress),
+            "completed" => Ok(HotfixStatus::Completed),
+            "failed" => Ok(HotfixStatus::Failed),
+            _ => Err(format!("Invalid hotfix status: {}", s)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/feedback/")]
+pub struct Hotfix {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub status: HotfixStatus,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scope: Vec<String>,
+    pub created_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/types/generated/feedback/")]
 pub struct FeedbackStats {
@@ -155,6 +209,10 @@ fn get_votes_file() -> Result<PathBuf, String> {
 
 fn get_ideas_file() -> Result<PathBuf, String> {
     Ok(ensure_feedback_dir()?.join("ideas.jsonl"))
+}
+
+fn get_hotfixes_file() -> Result<PathBuf, String> {
+    Ok(ensure_feedback_dir()?.join("hotfixes.jsonl"))
 }
 
 /// Read all lines from a JSONL file and deserialize them
@@ -482,6 +540,107 @@ pub fn delete_idea(id: String) -> Result<(), String> {
     let path = get_ideas_file()?;
     let ideas: Vec<Idea> = read_jsonl(&path)?;
     let filtered: Vec<_> = ideas.into_iter().filter(|i| i.id != id).collect();
+    write_jsonl(&path, &filtered)?;
+
+    Ok(())
+}
+
+// ============================================================================
+// Hotfix Commands - Simple fixes that bypass the full idea pipeline
+// ============================================================================
+
+#[command]
+pub fn list_hotfixes() -> Result<Vec<Hotfix>, String> {
+    let path = get_hotfixes_file()?;
+    read_jsonl(&path)
+}
+
+#[command]
+pub fn create_hotfix(
+    title: String,
+    description: String,
+    scope: Option<Vec<String>>,
+    created_by: Option<String>,
+) -> Result<Hotfix, String> {
+    let hotfix = Hotfix {
+        id: Uuid::new_v4().to_string(),
+        title,
+        description,
+        status: HotfixStatus::Pending,
+        scope: scope.unwrap_or_default(),
+        created_at: Utc::now().to_rfc3339(),
+        completed_at: None,
+        created_by,
+        run_id: None,
+        error: None,
+    };
+
+    let path = get_hotfixes_file()?;
+    append_jsonl(&path, &hotfix)?;
+
+    Ok(hotfix)
+}
+
+#[command]
+pub fn update_hotfix(
+    id: String,
+    title: Option<String>,
+    description: Option<String>,
+    scope: Option<Vec<String>>,
+) -> Result<Hotfix, String> {
+    let path = get_hotfixes_file()?;
+    let mut hotfixes: Vec<Hotfix> = read_jsonl(&path)?;
+
+    let hotfix = hotfixes
+        .iter_mut()
+        .find(|h| h.id == id)
+        .ok_or_else(|| format!("Hotfix not found: {}", id))?;
+
+    if let Some(t) = title {
+        hotfix.title = t;
+    }
+    if let Some(d) = description {
+        hotfix.description = d;
+    }
+    if let Some(s) = scope {
+        hotfix.scope = s;
+    }
+
+    let updated = hotfix.clone();
+    write_jsonl(&path, &hotfixes)?;
+
+    Ok(updated)
+}
+
+#[command]
+pub fn update_hotfix_status(id: String, status: String) -> Result<Hotfix, String> {
+    let new_status: HotfixStatus = status.parse()?;
+    let path = get_hotfixes_file()?;
+    let mut hotfixes: Vec<Hotfix> = read_jsonl(&path)?;
+
+    let hotfix = hotfixes
+        .iter_mut()
+        .find(|h| h.id == id)
+        .ok_or_else(|| format!("Hotfix not found: {}", id))?;
+
+    hotfix.status = new_status.clone();
+
+    // Set completed_at when status changes to completed or failed
+    if new_status == HotfixStatus::Completed || new_status == HotfixStatus::Failed {
+        hotfix.completed_at = Some(Utc::now().to_rfc3339());
+    }
+
+    let updated = hotfix.clone();
+    write_jsonl(&path, &hotfixes)?;
+
+    Ok(updated)
+}
+
+#[command]
+pub fn delete_hotfix(id: String) -> Result<(), String> {
+    let path = get_hotfixes_file()?;
+    let hotfixes: Vec<Hotfix> = read_jsonl(&path)?;
+    let filtered: Vec<_> = hotfixes.into_iter().filter(|h| h.id != id).collect();
     write_jsonl(&path, &filtered)?;
 
     Ok(())

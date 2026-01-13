@@ -447,3 +447,51 @@ pub async fn abort_pipeline(
         Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
     }
 }
+
+// ========================
+// Pipeline Definition & Listing
+// ========================
+
+/// List all pipelines
+pub async fn list_pipelines() -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::list_pipelines(None).await {
+        Ok(pipelines) => Ok(Json(serde_json::to_value(pipelines).unwrap_or_default())),
+        Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+/// Get pipeline by ID
+pub async fn get_pipeline(
+    Path(pipeline_id): Path<String>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::get_pipeline(pipeline_id).await {
+        Ok(pipeline) => Ok(Json(serde_json::to_value(pipeline).unwrap_or_default())),
+        Err(e) => Err(error_response(StatusCode::NOT_FOUND, e)),
+    }
+}
+
+/// List all pipeline definitions
+pub async fn list_pipeline_definitions() -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::list_pipeline_definitions().await {
+        Ok(definitions) => Ok(Json(serde_json::to_value(definitions).unwrap_or_default())),
+        Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}
+
+/// Get pipeline definition by name
+pub async fn get_pipeline_definition(
+    Path(name): Path<String>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::get_pipeline_definition(name).await {
+        Ok(definition) => Ok(Json(serde_json::to_value(definition).unwrap_or_default())),
+        Err(e) => Err(error_response(StatusCode::NOT_FOUND, e)),
+    }
+}
+
+/// Get the default pipeline definition
+pub async fn get_default_pipeline_definition() -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::get_default_pipeline_definition().await {
+        Ok(definition) => Ok(Json(serde_json::to_value(definition).unwrap_or_default())),
+        Err(e) => Err(error_response(StatusCode::NOT_FOUND, e)),
+    }
+}

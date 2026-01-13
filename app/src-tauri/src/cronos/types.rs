@@ -257,6 +257,9 @@ pub struct CronRunLog {
     // Pipeline ID this run belongs to (if part of a pipeline)
     #[serde(default)]
     pub pipeline_id: Option<String>,
+    // Parent run ID (for analyzer runs, this points to the implementer run being analyzed)
+    #[serde(default)]
+    pub parent_run_id: Option<String>,
 }
 
 /// Verdict from a post-run analyzer agent

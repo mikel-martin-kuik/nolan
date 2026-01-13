@@ -7,13 +7,20 @@
  *
  * Usage:
  *   import { listen } from '@/lib/events';
- *   const unlisten = await listen('terminal-output', (event) => {
+ *   const unlisten = await listen(EVENT_TERMINAL_OUTPUT, (event) => {
  *     console.log(event.payload);
  *   });
  *   // Later: unlisten();
  */
 
 import { getWebSocketUrl, isBrowserMode } from './api';
+import {
+  EVENT_TERMINAL_OUTPUT,
+  EVENT_AGENT_STATUS_CHANGED,
+  EVENT_HISTORY_ENTRY,
+  EVENT_TERMINAL_DISCONNECTED,
+  WS_ENDPOINTS,
+} from './constants';
 
 // Type for event payload
 export interface EventPayload<T = unknown> {
@@ -57,23 +64,23 @@ export async function listen<T>(
   // Browser mode - use WebSocket
 
   // Special handling for terminal-output - needs session parameter
-  if (event === 'terminal-output' && options?.session) {
+  if (event === EVENT_TERMINAL_OUTPUT && options?.session) {
     return listenTerminalOutput(options.session, callback as (event: EventPayload<unknown>) => void);
   }
 
   // Special handling for agent-status-changed - use dedicated WebSocket
-  if (event === 'agent-status-changed') {
+  if (event === EVENT_AGENT_STATUS_CHANGED) {
     return listenAgentStatus(callback as (event: EventPayload<unknown>) => void);
   }
 
   // Special handling for history-entry - use dedicated WebSocket
-  if (event === 'history-entry') {
+  if (event === EVENT_HISTORY_ENTRY) {
     return listenHistoryEntry(callback as (event: EventPayload<unknown>) => void);
   }
 
   // Events that don't have WebSocket endpoints in browser mode
   const unsupportedEvents = [
-    'terminal-disconnected',
+    EVENT_TERMINAL_DISCONNECTED,
   ];
 
   if (unsupportedEvents.includes(event)) {
@@ -82,7 +89,7 @@ export async function listen<T>(
   }
 
   // Generic WebSocket connection for other events
-  const wsUrl = getWebSocketUrl(`/api/ws/${event}`);
+  const wsUrl = getWebSocketUrl(WS_ENDPOINTS.event(event));
 
   // Close existing connection if any
   const existing = activeConnections.get(event);
@@ -139,7 +146,7 @@ function listenTerminalOutput(
 
   // Create WebSocket if not exists
   if (!activeConnections.has(wsKey)) {
-    const wsUrl = getWebSocketUrl(`/api/ws/terminal/${session}`);
+    const wsUrl = getWebSocketUrl(WS_ENDPOINTS.terminal(session));
     const ws = new WebSocket(wsUrl);
 
     ws.onmessage = (e) => {
@@ -231,7 +238,7 @@ function listenAgentStatus(
  * Create WebSocket for status updates (internal helper)
  */
 function createStatusWebSocket(wsKey: string): void {
-  const wsUrl = getWebSocketUrl('/api/ws/status');
+  const wsUrl = getWebSocketUrl(WS_ENDPOINTS.status);
   const ws = new WebSocket(wsUrl);
 
   ws.onmessage = (e) => {
@@ -282,7 +289,7 @@ const historyListeners = new Set<(event: EventPayload<unknown>) => void>();
  * Create WebSocket for history updates (internal helper)
  */
 function createHistoryWebSocket(wsKey: string): void {
-  const wsUrl = getWebSocketUrl('/api/ws/history');
+  const wsUrl = getWebSocketUrl(WS_ENDPOINTS.history);
   const ws = new WebSocket(wsUrl);
 
   ws.onmessage = (e) => {

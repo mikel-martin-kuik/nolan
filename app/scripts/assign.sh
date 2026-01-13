@@ -127,13 +127,8 @@ except:
 
 nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 
-# Search for team config
-config_path = None
-for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
-    config_path = path
-    break
-
-if config_path is None:
+config_path = nolan_data_root / 'teams' / team_name / 'team.yaml'
+if not config_path.exists():
     print(f'ERROR: Team config not found: {team_name}', file=sys.stderr)
     sys.exit(1)
 
@@ -172,13 +167,8 @@ team_name = '$team_name'
 nolan_data_root = Path('$nolan_data_root')
 teams_dir = nolan_data_root / 'teams'
 
-# Search for team config in teams directory (supports subdirectories)
-config_path = None
-for path in teams_dir.rglob(f'{team_name}.yaml'):
-    config_path = path
-    break
-
-if config_path is None:
+config_path = teams_dir / team_name / 'team.yaml'
+if not config_path.exists():
     print(f'ERROR: Team config not found: {team_name}', file=sys.stderr)
     sys.exit(1)
 
@@ -210,13 +200,8 @@ except:
 
 nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 
-# Search for team config in teams directory (supports subdirectories)
-config_path = None
-for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
-    config_path = path
-    break
-
-if config_path is None:
+config_path = nolan_data_root / 'teams' / team_name / 'team.yaml'
+if not config_path.exists():
     print(f'ERROR: Team config not found: {team_name}', file=sys.stderr)
     sys.exit(1)
 
@@ -254,13 +239,8 @@ except:
 
 nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 
-# Search for team config in teams directory (supports subdirectories)
-config_path = None
-for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
-    config_path = path
-    break
-
-if config_path is None:
+config_path = nolan_data_root / 'teams' / team_name / 'team.yaml'
+if not config_path.exists():
     print(f'ERROR: Team config not found: {team_name}', file=sys.stderr)
     sys.exit(1)
 
@@ -332,13 +312,8 @@ except:
 
 nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 
-# Search for team config in teams directory (supports subdirectories)
-config_path = None
-for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
-    config_path = path
-    break
-
-if config_path is None:
+config_path = nolan_data_root / 'teams' / team_name / 'team.yaml'
+if not config_path.exists():
     print(f'ERROR: Team config not found: {team_name}', file=sys.stderr)
     sys.exit(1)
 
@@ -378,13 +353,8 @@ except:
 
 nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 
-# Search for team config in teams directory (supports subdirectories)
-config_path = None
-for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
-    config_path = path
-    break
-
-if config_path is None:
+config_path = nolan_data_root / 'teams' / team_name / 'team.yaml'
+if not config_path.exists():
     print(f'ERROR: Team config not found: {team_name}', file=sys.stderr)
     sys.exit(1)
 
@@ -426,13 +396,8 @@ except:
 
 nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 
-# Search for team config in teams directory (supports subdirectories)
-config_path = None
-for path in (nolan_data_root / 'teams').rglob(f'{team_name}.yaml'):
-    config_path = path
-    break
-
-if config_path is None:
+config_path = nolan_data_root / 'teams' / team_name / 'team.yaml'
+if not config_path.exists():
     # Silent exit - predecessor files are optional
     sys.exit(0)
 

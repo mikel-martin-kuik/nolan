@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { getApiBase } from '@/lib/api';
+import { STORAGE_SESSION_TOKEN, AUTH_ENDPOINTS } from '@/lib/constants';
 
 interface AuthStatus {
   authenticated: boolean;
@@ -10,14 +11,14 @@ interface AuthStatus {
 export function useAuth() {
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [sessionToken, setSessionToken] = useState<string | null>(
-    () => typeof window !== 'undefined' ? localStorage.getItem('nolan-session-token') : null
+    () => typeof window !== 'undefined' ? localStorage.getItem(STORAGE_SESSION_TOKEN) : null
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const checkAuthStatus = useCallback(async () => {
     try {
-      const response = await fetch(`${getApiBase()}/api/auth/status`);
+      const response = await fetch(`${getApiBase()}${AUTH_ENDPOINTS.status}`);
       if (!response.ok) {
         throw new Error(`Auth status check failed: ${response.status}`);
       }
@@ -37,7 +38,7 @@ export function useAuth() {
           isAuthenticated = testResponse.ok;
           if (!isAuthenticated) {
             // Token is invalid, clear it
-            localStorage.removeItem('nolan-session-token');
+            localStorage.removeItem(STORAGE_SESSION_TOKEN);
             setSessionToken(null);
           }
         } catch {
@@ -60,7 +61,7 @@ export function useAuth() {
 
   const login = useCallback(async (password: string): Promise<boolean> => {
     try {
-      const response = await fetch(`${getApiBase()}/api/auth/login`, {
+      const response = await fetch(`${getApiBase()}${AUTH_ENDPOINTS.login}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
@@ -69,7 +70,7 @@ export function useAuth() {
       if (response.ok) {
         const data = await response.json();
         setSessionToken(data.session_token);
-        localStorage.setItem('nolan-session-token', data.session_token);
+        localStorage.setItem(STORAGE_SESSION_TOKEN, data.session_token);
         return true;
       }
       return false;
@@ -80,18 +81,18 @@ export function useAuth() {
 
   const logout = useCallback(async () => {
     if (sessionToken) {
-      await fetch(`${getApiBase()}/api/auth/logout`, {
+      await fetch(`${getApiBase()}${AUTH_ENDPOINTS.logout}`, {
         method: 'POST',
         headers: { 'X-Nolan-Session': sessionToken },
       });
     }
     setSessionToken(null);
-    localStorage.removeItem('nolan-session-token');
+    localStorage.removeItem(STORAGE_SESSION_TOKEN);
   }, [sessionToken]);
 
   const setupPassword = useCallback(async (password: string): Promise<boolean> => {
     try {
-      const response = await fetch(`${getApiBase()}/api/auth/setup`, {
+      const response = await fetch(`${getApiBase()}${AUTH_ENDPOINTS.setup}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),

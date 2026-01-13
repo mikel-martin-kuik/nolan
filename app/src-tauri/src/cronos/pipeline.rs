@@ -10,15 +10,17 @@ use std::fs;
 use chrono::Utc;
 
 use crate::cronos::types::{
-    AnalyzerVerdict, AnalyzerVerdictType, Pipeline, PipelineDefinition, PipelineEvent,
-    PipelineEventType, PipelineInputs, PipelineNextAction, PipelineStage,
-    PipelineStageStatus, PipelineStageType, PipelineStatus,
+    AnalyzerVerdict, AnalyzerVerdictType, CronRunLog, CronRunStatus, Pipeline,
+    PipelineDefinition, PipelineEvent, PipelineEventType, PipelineInputs,
+    PipelineNextAction, PipelineStage, PipelineStageStatus, PipelineStageType,
+    PipelineStatus,
 };
 
 /// Manager for pipeline state persistence and operations
 pub struct PipelineManager {
     pipelines_dir: PathBuf,
     definitions_dir: PathBuf,
+    cronos_dir: PathBuf,
 }
 
 impl PipelineManager {
@@ -26,6 +28,7 @@ impl PipelineManager {
     pub fn new(data_root: &PathBuf) -> Self {
         let pipelines_dir = data_root.join(".state").join("pipelines");
         let definitions_dir = data_root.join("pipelines");
+        let cronos_dir = data_root.join("cronos");
 
         // Ensure directories exist
         if !pipelines_dir.exists() {
@@ -35,7 +38,7 @@ impl PipelineManager {
             let _ = fs::create_dir_all(&definitions_dir);
         }
 
-        Self { pipelines_dir, definitions_dir }
+        Self { pipelines_dir, definitions_dir, cronos_dir }
     }
 
     // =========================================================================
@@ -215,27 +218,182 @@ impl PipelineManager {
             .map_err(|e| format!("Failed to parse pipeline JSON: {}", e))
     }
 
-    /// List all pipelines, optionally filtered by status
-    pub fn list_pipelines(&self, status_filter: Option<PipelineStatus>) -> Result<Vec<Pipeline>, String> {
-        let mut pipelines = Vec::new();
+    /// Discover running implementer agents from cronos run logs
+    fn discover_running_implementers(&self) -> Vec<CronRunLog> {
+        let mut running = Vec::new();
+        let runs_dir = self.cronos_dir.join("runs");
 
-        if !self.pipelines_dir.exists() {
-            return Ok(pipelines);
+        if !runs_dir.exists() {
+            return running;
         }
 
-        let entries = fs::read_dir(&self.pipelines_dir)
-            .map_err(|e| format!("Failed to read pipelines directory: {}", e))?;
+        // Scan today's and yesterday's run directories (implementers might span days)
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let yesterday = (chrono::Local::now() - chrono::Duration::days(1))
+            .format("%Y-%m-%d").to_string();
 
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().map_or(false, |ext| ext == "json") {
-                if let Ok(content) = fs::read_to_string(&path) {
-                    if let Ok(pipeline) = serde_json::from_str::<Pipeline>(&content) {
-                        if status_filter.is_none() || status_filter.as_ref() == Some(&pipeline.status) {
-                            pipelines.push(pipeline);
+        for date_dir in [today, yesterday] {
+            let dir_path = runs_dir.join(&date_dir);
+            if !dir_path.exists() {
+                continue;
+            }
+
+            if let Ok(entries) = fs::read_dir(&dir_path) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    // Only look at JSON files for implementer runs
+                    if path.extension().map_or(false, |ext| ext == "json") {
+                        let name = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                        if name.starts_with("cron-idea-implementer-") {
+                            if let Ok(content) = fs::read_to_string(&path) {
+                                if let Ok(run_log) = serde_json::from_str::<CronRunLog>(&content) {
+                                    if run_log.status == CronRunStatus::Running {
+                                        running.push(run_log);
+                                    }
+                                }
+                            }
                         }
                     }
                 }
+            }
+        }
+
+        running
+    }
+
+    /// Convert a running implementer CronRunLog to a live Pipeline
+    fn run_log_to_pipeline(&self, run_log: &CronRunLog) -> Pipeline {
+        // Generate a pipeline ID from the run (or use existing if set)
+        let pipeline_id = run_log.pipeline_id.clone()
+            .unwrap_or_else(|| format!("live-{}", run_log.run_id));
+
+        // Extract idea info from run label or run_id
+        let idea_title = run_log.label.clone()
+            .unwrap_or_else(|| run_log.run_id.clone());
+        let idea_id = run_log.run_id.split('-').last()
+            .unwrap_or(&run_log.run_id).to_string();
+
+        Pipeline {
+            id: pipeline_id,
+            status: PipelineStatus::InProgress,
+            idea_id: idea_id.clone(),
+            idea_title: idea_title.clone(),
+            worktree_path: run_log.worktree_path.clone(),
+            worktree_branch: run_log.worktree_branch.clone(),
+            base_commit: run_log.base_commit.clone(),
+            current_stage: PipelineStageType::Implementer,
+            stages: vec![
+                PipelineStage {
+                    stage_type: PipelineStageType::Implementer,
+                    status: PipelineStageStatus::Running,
+                    agent_name: run_log.agent_name.clone(),
+                    run_id: Some(run_log.run_id.clone()),
+                    verdict: None,
+                    attempt: run_log.attempt,
+                    started_at: Some(run_log.started_at.clone()),
+                    completed_at: None,
+                    skip_reason: None,
+                },
+                PipelineStage {
+                    stage_type: PipelineStageType::Analyzer,
+                    status: PipelineStageStatus::Pending,
+                    agent_name: "cron-implementer-analyzer".to_string(),
+                    run_id: None,
+                    verdict: None,
+                    attempt: 0,
+                    started_at: None,
+                    completed_at: None,
+                    skip_reason: None,
+                },
+                PipelineStage {
+                    stage_type: PipelineStageType::Qa,
+                    status: PipelineStageStatus::Pending,
+                    agent_name: "pred-qa-validation".to_string(),
+                    run_id: None,
+                    verdict: None,
+                    attempt: 0,
+                    started_at: None,
+                    completed_at: None,
+                    skip_reason: None,
+                },
+                PipelineStage {
+                    stage_type: PipelineStageType::Merger,
+                    status: PipelineStageStatus::Pending,
+                    agent_name: "pred-merge-changes".to_string(),
+                    run_id: None,
+                    verdict: None,
+                    attempt: 0,
+                    started_at: None,
+                    completed_at: None,
+                    skip_reason: None,
+                },
+            ],
+            events: vec![
+                PipelineEvent {
+                    timestamp: run_log.started_at.clone(),
+                    event_type: PipelineEventType::StageStarted,
+                    stage_type: Some(PipelineStageType::Implementer),
+                    run_id: Some(run_log.run_id.clone()),
+                    message: "Implementer started".to_string(),
+                    metadata: None,
+                },
+            ],
+            inputs: PipelineInputs {
+                idea_id: Some(idea_id),
+                idea_title: Some(idea_title),
+                env_vars: HashMap::new(),
+                git_commit: run_log.base_commit.clone(),
+                timestamp: run_log.started_at.clone(),
+            },
+            created_at: run_log.started_at.clone(),
+            updated_at: run_log.started_at.clone(),
+            completed_at: None,
+            total_cost_usd: run_log.total_cost_usd,
+        }
+    }
+
+    /// List all pipelines, optionally filtered by status
+    /// Includes both persisted pipelines and "live" pipelines from running implementers
+    pub fn list_pipelines(&self, status_filter: Option<PipelineStatus>) -> Result<Vec<Pipeline>, String> {
+        let mut pipelines = Vec::new();
+        let mut seen_run_ids = std::collections::HashSet::new();
+
+        // First, get formal pipelines from files
+        if self.pipelines_dir.exists() {
+            let entries = fs::read_dir(&self.pipelines_dir)
+                .map_err(|e| format!("Failed to read pipelines directory: {}", e))?;
+
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().map_or(false, |ext| ext == "json") {
+                    if let Ok(content) = fs::read_to_string(&path) {
+                        if let Ok(pipeline) = serde_json::from_str::<Pipeline>(&content) {
+                            // Track run_ids to avoid duplicates from live discovery
+                            for stage in &pipeline.stages {
+                                if let Some(run_id) = &stage.run_id {
+                                    seen_run_ids.insert(run_id.clone());
+                                }
+                            }
+                            if status_filter.is_none() || status_filter.as_ref() == Some(&pipeline.status) {
+                                pipelines.push(pipeline);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Then, discover running implementers that don't have formal pipelines yet
+        let running_implementers = self.discover_running_implementers();
+        for run_log in running_implementers {
+            // Skip if we already have a pipeline for this run
+            if seen_run_ids.contains(&run_log.run_id) {
+                continue;
+            }
+
+            let live_pipeline = self.run_log_to_pipeline(&run_log);
+            if status_filter.is_none() || status_filter.as_ref() == Some(&live_pipeline.status) {
+                pipelines.push(live_pipeline);
             }
         }
 
@@ -615,5 +773,26 @@ mod tests {
 
         assert_eq!(updated.stages[0].status, PipelineStageStatus::Success);
         assert!(updated.stages[0].completed_at.is_some());
+    }
+
+    #[test]
+    fn test_load_pipeline_definition() {
+        // Test with the actual nolan directory
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        let data_root = std::path::PathBuf::from(home).join(".nolan");
+
+        if data_root.exists() {
+            let manager = PipelineManager::new(&data_root);
+            let result = manager.get_default_definition();
+
+            if let Ok(def) = result {
+                assert_eq!(def.name, "idea-to-merge");
+                assert!(!def.stages.is_empty());
+                println!("Pipeline definition loaded: {:?}", def.name);
+                println!("Stages: {:?}", def.stages.iter().map(|s| &s.name).collect::<Vec<_>>());
+            } else {
+                println!("Could not load pipeline definition: {:?}", result.err());
+            }
+        }
     }
 }

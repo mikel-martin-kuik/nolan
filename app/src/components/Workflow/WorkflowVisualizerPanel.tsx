@@ -634,35 +634,30 @@ export function WorkflowVisualizerPanel() {
               {teamWorkflowSubTab === 'run' ? (
                 <div className="h-full flex flex-col">
                   {/* Control bar with Launch/Kill */}
-                  <div className="px-2 sm:px-4 py-2 border-b flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-muted-foreground">
-                        Team: <span className="text-foreground font-medium capitalize">{currentTeamName || 'none'}</span>
-                      </span>
-                      {isTeamRunning && (
-                        <span className="flex items-center gap-1 text-xs text-emerald-400">
-                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                          Running
-                        </span>
-                      )}
-                    </div>
+                  <div className="px-2 sm:px-4 py-2 border-b flex items-center gap-2">
                     <div className="flex items-center gap-2">
                       {isTeamRunning ? (
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={handleKillTeam}
-                          disabled={agentLoading}
-                          className="gap-1"
-                        >
-                          {agentLoading ? (
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Square className="w-4 h-4" />
-                          )}
-                          <span className="hidden sm:inline">Kill Team</span>
-                          <span className="sm:hidden">Kill</span>
-                        </Button>
+                        <>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={handleKillTeam}
+                            disabled={agentLoading}
+                            className="gap-1"
+                          >
+                            {agentLoading ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Square className="w-4 h-4" />
+                            )}
+                            <span className="hidden sm:inline">Kill Team</span>
+                            <span className="sm:hidden">Kill</span>
+                          </Button>
+                          <span className="flex items-center gap-1 text-xs text-emerald-400">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                            Running
+                          </span>
+                        </>
                       ) : (
                         <Button
                           variant="default"

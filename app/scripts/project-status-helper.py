@@ -39,14 +39,9 @@ def get_note_taker_file(project_path: Path) -> str | None:
     # Use NOLAN_DATA_ROOT for data directories (with fallback to ~/.nolan)
     nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))
 
-    # Search for team config (supports subdirectories)
-    config_path = None
-    teams_dir = nolan_data_root / 'teams'
-    for path in teams_dir.rglob(f'{team_name}.yaml'):
-        config_path = path
-        break
-
-    if not config_path or not config_path.exists():
+    # Team config format: teams/{team_name}/team.yaml
+    config_path = nolan_data_root / 'teams' / team_name / 'team.yaml'
+    if not config_path.exists():
         return None
 
     try:

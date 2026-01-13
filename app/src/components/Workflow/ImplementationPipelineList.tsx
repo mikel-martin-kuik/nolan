@@ -68,6 +68,15 @@ export function ImplementationPipelineList({ onPipelineSelect }: ImplementationP
     fetchPipelines();
   }, [fetchPipelines]);
 
+  // Auto-select when there's only one pipeline and none is selected
+  useEffect(() => {
+    if (pipelines.length === 1 && !selectedPipelineId && !isLoading) {
+      const pipeline = pipelines[0];
+      setSelectedPipelineId(pipeline.id);
+      onPipelineSelect?.(pipeline);
+    }
+  }, [pipelines, selectedPipelineId, isLoading, setSelectedPipelineId, onPipelineSelect]);
+
   // Group pipelines by idea
   const groupedPipelines = useMemo(() => {
     const groups = new Map<string, Pipeline[]>();

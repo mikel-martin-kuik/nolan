@@ -17,6 +17,7 @@
 import { createContext, useContext, useMemo, useEffect, type ReactNode } from 'react';
 import { useUIConfig } from '../hooks/useUIConfig';
 import { useOllamaStore } from '../store/ollamaStore';
+import { useTerminalStore } from '../store/terminalStore';
 import type { UIConfig } from '../types/config';
 
 interface ConfigContextValue {
@@ -43,6 +44,7 @@ interface ConfigProviderProps {
 export function ConfigProvider({ children }: ConfigProviderProps) {
   const { config, isLoading, error } = useUIConfig();
   const syncOllamaConfig = useOllamaStore((state) => state.syncWithBackendConfig);
+  const setSshConfig = useTerminalStore((state) => state.setSshConfig);
 
   // Sync runtime config to stores when config loads
   useEffect(() => {
@@ -50,6 +52,13 @@ export function ConfigProvider({ children }: ConfigProviderProps) {
       syncOllamaConfig(config.ollama_defaults);
     }
   }, [config?.ollama_defaults, syncOllamaConfig]);
+
+  // Initialize SSH terminal config when config is loaded
+  useEffect(() => {
+    if (config?.ssh_terminal) {
+      setSshConfig(config.ssh_terminal.base_url, config.ssh_terminal.enabled);
+    }
+  }, [config?.ssh_terminal, setSshConfig]);
 
   const value = useMemo<ConfigContextValue>(
     () => ({

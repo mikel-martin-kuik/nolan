@@ -1,6 +1,6 @@
 import React, { memo, useCallback, useRef, useEffect, useState } from 'react';
-import { invoke } from '@/lib/api';
-import { Clock, MessageSquareX, Eraser, Terminal } from 'lucide-react';
+import { invoke, isTauri } from '@/lib/api';
+import { Clock, MessageSquareX, Eraser, Terminal, ExternalLink } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { AgentStatus, AGENT_DESCRIPTIONS, AgentWorkflowState, AgentName, getWorkflowSteps } from '../../types';
 import {
@@ -45,7 +45,7 @@ export const AgentListItem: React.FC<AgentListItemProps> = memo(({
   onClick,
 }) => {
   const clearSession = useLiveOutputStore((state) => state.clearSession);
-  const openTerminalModal = useTerminalStore((state) => state.openModal);
+  const { sshEnabled, getSshTerminalUrl } = useTerminalStore();
   const { error: showError } = useToastStore();
   const { currentTeam } = useTeamStore();
 
@@ -134,9 +134,30 @@ export const AgentListItem: React.FC<AgentListItemProps> = memo(({
     }
   };
 
-  const handleOpenTerminal = () => {
+  const handleOpenTerminal = async () => {
     setContextMenu(null);
-    openTerminalModal(agent.session, agent.name);
+
+    // Try SSH web terminal first (works in browser mode)
+    if (sshEnabled) {
+      const sshUrl = getSshTerminalUrl(agent.session);
+      if (sshUrl) {
+        window.open(sshUrl, '_blank', 'noopener,noreferrer');
+        return;
+      }
+    }
+
+    // Fall back to native terminal (desktop only)
+    if (isTauri() && FEATURES.EXTERNAL_TERMINAL) {
+      try {
+        await invoke('open_agent_terminal', { session: agent.session });
+      } catch (err) {
+        showError(`Failed to open external terminal: ${err}`);
+      }
+      return;
+    }
+
+    // No terminal option available
+    showError('Terminal access requires SSH terminal configuration. Contact your administrator.');
   };
 
   return (
@@ -262,13 +283,13 @@ export const AgentListItem: React.FC<AgentListItemProps> = memo(({
               Clear Context
             </button>
           )}
-          {FEATURES.EMBEDDED_TERMINAL && agent.active && (
+          {agent.active && (sshEnabled || (isTauri() && FEATURES.EXTERNAL_TERMINAL)) && (
             <button
               onClick={handleOpenTerminal}
               className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
             >
-              <Terminal className="w-4 h-4" />
-              Open Terminal
+              {sshEnabled ? <ExternalLink className="w-4 h-4" /> : <Terminal className="w-4 h-4" />}
+              {sshEnabled ? 'Open SSH Terminal' : 'Open Terminal'}
             </button>
           )}
         </div>

@@ -15,13 +15,10 @@ use tower_http::cors::{Any, CorsLayer};
 
 use crate::commands::history::HistoryEntry;
 use crate::commands::lifecycle::AgentStatusList;
-use crate::tmux::terminal_stream::TerminalOutput;
 
 /// Shared application state for HTTP handlers
 #[derive(Clone)]
 pub struct AppState {
-    /// Broadcast channel for terminal output events
-    pub terminal_tx: broadcast::Sender<TerminalOutput>,
     /// Broadcast channel for agent status changes
     pub status_tx: broadcast::Sender<AgentStatusList>,
     /// Broadcast channel for history entry events
@@ -30,10 +27,9 @@ pub struct AppState {
 
 impl AppState {
     pub fn new() -> Self {
-        let (terminal_tx, _) = broadcast::channel(1024);
         let (status_tx, _) = broadcast::channel(64);
         let (history_tx, _) = broadcast::channel(256);
-        Self { terminal_tx, status_tx, history_tx }
+        Self { status_tx, history_tx }
     }
 }
 

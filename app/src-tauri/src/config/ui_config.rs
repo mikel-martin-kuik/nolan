@@ -125,6 +125,24 @@ impl RuntimeConfig {
     }
 }
 
+/// SSH terminal configuration for web-based terminal access
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SshTerminalConfig {
+    /// Base URL for the SSH web terminal (e.g., wetty, gotty, or Guacamole)
+    pub base_url: String,
+    /// Whether SSH terminal is enabled
+    pub enabled: bool,
+}
+
+impl Default for SshTerminalConfig {
+    fn default() -> Self {
+        SshTerminalConfig {
+            base_url: String::new(),
+            enabled: false,
+        }
+    }
+}
+
 /// Root UI configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UIConfig {
@@ -141,6 +159,8 @@ pub struct UIConfig {
     /// Runtime configuration derived from environment variables
     #[serde(default)]
     pub runtime: RuntimeConfig,
+    #[serde(default)]
+    pub ssh_terminal: SshTerminalConfig,
 }
 
 impl Default for UIConfig {
@@ -200,6 +220,7 @@ impl Default for UIConfig {
             session_prefixes: SessionPrefixConfig::default(),
             ollama_defaults: OllamaDefaults::default(),
             runtime: RuntimeConfig::default(),
+            ssh_terminal: SshTerminalConfig::default(),
         }
     }
 }

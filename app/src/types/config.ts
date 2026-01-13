@@ -42,6 +42,12 @@ export interface RuntimeConfig {
   team_filename: string;
 }
 
+/** SSH terminal configuration for web-based terminal access */
+export interface SshTerminalConfig {
+  base_url: string;
+  enabled: boolean;
+}
+
 /** Root UI configuration from backend */
 export interface UIConfig {
   project_statuses: StatusConfig[];
@@ -56,6 +62,7 @@ export interface UIConfig {
   ollama_defaults: OllamaDefaults;
   /** Runtime configuration from environment variables */
   runtime: RuntimeConfig;
+  ssh_terminal?: SshTerminalConfig;
 }
 
 /** Helper type for creating lookup maps from status arrays */

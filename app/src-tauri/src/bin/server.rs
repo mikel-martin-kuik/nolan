@@ -12,16 +12,11 @@
 //!   - OLLAMA_URL: Ollama server URL (default: http://localhost:11434)
 //!   - OLLAMA_MODEL: Ollama model name (default: qwen2.5:1.5b)
 
-use nolan_lib::{api, commands, cronos, events, tmux};
+use nolan_lib::{api, commands, cronos, events};
 
 #[tokio::main]
 async fn main() {
     println!("Starting Nolan headless server...");
-
-    // Cleanup orphaned terminal streams from previous crashes
-    if let Err(e) = tmux::terminal_stream::cleanup_orphaned_streams().await {
-        eprintln!("Warning: Failed to cleanup orphaned terminal streams: {}", e);
-    }
 
     // Recover orphaned agent sessions (from crash/restart)
     match commands::lifecycle_core::recover_all_sessions().await {

@@ -29,12 +29,7 @@ use tauri::Manager;
 /// Run the Tauri desktop application
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Cleanup orphaned terminal streams from previous crashes
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
-    if let Err(e) = runtime.block_on(tmux::terminal_stream::cleanup_orphaned_streams()) {
-        eprintln!("Warning: Failed to cleanup orphaned terminal streams: {}", e);
-        // Non-fatal - continue startup
-    }
 
     // Attempt to recover orphaned agent sessions (from crash/restart)
     // - Ralph instances: recovered if ephemeral directory exists
@@ -133,12 +128,6 @@ pub fn run() {
             read_agent_claude_md,
             write_agent_claude_md,
             send_agent_command,
-            // Terminal streaming commands
-            start_terminal_stream,
-            stop_terminal_stream,
-            send_terminal_input,
-            send_terminal_key,
-            resize_terminal,
             // Communicator commands
             send_message,
             broadcast_team,

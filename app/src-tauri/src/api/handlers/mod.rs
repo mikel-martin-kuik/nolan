@@ -11,7 +11,6 @@ pub mod ollama;
 pub mod projects;
 pub mod teams;
 pub mod templates;
-pub mod terminal;
 pub mod usage;
 pub mod organization;
 pub mod roles;

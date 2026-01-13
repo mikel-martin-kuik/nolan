@@ -7,15 +7,15 @@
 export const FEATURES = {
   /**
    * Enable embedded terminal viewer within Nolan UI
-   * - Set to false to disable terminal integration
-   * - External terminal buttons will still work
+   * DEPRECATED: Embedded terminals are replaced by SSH-based web terminals.
+   * Configure ssh_terminal in config.yaml instead.
    */
-  EMBEDDED_TERMINAL: true,
+  EMBEDDED_TERMINAL: false,
 
   /**
-   * Enable external terminal launcher
+   * Enable external terminal launcher (desktop only)
    * - Set to false to hide "Open External" buttons
-   * - Embedded terminal will still work
+   * - Uses native terminal apps (gnome-terminal, iTerm2, etc.)
    */
   EXTERNAL_TERMINAL: true,
 };

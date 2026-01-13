@@ -1,6 +1,7 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { CronAgentCard } from './CronAgentCard';
 import { CronAgentDetailPage } from './CronAgentDetailPage';
+import { TeamAgentDetailPage } from './TeamAgentDetailPage';
 import { CronGroupEditor } from './CronGroupEditor';
 import { TaskMonitoringDashboard } from './TaskMonitoringDashboard';
 import { useCronOutputStore } from '../../store/cronOutputStore';
@@ -154,8 +155,32 @@ export const CronosPanel: React.FC = () => {
     </div>
   );
 
-  // If showing detail page, render it
+  // Determine if selected agent is a team-type agent
+  const selectedAgent = useMemo(() => {
+    if (!selectedAgentPage) return null;
+    return agents.find(a => a.name === selectedAgentPage) || null;
+  }, [selectedAgentPage, agents]);
+
+  const isTeamAgent = selectedAgent?.agent_type === 'team';
+
+  // If showing detail page, render the appropriate one based on agent type
   if (selectedAgentPage) {
+    // Team agents get the TeamAgentDetailPage with workflow visualization
+    if (isTeamAgent) {
+      return (
+        <div className="h-full flex flex-col">
+          <TeamAgentDetailPage
+            agentName={selectedAgentPage}
+            onBack={() => {
+              setSelectedAgentPage(null);
+              refreshAgents();
+            }}
+          />
+        </div>
+      );
+    }
+
+    // Regular cron/predefined/event agents get the standard detail page
     return (
       <div className="h-full flex flex-col">
         <CronAgentDetailPage

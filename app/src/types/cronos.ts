@@ -1,7 +1,7 @@
 // Cronos - Cron Agents Type Definitions
 
 // Agent type discriminator
-export type AgentType = 'cron' | 'predefined' | 'event';
+export type AgentType = 'cron' | 'predefined' | 'event' | 'team';
 
 // Supported event types for event-driven agents
 export type EventType =

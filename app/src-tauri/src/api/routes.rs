@@ -169,6 +169,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/filesystem/write", put(handlers::filesystem::write_file))
         .route("/api/filesystem/search", get(handlers::filesystem::search_files))
         .route("/api/filesystem/metadata", get(handlers::filesystem::get_metadata))
+        .route("/api/filesystem/default-path", get(handlers::filesystem::get_default_path))
         // Add state and auth middleware
         .with_state(state)
         .layer(middleware::from_fn_with_state(auth_state, auth::auth_middleware));

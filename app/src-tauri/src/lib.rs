@@ -281,6 +281,7 @@ pub fn run() {
             write_file_content,
             search_files,
             get_file_metadata,
+            get_file_browser_default_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

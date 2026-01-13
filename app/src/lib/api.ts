@@ -226,6 +226,14 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   ollama_chat: { method: 'POST', path: '/api/ollama/chat' },
   ollama_get_config: { method: 'GET', path: '/api/ollama/config' },
   ollama_set_config: { method: 'PUT', path: '/api/ollama/config' },
+
+  // Filesystem browser
+  browse_directory: { method: 'GET', path: (args) => `/api/filesystem/browse?path=${encodeURIComponent(getArg(args, 'path') as string)}&showHidden=${args.showHidden || false}` },
+  read_file_content: { method: 'GET', path: (args) => `/api/filesystem/read?path=${encodeURIComponent(getArg(args, 'path') as string)}` },
+  write_file_content: { method: 'PUT', path: '/api/filesystem/write' },
+  search_files: { method: 'GET', path: (args) => `/api/filesystem/search?rootPath=${encodeURIComponent(getArg(args, 'root_path') as string)}&pattern=${encodeURIComponent(getArg(args, 'pattern') as string)}&maxResults=${args.maxResults || args.max_results || 100}` },
+  get_file_metadata: { method: 'GET', path: (args) => `/api/filesystem/metadata?path=${encodeURIComponent(getArg(args, 'path') as string)}` },
+  get_file_browser_default_path: { method: 'GET', path: '/api/filesystem/default-path' },
 };
 
 /**

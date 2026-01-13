@@ -5,6 +5,7 @@ import { BreadcrumbNav } from './BreadcrumbNav';
 import { useFileBrowser } from '@/hooks';
 import { useFileBrowserStore } from '@/store/fileBrowserStore';
 import { useNavigationStore } from '@/store/navigationStore';
+import { invoke } from '@/lib/api';
 import { RefreshCw, Search, Eye, EyeOff, Home, Star, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +13,9 @@ import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 export function FileBrowserPanel() {
+  // Track the default home path (fetched from backend)
+  const [defaultHomePath, setDefaultHomePath] = useState<string | null>(null);
+
   const {
     currentPath,
     directory,
@@ -34,13 +38,24 @@ export function FileBrowserPanel() {
     search,
     clearSearch,
     saveFile,
-  } = useFileBrowser();
+  } = useFileBrowser(defaultHomePath || undefined);
 
   const { lastPath, addRecentPath, favorites, addFavorite, removeFavorite, isFavorite } = useFileBrowserStore();
   const { context, clearContext } = useNavigationStore();
 
   // Mobile: track whether to show file viewer (vs file list)
   const [showMobileViewer, setShowMobileViewer] = useState(false);
+
+  // Fetch default home path on mount
+  useEffect(() => {
+    invoke<string | { path: string }>('get_file_browser_default_path')
+      .then((result) => {
+        // Handle both Tauri (string) and API (object) responses
+        const path = typeof result === 'string' ? result : result.path;
+        setDefaultHomePath(path);
+      })
+      .catch((err) => console.error('Failed to get default path:', err));
+  }, []);
 
   // When a file is selected on mobile, show the viewer
   const handleFileSelect = (entry: Parameters<typeof selectFile>[0]) => {
@@ -59,12 +74,15 @@ export function FileBrowserPanel() {
     }
   }, [context.filePath, navigateTo, clearContext]);
 
-  // Restore last path on mount
+  // Restore last path or navigate to default path on mount
   useEffect(() => {
-    if (lastPath && !context.filePath) {
+    if (context.filePath) return; // Don't override context navigation
+    if (lastPath) {
       navigateTo(lastPath);
+    } else if (defaultHomePath) {
+      navigateTo(defaultHomePath);
     }
-  }, []); // Only on mount
+  }, [defaultHomePath]); // Re-run when defaultHomePath is fetched
 
   // Track recent paths
   useEffect(() => {
@@ -90,8 +108,8 @@ export function FileBrowserPanel() {
     }
   };
 
-  // Default home path
-  const homePath = '/home';
+  // Default home path (use fetched path or fallback)
+  const homePath = defaultHomePath || '/home';
 
   return (
     <div className="h-full flex flex-col gap-2 sm:gap-4">

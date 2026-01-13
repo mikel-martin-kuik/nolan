@@ -5,7 +5,7 @@
 use std::fs;
 use std::path::PathBuf;
 use serde::Serialize;
-use crate::utils::paths::get_nolan_data_root;
+use crate::utils::paths::{get_nolan_data_root, get_projects_dir};
 
 /// A single entry in a directory listing (file or subdirectory)
 #[derive(Debug, Clone, Serialize)]
@@ -497,4 +497,11 @@ pub async fn get_file_metadata(path: String) -> Result<FileSystemEntry, String> 
         is_hidden,
         extension,
     })
+}
+
+/// Get default path for file browser (projects directory)
+#[tauri::command]
+pub async fn get_file_browser_default_path() -> Result<String, String> {
+    let projects_dir = get_projects_dir()?;
+    Ok(projects_dir.to_string_lossy().to_string())
 }

@@ -108,3 +108,17 @@ pub async fn get_metadata(
         Err(e) => Err(error_response(StatusCode::NOT_FOUND, e)),
     }
 }
+
+/// Default path response
+#[derive(Serialize)]
+pub struct DefaultPathResponse {
+    pub path: String,
+}
+
+/// Get default file browser path
+pub async fn get_default_path() -> Result<Json<DefaultPathResponse>, impl IntoResponse> {
+    match filesystem::get_file_browser_default_path().await {
+        Ok(path) => Ok(Json(DefaultPathResponse { path })),
+        Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+    }
+}

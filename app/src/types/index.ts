@@ -13,6 +13,9 @@ export * from './metrics';
 // Re-export git types
 export * from './git';
 
+// Re-export filesystem types
+export * from './filesystem';
+
 export interface AgentStatus {
   name: string;
   team: string;  // Team this agent belongs to (empty for ralph)

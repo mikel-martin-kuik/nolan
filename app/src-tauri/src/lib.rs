@@ -21,6 +21,7 @@ use commands::usage::*;
 use commands::feedback::*;
 use commands::ollama::*;
 use commands::session_labels::*;
+use commands::filesystem::*;
 use commands::*;
 use tauri::Manager;
 
@@ -262,6 +263,12 @@ pub fn run() {
             get_session_label,
             list_session_labels,
             clear_session_label,
+            // Filesystem commands
+            browse_directory,
+            read_file_content,
+            write_file_content,
+            search_files,
+            get_file_metadata,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

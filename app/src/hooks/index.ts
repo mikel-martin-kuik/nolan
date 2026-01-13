@@ -15,6 +15,7 @@ export { useAgentStats, type UseAgentStatsResult, type DateRange as AgentDateRan
 export { useExecutionMetrics, type UseExecutionMetricsResult, type MetricsDateRange } from './useExecutionMetrics';
 export { useWorkflowStatus, type AgentWithWorkflow, type WorkflowStatusResult } from './useWorkflowStatus';
 export { useSpeechToText, type UseSpeechToTextResult } from './useSpeechToText';
+export { useFileBrowser, type UseFileBrowserResult } from './useFileBrowser';
 
 // Layered state management hooks (React Query)
 export {

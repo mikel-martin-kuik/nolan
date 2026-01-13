@@ -4,6 +4,7 @@ pub mod agents;
 pub mod communicate;
 pub mod cronos;
 pub mod feedback;
+pub mod filesystem;
 pub mod history;
 pub mod lifecycle;
 pub mod ollama;

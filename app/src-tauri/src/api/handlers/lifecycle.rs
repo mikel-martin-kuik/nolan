@@ -124,13 +124,15 @@ pub struct SpawnAgentRequest {
     #[serde(default)]
     force: bool,
     model: Option<String>,
+    #[serde(alias = "worktreePath")]
+    worktree_path: Option<String>,
 }
 
 /// Spawn agent (Ralph only)
 pub async fn spawn_agent(
     Json(req): Json<SpawnAgentRequest>,
 ) -> Result<Json<serde_json::Value>, impl IntoResponse> {
-    match lifecycle_core::spawn_ralph_core(req.model, req.force).await {
+    match lifecycle_core::spawn_ralph_core(req.model, req.force, req.worktree_path).await {
         Ok(result) => Ok(Json(serde_json::json!({ "result": result }))),
         Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
     }

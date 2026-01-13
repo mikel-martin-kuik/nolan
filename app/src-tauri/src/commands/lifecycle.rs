@@ -893,10 +893,10 @@ pub async fn kill_team(app_handle: AppHandle, team_name: String) -> Result<Strin
 /// Team agents have a single session each - use start_agent instead
 ///
 /// # Arguments
-/// * `worktree` - If true, creates a git worktree for isolated file changes.
-///   Changes are made in the worktree and merged back via pred-merge-changes.
+/// * `worktree_path` - Optional path to an existing worktree to work in.
+///   Ralph will work on pre-existing worktrees, not create new ones.
 #[tauri::command]
-pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: String, force: bool, model: Option<String>, chrome: Option<bool>, worktree: Option<bool>) -> Result<String, String> {
+pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: String, force: bool, model: Option<String>, chrome: Option<bool>, worktree_path: Option<String>) -> Result<String, String> {
     use std::process::Command;
     use std::fs;
     #[cfg(unix)]
@@ -1000,28 +1000,33 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
     let projects_dir_str = projects_dir.to_string_lossy();
     let agent_dir_str = agent_dir.to_string_lossy();
 
-    // Worktree support: create isolated git worktree for file changes
-    let (working_dir, worktree_path_str, worktree_branch) = if worktree.unwrap_or(false) {
-        // Detect git root from nolan_root (the app repository)
-        let git_root = crate::git::worktree::detect_git_root(&nolan_root)
-            .ok_or_else(|| "Cannot create worktree: no git repository found".to_string())?;
+    // Worktree support: use existing worktree path for file changes
+    // Ralph works on pre-existing worktrees, not new ones
+    let (working_dir, worktree_path_str, worktree_branch) = if let Some(ref wt_path) = worktree_path {
+        let worktree_path = std::path::PathBuf::from(wt_path);
 
-        // Create worktree directory: ~/.nolan/worktrees/agent-ralph-{name}/
-        let worktrees_dir = crate::git::worktree::get_worktrees_dir()?;
-        let worktree_path = worktrees_dir.join(&session);
+        // Verify the worktree path exists
+        if !worktree_path.exists() {
+            return Err(format!("Worktree path does not exist: {}", wt_path));
+        }
 
-        // Generate branch name: worktree/ralph/{instance_id}
-        let branch_name = crate::git::worktree::generate_branch_name("ralph", &instance_id);
+        // Detect the branch name from the worktree (if it's a git worktree)
+        let branch_name = if worktree_path.join(".git").exists() {
+            // Try to get the current branch
+            let output = Command::new("git")
+                .args(["-C", wt_path, "rev-parse", "--abbrev-ref", "HEAD"])
+                .output();
+            match output {
+                Ok(out) if out.status.success() => {
+                    Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
 
-        // Create the worktree
-        let _base_commit = crate::git::worktree::create_worktree(
-            &git_root,
-            &worktree_path,
-            &branch_name,
-            Some("main"), // Always branch from main for ralph
-        )?;
-
-        // Copy CLAUDE.md symlink into worktree so agent has instructions
+        // Copy CLAUDE.md into worktree so agent has instructions
         #[cfg(unix)]
         {
             let base_agent_dir = agents_dir.join(&agent);
@@ -1049,8 +1054,7 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
             }
         }
 
-        let wt_str = worktree_path.to_string_lossy().to_string();
-        (worktree_path, Some(wt_str), Some(branch_name))
+        (worktree_path, Some(wt_path.clone()), branch_name)
     } else {
         (agent_dir.clone(), None, None)
     };
@@ -2071,4 +2075,11 @@ pub async fn list_orphaned_sessions() -> Result<Vec<String>, String> {
     sessions.extend(team_orphaned.into_iter().map(|s| s.session));
 
     Ok(sessions)
+}
+
+/// List all git worktrees for Ralph to work in
+#[tauri::command]
+pub async fn list_worktrees() -> Result<Vec<crate::git::worktree::WorktreeListEntry>, String> {
+    let nolan_root = crate::utils::paths::get_nolan_root()?;
+    crate::git::worktree::list_worktrees(&nolan_root)
 }

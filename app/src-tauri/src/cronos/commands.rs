@@ -81,15 +81,34 @@ async fn trigger_post_run_analyzer(
                     Some(output_sender.clone()),
                     None,
                     Some(trigger_info.env_vars),
+                    None, // No label for analyzer runs
                 ).await {
                     Ok(analyzer_run_log) => {
                         // After analyzer completes, read the verdict file and update original run
-                        if let Err(e) = process_analyzer_verdict(
+                        match process_analyzer_verdict(
                             &analyzed_run_id,
                             &analyzer_run_log.run_id,
                             &output_sender,
                         ).await {
-                            eprintln!("[Cronos] Failed to process analyzer verdict: {}", e);
+                            Ok(verdict_result) => {
+                                // If COMPLETE and has worktree, trigger QA validation then merge
+                                if verdict_result.verdict_type == AnalyzerVerdictType::Complete {
+                                    if let (Some(wt_path), Some(wt_branch)) =
+                                        (verdict_result.worktree_path, verdict_result.worktree_branch)
+                                    {
+                                        trigger_qa_then_merge(
+                                            wt_path,
+                                            wt_branch,
+                                            verdict_result.base_commit,
+                                            verdict_result.agent_name,
+                                            output_sender,
+                                        ).await;
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("[Cronos] Failed to process analyzer verdict: {}", e);
+                            }
                         }
                     }
                     Err(e) => {
@@ -105,12 +124,22 @@ async fn trigger_post_run_analyzer(
     }
 }
 
+/// Result of processing an analyzer verdict, used to trigger follow-up actions
+struct VerdictProcessingResult {
+    verdict_type: AnalyzerVerdictType,
+    agent_name: String,
+    worktree_path: Option<String>,
+    worktree_branch: Option<String>,
+    base_commit: Option<String>,
+}
+
 /// Process the analyzer verdict file and update the original run's log
+/// Returns verdict info for potential follow-up actions (e.g., triggering merger on COMPLETE)
 async fn process_analyzer_verdict(
     analyzed_run_id: &str,
     analyzer_run_id: &str,
     output_sender: &broadcast::Sender<CronOutputEvent>,
-) -> Result<(), String> {
+) -> Result<VerdictProcessingResult, String> {
     let data_root = crate::utils::paths::get_nolan_data_root()?;
     let verdict_file = data_root
         .join(".state")
@@ -129,7 +158,7 @@ async fn process_analyzer_verdict(
 
     // Find and update the original run's JSON log
     let runs_dir = crate::utils::paths::get_cronos_runs_dir()?;
-    let mut updated = false;
+    let mut result: Option<VerdictProcessingResult> = None;
 
     // Search through date directories for the original run
     for date_entry in std::fs::read_dir(&runs_dir).into_iter().flatten().flatten() {
@@ -151,8 +180,6 @@ async fn process_analyzer_verdict(
                             std::fs::write(&path, updated_json)
                                 .map_err(|e| format!("Failed to write updated run log: {}", e))?;
 
-                            updated = true;
-
                             // Emit status event about verdict
                             let _ = output_sender.send(CronOutputEvent {
                                 run_id: analyzed_run_id.to_string(),
@@ -170,22 +197,182 @@ async fn process_analyzer_verdict(
                                 timestamp: chrono::Utc::now().to_rfc3339(),
                             });
 
+                            // Capture result for follow-up actions
+                            result = Some(VerdictProcessingResult {
+                                verdict_type: verdict.verdict.clone(),
+                                agent_name: run_log.agent_name.clone(),
+                                worktree_path: run_log.worktree_path.clone(),
+                                worktree_branch: run_log.worktree_branch.clone(),
+                                base_commit: run_log.base_commit.clone(),
+                            });
+
                             break;
                         }
                     }
                 }
             }
         }
-        if updated {
+        if result.is_some() {
             break;
         }
     }
 
-    if !updated {
-        return Err(format!("Original run {} not found", analyzed_run_id));
+    result.ok_or_else(|| format!("Original run {} not found", analyzed_run_id))
+}
+
+/// Trigger QA validation, then merger if QA passes
+async fn trigger_qa_then_merge(
+    worktree_path: String,
+    worktree_branch: String,
+    base_commit: Option<String>,
+    agent_name: String,
+    output_sender: broadcast::Sender<CronOutputEvent>,
+) {
+    // Emit status event about triggering QA
+    let _ = output_sender.send(CronOutputEvent {
+        run_id: String::new(),
+        agent_name: agent_name.clone(),
+        event_type: OutputEventType::Status,
+        content: format!("Triggering QA validation for branch: {}", worktree_branch),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+    });
+
+    // Build environment variables for QA validation
+    let mut qa_env = executor::ExtraEnvVars::new();
+    qa_env.insert("WORKTREE_PATH".to_string(), worktree_path.clone());
+    qa_env.insert("WORKTREE_BRANCH".to_string(), worktree_branch.clone());
+    if let Some(ref commit) = base_commit {
+        qa_env.insert("BASE_COMMIT".to_string(), commit.clone());
     }
 
-    Ok(())
+    // Load and execute QA validation
+    let guard = CRONOS.read().await;
+    if let Some(manager) = guard.as_ref() {
+        match manager.get_agent("pred-qa-validation").await {
+            Ok(qa_config) => {
+                drop(guard); // Release lock before executing
+
+                let guard = CRONOS.read().await;
+                if let Some(manager) = guard.as_ref() {
+                    match executor::execute_cron_agent_with_env(
+                        &qa_config,
+                        manager,
+                        RunTrigger::Manual,
+                        false,
+                        Some(output_sender.clone()),
+                        None,
+                        Some(qa_env),
+                        None, // No label for QA validation runs
+                    ).await {
+                        Ok(qa_run_log) => {
+                            let _ = output_sender.send(CronOutputEvent {
+                                run_id: qa_run_log.run_id.clone(),
+                                agent_name: "pred-qa-validation".to_string(),
+                                event_type: OutputEventType::Complete,
+                                content: format!("QA validation completed with status: {:?}", qa_run_log.status),
+                                timestamp: chrono::Utc::now().to_rfc3339(),
+                            });
+
+                            // Only proceed to merge if QA passed
+                            if qa_run_log.status == CronRunStatus::Success {
+                                trigger_worktree_merger(
+                                    worktree_path,
+                                    worktree_branch,
+                                    output_sender,
+                                ).await;
+                            } else {
+                                let _ = output_sender.send(CronOutputEvent {
+                                    run_id: qa_run_log.run_id,
+                                    agent_name: agent_name,
+                                    event_type: OutputEventType::Status,
+                                    content: "Skipping merge: QA validation did not pass".to_string(),
+                                    timestamp: chrono::Utc::now().to_rfc3339(),
+                                });
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("[Cronos] QA validation failed: {}", e);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("[Cronos] pred-qa-validation agent not found: {}", e);
+            }
+        }
+    }
+}
+
+/// Trigger the worktree merger agent
+async fn trigger_worktree_merger(
+    worktree_path: String,
+    worktree_branch: String,
+    output_sender: broadcast::Sender<CronOutputEvent>,
+) {
+    // Emit status event about triggering merger
+    let _ = output_sender.send(CronOutputEvent {
+        run_id: String::new(),
+        agent_name: "pred-merge-changes".to_string(),
+        event_type: OutputEventType::Status,
+        content: format!("Triggering worktree merger for branch: {}", worktree_branch),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+    });
+
+    // Get the nolan root for REPO_PATH
+    let repo_path = match crate::utils::paths::get_nolan_root() {
+        Ok(p) => p.to_string_lossy().to_string(),
+        Err(e) => {
+            eprintln!("[Cronos] Failed to get nolan root for merger: {}", e);
+            return;
+        }
+    };
+
+    // Build environment variables for the merger
+    let mut extra_env = executor::ExtraEnvVars::new();
+    extra_env.insert("WORKTREE_PATH".to_string(), worktree_path);
+    extra_env.insert("WORKTREE_BRANCH".to_string(), worktree_branch);
+    extra_env.insert("BASE_BRANCH".to_string(), "main".to_string());
+    extra_env.insert("REPO_PATH".to_string(), repo_path);
+
+    // Load and execute the merger agent
+    let guard = CRONOS.read().await;
+    if let Some(manager) = guard.as_ref() {
+        match manager.get_agent("pred-merge-changes").await {
+            Ok(merger_config) => {
+                drop(guard); // Release lock before executing
+
+                let guard = CRONOS.read().await;
+                if let Some(manager) = guard.as_ref() {
+                    match executor::execute_cron_agent_with_env(
+                        &merger_config,
+                        manager,
+                        RunTrigger::Manual,
+                        false,
+                        Some(output_sender.clone()),
+                        None,
+                        Some(extra_env),
+                        None, // No label for merge runs
+                    ).await {
+                        Ok(merger_run_log) => {
+                            let _ = output_sender.send(CronOutputEvent {
+                                run_id: merger_run_log.run_id,
+                                agent_name: "pred-merge-changes".to_string(),
+                                event_type: OutputEventType::Complete,
+                                content: format!("Worktree merger completed with status: {:?}", merger_run_log.status),
+                                timestamp: chrono::Utc::now().to_rfc3339(),
+                            });
+                        }
+                        Err(e) => {
+                            eprintln!("[Cronos] Worktree merger failed: {}", e);
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("[Cronos] pred-merge-changes agent not found: {}", e);
+            }
+        }
+    }
 }
 
 // ========================
@@ -715,11 +902,12 @@ async fn relaunch_cron_session_impl(
     }
     drop(guard);
 
-    // Generate new run ID for the relaunch
-    let new_run_id = uuid::Uuid::new_v4().to_string()[..8].to_string();
+    // Generate new run ID for the relaunch (includes timestamp for human-readable identification)
     let started_at = chrono::Utc::now();
     let timestamp = started_at.format("%H%M%S").to_string();
     let date_str = started_at.format("%Y-%m-%d").to_string();
+    let uuid_suffix = uuid::Uuid::new_v4().to_string()[..7].to_string();
+    let new_run_id = format!("{}-{}", timestamp, uuid_suffix);
 
     // Setup paths
     let nolan_root = crate::utils::paths::get_nolan_root()?;
@@ -727,8 +915,8 @@ async fn relaunch_cron_session_impl(
     std::fs::create_dir_all(&runs_dir)
         .map_err(|e| format!("Failed to create runs directory: {}", e))?;
 
-    let log_file = runs_dir.join(format!("{}-{}-resume.log", original.agent_name, timestamp));
-    let json_file = runs_dir.join(format!("{}-{}-resume.json", original.agent_name, timestamp));
+    let log_file = runs_dir.join(format!("{}-{}-resume.log", original.agent_name, &new_run_id));
+    let json_file = runs_dir.join(format!("{}-{}-resume.json", original.agent_name, &new_run_id));
 
     // Create run directory
     let run_dir = runs_dir.join(format!("{}-{}-resume", original.agent_name, new_run_id));
@@ -757,11 +945,14 @@ async fn relaunch_cron_session_impl(
         new_run_id, original.agent_name, run_id, nolan_root.to_string_lossy(), nolan_data_root.to_string_lossy()
     );
 
-    // Determine working directory (use original run_dir if still exists, or config working_directory)
-    let work_dir = original.run_dir
+    // Determine working directory - prioritize worktree_path since that's where Claude session was created
+    let work_dir = original.worktree_path
         .as_ref()
         .filter(|d| std::path::Path::new(d).exists())
         .map(std::path::PathBuf::from)
+        .or_else(|| original.run_dir.as_ref()
+            .filter(|d| std::path::Path::new(d).exists())
+            .map(std::path::PathBuf::from))
         .or_else(|| config.context.working_directory.as_ref().map(std::path::PathBuf::from))
         .unwrap_or_else(|| nolan_root.clone());
 
@@ -803,6 +994,7 @@ async fn relaunch_cron_session_impl(
         worktree_branch: original.worktree_branch.clone(),
         base_commit: original.base_commit.clone(),
         analyzer_verdict: None,  // Relaunched runs start fresh without verdict
+        label: original.label.clone(),  // Inherit label from original run
     };
 
     let json = serde_json::to_string_pretty(&initial_log)
@@ -861,6 +1053,11 @@ async fn relaunch_cron_session_impl(
     // Spawn a task to monitor completion and update the log
     let agent_name = original.agent_name.clone();
     let config_timeout = config.timeout;
+    let config_for_analyzer = config.clone();  // Clone config for analyzer trigger
+    let original_worktree_path = original.worktree_path.clone();
+    let original_worktree_branch = original.worktree_branch.clone();
+    let original_base_commit = original.base_commit.clone();
+    let original_label = original.label.clone();
     let result_run_id = new_run_id.clone();  // Clone before move into async block
     tokio::spawn(async move {
         let timeout_duration = std::time::Duration::from_secs(config_timeout as u64);
@@ -933,10 +1130,11 @@ async fn relaunch_cron_session_impl(
             run_dir: Some(run_dir.to_string_lossy().to_string()),
             claude_session_id: Some(claude_session_id),
             total_cost_usd,
-            worktree_path: None,
-            worktree_branch: None,
-            base_commit: None,
+            worktree_path: original_worktree_path,
+            worktree_branch: original_worktree_branch,
+            base_commit: original_base_commit,
             analyzer_verdict: None,
+            label: original_label,
         };
 
         if let Ok(json) = serde_json::to_string_pretty(&final_log) {
@@ -946,11 +1144,16 @@ async fn relaunch_cron_session_impl(
         // Emit completion event
         let _ = output_sender.send(CronOutputEvent {
             run_id: new_run_id,
-            agent_name,
+            agent_name: agent_name.clone(),
             event_type: OutputEventType::Complete,
             content: format!("Relaunch completed with status: {:?}", status),
             timestamp: completed_at.to_rfc3339(),
         });
+
+        // Trigger post-run analyzer if configured
+        if let Some(trigger_info) = executor::get_analyzer_trigger_info(&config_for_analyzer, &final_log) {
+            trigger_post_run_analyzer(trigger_info, output_sender).await;
+        }
 
         // Cleanup run directory on success
         if status == CronRunStatus::Success {
@@ -959,6 +1162,79 @@ async fn relaunch_cron_session_impl(
     });
 
     Ok(format!("Relaunched session for run {} as new run {}", run_id, result_run_id))
+}
+
+/// Manually trigger the analyzer for a specific run
+#[tauri::command]
+pub async fn trigger_analyzer_for_run(
+    run_id: String,
+    app: AppHandle,
+) -> Result<String, String> {
+    // Find the run log
+    let runs_dir = crate::utils::paths::get_cronos_runs_dir()?;
+    let mut run_log: Option<CronRunLog> = None;
+
+    for date_entry in std::fs::read_dir(&runs_dir).into_iter().flatten().flatten() {
+        if date_entry.path().is_dir() {
+            for file_entry in std::fs::read_dir(date_entry.path()).into_iter().flatten().flatten() {
+                let path = file_entry.path();
+                if path.extension().map(|e| e == "json").unwrap_or(false) {
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        if let Ok(log) = serde_json::from_str::<CronRunLog>(&content) {
+                            if log.run_id == run_id {
+                                run_log = Some(log);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if run_log.is_some() { break; }
+    }
+
+    let run_log = run_log.ok_or_else(|| format!("Run {} not found", run_id))?;
+
+    // Get the agent config
+    let guard = CRONOS.read().await;
+    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+    let config = manager.get_agent(&run_log.agent_name).await?;
+    drop(guard);
+
+    // Check if analyzer is configured
+    if config.post_run_analyzer.is_none() {
+        return Err(format!("Agent '{}' has no post-run analyzer configured", run_log.agent_name));
+    }
+
+    // Build trigger info (bypass status check for manual trigger)
+    let mut env_vars = executor::ExtraEnvVars::new();
+    env_vars.insert("ANALYZED_RUN_ID".to_string(), run_log.run_id.clone());
+    env_vars.insert("ANALYZED_AGENT".to_string(), run_log.agent_name.clone());
+    env_vars.insert("ANALYZED_LOG_FILE".to_string(), run_log.output_file.clone());
+    env_vars.insert("ANALYZED_STATUS".to_string(), format!("{:?}", run_log.status).to_lowercase());
+    if let Some(ref session_id) = run_log.claude_session_id {
+        env_vars.insert("ANALYZED_SESSION_ID".to_string(), session_id.clone());
+    }
+
+    let trigger_info = executor::AnalyzerTriggerInfo {
+        analyzer_agent: config.post_run_analyzer.as_ref().unwrap().analyzer_agent.clone(),
+        env_vars,
+    };
+
+    // Setup output sender and app forwarding
+    let output_sender = OUTPUT_SENDER.clone();
+    let mut receiver = output_sender.subscribe();
+    tokio::spawn(async move {
+        while let Ok(event) = receiver.recv().await {
+            let _ = app.emit("cronos:output", &event);
+        }
+    });
+
+    // Trigger the analyzer
+    let analyzer_name = trigger_info.analyzer_agent.clone();
+    trigger_post_run_analyzer(trigger_info, output_sender).await;
+
+    Ok(format!("Triggered analyzer '{}' for run {}", analyzer_name, run_id))
 }
 
 // ========================
@@ -1406,6 +1682,8 @@ pub async fn dispatch_ideas(app: AppHandle) -> Result<DispatchResult, String> {
 
         let config = processor_config.clone();
         let sender = output_sender.clone();
+        // Use idea title as label for meaningful worktree names
+        let label = Some(idea.title.clone());
 
         // Spawn in background
         tokio::spawn(async move {
@@ -1419,6 +1697,7 @@ pub async fn dispatch_ideas(app: AppHandle) -> Result<DispatchResult, String> {
                     Some(sender),
                     None,
                     Some(extra_env),
+                    label,
                 ).await {
                     eprintln!("Idea processor failed: {}", e);
                 }
@@ -1473,6 +1752,8 @@ pub async fn dispatch_single_idea(idea_id: String, app: AppHandle) -> Result<Str
     // Spawn in background
     let config = processor_config.clone();
     let sender = output_sender.clone();
+    // Use idea title as label for meaningful worktree names
+    let label = Some(idea.title.clone());
     tokio::spawn(async move {
         let guard = CRONOS.read().await;
         if let Some(manager) = guard.as_ref() {
@@ -1484,6 +1765,7 @@ pub async fn dispatch_single_idea(idea_id: String, app: AppHandle) -> Result<Str
                 Some(sender),
                 None,
                 Some(extra_env),
+                label,
             ).await {
                 eprintln!("Idea processor failed: {}", e);
             }
@@ -1575,6 +1857,8 @@ pub async fn route_accepted_idea(idea_id: String) -> Result<RouteResult, String>
             let mut extra_env = executor::ExtraEnvVars::new();
             extra_env.insert("IDEA_ID".to_string(), idea_id.clone());
             extra_env.insert("IDEA_TITLE".to_string(), idea.title.clone());
+            // Use idea title as label for meaningful worktree names
+            let label = Some(idea.title.clone());
 
             // Spawn in background
             tokio::spawn(async move {
@@ -1588,6 +1872,7 @@ pub async fn route_accepted_idea(idea_id: String) -> Result<RouteResult, String>
                         Some(output_sender.clone()),
                         None,
                         Some(extra_env),
+                        label,
                     ).await {
                         Ok(run_log) => {
                             // Check if post-run analyzer should be triggered
@@ -1780,6 +2065,8 @@ pub async fn dispatch_ideas_api() -> Result<DispatchResult, String> {
 
         let config = processor_config.clone();
         let sender = output_sender.clone();
+        // Use idea title as label for meaningful worktree names
+        let label = Some(idea.title.clone());
 
         // Spawn in background
         tokio::spawn(async move {
@@ -1793,6 +2080,7 @@ pub async fn dispatch_ideas_api() -> Result<DispatchResult, String> {
                     Some(sender),
                     None,
                     Some(extra_env),
+                    label,
                 ).await {
                     eprintln!("Idea processor failed: {}", e);
                 }

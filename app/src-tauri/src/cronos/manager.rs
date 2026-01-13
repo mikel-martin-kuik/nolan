@@ -435,6 +435,7 @@ impl CronosManager {
                         worktree_branch: None,
                         base_commit: None,
                         analyzer_verdict: None,
+                        label: None,  // Label not available during recovery
                     };
 
                     // Write final log
@@ -519,6 +520,7 @@ impl CronosManager {
             worktree_branch: run_log.worktree_branch.clone(),
             base_commit: run_log.base_commit.clone(),
             analyzer_verdict: run_log.analyzer_verdict.clone(),  // Preserve any existing verdict
+            label: run_log.label.clone(),  // Preserve original label
         };
 
         let json = serde_json::to_string_pretty(&final_log)
@@ -658,7 +660,9 @@ impl CronosManager {
     }
 
     /// Get agent config by name
+    /// Looks in cronos agents directory first, then predefined agents directory
     pub async fn get_agent(&self, name: &str) -> Result<CronAgentConfig, String> {
+        // Check cronos agents directory first
         let agents_dir = paths::get_agents_dir()?;
         let config_path = agents_dir.join(name).join("agent.yaml");
 
@@ -667,6 +671,19 @@ impl CronosManager {
                 .map_err(|e| format!("Failed to read agent '{}': {}", name, e))?;
             return serde_yaml::from_str(&content)
                 .map_err(|e| format!("Invalid agent config: {}", e));
+        }
+
+        // Check predefined agents directory (for pred-* agents)
+        if name.starts_with("pred-") {
+            let nolan_root = crate::utils::paths::get_nolan_root()?;
+            let predefined_path = nolan_root.join("predefined").join("agents").join(name).join("agent.yaml");
+
+            if predefined_path.exists() {
+                let content = std::fs::read_to_string(&predefined_path)
+                    .map_err(|e| format!("Failed to read predefined agent '{}': {}", name, e))?;
+                return serde_yaml::from_str(&content)
+                    .map_err(|e| format!("Invalid predefined agent config: {}", e));
+            }
         }
 
         Err(format!("Agent '{}' not found", name))

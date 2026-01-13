@@ -56,7 +56,7 @@ interface AgentStore {
     followupPrompt?: string
   ) => Promise<void>;
   killTeam: (teamName: string) => Promise<void>;
-  spawnAgent: (teamName: string, agent: AgentName, force?: boolean, model?: ClaudeModel, chrome?: boolean, worktree?: boolean) => Promise<void>;
+  spawnAgent: (teamName: string, agent: AgentName, force?: boolean, model?: ClaudeModel, chrome?: boolean, worktreePath?: string) => Promise<void>;
   startAgent: (teamName: string, agent: AgentName) => Promise<void>;
   killInstance: (session: string) => Promise<void>;
   killAllInstances: (teamName: string, agent: AgentName) => Promise<void>;
@@ -146,11 +146,11 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
   },
 
   // Legacy: Spawn a new agent instance
-  spawnAgent: async (teamName: string, agent: AgentName, force = false, model?: ClaudeModel, chrome?: boolean, worktree?: boolean) => {
+  spawnAgent: async (teamName: string, agent: AgentName, force = false, model?: ClaudeModel, chrome?: boolean, worktreePath?: string) => {
     try {
       set({ loading: true, error: null });
 
-      await invoke<string>('spawn_agent', { teamName, agent, force, model, chrome, worktree });
+      await invoke<string>('spawn_agent', { teamName, agent, force, model, chrome, worktreePath });
 
       set({ loading: false });
       useToastStore.getState().success(`Spawned ${agent} instance in team ${teamName}`);

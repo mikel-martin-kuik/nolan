@@ -248,6 +248,9 @@ pub struct CronRunLog {
     pub worktree_branch: Option<String>, // Branch name for the worktree
     #[serde(default)]
     pub base_commit: Option<String>,     // Commit at worktree creation
+    // Human-readable label describing what this run is working on (e.g., "implement-user-auth")
+    #[serde(default)]
+    pub label: Option<String>,
     // Analyzer verdict (populated after analyzer agent runs)
     #[serde(default)]
     pub analyzer_verdict: Option<AnalyzerVerdict>,

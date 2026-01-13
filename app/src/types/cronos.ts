@@ -28,6 +28,14 @@ export interface InvocationConfig {
   icon?: string;          // Icon name (lucide icon)
 }
 
+// Post-run analyzer configuration
+export interface PostRunAnalyzerConfig {
+  analyzer_agent: string;  // Name of the analyzer agent to trigger
+  on_success: boolean;     // Trigger analyzer on success
+  on_failure: boolean;     // Trigger analyzer on failure
+  on_timeout: boolean;     // Trigger analyzer on timeout
+}
+
 export interface CronAgentConfig {
   name: string;
   description: string;
@@ -46,6 +54,7 @@ export interface CronAgentConfig {
   catch_up: CatchUpPolicy;
   event_trigger?: EventTrigger;     // For Event type
   invocation?: InvocationConfig;    // For Predefined type
+  post_run_analyzer?: PostRunAnalyzerConfig;  // Post-run analyzer configuration
 }
 
 // Cron agent group definition

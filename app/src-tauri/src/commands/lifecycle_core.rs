@@ -199,7 +199,11 @@ pub async fn start_agent_core(team_name: &str, agent: &str) -> Result<String, St
 }
 
 /// Spawn a Ralph instance (without auto-start terminal stream)
-pub async fn spawn_ralph_core(model: Option<String>, force: bool) -> Result<String, String> {
+///
+/// # Arguments
+/// * `worktree_path` - Optional path to an existing worktree to work in.
+///   Ralph will work on pre-existing worktrees, not create new ones.
+pub async fn spawn_ralph_core(model: Option<String>, force: bool, worktree_path: Option<String>) -> Result<String, String> {
     use std::fs;
     #[cfg(unix)]
     use std::os::unix::fs::symlink;
@@ -268,10 +272,70 @@ pub async fn spawn_ralph_core(model: Option<String>, force: bool) -> Result<Stri
         }
     }
 
+    // Determine working directory and worktree env vars
+    let (working_dir, worktree_env) = if let Some(ref wt_path) = worktree_path {
+        let worktree_dir = std::path::PathBuf::from(wt_path);
+
+        // Verify the worktree path exists
+        if !worktree_dir.exists() {
+            return Err(format!("Worktree path does not exist: {}", wt_path));
+        }
+
+        // Detect the branch name from the worktree (if it's a git worktree)
+        let branch_name = if worktree_dir.join(".git").exists() {
+            let output = Command::new("git")
+                .args(["-C", wt_path, "rev-parse", "--abbrev-ref", "HEAD"])
+                .output();
+            match output {
+                Ok(out) if out.status.success() => {
+                    Some(String::from_utf8_lossy(&out.stdout).trim().to_string())
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        // Copy CLAUDE.md into worktree so agent has instructions
+        #[cfg(unix)]
+        {
+            let base_agent_dir = agents_dir.join("ralph");
+            let claude_md_src = base_agent_dir.join("CLAUDE.md");
+            if claude_md_src.exists() {
+                let claude_md_link = worktree_dir.join("CLAUDE.md");
+                if !claude_md_link.exists() {
+                    if let Ok(content) = fs::read_to_string(&claude_md_src) {
+                        let _ = fs::write(&claude_md_link, content);
+                    }
+                }
+            }
+
+            // Copy .claude settings into worktree
+            let ralph_claude = base_agent_dir.join(".claude");
+            if ralph_claude.exists() {
+                let claude_dest = worktree_dir.join(".claude");
+                if !claude_dest.exists() {
+                    let _ = Command::new("cp")
+                        .args(["-r", &ralph_claude.to_string_lossy(), &claude_dest.to_string_lossy()])
+                        .output();
+                }
+            }
+        }
+
+        let env = if let Some(ref branch) = branch_name {
+            format!(" WORKTREE_PATH=\"{}\" WORKTREE_BRANCH=\"{}\"", wt_path, branch)
+        } else {
+            format!(" WORKTREE_PATH=\"{}\"", wt_path)
+        };
+        (worktree_dir, env)
+    } else {
+        (agent_dir.clone(), String::new())
+    };
+
     // Build command
     let model_str = model.unwrap_or_else(|| crate::commands::lifecycle::get_default_model("ralph"));
     let cmd = format!(
-        "export AGENT_NAME=ralph TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\"; claude --dangerously-skip-permissions --model {}; exec bash",
+        "export AGENT_NAME=ralph TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\"{worktree_env}; claude --dangerously-skip-permissions --model {}; exec bash",
         nolan_root.to_string_lossy(),
         nolan_data_root.to_string_lossy(),
         projects_dir.to_string_lossy(),
@@ -282,7 +346,7 @@ pub async fn spawn_ralph_core(model: Option<String>, force: bool) -> Result<Stri
     let output = Command::new("tmux")
         .args(&[
             "new-session", "-d", "-s", &session,
-            "-c", &agent_dir.to_string_lossy(),
+            "-c", &working_dir.to_string_lossy(),
             &cmd
         ])
         .output()
@@ -299,7 +363,7 @@ pub async fn spawn_ralph_core(model: Option<String>, force: bool) -> Result<Stri
     if let Err(e) = crate::commands::lifecycle::register_session(
         &session,
         "ralph",
-        &agent_dir.to_string_lossy(),
+        &working_dir.to_string_lossy(),
         "",
     ) {
         eprintln!("Warning: Failed to register session: {}", e);

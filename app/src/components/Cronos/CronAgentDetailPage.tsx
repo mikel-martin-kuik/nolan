@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { invoke } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,7 +14,7 @@ import { useToastStore } from '@/store/toastStore';
 import { useOllamaStore } from '@/store/ollamaStore';
 import { useCronOutputStore } from '@/store/cronOutputStore';
 import { Tooltip } from '@/components/ui/tooltip';
-import { Sparkles, Loader2, RefreshCcw } from 'lucide-react';
+import { Sparkles, Loader2, RefreshCcw, Play } from 'lucide-react';
 import { CRON_PRESETS, CRON_MODELS } from '@/types/cronos';
 import { CronAgentOutputPanel } from './CronAgentOutputPanel';
 import type { CronAgentInfo, CronAgentConfig, CronRunLog } from '@/types';
@@ -46,6 +47,8 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
   const [relaunchRunId, setRelaunchRunId] = useState<string | null>(null);
   const [relaunchPrompt, setRelaunchPrompt] = useState('');
   const [relaunching, setRelaunching] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; run: CronRunLog } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   const { error: showError, success: showSuccess } = useToastStore();
   const { status: ollamaStatus, checkConnection, generate: ollamaGenerate } = useOllamaStore();
 
@@ -151,7 +154,7 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
     setRelaunching(true);
     try {
       await invoke('relaunch_cron_session', {
-        run_id: relaunchRunId,
+        runId: relaunchRunId,
         followUpPrompt: relaunchPrompt.trim(),
       });
       showSuccess('Session relaunched');
@@ -166,6 +169,18 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
     }
   };
 
+  const handleTriggerAnalyzer = async (runId: string) => {
+    try {
+      await invoke('trigger_analyzer_for_run', { runId });
+      showSuccess('Analyzer triggered');
+      setTimeout(fetchRunHistory, 1000);
+    } catch (err) {
+      showError(`Failed to trigger analyzer: ${err}`);
+    }
+  };
+
+  const hasAnalyzer = config?.post_run_analyzer?.analyzer_agent;
+
   const canRelaunch = (run: CronRunLog) => {
     // Can relaunch if:
     // 1. Run has a claude_session_id (newer runs)
@@ -175,6 +190,40 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
     if (run.analyzer_verdict?.verdict === 'FOLLOWUP') return true;
     return false;
   };
+
+  // Context menu handlers
+  const handleRunContextMenu = (e: React.MouseEvent, run: CronRunLog) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Only show menu if there are actions available
+    if (!canRelaunch(run) && !(hasAnalyzer && run.status !== 'running')) return;
+
+    const menuHeight = 100;
+    const viewportHeight = window.innerHeight;
+    const y = e.clientY + menuHeight > viewportHeight
+      ? e.clientY - menuHeight
+      : e.clientY;
+
+    setContextMenu({
+      x: e.clientX,
+      y: Math.max(8, y),
+      run,
+    });
+  };
+
+  const handleClickOutside = useCallback((e: MouseEvent) => {
+    if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+      setContextMenu(null);
+    }
+  }, []);
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    if (!contextMenu) return;
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [contextMenu, handleClickOutside]);
 
   const getVerdictBadge = (run: CronRunLog) => {
     if (!run.analyzer_verdict) return null;
@@ -418,11 +467,11 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
           {/* Run History + Output Logs side by side */}
           <div className="grid grid-cols-2 gap-4 flex-1 min-h-0">
             {/* Run History */}
-            <Card className="flex flex-col h-full overflow-hidden">
+            <Card className="flex flex-col h-full">
               <CardHeader className="py-3 flex-shrink-0">
                 <CardTitle className="text-sm">Run History</CardTitle>
               </CardHeader>
-              <CardContent className="flex-1 overflow-hidden p-0">
+              <CardContent className="flex-1 min-h-0 p-0">
                 <ScrollArea className="h-full px-4 pb-4">
                   {runHistory.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
@@ -438,6 +487,7 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
                             key={run.run_id}
                             className={`p-2 cursor-pointer hover:border-primary/50 transition-colors ${isFailed ? 'border-red-500/50' : ''} ${isSelected ? 'border-primary' : ''}`}
                             onClick={() => openOutput(agentName, run.run_id)}
+                            onContextMenu={(e) => handleRunContextMenu(e, run)}
                           >
                             <div className="flex items-center justify-between">
                               <div>
@@ -453,31 +503,13 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
                                   {getVerdictBadge(run)}
                                 </div>
                               </div>
-                              <div className="flex items-center gap-2">
-                                {canRelaunch(run) && (
-                                  <Tooltip content={run.analyzer_verdict?.verdict === 'FOLLOWUP' ? 'Continue with analyzer suggestion' : 'Relaunch to continue this session'} side="top">
-                                    <Button
-                                      variant="ghost"
-                                      size="sm"
-                                      className={`h-6 w-6 p-0 ${run.analyzer_verdict?.verdict === 'FOLLOWUP' ? 'text-yellow-400' : ''}`}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setRelaunchRunId(run.run_id);
-                                        setRelaunchPrompt(getRelaunchPrompt(run));
-                                      }}
-                                    >
-                                      <RefreshCcw className="h-3 w-3" />
-                                    </Button>
-                                  </Tooltip>
+                              <div className="text-xs text-muted-foreground text-right">
+                                {run.duration_secs !== undefined && run.duration_secs !== null && (
+                                  <span>{(run.duration_secs / 60).toFixed(1)}m</span>
                                 )}
-                                <div className="text-xs text-muted-foreground text-right">
-                                  {run.duration_secs !== undefined && run.duration_secs !== null && (
-                                    <span>{(run.duration_secs / 60).toFixed(1)}m</span>
-                                  )}
-                                  {run.total_cost_usd !== undefined && run.total_cost_usd !== null && (
-                                    <span className="ml-2">${run.total_cost_usd.toFixed(2)}</span>
-                                  )}
-                                </div>
+                                {run.total_cost_usd !== undefined && run.total_cost_usd !== null && (
+                                  <span className="ml-2">${run.total_cost_usd.toFixed(2)}</span>
+                                )}
                               </div>
                             </div>
                             {run.analyzer_verdict && (
@@ -572,6 +604,45 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Run history context menu - rendered via portal */}
+      {contextMenu && createPortal(
+        <div
+          ref={contextMenuRef}
+          className="fixed z-50 bg-secondary border border-border rounded-md shadow-lg py-1 min-w-[180px]"
+          style={{
+            left: `${contextMenu.x}px`,
+            top: `${contextMenu.y}px`,
+          }}
+        >
+          {canRelaunch(contextMenu.run) && (
+            <button
+              onClick={() => {
+                setRelaunchRunId(contextMenu.run.run_id);
+                setRelaunchPrompt(getRelaunchPrompt(contextMenu.run));
+                setContextMenu(null);
+              }}
+              className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
+            >
+              <RefreshCcw className="w-4 h-4" />
+              {contextMenu.run.analyzer_verdict?.verdict === 'FOLLOWUP' ? 'Continue session' : 'Relaunch session'}
+            </button>
+          )}
+          {hasAnalyzer && contextMenu.run.status !== 'running' && (
+            <button
+              onClick={() => {
+                handleTriggerAnalyzer(contextMenu.run.run_id);
+                setContextMenu(null);
+              }}
+              className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
+            >
+              <Play className="w-4 h-4" />
+              Run analyzer
+            </button>
+          )}
+        </div>,
+        document.body
       )}
     </div>
   );

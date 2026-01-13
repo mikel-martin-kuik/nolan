@@ -163,6 +163,7 @@ export function useSpawnAgent() {
       force?: boolean;
       model?: ClaudeModel;
       chrome?: boolean;
+      worktreePath?: string;
     }) => {
       await invoke<string>('spawn_agent', {
         teamName: params.teamName,
@@ -170,6 +171,7 @@ export function useSpawnAgent() {
         force: params.force ?? false,
         model: params.model,
         chrome: params.chrome,
+        worktreePath: params.worktreePath,
       });
       return params;
     },

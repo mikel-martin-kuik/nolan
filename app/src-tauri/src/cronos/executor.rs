@@ -15,6 +15,26 @@ use crate::utils::paths;
 use crate::tmux::session;
 use crate::git::worktree;
 
+/// Get the agent directory, checking both cronos and predefined paths
+fn get_agent_dir(agent_name: &str) -> Result<PathBuf, String> {
+    // Check cronos agents directory first
+    let cronos_dir = paths::get_agents_dir()?.join(agent_name);
+    if cronos_dir.exists() {
+        return Ok(cronos_dir);
+    }
+
+    // Check predefined agents directory (for pred-* agents)
+    if agent_name.starts_with("pred-") {
+        let nolan_root = paths::get_nolan_root()?;
+        let predefined_dir = nolan_root.join("predefined").join("agents").join(agent_name);
+        if predefined_dir.exists() {
+            return Ok(predefined_dir);
+        }
+    }
+
+    Err(format!("Agent directory for '{}' not found", agent_name))
+}
+
 /// Extract total cost from Claude output log file
 /// The cost is in a JSON line with type: "result" and total_cost_usd field
 fn extract_cost_from_log(log_file: &PathBuf) -> Option<f32> {
@@ -70,10 +90,10 @@ pub async fn execute_cron_agent(
     output_sender: Option<OutputSender>,
     cancellation: Option<CancellationToken>,
 ) -> Result<CronRunLog, String> {
-    execute_cron_agent_with_env(config, manager, trigger, dry_run, output_sender, cancellation, None).await
+    execute_cron_agent_with_env(config, manager, trigger, dry_run, output_sender, cancellation, None, None).await
 }
 
-/// Execute a cron agent with extra environment variables
+/// Execute a cron agent with extra environment variables and optional label
 pub async fn execute_cron_agent_with_env(
     config: &CronAgentConfig,
     manager: &CronosManager,
@@ -82,11 +102,14 @@ pub async fn execute_cron_agent_with_env(
     output_sender: Option<OutputSender>,
     cancellation: Option<CancellationToken>,
     extra_env: Option<ExtraEnvVars>,
+    label: Option<String>,
 ) -> Result<CronRunLog, String> {
     // Check concurrency
     if !config.concurrency.allow_parallel && manager.is_running(&config.name).await {
-        let run_id = Uuid::new_v4().to_string()[..8].to_string();
         let now = Utc::now();
+        let timestamp = now.format("%H%M%S").to_string();
+        let uuid_suffix = Uuid::new_v4().to_string()[..7].to_string();
+        let run_id = format!("{}-{}", timestamp, uuid_suffix);
 
         // Log skipped run
         let skip_log = CronRunLog {
@@ -108,6 +131,7 @@ pub async fn execute_cron_agent_with_env(
             worktree_path: None,
             worktree_branch: None,
             base_commit: None,
+            label: None,
             analyzer_verdict: None,
         };
 
@@ -139,6 +163,7 @@ pub async fn execute_cron_agent_with_env(
             output_sender.clone(),
             cancellation.clone(),
             extra_env.clone(),
+            label.clone(),
         ).await;
 
         match &result {
@@ -193,11 +218,30 @@ async fn execute_single_run(
     output_sender: Option<OutputSender>,
     cancellation: Option<CancellationToken>,
     extra_env: Option<ExtraEnvVars>,
+    label: Option<String>,
 ) -> Result<CronRunLog, String> {
-    let run_id = Uuid::new_v4().to_string()[..8].to_string();
     let started_at = Utc::now();
     let timestamp = started_at.format("%H%M%S").to_string();
     let date_str = started_at.format("%Y-%m-%d").to_string();
+    let uuid_suffix = Uuid::new_v4().to_string()[..7].to_string();
+
+    // Run ID format depends on whether a label is provided:
+    // - With label: "my-feature-abc1234" (label + uuid for uniqueness)
+    // - Without label: "143022-abc1234" (timestamp + uuid for identification)
+    let run_id = if let Some(ref lbl) = label {
+        // Sanitize label: lowercase, replace spaces/special chars with hyphens, truncate
+        let sanitized = lbl
+            .to_lowercase()
+            .chars()
+            .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '-' })
+            .collect::<String>()
+            .trim_matches('-')
+            .to_string();
+        let truncated = if sanitized.len() > 30 { &sanitized[..30] } else { &sanitized };
+        format!("{}-{}", truncated.trim_end_matches('-'), uuid_suffix)
+    } else {
+        format!("{}-{}", timestamp, uuid_suffix)
+    };
 
     // Setup paths
     let nolan_root = paths::get_nolan_root()?;
@@ -207,8 +251,8 @@ async fn execute_single_run(
     std::fs::create_dir_all(&runs_dir)
         .map_err(|e| format!("Failed to create runs directory: {}", e))?;
 
-    let log_file = runs_dir.join(format!("{}-{}.log", config.name, timestamp));
-    let json_file = runs_dir.join(format!("{}-{}.json", config.name, timestamp));
+    let log_file = runs_dir.join(format!("{}-{}.log", config.name, &run_id));
+    let json_file = runs_dir.join(format!("{}-{}.json", config.name, &run_id));
 
     // Create ephemeral run directory (like Ralph's agent-ralph-{name}/)
     let run_dir = runs_dir.join(format!("{}-{}", config.name, run_id));
@@ -245,7 +289,7 @@ async fn execute_single_run(
     }
 
     // Read agent's CLAUDE.md for prompt
-    let agent_dir = paths::get_agents_dir()?.join(&config.name);
+    let agent_dir = get_agent_dir(&config.name)?;
     let claude_md_path = agent_dir.join("CLAUDE.md");
     let prompt = std::fs::read_to_string(&claude_md_path)
         .map_err(|e| format!("Failed to read CLAUDE.md from {:?}: {}", claude_md_path, e))?;
@@ -273,6 +317,7 @@ async fn execute_single_run(
             worktree_path: None,
             worktree_branch: None,
             base_commit: None,
+            label,
             analyzer_verdict: None,
         });
     }
@@ -469,6 +514,7 @@ async fn execute_single_run(
         worktree_path: wt_path.clone(),
         worktree_branch: wt_branch.clone(),
         base_commit: wt_commit.clone(),
+        label: label.clone(),
         analyzer_verdict: None,
     };
 
@@ -590,6 +636,7 @@ async fn execute_single_run(
         worktree_path: wt_path,
         worktree_branch: wt_branch,
         base_commit: wt_commit,
+        label,
         analyzer_verdict: None,
     };
 
@@ -725,10 +772,12 @@ pub async fn execute_cron_agent_simple(
     config: &CronAgentConfig,
     dry_run: bool,
 ) -> Result<CronRunLog, String> {
-    let run_id = Uuid::new_v4().to_string()[..8].to_string();
     let started_at = Utc::now();
     let timestamp = started_at.format("%H%M%S").to_string();
     let date_str = started_at.format("%Y-%m-%d").to_string();
+    // Run ID includes timestamp for human-readable identification (e.g., "143022-abc1234")
+    let uuid_suffix = Uuid::new_v4().to_string()[..7].to_string();
+    let run_id = format!("{}-{}", timestamp, uuid_suffix);
 
     // Setup run log directory
     let nolan_root = paths::get_nolan_root()?;
@@ -737,11 +786,11 @@ pub async fn execute_cron_agent_simple(
     std::fs::create_dir_all(&runs_dir)
         .map_err(|e| format!("Failed to create runs directory: {}", e))?;
 
-    let log_file = runs_dir.join(format!("{}-{}.log", config.name, timestamp));
-    let json_file = runs_dir.join(format!("{}-{}.json", config.name, timestamp));
+    let log_file = runs_dir.join(format!("{}-{}.log", config.name, &run_id));
+    let json_file = runs_dir.join(format!("{}-{}.json", config.name, &run_id));
 
     // Read agent's CLAUDE.md for prompt
-    let agent_dir = paths::get_agents_dir()?.join(&config.name);
+    let agent_dir = get_agent_dir(&config.name)?;
     let claude_md_path = agent_dir.join("CLAUDE.md");
     let prompt = std::fs::read_to_string(&claude_md_path)
         .map_err(|e| format!("Failed to read CLAUDE.md from {:?}: {}", claude_md_path, e))?;
@@ -767,6 +816,7 @@ pub async fn execute_cron_agent_simple(
             worktree_path: None,
             worktree_branch: None,
             base_commit: None,
+            label: None,
             analyzer_verdict: None,
         });
     }
@@ -887,6 +937,7 @@ pub async fn execute_cron_agent_simple(
         worktree_path: None,  // Simple mode doesn't use worktrees
         worktree_branch: None,
         base_commit: None,
+        label: None,  // Simple mode doesn't support labels
         analyzer_verdict: None,
     };
 

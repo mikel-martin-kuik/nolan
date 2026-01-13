@@ -123,6 +123,7 @@ pub fn run() {
             get_agent_status,
             recover_sessions,
             list_orphaned_sessions,
+            list_worktrees,
             launch_terminal,
             open_agent_terminal,
             open_team_terminals,
@@ -221,6 +222,9 @@ pub fn run() {
             // Predefined agent commands
             cronos::commands::trigger_predefined_agent,
             cronos::commands::list_agent_commands,
+            // Session relaunch command
+            cronos::commands::relaunch_cron_session,
+            cronos::commands::trigger_analyzer_for_run,
             // Feedback commands
             list_feature_requests,
             create_feature_request,

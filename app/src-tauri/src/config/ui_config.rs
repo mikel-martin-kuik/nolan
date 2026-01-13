@@ -63,6 +63,24 @@ impl Default for OllamaDefaults {
     }
 }
 
+/// SSH terminal configuration for web-based terminal access
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SshTerminalConfig {
+    /// Base URL for the SSH web terminal (e.g., wetty, gotty, or Guacamole)
+    pub base_url: String,
+    /// Whether SSH terminal is enabled
+    pub enabled: bool,
+}
+
+impl Default for SshTerminalConfig {
+    fn default() -> Self {
+        SshTerminalConfig {
+            base_url: String::new(),
+            enabled: false,
+        }
+    }
+}
+
 /// Root UI configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UIConfig {
@@ -78,6 +96,8 @@ pub struct UIConfig {
     pub agent_display_names: Vec<AgentDisplayName>,
     pub session_prefixes: SessionPrefixConfig,
     pub ollama_defaults: OllamaDefaults,
+    #[serde(default)]
+    pub ssh_terminal: SshTerminalConfig,
 }
 
 impl Default for UIConfig {
@@ -150,6 +170,7 @@ impl Default for UIConfig {
             ].iter().map(|&n| AgentDisplayName { name: n.into() }).collect(),
             session_prefixes: SessionPrefixConfig::default(),
             ollama_defaults: OllamaDefaults::default(),
+            ssh_terminal: SshTerminalConfig::default(),
         }
     }
 }

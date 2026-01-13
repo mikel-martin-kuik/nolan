@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 // UI Configuration module
 pub mod ui_config;
-pub use ui_config::{UIConfig, load_ui_config, StatusConfig, PipelineStageConfig, SessionPrefixConfig, OllamaDefaults, AgentDisplayName};
+pub use ui_config::{UIConfig, load_ui_config, StatusConfig, PipelineStageConfig, SessionPrefixConfig, OllamaDefaults, AgentDisplayName, SshTerminalConfig};
 
 /// Root team configuration structure
 #[derive(Debug, Clone, Serialize, Deserialize)]

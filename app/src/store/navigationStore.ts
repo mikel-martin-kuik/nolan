@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type Tab = 'status' | 'chat' | 'projects' | 'files' | 'teams' | 'cronos' | 'workflows' | 'usage' | 'support' | 'settings';
+export type Tab = 'status' | 'chat' | 'projects' | 'files' | 'cronos' | 'workflows' | 'usage' | 'support' | 'settings';
 
 export interface NavigationContext {
   // For projects tab: project name to select

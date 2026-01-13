@@ -38,6 +38,7 @@ export function WorkflowVisualizerPanel() {
   const teamWorkflowSubTab = useWorkflowVisualizerStore((state) => state.teamWorkflowSubTab);
   const setTeamWorkflowSubTab = useWorkflowVisualizerStore((state) => state.setTeamWorkflowSubTab);
   const selectedPipelineId = useWorkflowVisualizerStore((state) => state.selectedPipelineId);
+  const pipelines = useWorkflowVisualizerStore((state) => state.pipelines);
   const { refetch, isLoading, teamConfig } = useWorkflowData();
   const { loadAvailableTeams, loadTeam, currentTeamName } = useTeamStore();
   const { loadDepartments, saveDepartments, departments } = useDepartmentStore();
@@ -429,14 +430,6 @@ export function WorkflowVisualizerPanel() {
     setExceptionHandlerModal(false);
   };
 
-  // Team settings handlers
-  const handleOpenTeamSettings = () => {
-    if (!teamConfig) return;
-    setEditedTeamName(teamConfig.team.name);
-    setEditedTeamDescription(teamConfig.team.description || '');
-    setTeamSettingsModal(true);
-  };
-
   const saveTeamSettings = async () => {
     if (!teamConfig || !editedTeamName) return;
 
@@ -706,42 +699,50 @@ export function WorkflowVisualizerPanel() {
           </TabsContent>
 
           <TabsContent value="pipelines" className="h-full m-0 p-2 sm:p-4">
-            <div className="h-full flex flex-col md:grid md:grid-cols-2 gap-2 sm:gap-4">
-              {/* Pipeline List */}
-              <div className={cn(
-                "h-full overflow-auto",
-                showMobilePipelineDetail && selectedPipelineId && "hidden md:block"
-              )}>
+            {pipelines.length === 0 ? (
+              /* No pipelines - show template view full width */
+              <div className="h-full overflow-auto">
                 <ImplementationPipelineList onPipelineSelect={handlePipelineSelect} />
               </div>
-              {/* Pipeline Detail */}
-              <div className={cn(
-                "h-full",
-                !showMobilePipelineDetail && "hidden md:flex"
-              )}>
-                {selectedPipelineId ? (
-                  <div className="h-full w-full flex flex-col">
-                    {/* Mobile back button */}
-                    <div className="flex md:hidden items-center gap-2 mb-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowMobilePipelineDetail(false)}
-                        className="gap-1"
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                        Back
-                      </Button>
+            ) : (
+              /* Has pipelines - show list + detail side by side */
+              <div className="h-full flex flex-col md:grid md:grid-cols-2 gap-2 sm:gap-4">
+                {/* Pipeline List */}
+                <div className={cn(
+                  "h-full overflow-auto",
+                  showMobilePipelineDetail && selectedPipelineId && "hidden md:block"
+                )}>
+                  <ImplementationPipelineList onPipelineSelect={handlePipelineSelect} />
+                </div>
+                {/* Pipeline Detail */}
+                <div className={cn(
+                  "h-full",
+                  !showMobilePipelineDetail && "hidden md:flex"
+                )}>
+                  {selectedPipelineId ? (
+                    <div className="h-full w-full flex flex-col">
+                      {/* Mobile back button */}
+                      <div className="flex md:hidden items-center gap-2 mb-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowMobilePipelineDetail(false)}
+                          className="gap-1"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                          Back
+                        </Button>
+                      </div>
+                      <ImplementationPipelineDetail />
                     </div>
-                    <ImplementationPipelineDetail />
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center border rounded-lg text-muted-foreground w-full h-full">
-                    Select a pipeline to view details
-                  </div>
-                )}
+                  ) : (
+                    <div className="flex items-center justify-center border rounded-lg text-muted-foreground w-full h-full">
+                      Select a pipeline to view details
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
           </TabsContent>
 
           <TabsContent value="worktrees" className="h-full m-0 p-2 sm:p-4">

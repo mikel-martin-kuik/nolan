@@ -18,7 +18,6 @@ import { WorkflowVisualizerPanel } from './components/Workflow';
 import { SupportPanel } from './components/Support';
 import { FileBrowserPanel } from './components/Files';
 import { ToastContainer } from './components/shared/Toast';
-import { TerminalModal } from './components/Terminal/TerminalModal';
 import { BrandHeader } from './components/shared/BrandHeader';
 import { ThemeToggle } from './components/shared/ThemeToggle';
 import { PasswordPrompt } from './components/Settings/PasswordPrompt';
@@ -375,9 +374,6 @@ function App() {
 
           {/* Toast notifications */}
           <ToastContainer toasts={toasts.map(toast => ({ ...toast, onClose: removeToast }))} />
-
-          {/* Terminal modal */}
-          <TerminalModal />
         </div>
         </TeamProvider>
         </ConfigProvider>

@@ -114,7 +114,7 @@ export function TeamWorkflowDag({ onPhaseClick, onEditPhase, onDeletePhase, onAd
   );
 
   const onPaneContextMenu = useCallback(
-    (event: React.MouseEvent) => {
+    (event: MouseEvent | React.MouseEvent) => {
       event.preventDefault();
       event.stopPropagation();
 
@@ -153,7 +153,7 @@ export function TeamWorkflowDag({ onPhaseClick, onEditPhase, onDeletePhase, onAd
     if (!contextMenu) return;
 
     const handleClickOutside = (e: MouseEvent) => {
-      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as globalThis.Node)) {
         closeContextMenu();
       }
     };

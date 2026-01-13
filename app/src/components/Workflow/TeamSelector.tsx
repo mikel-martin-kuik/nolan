@@ -30,7 +30,7 @@ export const TeamSelector: React.FC<TeamSelectorProps> = ({
     loadDepartments,
     loadTeamInfos,
     getGroupedByPillar,
-    collapsedPillars,
+    collapsedPillars: _collapsedPillars,
   } = useDepartmentStore();
 
   const [isOpen, setIsOpen] = useState(false);

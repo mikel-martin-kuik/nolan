@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { invoke } from '@/lib/api';
-import { Terminal, Play, Trash2, MessageSquare, Send, X, FileEdit, Save, Pencil } from 'lucide-react';
+import { invoke, isTauri } from '@/lib/api';
+import { Terminal, Play, Trash2, MessageSquare, Send, X, FileEdit, Save, Pencil, ExternalLink } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Tooltip } from '@/components/ui/tooltip';
 import { useAgentStore } from '@/store/agentStore';
@@ -11,6 +11,7 @@ import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { AGENT_DESCRIPTIONS } from '@/types';
 import { getAgentDisplayNameForUI, isRalphSession, parseRalphSession } from '@/lib/agentIdentity';
 import { useSessionLabelsStore } from '@/store/sessionLabelsStore';
+import { FEATURES } from '@/lib/features';
 import type { AgentStatus as AgentStatusType } from '@/types';
 
 interface AgentCardProps {
@@ -47,7 +48,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
 }) => {
   const { spawnAgent, startAgent, killInstance } = useAgentStore();
   const { error: showError, success: showSuccess } = useToastStore();
-  const openTerminalModal = useTerminalStore((state) => state.openModal);
+  const { sshEnabled, getSshTerminalUrl } = useTerminalStore();
   const [isProcessing, setIsProcessing] = React.useState(false);
   const [showKillDialog, setShowKillDialog] = React.useState(false);
   const [showMessageDialog, setShowMessageDialog] = useState(false);
@@ -234,9 +235,32 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   };
 
   // Handle open terminal from context menu
-  const handleOpenTerminal = () => {
+  // For desktop (Tauri): opens native terminal via external_terminal.rs
+  // For browser with SSH enabled: opens SSH web terminal in new tab
+  const handleOpenTerminal = async () => {
     setContextMenu(null);
-    openTerminalModal(agent.session, agent.name);
+
+    // Try SSH web terminal first (works in browser mode)
+    if (sshEnabled) {
+      const sshUrl = getSshTerminalUrl(agent.session);
+      if (sshUrl) {
+        window.open(sshUrl, '_blank', 'noopener,noreferrer');
+        return;
+      }
+    }
+
+    // Fall back to native terminal (desktop only)
+    if (isTauri() && FEATURES.EXTERNAL_TERMINAL) {
+      try {
+        await invoke('open_agent_terminal', { session: agent.session });
+      } catch (err) {
+        showError(`Failed to open external terminal: ${err}`);
+      }
+      return;
+    }
+
+    // No terminal option available
+    showError('Terminal access requires SSH terminal configuration. Contact your administrator.');
   };
 
   // Handle rename for Ralph sessions
@@ -428,13 +452,13 @@ export const AgentCard: React.FC<AgentCardProps> = ({
             top: `${contextMenu.y}px`,
           }}
         >
-          {agent.active && (
+          {agent.active && (sshEnabled || (isTauri() && FEATURES.EXTERNAL_TERMINAL)) && (
             <button
               onClick={handleOpenTerminal}
               className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
             >
-              <Terminal className="w-4 h-4" />
-              Open Terminal
+              {sshEnabled ? <ExternalLink className="w-4 h-4" /> : <Terminal className="w-4 h-4" />}
+              {sshEnabled ? 'Open SSH Terminal' : 'Open Terminal'}
             </button>
           )}
           <button

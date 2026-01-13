@@ -90,12 +90,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/projects/{name}/team", put(handlers::projects::set_team))
         .route("/api/projects/{name}/status", put(handlers::projects::update_status))
         .route("/api/projects/{name}/file-marker", put(handlers::projects::update_file_marker))
-        // Terminal
-        .route("/api/terminal/start", post(handlers::terminal::start_stream))
-        .route("/api/terminal/stop", post(handlers::terminal::stop_stream))
-        .route("/api/terminal/input", post(handlers::terminal::send_input))
-        .route("/api/terminal/key", post(handlers::terminal::send_key))
-        .route("/api/terminal/resize", post(handlers::terminal::resize))
         // History (REST endpoints for loading)
         .route("/api/history/entries", get(handlers::history::load_entries))
         .route("/api/history/active", get(handlers::history::load_active_sessions))
@@ -139,7 +133,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/cronos/worktrees/cleanup", post(handlers::cronos::cleanup_orphaned_worktrees))
         .route("/api/cronos/worktrees/remove", post(handlers::cronos::remove_worktree))
         // WebSocket endpoints
-        .route("/api/ws/terminal/{session}", get(ws::terminal_stream))
         .route("/api/ws/status", get(ws::status_stream))
         .route("/api/ws/history", get(ws::history_stream))
         // Feedback (feature requests & ideas)

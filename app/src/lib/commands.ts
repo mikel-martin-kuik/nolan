@@ -101,13 +101,6 @@ export interface CommandParams {
   write_project_file: { project_name: string; file_path: string; content: string };
   update_project_status: { project_name: string; status: string };
 
-  // === Terminal ===
-  start_terminal_stream: { session: string };
-  stop_terminal_stream: { session: string };
-  send_terminal_input: { session: string; data: string };
-  send_terminal_key: { session: string; key: string };
-  resize_terminal: { session: string; cols: number; rows: number };
-
   // === History ===
   load_history_entries: { hours?: number };
   load_history_for_active_sessions: { activeSessions: string[]; hours?: number };
@@ -181,13 +174,6 @@ export interface CommandReturns {
   read_project_file: string;
   write_project_file: void;
   update_project_status: void;
-
-  // Terminal
-  start_terminal_stream: string;
-  stop_terminal_stream: string;
-  send_terminal_input: string;
-  send_terminal_key: string;
-  resize_terminal: string;
 
   // History
   load_history_entries: unknown[];

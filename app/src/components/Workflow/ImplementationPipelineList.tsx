@@ -57,6 +57,15 @@ export function ImplementationPipelineList({ onPipelineSelect }: ImplementationP
   const setSelectedPipelineId = useWorkflowVisualizerStore((state) => state.setSelectedPipelineId);
   const isLoading = useWorkflowVisualizerStore((state) => state.isLoading);
 
+  // Auto-select when there's only one pipeline and none is selected
+  useEffect(() => {
+    if (pipelines.length === 1 && !selectedPipelineId && !isLoading) {
+      const pipeline = pipelines[0];
+      setSelectedPipelineId(pipeline.id);
+      onPipelineSelect?.(pipeline);
+    }
+  }, [pipelines, selectedPipelineId, isLoading, setSelectedPipelineId, onPipelineSelect]);
+
   // Group pipelines by idea
   const groupedPipelines = useMemo(() => {
     const groups = new Map<string, ImplementationPipeline[]>();

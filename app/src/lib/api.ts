@@ -35,7 +35,7 @@ const API_BASE = getApiBaseUrl();
 
 // Detect if we're running in Tauri (checked dynamically to handle load order)
 // Tauri v2 uses __TAURI_INTERNALS__ instead of __TAURI__
-function isTauri(): boolean {
+export function isTauri(): boolean {
   if (typeof window === 'undefined') return false;
   return '__TAURI__' in window || '__TAURI_INTERNALS__' in window;
 }
@@ -114,13 +114,6 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
     return `/api/projects/roadmap?file=${encodeURIComponent(file as string)}`;
   }},
   list_roadmap_files: { method: 'GET', path: '/api/projects/roadmap/files' },
-
-  // Terminal
-  start_terminal_stream: { method: 'POST', path: '/api/terminal/start' },
-  stop_terminal_stream: { method: 'POST', path: '/api/terminal/stop' },
-  send_terminal_input: { method: 'POST', path: '/api/terminal/input' },
-  send_terminal_key: { method: 'POST', path: '/api/terminal/key' },
-  resize_terminal: { method: 'POST', path: '/api/terminal/resize' },
 
   // History
   start_history_stream: { method: 'POST', path: '/api/noop' },  // No-op - uses WebSocket

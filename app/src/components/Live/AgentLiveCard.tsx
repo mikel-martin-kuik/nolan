@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, memo, useState } from 'react';
-import { invoke } from '@/lib/api';
-import { MessageSquareX, Eraser, Clock, Terminal, MessageCircle, Pencil } from 'lucide-react';
+import { invoke, isTauri } from '@/lib/api';
+import { MessageSquareX, Eraser, Clock, Terminal, MessageCircle, Pencil, ExternalLink } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { AgentStatus, AGENT_DESCRIPTIONS, AgentWorkflowState, getWorkflowSteps } from '../../types';
 import { useTeamStore } from '../../store/teamStore';
@@ -12,7 +12,6 @@ import { useToastStore } from '../../store/toastStore';
 import { useChatViewStore } from '../../store/chatViewStore';
 import { getBlockerMessage } from '../../lib/workflowStatus';
 import { cn } from '../../lib/utils';
-import { TerminalView } from '../Terminal/TerminalView';
 import { FEATURES } from '../../lib/features';
 import { useSessionLabelsStore } from '../../store/sessionLabelsStore';
 
@@ -34,14 +33,13 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
   projectFiles = [],
 }) => {
   const clearSession = useLiveOutputStore((state) => state.clearSession);
-  const openTerminalModal = useTerminalStore((state) => state.openModal);
+  const { sshEnabled, getSshTerminalUrl } = useTerminalStore();
   const setActiveTeam = useChatViewStore((state) => state.setActiveTeam);
   const setAgentFilter = useChatViewStore((state) => state.setAgentFilter);
   const { error: showError, success: showSuccess } = useToastStore();
   const currentTeam = useTeamStore((state) => state.currentTeam);
   const workflowSteps = getWorkflowSteps(currentTeam);
   const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number } | null>(null);
-  const [showTerminal, setShowTerminal] = React.useState(false);
   const [showRenameInput, setShowRenameInput] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const contextMenuRef = React.useRef<HTMLDivElement>(null);
@@ -286,20 +284,32 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
                 Respond
               </button>
             )}
-            {/* Terminal button - only show for active agents */}
-            {FEATURES.EMBEDDED_TERMINAL && agent.active && (
+            {/* Terminal button - opens SSH terminal or native terminal */}
+            {agent.active && (sshEnabled || (isTauri() && FEATURES.EXTERNAL_TERMINAL)) && (
               <button
-                onClick={(e) => {
+                onClick={async (e) => {
                   e.stopPropagation();
-                  setShowTerminal(!showTerminal);
+                  // Try SSH web terminal first
+                  if (sshEnabled) {
+                    const sshUrl = getSshTerminalUrl(agent.session);
+                    if (sshUrl) {
+                      window.open(sshUrl, '_blank', 'noopener,noreferrer');
+                      return;
+                    }
+                  }
+                  // Fall back to native terminal
+                  if (isTauri() && FEATURES.EXTERNAL_TERMINAL) {
+                    try {
+                      await invoke('open_agent_terminal', { session: agent.session });
+                    } catch (err) {
+                      showError(`Failed to open terminal: ${err}`);
+                    }
+                  }
                 }}
-                className={cn(
-                  'p-1.5 rounded transition-colors',
-                  showTerminal ? 'bg-primary/20 text-primary' : 'hover:bg-secondary'
-                )}
-                title={showTerminal ? 'Hide terminal' : 'Show terminal'}
+                className="p-1.5 rounded transition-colors hover:bg-secondary"
+                title={sshEnabled ? 'Open SSH Terminal' : 'Open Terminal'}
               >
-                <Terminal className="w-4 h-4" />
+                {sshEnabled ? <ExternalLink className="w-4 h-4" /> : <Terminal className="w-4 h-4" />}
               </button>
             )}
           </div>
@@ -391,16 +401,6 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
           )}
         </div>
 
-        {/* Inline terminal view - conditionally rendered */}
-        {FEATURES.EMBEDDED_TERMINAL && showTerminal && agent.active && (
-          <div className="mt-4 h-80 rounded-lg overflow-hidden border border-border">
-            <TerminalView
-              session={agent.session}
-              agentName={agent.name}
-              onClose={() => setShowTerminal(false)}
-            />
-          </div>
-        )}
       </CardContent>
     </Card>
 
@@ -432,16 +432,31 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
             Clear Context
           </button>
         )}
-        {FEATURES.EMBEDDED_TERMINAL && agent.active && (
+        {agent.active && (sshEnabled || (isTauri() && FEATURES.EXTERNAL_TERMINAL)) && (
           <button
-            onClick={() => {
+            onClick={async () => {
               setContextMenu(null);
-              openTerminalModal(agent.session, agent.name);
+              // Try SSH web terminal first
+              if (sshEnabled) {
+                const sshUrl = getSshTerminalUrl(agent.session);
+                if (sshUrl) {
+                  window.open(sshUrl, '_blank', 'noopener,noreferrer');
+                  return;
+                }
+              }
+              // Fall back to native terminal
+              if (isTauri() && FEATURES.EXTERNAL_TERMINAL) {
+                try {
+                  await invoke('open_agent_terminal', { session: agent.session });
+                } catch (err) {
+                  showError(`Failed to open terminal: ${err}`);
+                }
+              }
             }}
             className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
           >
-            <Terminal className="w-4 h-4" />
-            Open Terminal Modal
+            {sshEnabled ? <ExternalLink className="w-4 h-4" /> : <Terminal className="w-4 h-4" />}
+            {sshEnabled ? 'Open SSH Terminal' : 'Open Terminal'}
           </button>
         )}
         {/* Rename option - only for Ralph agents (works for active or inactive) */}

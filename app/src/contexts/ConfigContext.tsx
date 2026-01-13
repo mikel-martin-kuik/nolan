@@ -13,8 +13,9 @@
  * The config is fetched once at app startup and cached indefinitely.
  */
 
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, useEffect, type ReactNode } from 'react';
 import { useUIConfig } from '../hooks/useUIConfig';
+import { useTerminalStore } from '../store/terminalStore';
 import type { UIConfig } from '../types/config';
 
 interface ConfigContextValue {
@@ -37,6 +38,14 @@ interface ConfigProviderProps {
  */
 export function ConfigProvider({ children }: ConfigProviderProps) {
   const { config, isLoading, error } = useUIConfig();
+  const setSshConfig = useTerminalStore((state) => state.setSshConfig);
+
+  // Initialize SSH terminal config when config is loaded
+  useEffect(() => {
+    if (config?.ssh_terminal) {
+      setSshConfig(config.ssh_terminal.base_url, config.ssh_terminal.enabled);
+    }
+  }, [config?.ssh_terminal, setSshConfig]);
 
   const value = useMemo<ConfigContextValue>(
     () => ({

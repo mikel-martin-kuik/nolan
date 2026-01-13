@@ -37,6 +37,12 @@ export interface OllamaDefaults {
   model: string;
 }
 
+/** SSH terminal configuration for web-based terminal access */
+export interface SshTerminalConfig {
+  base_url: string;
+  enabled: boolean;
+}
+
 /** Root UI configuration from backend */
 export interface UIConfig {
   project_statuses: StatusConfig[];
@@ -51,6 +57,7 @@ export interface UIConfig {
   agent_display_names: AgentDisplayName[];
   session_prefixes: SessionPrefixConfig;
   ollama_defaults: OllamaDefaults;
+  ssh_terminal?: SshTerminalConfig;
 }
 
 /** Helper type for creating lookup maps from status arrays */

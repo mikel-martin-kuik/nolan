@@ -732,13 +732,6 @@ pub async fn launch_team(
                 if let Err(e) = register_session(&session, agent, agent_dir_str.as_ref(), &team_name) {
                     eprintln!("Warning: Failed to register session {}: {}", session, e);
                 }
-
-                // Auto-start terminal stream for new session (non-fatal)
-                let manager = STREAM_MANAGER.read().await;
-                if let Err(e) = manager.start_session_stream(app_handle.clone(), &session).await {
-                    eprintln!("Warning: Failed to start terminal stream for {}: {}", session, e);
-                    // Non-fatal - agent still works, embedded terminal just won't stream
-                }
             }
             Ok(o) => errors.push(format!("{}: {}", agent, String::from_utf8_lossy(&o.stderr))),
             Err(e) => errors.push(format!("{}: {}", agent, e)),
@@ -1206,13 +1199,6 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
         eprintln!("Warning: Failed to register session {}: {}", session, e);
     }
 
-    // Auto-start terminal stream for new session (non-fatal)
-    let manager = STREAM_MANAGER.read().await;
-    if let Err(e) = manager.start_session_stream(app_handle.clone(), &session).await {
-        eprintln!("Warning: Failed to start terminal stream for {}: {}", session, e);
-        // Non-fatal - agent still works, embedded terminal just won't stream
-    }
-
     // Emit status change event after successful spawn
     let app_clone = app_handle.clone();
     tokio::spawn(async move {
@@ -1303,13 +1289,6 @@ pub async fn start_agent(app_handle: AppHandle, team_name: String, agent: String
     // Register session in the registry for history lookup (non-fatal)
     if let Err(e) = register_session(&session, &agent, agent_dir_str.as_ref(), &team_name) {
         eprintln!("Warning: Failed to register session {}: {}", session, e);
-    }
-
-    // Auto-start terminal stream for restarted session (non-fatal)
-    let manager = STREAM_MANAGER.read().await;
-    if let Err(e) = manager.start_session_stream(app_handle.clone(), &session).await {
-        eprintln!("Warning: Failed to start terminal stream for {}: {}", session, e);
-        // Non-fatal - agent still works, embedded terminal just won't stream
     }
 
     // Emit status change event after successful restart
@@ -2011,129 +1990,10 @@ pub async fn send_agent_command(session: String, command: String) -> Result<Stri
     Ok(format!("Sent '{}' to {}", command, session))
 }
 
-// Terminal streaming commands
-
-/// Global terminal stream manager
-static STREAM_MANAGER: once_cell::sync::Lazy<tokio::sync::RwLock<crate::tmux::terminal_stream::TerminalStreamManager>> =
-    once_cell::sync::Lazy::new(|| {
-        tokio::sync::RwLock::new(crate::tmux::terminal_stream::TerminalStreamManager::new())
-    });
-
 /// Mutex to prevent race conditions when spawning Ralph agents
 /// Ensures atomic name selection and session creation
 static RALPH_SPAWN_LOCK: once_cell::sync::Lazy<tokio::sync::Mutex<()>> =
     once_cell::sync::Lazy::new(|| tokio::sync::Mutex::new(()));
-
-/// Start terminal output streaming for a session
-/// Creates a named pipe (FIFO) and begins streaming output to frontend
-#[tauri::command]
-pub async fn start_terminal_stream(
-    app_handle: AppHandle,
-    session: String,
-) -> Result<String, String> {
-    // Validate session name
-    validate_agent_session(&session)?;
-
-    // Verify session exists
-    if !crate::tmux::session::session_exists(&session)? {
-        return Err(format!("Session '{}' does not exist", session));
-    }
-
-    // Start stream
-    let manager = STREAM_MANAGER.read().await;
-    manager.start_session_stream(app_handle, &session).await?;
-
-    Ok(format!("Started terminal stream for {}", session))
-}
-
-/// Stop terminal output streaming for a session
-/// Cleans up the named pipe and stops the streaming task
-#[tauri::command]
-pub async fn stop_terminal_stream(session: String) -> Result<String, String> {
-    // Validate session name
-    validate_agent_session(&session)?;
-
-    // Stop stream
-    let manager = STREAM_MANAGER.read().await;
-    manager.stop_session_stream(&session).await?;
-
-    Ok(format!("Stopped terminal stream for {}", session))
-}
-
-/// Send text input to a terminal session
-/// Sends literal text without interpretation
-#[tauri::command]
-pub async fn send_terminal_input(session: String, data: String) -> Result<String, String> {
-    // Validate session name
-    validate_agent_session(&session)?;
-
-    // Verify session exists
-    if !crate::tmux::session::session_exists(&session)? {
-        return Err(format!("Session '{}' does not exist", session));
-    }
-
-    // Send input
-    crate::tmux::terminal_input::send_terminal_input(&session, &data)?;
-
-    Ok(format!("Sent input to {}", session))
-}
-
-/// Send a special key to a terminal session
-/// Supports keys like Enter, Backspace, ArrowUp, etc.
-#[tauri::command]
-pub async fn send_terminal_key(session: String, key: String) -> Result<String, String> {
-    // Validate session name
-    validate_agent_session(&session)?;
-
-    // Verify session exists
-    if !crate::tmux::session::session_exists(&session)? {
-        return Err(format!("Session '{}' does not exist", session));
-    }
-
-    // Send key
-    crate::tmux::terminal_input::send_terminal_key(&session, &key)?;
-
-    Ok(format!("Sent key '{}' to {}", key, session))
-}
-
-/// Resize a terminal session (tmux pane)
-/// Notifies the PTY (pseudo-terminal) of new dimensions so content reflows properly
-/// This is essential for vim, tmux, and other terminal applications to know the new size
-#[tauri::command]
-pub async fn resize_terminal(session: String, cols: u32, rows: u32) -> Result<String, String> {
-    use std::process::Command;
-
-    // Validate session name
-    validate_agent_session(&session)?;
-
-    // Verify session exists
-    if !crate::tmux::session::session_exists(&session)? {
-        return Err(format!("Session '{}' does not exist", session));
-    }
-
-    // Validate dimensions (reasonable min/max to prevent errors)
-    if cols < 20 || cols > 500 {
-        return Err(format!("Invalid column count: {}. Must be between 20 and 500.", cols));
-    }
-    if rows < 5 || rows > 200 {
-        return Err(format!("Invalid row count: {}. Must be between 5 and 200.", rows));
-    }
-
-    // Resize the tmux window to match the xterm.js dimensions
-    let output = Command::new("tmux")
-        .args(&["resize-window", "-t", &session, "-x", &cols.to_string(), "-y", &rows.to_string()])
-        .output()
-        .map_err(|e| format!("Failed to resize tmux window: {}", e))?;
-
-    if !output.status.success() {
-        return Err(format!(
-            "Failed to resize terminal: {}",
-            String::from_utf8_lossy(&output.stderr)
-        ));
-    }
-
-    Ok(format!("Resized {} to {}x{}", session, cols, rows))
-}
 
 /// Response from session recovery operation
 #[derive(Serialize)]

@@ -57,6 +57,8 @@ export function isTeamSession(session: string): boolean {
 /**
  * 32 fun agent names for visual display
  * These names evoke AI/tech/cosmic themes while being friendly and memorable
+ * @deprecated Use useAgentDisplayNames() from hooks/useUIConfig instead.
+ * This constant is kept for backward compatibility and localStorage fallback.
  */
 export const AGENT_DISPLAY_NAMES = [
   'Nova',

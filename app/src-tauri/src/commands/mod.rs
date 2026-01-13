@@ -77,3 +77,9 @@ pub async fn list_sessions() -> Result<Vec<String>, String> {
 pub async fn session_exists(session_name: String) -> Result<bool, String> {
     crate::tmux::session::session_exists(&session_name)
 }
+
+/// Get UI configuration (status labels, colors, etc.) from config.yaml
+#[tauri::command]
+pub fn get_ui_config() -> Result<crate::config::UIConfig, String> {
+    crate::config::load_ui_config()
+}

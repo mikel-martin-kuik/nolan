@@ -1,10 +1,12 @@
 use std::str::FromStr;
+use std::collections::HashMap;
 use tokio::sync::broadcast;
 use cron::Schedule;
 use tauri::{AppHandle, Emitter};
 
 use super::types::*;
 use super::executor;
+use super::pipeline::PipelineManager;
 
 /// Global cronos manager instance
 pub static CRONOS: once_cell::sync::Lazy<tokio::sync::RwLock<Option<super::CronosManager>>> =
@@ -16,6 +18,28 @@ static OUTPUT_SENDER: once_cell::sync::Lazy<broadcast::Sender<CronOutputEvent>> 
         let (tx, _) = broadcast::channel(1000);
         tx
     });
+
+/// Global pipeline manager instance
+static PIPELINE_MANAGER: once_cell::sync::Lazy<tokio::sync::RwLock<Option<PipelineManager>>> =
+    once_cell::sync::Lazy::new(|| tokio::sync::RwLock::new(None));
+
+/// Get or initialize the pipeline manager
+async fn get_pipeline_manager() -> Result<std::sync::Arc<PipelineManager>, String> {
+    let mut guard = PIPELINE_MANAGER.write().await;
+    if guard.is_none() {
+        let data_root = crate::utils::paths::get_nolan_data_root()?;
+        *guard = Some(PipelineManager::new(&data_root));
+    }
+    // Clone the manager ref - we can't return a reference to the guard
+    // So we wrap in Arc for the actual implementation
+    Ok(std::sync::Arc::new(PipelineManager::new(&crate::utils::paths::get_nolan_data_root()?)))
+}
+
+/// Helper to get a fresh PipelineManager (since it's stateless, just needs the path)
+fn get_pipeline_manager_sync() -> Result<PipelineManager, String> {
+    let data_root = crate::utils::paths::get_nolan_data_root()?;
+    Ok(PipelineManager::new(&data_root))
+}
 
 /// Initialize cronos manager (called at app startup)
 pub async fn init_cronos() -> Result<(), String> {
@@ -52,6 +76,7 @@ pub async fn shutdown_cronos() -> Result<(), String> {
 async fn trigger_post_run_analyzer(
     trigger_info: executor::AnalyzerTriggerInfo,
     output_sender: broadcast::Sender<CronOutputEvent>,
+    pipeline_id: Option<String>,
 ) {
     let analyzed_run_id = trigger_info.env_vars.get("ANALYZED_RUN_ID").cloned().unwrap_or_default();
     let analyzed_agent = trigger_info.env_vars.get("ANALYZED_AGENT").cloned().unwrap_or_default();
@@ -64,6 +89,13 @@ async fn trigger_post_run_analyzer(
         content: format!("Triggering post-run analyzer: {}", trigger_info.analyzer_agent),
         timestamp: chrono::Utc::now().to_rfc3339(),
     });
+
+    // Update pipeline: analyzer stage starting
+    if let Some(ref pid) = pipeline_id {
+        if let Ok(pm) = get_pipeline_manager_sync() {
+            let _ = pm.update_stage(pid, PipelineStageType::Analyzer, PipelineStageStatus::Running, None, None);
+        }
+    }
 
     // Load and execute the analyzer agent
     let guard = CRONOS.read().await;
@@ -91,6 +123,26 @@ async fn trigger_post_run_analyzer(
                             &output_sender,
                         ).await {
                             Ok(verdict_result) => {
+                                // Update pipeline: analyzer completed with verdict
+                                if let Some(ref pid) = pipeline_id {
+                                    if let Ok(pm) = get_pipeline_manager_sync() {
+                                        let verdict = AnalyzerVerdict {
+                                            verdict: verdict_result.verdict_type.clone(),
+                                            reason: "".to_string(), // Will be read from file
+                                            follow_up_prompt: None,
+                                            findings: vec![],
+                                            analyzer_run_id: Some(analyzer_run_log.run_id.clone()),
+                                        };
+                                        let _ = pm.update_stage(
+                                            pid,
+                                            PipelineStageType::Analyzer,
+                                            PipelineStageStatus::Success,
+                                            Some(&analyzer_run_log.run_id),
+                                            Some(&verdict),
+                                        );
+                                    }
+                                }
+
                                 // If COMPLETE and has worktree, trigger QA validation then merge
                                 println!("[Cronos] Analyzer verdict: {:?}, worktree_path: {:?}, worktree_branch: {:?}",
                                     verdict_result.verdict_type,
@@ -108,10 +160,25 @@ async fn trigger_post_run_analyzer(
                                             verdict_result.base_commit,
                                             verdict_result.agent_name,
                                             output_sender,
+                                            pipeline_id,
                                         ).await;
                                     } else {
                                         eprintln!("[Cronos] Skipping QA/merge: worktree info missing (path: {:?}, branch: {:?})",
                                             verdict_result.worktree_path, verdict_result.worktree_branch);
+                                        // Mark pipeline as complete without QA/merge if no worktree
+                                        if let Some(ref pid) = pipeline_id {
+                                            if let Ok(pm) = get_pipeline_manager_sync() {
+                                                let _ = pm.skip_stage(pid, PipelineStageType::Qa, "No worktree");
+                                                let _ = pm.skip_stage(pid, PipelineStageType::Merger, "No worktree");
+                                            }
+                                        }
+                                    }
+                                } else if verdict_result.verdict_type == AnalyzerVerdictType::Failed {
+                                    // Mark pipeline as failed
+                                    if let Some(ref pid) = pipeline_id {
+                                        if let Ok(pm) = get_pipeline_manager_sync() {
+                                            let _ = pm.abort_pipeline(pid, "Analyzer verdict: FAILED");
+                                        }
                                     }
                                 } else {
                                     println!("[Cronos] Verdict is {:?}, not triggering QA/merge", verdict_result.verdict_type);
@@ -119,11 +186,23 @@ async fn trigger_post_run_analyzer(
                             }
                             Err(e) => {
                                 eprintln!("[Cronos] Failed to process analyzer verdict: {}", e);
+                                // Update pipeline: analyzer failed
+                                if let Some(ref pid) = pipeline_id {
+                                    if let Ok(pm) = get_pipeline_manager_sync() {
+                                        let _ = pm.update_stage(pid, PipelineStageType::Analyzer, PipelineStageStatus::Failed, None, None);
+                                    }
+                                }
                             }
                         }
                     }
                     Err(e) => {
                         eprintln!("[Cronos] Post-run analyzer {} failed: {}", trigger_info.analyzer_agent, e);
+                        // Update pipeline: analyzer failed
+                        if let Some(ref pid) = pipeline_id {
+                            if let Ok(pm) = get_pipeline_manager_sync() {
+                                let _ = pm.update_stage(pid, PipelineStageType::Analyzer, PipelineStageStatus::Failed, None, None);
+                            }
+                        }
                     }
                 }
             }
@@ -240,6 +319,7 @@ async fn trigger_qa_then_merge(
     base_commit: Option<String>,
     agent_name: String,
     output_sender: broadcast::Sender<CronOutputEvent>,
+    pipeline_id: Option<String>,
 ) {
     println!("[Cronos] trigger_qa_then_merge called: path={}, branch={}", worktree_path, worktree_branch);
 
@@ -252,12 +332,22 @@ async fn trigger_qa_then_merge(
         timestamp: chrono::Utc::now().to_rfc3339(),
     });
 
+    // Update pipeline: QA stage starting
+    if let Some(ref pid) = pipeline_id {
+        if let Ok(pm) = get_pipeline_manager_sync() {
+            let _ = pm.update_stage(pid, PipelineStageType::Qa, PipelineStageStatus::Running, None, None);
+        }
+    }
+
     // Build environment variables for QA validation
     let mut qa_env = executor::ExtraEnvVars::new();
     qa_env.insert("WORKTREE_PATH".to_string(), worktree_path.clone());
     qa_env.insert("WORKTREE_BRANCH".to_string(), worktree_branch.clone());
     if let Some(ref commit) = base_commit {
         qa_env.insert("BASE_COMMIT".to_string(), commit.clone());
+    }
+    if let Some(ref pid) = pipeline_id {
+        qa_env.insert("PIPELINE_ID".to_string(), pid.clone());
     }
 
     // Load and execute QA validation
@@ -291,12 +381,39 @@ async fn trigger_qa_then_merge(
 
                             // Only proceed to merge if QA passed
                             if qa_run_log.status == CronRunStatus::Success {
+                                // Update pipeline: QA succeeded
+                                if let Some(ref pid) = pipeline_id {
+                                    if let Ok(pm) = get_pipeline_manager_sync() {
+                                        let _ = pm.update_stage(
+                                            pid,
+                                            PipelineStageType::Qa,
+                                            PipelineStageStatus::Success,
+                                            Some(&qa_run_log.run_id),
+                                            None,
+                                        );
+                                    }
+                                }
+
                                 trigger_worktree_merger(
                                     worktree_path,
                                     worktree_branch,
                                     output_sender,
+                                    pipeline_id,
                                 ).await;
                             } else {
+                                // Update pipeline: QA failed (blocked, awaiting retry/skip)
+                                if let Some(ref pid) = pipeline_id {
+                                    if let Ok(pm) = get_pipeline_manager_sync() {
+                                        let _ = pm.update_stage(
+                                            pid,
+                                            PipelineStageType::Qa,
+                                            PipelineStageStatus::Failed,
+                                            Some(&qa_run_log.run_id),
+                                            None,
+                                        );
+                                    }
+                                }
+
                                 let _ = output_sender.send(CronOutputEvent {
                                     run_id: qa_run_log.run_id,
                                     agent_name: agent_name,
@@ -308,6 +425,12 @@ async fn trigger_qa_then_merge(
                         }
                         Err(e) => {
                             eprintln!("[Cronos] QA validation failed: {}", e);
+                            // Update pipeline: QA failed
+                            if let Some(ref pid) = pipeline_id {
+                                if let Ok(pm) = get_pipeline_manager_sync() {
+                                    let _ = pm.update_stage(pid, PipelineStageType::Qa, PipelineStageStatus::Failed, None, None);
+                                }
+                            }
                         }
                     }
                 }
@@ -324,6 +447,7 @@ async fn trigger_worktree_merger(
     worktree_path: String,
     worktree_branch: String,
     output_sender: broadcast::Sender<CronOutputEvent>,
+    pipeline_id: Option<String>,
 ) {
     println!("[Cronos] trigger_worktree_merger called: path={}, branch={}", worktree_path, worktree_branch);
 
@@ -335,6 +459,13 @@ async fn trigger_worktree_merger(
         content: format!("Triggering worktree merger for branch: {}", worktree_branch),
         timestamp: chrono::Utc::now().to_rfc3339(),
     });
+
+    // Update pipeline: merger stage starting
+    if let Some(ref pid) = pipeline_id {
+        if let Ok(pm) = get_pipeline_manager_sync() {
+            let _ = pm.update_stage(pid, PipelineStageType::Merger, PipelineStageStatus::Running, None, None);
+        }
+    }
 
     // Get the nolan root for REPO_PATH
     let repo_path = match crate::utils::paths::get_nolan_root() {
@@ -351,6 +482,9 @@ async fn trigger_worktree_merger(
     extra_env.insert("WORKTREE_BRANCH".to_string(), worktree_branch);
     extra_env.insert("BASE_BRANCH".to_string(), "main".to_string());
     extra_env.insert("REPO_PATH".to_string(), repo_path);
+    if let Some(ref pid) = pipeline_id {
+        extra_env.insert("PIPELINE_ID".to_string(), pid.clone());
+    }
 
     // Load and execute the merger agent
     let guard = CRONOS.read().await;
@@ -373,15 +507,43 @@ async fn trigger_worktree_merger(
                     ).await {
                         Ok(merger_run_log) => {
                             let _ = output_sender.send(CronOutputEvent {
-                                run_id: merger_run_log.run_id,
+                                run_id: merger_run_log.run_id.clone(),
                                 agent_name: "pred-merge-changes".to_string(),
                                 event_type: OutputEventType::Complete,
                                 content: format!("Worktree merger completed with status: {:?}", merger_run_log.status),
                                 timestamp: chrono::Utc::now().to_rfc3339(),
                             });
+
+                            // Update pipeline: merger completed
+                            if let Some(ref pid) = pipeline_id {
+                                if let Ok(pm) = get_pipeline_manager_sync() {
+                                    let stage_status = match merger_run_log.status {
+                                        CronRunStatus::Success => PipelineStageStatus::Success,
+                                        _ => PipelineStageStatus::Failed,
+                                    };
+                                    let _ = pm.update_stage(
+                                        pid,
+                                        PipelineStageType::Merger,
+                                        stage_status,
+                                        Some(&merger_run_log.run_id),
+                                        None,
+                                    );
+
+                                    // Log final pipeline status
+                                    if let Ok(pipeline) = pm.get_pipeline(pid) {
+                                        println!("[Pipeline] Pipeline {} completed with status: {:?}", pid, pipeline.status);
+                                    }
+                                }
+                            }
                         }
                         Err(e) => {
                             eprintln!("[Cronos] Worktree merger failed: {}", e);
+                            // Update pipeline: merger failed
+                            if let Some(ref pid) = pipeline_id {
+                                if let Ok(pm) = get_pipeline_manager_sync() {
+                                    let _ = pm.update_stage(pid, PipelineStageType::Merger, PipelineStageStatus::Failed, None, None);
+                                }
+                            }
                         }
                     }
                 }
@@ -651,14 +813,14 @@ pub async fn list_cron_groups() -> Result<Vec<CronAgentGroup>, String> {
     manager.load_groups()
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_cron_group(group_id: String) -> Result<CronAgentGroup, String> {
     let guard = CRONOS.read().await;
     let manager = guard.as_ref().ok_or("Cronos not initialized")?;
     manager.get_group(&group_id)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn create_cron_group(group: CronAgentGroup) -> Result<(), String> {
     // Validate group ID format
     if !group.id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
@@ -683,14 +845,14 @@ pub async fn update_cron_group(group: CronAgentGroup) -> Result<(), String> {
     manager.update_group(group)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn delete_cron_group(group_id: String) -> Result<(), String> {
     let guard = CRONOS.read().await;
     let manager = guard.as_ref().ok_or("Cronos not initialized")?;
     manager.delete_group(&group_id)
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn set_agent_group(agent_name: String, group_id: Option<String>) -> Result<(), String> {
     let guard = CRONOS.read().await;
     let manager = guard.as_ref().ok_or("Cronos not initialized")?;
@@ -751,7 +913,7 @@ pub async fn trigger_cron_agent(name: String, app: AppHandle) -> Result<String, 
                 Ok(run_log) => {
                     // Check if post-run analyzer should be triggered
                     if let Some(trigger_info) = executor::get_analyzer_trigger_info(&config, &run_log) {
-                        trigger_post_run_analyzer(trigger_info, output_sender).await;
+                        trigger_post_run_analyzer(trigger_info, output_sender, None).await;
                     }
                 }
                 Err(e) => eprintln!("Cron agent {} failed: {}", agent_name, e),
@@ -794,7 +956,7 @@ pub async fn trigger_cron_agent_api(name: String) -> Result<String, String> {
                 Ok(run_log) => {
                     // Check if post-run analyzer should be triggered
                     if let Some(trigger_info) = executor::get_analyzer_trigger_info(&config, &run_log) {
-                        trigger_post_run_analyzer(trigger_info, output_sender).await;
+                        trigger_post_run_analyzer(trigger_info, output_sender, None).await;
                     }
                 }
                 Err(e) => eprintln!("Cron agent {} failed: {}", agent_name, e),
@@ -835,7 +997,7 @@ pub async fn trigger_cron_agent_scheduled(name: String) -> Result<String, String
 
         // Check if post-run analyzer should be triggered
         if let Some(trigger_info) = executor::get_analyzer_trigger_info(&config, &run_log) {
-            trigger_post_run_analyzer(trigger_info, output_sender).await;
+            trigger_post_run_analyzer(trigger_info, output_sender, None).await;
         }
     }
 
@@ -856,7 +1018,7 @@ pub async fn cancel_cron_agent(name: String) -> Result<(), String> {
 
 /// Relaunch a cron agent session using Claude's --resume flag
 /// This allows continuing a previous session to complete tasks or answer questions
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn relaunch_cron_session(
     run_id: String,
     follow_up_prompt: String,
@@ -1012,6 +1174,7 @@ async fn relaunch_cron_session_impl(
         worktree_branch: original.worktree_branch.clone(),
         base_commit: original.base_commit.clone(),
         analyzer_verdict: None,  // Relaunched runs start fresh without verdict
+        pipeline_id: original.pipeline_id.clone(),  // Inherit pipeline ID if any
         label: original.label.clone(),  // Inherit label from original run
     };
 
@@ -1152,6 +1315,7 @@ async fn relaunch_cron_session_impl(
             worktree_branch: original_worktree_branch,
             base_commit: original_base_commit,
             analyzer_verdict: None,
+            pipeline_id: None,
             label: original_label,
         };
 
@@ -1170,7 +1334,7 @@ async fn relaunch_cron_session_impl(
 
         // Trigger post-run analyzer if configured
         if let Some(trigger_info) = executor::get_analyzer_trigger_info(&config_for_analyzer, &final_log) {
-            trigger_post_run_analyzer(trigger_info, output_sender).await;
+            trigger_post_run_analyzer(trigger_info, output_sender, None).await;
         }
 
         // Cleanup run directory on success
@@ -1183,7 +1347,7 @@ async fn relaunch_cron_session_impl(
 }
 
 /// Manually trigger the analyzer for a specific run
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn trigger_analyzer_for_run(
     run_id: String,
     app: AppHandle,
@@ -1250,13 +1414,13 @@ pub async fn trigger_analyzer_for_run(
 
     // Trigger the analyzer
     let analyzer_name = trigger_info.analyzer_agent.clone();
-    trigger_post_run_analyzer(trigger_info, output_sender).await;
+    trigger_post_run_analyzer(trigger_info, output_sender, None).await;
 
     Ok(format!("Triggered analyzer '{}' for run {}", analyzer_name, run_id))
 }
 
 /// Manually trigger QA validation for a specific run
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn trigger_qa_for_run(
     run_id: String,
     app: AppHandle,
@@ -1308,13 +1472,14 @@ pub async fn trigger_qa_for_run(
         run_log.base_commit,
         run_log.agent_name,
         output_sender,
+        None, // No pipeline context for manual trigger
     ).await;
 
     Ok(format!("Triggered QA validation for branch {}", worktree_branch))
 }
 
 /// Manually trigger worktree merge for a specific run
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn trigger_merge_for_run(
     run_id: String,
     app: AppHandle,
@@ -1364,6 +1529,7 @@ pub async fn trigger_merge_for_run(
         worktree_path.clone(),
         worktree_branch.clone(),
         output_sender,
+        None, // No pipeline context for manual trigger
     ).await;
 
     Ok(format!("Triggered merge for branch {}", worktree_branch))
@@ -1448,7 +1614,7 @@ pub async fn get_running_agents() -> Result<Vec<RunningAgentInfo>, String> {
 // Run History
 // ========================
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_cron_run_history(
     agent_name: Option<String>,
     limit: Option<usize>,
@@ -1458,7 +1624,7 @@ pub async fn get_cron_run_history(
     manager.get_run_history(agent_name.as_deref(), limit.unwrap_or(50)).await
 }
 
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn get_cron_run_log(run_id: String) -> Result<String, String> {
     // First check running processes
     let guard = CRONOS.read().await;
@@ -1843,7 +2009,7 @@ pub async fn dispatch_ideas(app: AppHandle) -> Result<DispatchResult, String> {
 }
 
 /// Dispatch a single idea to cron-idea-processor
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn dispatch_single_idea(idea_id: String, app: AppHandle) -> Result<String, String> {
     let feedback_dir = crate::utils::paths::get_feedback_dir()?;
 
@@ -1986,11 +2152,20 @@ pub async fn route_accepted_idea(idea_id: String) -> Result<RouteResult, String>
             let config = manager.get_agent("cron-idea-implementer").await?;
             let output_sender = OUTPUT_SENDER.clone();
 
+            // Generate pipeline ID upfront
+            let pipeline_id = format!("pipeline-{}", idea_id);
+
             let mut extra_env = executor::ExtraEnvVars::new();
             extra_env.insert("IDEA_ID".to_string(), idea_id.clone());
             extra_env.insert("IDEA_TITLE".to_string(), idea.title.clone());
+            extra_env.insert("PIPELINE_ID".to_string(), pipeline_id.clone());
             // Use idea title as label for meaningful worktree names
             let label = Some(idea.title.clone());
+
+            // Clone values for the async block
+            let idea_id_clone = idea_id.clone();
+            let idea_title_clone = idea.title.clone();
+            let extra_env_clone = extra_env.clone();
 
             // Spawn in background
             tokio::spawn(async move {
@@ -2007,9 +2182,43 @@ pub async fn route_accepted_idea(idea_id: String) -> Result<RouteResult, String>
                         label,
                     ).await {
                         Ok(run_log) => {
+                            // Create pipeline now that we have worktree info from run_log
+                            if let Ok(pm) = get_pipeline_manager_sync() {
+                                match pm.create_pipeline(
+                                    &pipeline_id,
+                                    &idea_id_clone,
+                                    &idea_title_clone,
+                                    &run_log.run_id,
+                                    run_log.worktree_path.as_deref(),
+                                    run_log.worktree_branch.as_deref(),
+                                    run_log.base_commit.as_deref(),
+                                    extra_env_clone.into_iter().collect(),
+                                ) {
+                                    Ok(pipeline) => {
+                                        println!("[Pipeline] Created pipeline {} for idea {}", pipeline.id, idea_id_clone);
+                                        // Update implementer stage to success/failed based on run status
+                                        let stage_status = match run_log.status {
+                                            CronRunStatus::Success => PipelineStageStatus::Success,
+                                            CronRunStatus::Failed | CronRunStatus::Timeout => PipelineStageStatus::Failed,
+                                            _ => PipelineStageStatus::Success, // Treat others as success for analyzer to evaluate
+                                        };
+                                        let _ = pm.update_stage(
+                                            &pipeline_id,
+                                            PipelineStageType::Implementer,
+                                            stage_status,
+                                            Some(&run_log.run_id),
+                                            None,
+                                        );
+                                    }
+                                    Err(e) => eprintln!("[Pipeline] Failed to create pipeline: {}", e),
+                                }
+                            }
+
                             // Check if post-run analyzer should be triggered
-                            if let Some(trigger_info) = executor::get_analyzer_trigger_info(&config, &run_log) {
-                                trigger_post_run_analyzer(trigger_info, output_sender).await;
+                            if let Some(mut trigger_info) = executor::get_analyzer_trigger_info(&config, &run_log) {
+                                // Add pipeline_id to analyzer env vars
+                                trigger_info.env_vars.insert("PIPELINE_ID".to_string(), pipeline_id.clone());
+                                trigger_post_run_analyzer(trigger_info, output_sender, Some(pipeline_id)).await;
                             }
                         }
                         Err(e) => eprintln!("Idea implementer failed: {}", e),
@@ -2223,6 +2432,359 @@ pub async fn dispatch_ideas_api() -> Result<DispatchResult, String> {
     }
 
     Ok(result)
+}
+
+// ========================
+// Pipeline Stage Actions
+// ========================
+
+/// Skip a pipeline stage by marking its run as skipped
+/// This allows advancing the pipeline without completing the stage
+#[tauri::command(rename_all = "snake_case")]
+pub async fn skip_pipeline_stage(
+    run_id: String,
+    reason: Option<String>,
+) -> Result<CronRunLog, String> {
+    let runs_dir = crate::utils::paths::get_cronos_runs_dir()?;
+    let mut run_log: Option<(CronRunLog, std::path::PathBuf)> = None;
+
+    // Search through date directories for the run
+    for date_entry in std::fs::read_dir(&runs_dir).into_iter().flatten().flatten() {
+        if date_entry.path().is_dir() {
+            for file_entry in std::fs::read_dir(date_entry.path()).into_iter().flatten().flatten() {
+                let path = file_entry.path();
+                if path.extension().map(|e| e == "json").unwrap_or(false) {
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        if let Ok(log) = serde_json::from_str::<CronRunLog>(&content) {
+                            if log.run_id == run_id {
+                                run_log = Some((log, path));
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if run_log.is_some() { break; }
+    }
+
+    let (mut log, path) = run_log.ok_or_else(|| format!("Run {} not found", run_id))?;
+
+    // Don't skip if already running
+    if log.status == CronRunStatus::Running {
+        return Err("Cannot skip a running stage".to_string());
+    }
+
+    // Don't skip if already succeeded
+    if log.status == CronRunStatus::Success {
+        return Err("Cannot skip an already successful stage".to_string());
+    }
+
+    // Update status to Skipped
+    log.status = CronRunStatus::Skipped;
+    log.error = reason.or(Some("Manually skipped".to_string()));
+    if log.completed_at.is_none() {
+        log.completed_at = Some(chrono::Utc::now().to_rfc3339());
+    }
+
+    // Write updated log
+    let updated_json = serde_json::to_string_pretty(&log)
+        .map_err(|e| format!("Failed to serialize run log: {}", e))?;
+    std::fs::write(&path, updated_json)
+        .map_err(|e| format!("Failed to write run log: {}", e))?;
+
+    // Emit status event
+    let _ = OUTPUT_SENDER.send(CronOutputEvent {
+        run_id: log.run_id.clone(),
+        agent_name: log.agent_name.clone(),
+        event_type: OutputEventType::Status,
+        content: "Stage manually skipped".to_string(),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+    });
+
+    Ok(log)
+}
+
+/// Abort an entire pipeline by cancelling running stages and marking all as cancelled
+#[tauri::command(rename_all = "snake_case")]
+pub async fn abort_pipeline(
+    pipeline_id: String,
+    reason: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let runs_dir = crate::utils::paths::get_cronos_runs_dir()?;
+    let mut cancelled_runs: Vec<String> = Vec::new();
+    let mut cancelled_agents: Vec<String> = Vec::new();
+
+    // Get CRONOS manager for cancellation
+    let guard = CRONOS.read().await;
+    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+
+    // Search through date directories for runs matching the pipeline
+    // Pipeline ID is typically the worktree branch pattern
+    for date_entry in std::fs::read_dir(&runs_dir).into_iter().flatten().flatten() {
+        if date_entry.path().is_dir() {
+            for file_entry in std::fs::read_dir(date_entry.path()).into_iter().flatten().flatten() {
+                let path = file_entry.path();
+                if path.extension().map(|e| e == "json").unwrap_or(false) {
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        if let Ok(mut log) = serde_json::from_str::<CronRunLog>(&content) {
+                            // Match by worktree_branch or run_id pattern
+                            let matches = log.worktree_branch.as_ref()
+                                .map(|b| b.contains(&pipeline_id))
+                                .unwrap_or(false)
+                                || log.run_id.contains(&pipeline_id);
+
+                            if matches {
+                                // If running, cancel the agent
+                                if log.status == CronRunStatus::Running {
+                                    if let Err(e) = executor::cancel_cron_agent(manager, &log.agent_name).await {
+                                        eprintln!("Failed to cancel {}: {}", log.agent_name, e);
+                                    } else {
+                                        cancelled_agents.push(log.agent_name.clone());
+                                    }
+                                }
+
+                                // Mark as cancelled if not already complete
+                                if log.status != CronRunStatus::Success
+                                    && log.status != CronRunStatus::Cancelled
+                                    && log.status != CronRunStatus::Skipped {
+                                    log.status = CronRunStatus::Cancelled;
+                                    log.error = reason.clone().or(Some("Pipeline aborted".to_string()));
+                                    if log.completed_at.is_none() {
+                                        log.completed_at = Some(chrono::Utc::now().to_rfc3339());
+                                    }
+
+                                    // Write updated log
+                                    if let Ok(updated_json) = serde_json::to_string_pretty(&log) {
+                                        let _ = std::fs::write(&path, updated_json);
+                                    }
+
+                                    cancelled_runs.push(log.run_id.clone());
+
+                                    // Emit status event
+                                    let _ = OUTPUT_SENDER.send(CronOutputEvent {
+                                        run_id: log.run_id.clone(),
+                                        agent_name: log.agent_name.clone(),
+                                        event_type: OutputEventType::Status,
+                                        content: "Pipeline aborted".to_string(),
+                                        timestamp: chrono::Utc::now().to_rfc3339(),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(serde_json::json!({
+        "cancelled_runs": cancelled_runs,
+        "cancelled_agents": cancelled_agents,
+        "reason": reason.unwrap_or_else(|| "Pipeline aborted".to_string())
+    }))
+}
+
+// ========================
+// Pipeline API Commands
+// ========================
+
+/// List all pipelines, optionally filtered by status
+#[tauri::command]
+pub async fn list_pipelines(status: Option<PipelineStatus>) -> Result<Vec<Pipeline>, String> {
+    let pm = get_pipeline_manager_sync()?;
+    pm.list_pipelines(status)
+}
+
+/// Get a specific pipeline by ID
+#[tauri::command]
+pub async fn get_pipeline(id: String) -> Result<Pipeline, String> {
+    let pm = get_pipeline_manager_sync()?;
+    pm.get_pipeline(&id)
+}
+
+/// Retry a failed pipeline stage
+#[tauri::command]
+pub async fn retry_pipeline_stage(
+    pipeline_id: String,
+    stage_type: PipelineStageType,
+) -> Result<String, String> {
+    let pm = get_pipeline_manager_sync()?;
+    let pipeline = pm.get_pipeline(&pipeline_id)?;
+
+    // Find the stage
+    let stage = pipeline.stages.iter()
+        .find(|s| s.stage_type == stage_type)
+        .ok_or("Stage not found")?;
+
+    // Reset stage status and increment attempt
+    pm.update_stage(
+        &pipeline_id,
+        stage_type.clone(),
+        PipelineStageStatus::Pending,
+        None,
+        None,
+    )?;
+
+    // Trigger the appropriate agent based on stage type
+    let output_sender = OUTPUT_SENDER.clone();
+    let pid = pipeline_id.clone();
+
+    match stage_type {
+        PipelineStageType::Implementer => {
+            // For implementer retry, we'd need to relaunch session
+            if let Some(run_id) = &stage.run_id {
+                let run_id_clone = run_id.clone();
+                tokio::spawn(async move {
+                    let _ = relaunch_cron_session_impl(
+                        run_id_clone,
+                        "Continue the implementation.".to_string(),
+                        None,
+                    ).await;
+                });
+            }
+        }
+        PipelineStageType::Analyzer => {
+            // Re-trigger analyzer for the implementer run
+            if let Some(impl_stage) = pipeline.stages.iter().find(|s| s.stage_type == PipelineStageType::Implementer) {
+                if let Some(run_id) = &impl_stage.run_id {
+                    let analyzed_run_id = run_id.clone();
+                    tokio::spawn(async move {
+                        // Build analyzer env vars
+                        let mut env_vars = HashMap::new();
+                        env_vars.insert("ANALYZED_RUN_ID".to_string(), analyzed_run_id.clone());
+                        env_vars.insert("ANALYZED_AGENT".to_string(), "cron-idea-implementer".to_string());
+                        env_vars.insert("PIPELINE_ID".to_string(), pid.clone());
+
+                        let trigger_info = executor::AnalyzerTriggerInfo {
+                            analyzer_agent: "cron-implementer-analyzer".to_string(),
+                            env_vars,
+                        };
+                        trigger_post_run_analyzer(trigger_info, output_sender, Some(pid)).await;
+                    });
+                }
+            }
+        }
+        PipelineStageType::Qa => {
+            if let (Some(wt_path), Some(wt_branch)) = (&pipeline.worktree_path, &pipeline.worktree_branch) {
+                let wt_path = wt_path.clone();
+                let wt_branch = wt_branch.clone();
+                let base_commit = pipeline.base_commit.clone();
+                tokio::spawn(async move {
+                    trigger_qa_then_merge(
+                        wt_path,
+                        wt_branch,
+                        base_commit,
+                        "cron-idea-implementer".to_string(),
+                        output_sender,
+                        Some(pid),
+                    ).await;
+                });
+            }
+        }
+        PipelineStageType::Merger => {
+            if let (Some(wt_path), Some(wt_branch)) = (&pipeline.worktree_path, &pipeline.worktree_branch) {
+                let wt_path = wt_path.clone();
+                let wt_branch = wt_branch.clone();
+                tokio::spawn(async move {
+                    trigger_worktree_merger(
+                        wt_path,
+                        wt_branch,
+                        output_sender,
+                        Some(pid),
+                    ).await;
+                });
+            }
+        }
+    }
+
+    Ok(format!("Retrying {:?} stage for pipeline {}", stage_type, pipeline_id))
+}
+
+/// Skip a pipeline stage
+#[tauri::command]
+pub async fn skip_pipeline_stage_cmd(
+    pipeline_id: String,
+    stage_type: PipelineStageType,
+    reason: String,
+) -> Result<Pipeline, String> {
+    let pm = get_pipeline_manager_sync()?;
+    let pipeline = pm.skip_stage(&pipeline_id, stage_type.clone(), &reason)?;
+
+    // Determine what to do next based on which stage was skipped
+    let output_sender = OUTPUT_SENDER.clone();
+    let pid = pipeline_id.clone();
+
+    match stage_type {
+        PipelineStageType::Qa => {
+            // Skipping QA goes directly to merger (risky but allowed)
+            if let (Some(wt_path), Some(wt_branch)) = (&pipeline.worktree_path, &pipeline.worktree_branch) {
+                let wt_path = wt_path.clone();
+                let wt_branch = wt_branch.clone();
+                tokio::spawn(async move {
+                    trigger_worktree_merger(
+                        wt_path,
+                        wt_branch,
+                        output_sender,
+                        Some(pid),
+                    ).await;
+                });
+            }
+        }
+        _ => {}
+    }
+
+    pm.get_pipeline(&pipeline_id)
+}
+
+/// Abort an entire pipeline
+#[tauri::command]
+pub async fn abort_pipeline_cmd(
+    pipeline_id: String,
+    reason: String,
+) -> Result<Pipeline, String> {
+    let pm = get_pipeline_manager_sync()?;
+
+    // Get pipeline to find any running stages
+    let pipeline = pm.get_pipeline(&pipeline_id)?;
+
+    // Cancel any running agents
+    for stage in &pipeline.stages {
+        if stage.status == PipelineStageStatus::Running {
+            let guard = CRONOS.read().await;
+            if let Some(manager) = guard.as_ref() {
+                let _ = executor::cancel_cron_agent(manager, &stage.agent_name).await;
+            }
+        }
+    }
+
+    // Mark pipeline as aborted
+    pm.abort_pipeline(&pipeline_id, &reason)
+}
+
+// ========================
+// Pipeline Definition API
+// ========================
+
+/// List all available pipeline definitions
+#[tauri::command]
+pub async fn list_pipeline_definitions() -> Result<Vec<PipelineDefinition>, String> {
+    let pm = get_pipeline_manager_sync()?;
+    pm.list_definitions()
+}
+
+/// Get a specific pipeline definition by name
+#[tauri::command]
+pub async fn get_pipeline_definition(name: String) -> Result<PipelineDefinition, String> {
+    let pm = get_pipeline_manager_sync()?;
+    pm.get_definition(&name)
+}
+
+/// Get the default pipeline definition (idea-to-merge)
+#[tauri::command]
+pub async fn get_default_pipeline_definition() -> Result<PipelineDefinition, String> {
+    let pm = get_pipeline_manager_sync()?;
+    pm.get_default_definition()
 }
 
 /// Read a JSONL file into a vector of items

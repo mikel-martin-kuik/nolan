@@ -254,6 +254,9 @@ pub struct CronRunLog {
     // Analyzer verdict (populated after analyzer agent runs)
     #[serde(default)]
     pub analyzer_verdict: Option<AnalyzerVerdict>,
+    // Pipeline ID this run belongs to (if part of a pipeline)
+    #[serde(default)]
+    pub pipeline_id: Option<String>,
 }
 
 /// Verdict from a post-run analyzer agent
@@ -504,4 +507,225 @@ pub struct CronosHealthSummary {
     pub success_rate_7d: f32,
     pub success_rate_30d: f32,
     pub total_cost_7d: f32,
+}
+
+// ============================================================================
+// Pipeline Types - CI/CD-like tracking for agent orchestration
+// ============================================================================
+
+/// Overall pipeline status
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+#[serde(rename_all = "snake_case")]
+pub enum PipelineStatus {
+    Created,      // Pipeline created, waiting to start
+    InProgress,   // At least one stage running or pending
+    Completed,    // All stages completed successfully (merged)
+    Failed,       // A stage failed and pipeline cannot continue
+    Blocked,      // QA failed, waiting for retry or skip
+    Aborted,      // Manually cancelled
+}
+
+impl Default for PipelineStatus {
+    fn default() -> Self {
+        PipelineStatus::Created
+    }
+}
+
+/// Stage status within a pipeline
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+#[serde(rename_all = "snake_case")]
+pub enum PipelineStageStatus {
+    Pending,      // Not yet started
+    Running,      // Currently executing
+    Success,      // Completed successfully
+    Failed,       // Completed with failure
+    Skipped,      // Manually skipped
+    Blocked,      // Waiting on manual intervention
+}
+
+impl Default for PipelineStageStatus {
+    fn default() -> Self {
+        PipelineStageStatus::Pending
+    }
+}
+
+/// Type of pipeline stage
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+#[serde(rename_all = "snake_case")]
+pub enum PipelineStageType {
+    Implementer,
+    Analyzer,
+    Qa,
+    Merger,
+}
+
+/// A stage within a pipeline
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+pub struct PipelineStage {
+    pub stage_type: PipelineStageType,
+    pub status: PipelineStageStatus,
+    pub agent_name: String,
+    pub run_id: Option<String>,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+    pub verdict: Option<AnalyzerVerdict>,
+    pub skip_reason: Option<String>,
+    #[serde(default)]
+    pub attempt: u32,
+}
+
+/// Pipeline event types for audit trail
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+#[serde(rename_all = "snake_case")]
+pub enum PipelineEventType {
+    PipelineCreated,
+    StageStarted,
+    StageCompleted,
+    StageFailed,
+    StageSkipped,
+    VerdictReceived,
+    PipelineCompleted,
+    PipelineFailed,
+    PipelineAborted,
+    RetryTriggered,
+}
+
+/// An event in the pipeline audit log
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+pub struct PipelineEvent {
+    pub timestamp: String,
+    pub event_type: PipelineEventType,
+    pub stage_type: Option<PipelineStageType>,
+    pub run_id: Option<String>,
+    pub message: String,
+    #[ts(type = "Record<string, unknown> | null")]
+    pub metadata: Option<serde_json::Value>,
+}
+
+/// Captured inputs for reproducibility
+#[derive(Clone, Debug, Serialize, Deserialize, Default, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+pub struct PipelineInputs {
+    pub idea_id: Option<String>,
+    pub idea_title: Option<String>,
+    pub env_vars: std::collections::HashMap<String, String>,
+    pub git_commit: Option<String>,
+    pub timestamp: String,
+}
+
+/// Full pipeline state (persisted to .state/pipelines/{id}.json)
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+pub struct Pipeline {
+    pub id: String,
+    pub status: PipelineStatus,
+    pub created_at: String,
+    pub updated_at: String,
+    pub completed_at: Option<String>,
+
+    // Correlation
+    pub idea_id: String,
+    pub idea_title: String,
+
+    // Git worktree
+    pub worktree_path: Option<String>,
+    pub worktree_branch: Option<String>,
+    pub base_commit: Option<String>,
+
+    // Stages
+    pub stages: Vec<PipelineStage>,
+    pub current_stage: PipelineStageType,
+
+    // Audit trail
+    pub events: Vec<PipelineEvent>,
+
+    // Reproducibility
+    pub inputs: PipelineInputs,
+
+    // Cost tracking
+    pub total_cost_usd: Option<f32>,
+}
+
+/// Next action for pipeline state machine
+#[derive(Clone, Debug)]
+pub enum PipelineNextAction {
+    TriggerAnalyzer { run_id: String },
+    TriggerQa { worktree_path: String, worktree_branch: String },
+    TriggerMerger { worktree_path: String, worktree_branch: String },
+    RelaunchSession { run_id: String, prompt: String },
+    Complete,
+    Fail { reason: String },
+}
+
+// =============================================================================
+// Pipeline Definition (YAML schema) - Declarative pipeline configuration
+// =============================================================================
+
+/// Pipeline definition loaded from YAML - defines the pipeline structure
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+pub struct PipelineDefinition {
+    pub name: String,
+    pub description: Option<String>,
+    #[serde(default = "default_version")]
+    pub version: String,
+    pub stages: Vec<PipelineStageDefinition>,
+}
+
+fn default_version() -> String {
+    "1.0.0".to_string()
+}
+
+/// Stage definition in a pipeline YAML
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+pub struct PipelineStageDefinition {
+    /// Stage identifier (implementer, analyzer, qa, merger)
+    pub name: String,
+    /// Agent to run for this stage
+    pub agent: String,
+    /// Human-readable description
+    pub description: Option<String>,
+    /// Transitions based on outcome
+    #[serde(default)]
+    pub transitions: PipelineTransitions,
+    /// Whether this stage can be skipped
+    #[serde(default)]
+    pub skippable: bool,
+    /// Whether this stage can be retried
+    #[serde(default = "default_stage_retryable")]
+    pub retryable: bool,
+    /// Maximum retry attempts
+    #[serde(default = "default_stage_max_retries")]
+    pub max_retries: u32,
+}
+
+fn default_stage_retryable() -> bool {
+    true
+}
+
+fn default_stage_max_retries() -> u32 {
+    3
+}
+
+/// Transition rules for a pipeline stage
+#[derive(Clone, Debug, Serialize, Deserialize, Default, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+pub struct PipelineTransitions {
+    /// Next stage on success (exit code 0)
+    pub on_success: Option<String>,
+    /// Next stage on failure
+    pub on_failure: Option<String>,
+    /// For analyzer: next stage when verdict is COMPLETE
+    pub on_complete: Option<String>,
+    /// For analyzer: next stage when verdict is FOLLOWUP (re-run implementer)
+    pub on_followup: Option<String>,
+    /// For analyzer: action when verdict is FAILED
+    pub on_failed: Option<String>,
 }

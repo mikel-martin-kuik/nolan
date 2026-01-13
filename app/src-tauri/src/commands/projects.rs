@@ -591,7 +591,7 @@ fn time_ago(modified_time: std::time::SystemTime) -> (String, bool) {
 }
 
 /// List all markdown files in a specific project (with placeholders for missing expected files)
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn list_project_files(project_name: String) -> Result<Vec<ProjectFile>, String> {
     // Validate project_name - no path traversal allowed
     if project_name.contains("..") || project_name.contains('/') || project_name.contains('\\') {
@@ -752,7 +752,7 @@ fn collect_md_files(
 }
 
 /// Read the content of a specific project file
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn read_project_file(
     project_name: String,
     file_path: String,
@@ -855,7 +855,7 @@ pub async fn list_roadmap_files() -> Result<Vec<String>, String> {
 }
 
 /// Write content to a project file
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn write_project_file(
     project_name: String,
     file_path: String,
@@ -918,7 +918,7 @@ pub async fn write_project_file(
 }
 
 /// Create a new project directory with initial NOTES.md file and .team file
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn create_project(project_name: String, team_name: Option<String>) -> Result<String, String> {
     // Validate project name: only lowercase letters, numbers, and hyphens
     if project_name.is_empty() {
@@ -1006,7 +1006,7 @@ Project created via Nolan Dashboard.
 
 /// Update project status marker in NOTES.md
 /// Replaces existing PROJECT:STATUS marker or appends at end of file
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn update_project_status(project_name: String, status: String) -> Result<(), String> {
     // Validate project_name - no path traversal
     if project_name.contains("..") || project_name.contains('/') || project_name.contains('\\') {
@@ -1172,7 +1172,7 @@ pub struct SyncResult {
 
 /// Update HANDOFF marker in a workflow file
 /// Adds or removes the HANDOFF marker based on `completed` flag
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn update_file_marker(
     project_name: String,
     file_path: String,

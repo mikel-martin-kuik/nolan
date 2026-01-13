@@ -192,7 +192,7 @@ export function IdeasTab() {
 
   // Dispatch single idea (for new → analysis)
   const dispatchSingleMutation = useMutation({
-    mutationFn: (ideaId: string) => invoke<string>('dispatch_single_idea', { ideaId }),
+    mutationFn: (ideaId: string) => invoke<string>('dispatch_single_idea', { idea_id: ideaId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ideas'] });
       queryClient.invalidateQueries({ queryKey: ['idea-reviews'] });
@@ -219,7 +219,7 @@ export function IdeasTab() {
   // Accept and route review (for ready → done)
   const acceptMutation = useMutation({
     mutationFn: (itemId: string) =>
-      invoke<{ review: IdeaReview; route: string; route_detail: string }>('accept_and_route_review', { itemId }),
+      invoke<{ review: IdeaReview; route: string; route_detail: string }>('accept_and_route_review', { item_id: itemId }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['idea-reviews'] });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
@@ -253,7 +253,7 @@ export function IdeasTab() {
 
   // Delete review (for analysis/ready → new, resets idea)
   const deleteReviewMutation = useMutation({
-    mutationFn: (itemId: string) => invoke('delete_idea_review', { itemId }),
+    mutationFn: (itemId: string) => invoke('delete_idea_review', { item_id: itemId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['ideas'] });
       queryClient.invalidateQueries({ queryKey: ['idea-reviews'] });
@@ -266,7 +266,7 @@ export function IdeasTab() {
 
   // Unaccept review (for done → ready, moves accepted idea back)
   const unacceptMutation = useMutation({
-    mutationFn: (itemId: string) => invoke<IdeaReview>('unaccept_review', { itemId }),
+    mutationFn: (itemId: string) => invoke<IdeaReview>('unaccept_review', { item_id: itemId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['idea-reviews'] });
       toast.success('Idea moved back to Ready');
@@ -514,9 +514,9 @@ export function IdeasTab() {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-4">
+        <div className="flex flex-col gap-3 md:grid md:grid-cols-4">
           {COLUMNS.map((column) => (
-            <div key={column.id} className="min-w-[240px] sm:min-w-0 space-y-2">
+            <div key={column.id} className="space-y-2">
               {/* Column Header */}
               <div className="flex items-center justify-between px-1">
                 <span className="text-xs font-medium text-muted-foreground">
@@ -531,7 +531,7 @@ export function IdeasTab() {
               <DroppableColumn
                 id={column.id}
                 className={cn(
-                  'glass-card no-hover min-h-[200px] rounded-xl p-2',
+                  'glass-card no-hover min-h-[100px] md:min-h-[200px] rounded-xl p-2',
                   column.id === 'done' && 'opacity-60'
                 )}
               >

@@ -147,8 +147,10 @@ pub async fn start_agent_core(team_name: &str, agent: &str) -> Result<String, St
     let nolan_root = crate::utils::paths::get_nolan_root()?;
     let nolan_data_root = crate::utils::paths::get_nolan_data_root()?;
     let projects_dir = crate::utils::paths::get_projects_dir()?;
-    let agents_dir = crate::utils::paths::get_agents_dir()?;
-    let agent_dir = agents_dir.join(agent);
+
+    // Team agents are in teams/{team}/agents/{agent}/
+    let agent_dir = crate::utils::paths::get_team_agents_dir(team_name)?
+        .join(agent);
 
     if !agent_dir.exists() {
         return Err(format!("Agent directory not found: {:?}", agent_dir));

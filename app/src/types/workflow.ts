@@ -18,9 +18,17 @@ export interface AgentAvatarData extends Record<string, unknown> {
   lastRunStatus?: 'success' | 'failed';
 }
 
+export interface SupportAgentData extends Record<string, unknown> {
+  agentName: string;
+  role: 'note_taker' | 'guardian';
+  description: string;
+  status: PhaseNodeStatus;
+}
+
 export type PhaseNode = Node<PhaseNodeData, 'phaseNode'>;
 export type AgentAvatarNode = Node<AgentAvatarData, 'agentAvatar'>;
-export type WorkflowNode = PhaseNode | AgentAvatarNode;
+export type SupportAgentNode = Node<SupportAgentData, 'supportAgent'>;
+export type WorkflowNode = PhaseNode | AgentAvatarNode | SupportAgentNode;
 export type WorkflowEdge = Edge<{ isRejection?: boolean; animated?: boolean }>;
 
 // Pipeline Types
@@ -47,7 +55,7 @@ export interface ImplementationPipeline {
   stages: PipelineStage[];
   createdAt: string;
   currentStage: PipelineStageType;
-  overallStatus: 'in_progress' | 'completed' | 'failed' | 'blocked';
+  overallStatus: 'in_progress' | 'completed' | 'failed' | 'blocked' | 'aborted';
 }
 
 // View State Types

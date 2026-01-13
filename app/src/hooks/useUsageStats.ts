@@ -162,8 +162,8 @@ export function useUsageStats(): UseUsageStatsResult {
         // Fetch in parallel with individual error handling
         const [statsResult, sessionResult] = await Promise.all([
           invoke<UsageStats>('get_usage_by_date_range', {
-            startDate: startDate.toISOString(),
-            endDate: endDate.toISOString()
+            start_date: startDate.toISOString(),
+            end_date: endDate.toISOString()
           }).catch((err) => {
             console.error('Failed to fetch usage by date range:', err);
             return null;

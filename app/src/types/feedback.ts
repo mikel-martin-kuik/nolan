@@ -34,7 +34,10 @@ export interface FeedbackStats {
   total_ideas: number;
 }
 
-// Status display helpers
+/**
+ * Status display helpers
+ * @deprecated Use useFeatureRequestStatusConfig() from hooks/useUIConfig instead.
+ */
 export const STATUS_LABELS: Record<FeatureRequestStatus, string> = {
   new: 'New',
   reviewed: 'Reviewed',
@@ -43,6 +46,7 @@ export const STATUS_LABELS: Record<FeatureRequestStatus, string> = {
   rejected: 'Rejected',
 };
 
+/** @deprecated Use useFeatureRequestStatusConfig() from hooks/useUIConfig instead. */
 export const STATUS_COLORS: Record<FeatureRequestStatus, string> = {
   new: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
   reviewed: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
@@ -51,6 +55,7 @@ export const STATUS_COLORS: Record<FeatureRequestStatus, string> = {
   rejected: 'bg-red-500/10 text-red-500 border-red-500/20',
 };
 
+/** @deprecated Use useIdeaStatusConfig() from hooks/useUIConfig instead. */
 export const IDEA_STATUS_LABELS: Record<IdeaStatus, string> = {
   active: 'Active',
   archived: 'Archived',
@@ -101,6 +106,7 @@ export interface IdeaReview {
   route_detail?: string;
 }
 
+/** @deprecated Use useIdeaStatusConfig().reviewStatuses from hooks/useUIConfig instead. */
 export const REVIEW_STATUS_LABELS: Record<IdeaReviewStatus, string> = {
   draft: 'Draft Proposal',
   needs_input: 'Needs Your Input',
@@ -108,6 +114,7 @@ export const REVIEW_STATUS_LABELS: Record<IdeaReviewStatus, string> = {
   rejected: 'Not Feasible',
 };
 
+/** @deprecated Use useIdeaStatusConfig().reviewStatuses from hooks/useUIConfig instead. */
 export const REVIEW_STATUS_COLORS: Record<IdeaReviewStatus, string> = {
   draft: 'bg-slate-500/10 text-slate-500 border-slate-500/20',
   needs_input: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
@@ -115,12 +122,14 @@ export const REVIEW_STATUS_COLORS: Record<IdeaReviewStatus, string> = {
   rejected: 'bg-red-500/10 text-red-500 border-red-500/20',
 };
 
+/** @deprecated Use useIdeaStatusConfig().complexityLevels from hooks/useUIConfig instead. */
 export const COMPLEXITY_LABELS: Record<IdeaComplexity, string> = {
   low: 'Low',
   medium: 'Medium',
   high: 'High',
 };
 
+/** @deprecated Use useIdeaStatusConfig().complexityLevels from hooks/useUIConfig instead. */
 export const COMPLEXITY_COLORS: Record<IdeaComplexity, string> = {
   low: 'text-green-500',
   medium: 'text-yellow-500',
@@ -149,6 +158,7 @@ export interface TeamDecision {
   superseded_by?: string;
 }
 
+/** @deprecated Use useDecisionStatusConfig() from hooks/useUIConfig instead. */
 export const DECISION_STATUS_LABELS: Record<DecisionStatus, string> = {
   proposed: 'Proposed',
   in_review: 'In Review',
@@ -157,6 +167,7 @@ export const DECISION_STATUS_LABELS: Record<DecisionStatus, string> = {
   superseded: 'Superseded',
 };
 
+/** @deprecated Use useDecisionStatusConfig() from hooks/useUIConfig instead. */
 export const DECISION_STATUS_COLORS: Record<DecisionStatus, string> = {
   proposed: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
   in_review: 'bg-amber-500/10 text-amber-500 border-amber-500/20',

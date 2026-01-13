@@ -16,6 +16,8 @@ pub struct AgentDirectoryInfo {
     pub role: Option<String>,
     pub model: Option<String>,
     pub agent_type: Option<String>,
+    /// Team this agent belongs to (None for shared/ralph agents)
+    pub team: Option<String>,
 }
 
 /// Agent metadata stored in agent.json
@@ -27,6 +29,7 @@ pub struct AgentMetadata {
 
 /// Agent metadata from agent.yaml (for cron/predefined agents)
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct AgentYamlMetadata {
     #[serde(default)]
     pub name: Option<String>,
@@ -61,9 +64,43 @@ fn validate_agent_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Get the agents directory path
+/// Get the agents directory path (shared agents like ralph and templates)
 fn get_agents_dir() -> Result<PathBuf, String> {
     crate::utils::paths::get_agents_dir()
+}
+
+/// Find an agent by name, searching all team directories and shared agents
+/// Returns (agent_dir, team_name) where team_name is None for shared agents
+fn find_agent(agent_name: &str) -> Result<(PathBuf, Option<String>), String> {
+    // First check shared agents directory
+    let shared_agent_dir = get_agents_dir()?.join(agent_name);
+    if shared_agent_dir.exists() {
+        return Ok((shared_agent_dir, None));
+    }
+
+    // Search all team directories
+    let teams_dir = crate::utils::paths::get_teams_dir()?;
+    if teams_dir.exists() {
+        for team_entry in fs::read_dir(&teams_dir).map_err(|e| e.to_string())? {
+            let team_entry = team_entry.map_err(|e| e.to_string())?;
+            let team_path = team_entry.path();
+
+            if !team_path.is_dir() {
+                continue;
+            }
+
+            let team_name = team_path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+
+            let team_agent_dir = team_path.join("agents").join(agent_name);
+            if team_agent_dir.exists() {
+                return Ok((team_agent_dir, Some(team_name.to_string())));
+            }
+        }
+    }
+
+    Err(format!("Agent '{}' not found", agent_name))
 }
 
 /// Read agent metadata from agent.json
@@ -92,81 +129,161 @@ fn read_agent_yaml_metadata(agent_dir: &PathBuf) -> Option<AgentYamlMetadata> {
     None
 }
 
-/// List all agent directories under app/agents/
-#[tauri::command]
-pub async fn list_agent_directories() -> Result<Vec<AgentDirectoryInfo>, String> {
-    let agents_dir = get_agents_dir()?;
+/// Helper to create AgentDirectoryInfo from a path
+fn agent_info_from_path(path: &std::path::Path, team: Option<String>) -> Option<AgentDirectoryInfo> {
+    let name = path.file_name().and_then(|n| n.to_str())?;
 
-    if !agents_dir.exists() {
-        return Ok(vec![]); // Return empty list if agents directory doesn't exist
+    // Skip hidden directories
+    if name.starts_with('.') {
+        return None;
     }
 
+    let claude_md_path = path.join("CLAUDE.md");
+    let has_claude_md = claude_md_path.exists() && claude_md_path.is_file();
+
+    let agent_json_path = path.join("agent.json");
+    let has_agent_json = agent_json_path.exists() && agent_json_path.is_file();
+
+    let agent_yaml_path = path.join("agent.yaml");
+    let has_agent_yaml = agent_yaml_path.exists() && agent_yaml_path.is_file();
+
+    // Try to read agent metadata from agent.json first, then agent.yaml
+    let path_buf = path.to_path_buf();
+    let json_metadata = read_agent_metadata(&path_buf);
+    let yaml_metadata = read_agent_yaml_metadata(&path_buf);
+
+    // Use JSON metadata if available, otherwise fall back to YAML
+    let (role, model, agent_type) = if let Some(ref m) = json_metadata {
+        (Some(m.role.clone()), Some(m.model.clone()), None)
+    } else if let Some(ref m) = yaml_metadata {
+        // For YAML agents (cron/predefined), use description as role
+        (m.description.clone(), m.model.clone(), m.agent_type.clone())
+    } else {
+        (None, None, None)
+    };
+
+    Some(AgentDirectoryInfo {
+        name: name.to_string(),
+        exists: true,
+        has_claude_md,
+        has_agent_json,
+        has_agent_yaml,
+        path: path.to_string_lossy().to_string(),
+        role,
+        model,
+        agent_type,
+        team,
+    })
+}
+
+/// List all agent directories from both teams/{team}/agents/ and agents/ (shared)
+#[tauri::command]
+pub async fn list_agent_directories() -> Result<Vec<AgentDirectoryInfo>, String> {
     let mut agent_infos = Vec::new();
 
-    for entry in fs::read_dir(&agents_dir)
-        .map_err(|e| format!("Failed to read agents directory: {}", e))? {
-        let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
-        let path = entry.path();
+    // Scan teams/{team}/agents/ directories for team agents
+    let teams_dir = crate::utils::paths::get_teams_dir()?;
+    if teams_dir.exists() {
+        for team_entry in fs::read_dir(&teams_dir)
+            .map_err(|e| format!("Failed to read teams directory: {}", e))?
+        {
+            let team_entry = team_entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+            let team_path = team_entry.path();
 
-        if path.is_dir() {
-            if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
-                // Skip hidden directories and special directories
-                if name.starts_with('.') {
-                    continue;
+            if !team_path.is_dir() {
+                continue;
+            }
+
+            let team_name = team_path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("");
+
+            // Skip hidden directories
+            if team_name.starts_with('.') {
+                continue;
+            }
+
+            // Check for agents subdirectory
+            let team_agents_dir = team_path.join("agents");
+            if !team_agents_dir.exists() || !team_agents_dir.is_dir() {
+                continue;
+            }
+
+            // Scan team's agents directory
+            for agent_entry in fs::read_dir(&team_agents_dir)
+                .map_err(|e| format!("Failed to read team agents directory: {}", e))?
+            {
+                let agent_entry = agent_entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+                let agent_path = agent_entry.path();
+
+                if agent_path.is_dir() {
+                    if let Some(info) = agent_info_from_path(&agent_path, Some(team_name.to_string())) {
+                        agent_infos.push(info);
+                    }
                 }
-
-                let claude_md_path = path.join("CLAUDE.md");
-                let has_claude_md = claude_md_path.exists() && claude_md_path.is_file();
-
-                let agent_json_path = path.join("agent.json");
-                let has_agent_json = agent_json_path.exists() && agent_json_path.is_file();
-
-                let agent_yaml_path = path.join("agent.yaml");
-                let has_agent_yaml = agent_yaml_path.exists() && agent_yaml_path.is_file();
-
-                // Try to read agent metadata from agent.json first, then agent.yaml
-                let json_metadata = read_agent_metadata(&path);
-                let yaml_metadata = read_agent_yaml_metadata(&path);
-
-                // Use JSON metadata if available, otherwise fall back to YAML
-                let (role, model, agent_type) = if let Some(ref m) = json_metadata {
-                    (Some(m.role.clone()), Some(m.model.clone()), None)
-                } else if let Some(ref m) = yaml_metadata {
-                    // For YAML agents (cron/predefined), use description as role
-                    (m.description.clone(), m.model.clone(), m.agent_type.clone())
-                } else {
-                    (None, None, None)
-                };
-
-                agent_infos.push(AgentDirectoryInfo {
-                    name: name.to_string(),
-                    exists: true,
-                    has_claude_md,
-                    has_agent_json,
-                    has_agent_yaml,
-                    path: path.to_string_lossy().to_string(),
-                    role,
-                    model,
-                    agent_type,
-                });
             }
         }
     }
 
-    // Sort alphabetically
-    agent_infos.sort_by(|a, b| a.name.cmp(&b.name));
+    // Scan agents/ directory for shared agents (ralph, predefined templates)
+    let agents_dir = get_agents_dir()?;
+    if agents_dir.exists() {
+        for entry in fs::read_dir(&agents_dir)
+            .map_err(|e| format!("Failed to read agents directory: {}", e))?
+        {
+            let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                if let Some(info) = agent_info_from_path(&path, None) {
+                    agent_infos.push(info);
+                }
+            }
+        }
+    }
+
+    // Sort by team (None first), then by name
+    agent_infos.sort_by(|a, b| {
+        match (&a.team, &b.team) {
+            (None, Some(_)) => std::cmp::Ordering::Less,
+            (Some(_), None) => std::cmp::Ordering::Greater,
+            _ => a.name.cmp(&b.name),
+        }
+    });
 
     Ok(agent_infos)
 }
 
 /// Create agent directory structure
+/// If team_name is provided, creates in teams/{team}/agents/{agent}/
+/// Otherwise creates in agents/{agent}/ (for shared agents like ralph)
 #[tauri::command(rename_all = "snake_case")]
-pub async fn create_agent_directory(agent_name: String) -> Result<String, String> {
+pub async fn create_agent_directory(agent_name: String, team_name: Option<String>) -> Result<String, String> {
     // Validate agent name
     validate_agent_name(&agent_name)?;
 
-    let agents_dir = get_agents_dir()?;
-    let agent_dir = agents_dir.join(&agent_name);
+    // Validate team name if provided
+    if let Some(ref team) = team_name {
+        if team.contains("..") || team.contains("/") || team.contains("\\") {
+            return Err("Invalid team name: path traversal not allowed".to_string());
+        }
+    }
+
+    // Determine agent directory based on team
+    let agent_dir = if let Some(ref team) = team_name {
+        // Team agent: teams/{team}/agents/{agent}/
+        let team_agents_dir = crate::utils::paths::get_team_agents_dir(team)?;
+        // Ensure team agents directory exists
+        if !team_agents_dir.exists() {
+            fs::create_dir_all(&team_agents_dir)
+                .map_err(|e| format!("Failed to create team agents directory: {}", e))?;
+        }
+        team_agents_dir.join(&agent_name)
+    } else {
+        // Shared agent: agents/{agent}/
+        let agents_dir = get_agents_dir()?;
+        agents_dir.join(&agent_name)
+    };
 
     // Check if directory already exists
     if agent_dir.exists() {
@@ -201,26 +318,18 @@ pub async fn create_agent_directory(agent_name: String) -> Result<String, String
 }
 
 /// Get CLAUDE.md content for an agent
+/// Searches both team-specific and shared agent directories
 #[tauri::command(rename_all = "snake_case")]
 pub async fn get_agent_role_file(agent_name: String) -> Result<String, String> {
     // Validate agent name
     validate_agent_name(&agent_name)?;
 
-    let agents_dir = get_agents_dir()?;
-    let claude_md_path = agents_dir.join(&agent_name).join("CLAUDE.md");
+    // Find agent in any location
+    let (agent_dir, _team) = find_agent(&agent_name)?;
+    let claude_md_path = agent_dir.join("CLAUDE.md");
 
     if !claude_md_path.exists() {
         return Err(format!("CLAUDE.md not found for agent '{}'", agent_name));
-    }
-
-    // Verify the path is still within agents directory (security check)
-    let canonical_agents = agents_dir.canonicalize()
-        .map_err(|e| format!("Failed to canonicalize agents directory: {}", e))?;
-    let canonical_file = claude_md_path.canonicalize()
-        .map_err(|e| format!("Failed to canonicalize file path: {}", e))?;
-
-    if !canonical_file.starts_with(&canonical_agents) {
-        return Err("Security violation: Path is outside agents directory".to_string());
     }
 
     fs::read_to_string(&claude_md_path)
@@ -228,6 +337,7 @@ pub async fn get_agent_role_file(agent_name: String) -> Result<String, String> {
 }
 
 /// Save CLAUDE.md content for an agent
+/// Searches both team-specific and shared agent directories
 #[tauri::command(rename_all = "snake_case")]
 pub async fn save_agent_role_file(agent_name: String, content: String) -> Result<(), String> {
     // Validate agent name
@@ -238,14 +348,9 @@ pub async fn save_agent_role_file(agent_name: String, content: String) -> Result
         return Err("CLAUDE.md content cannot be empty".to_string());
     }
 
-    let agents_dir = get_agents_dir()?;
-    let agent_dir = agents_dir.join(&agent_name);
+    // Find agent in any location
+    let (agent_dir, _team) = find_agent(&agent_name)?;
     let claude_md_path = agent_dir.join("CLAUDE.md");
-
-    // Ensure agent directory exists
-    if !agent_dir.exists() {
-        return Err(format!("Agent directory '{}' does not exist", agent_name));
-    }
 
     // Create backup if file exists
     if claude_md_path.exists() {
@@ -264,27 +369,25 @@ pub async fn save_agent_role_file(agent_name: String, content: String) -> Result
 }
 
 /// Delete agent directory
+/// Searches both team-specific and shared agent directories
 #[tauri::command(rename_all = "snake_case")]
 pub async fn delete_agent_directory(agent_name: String, force: bool) -> Result<(), String> {
     // Validate agent name
     validate_agent_name(&agent_name)?;
 
-    let agents_dir = get_agents_dir()?;
-    let agent_dir = agents_dir.join(&agent_name);
-
-    if !agent_dir.exists() {
-        return Err(format!("Agent directory '{}' does not exist", agent_name));
-    }
+    // Find agent in any location
+    let (agent_dir, team) = find_agent(&agent_name)?;
 
     // If not forcing, check if agent is in team configs
     if !force {
-        // Load default team config to check if agent is in use
-        if let Ok(team) = crate::config::TeamConfig::load("default") {
-            let agent_names: Vec<&str> = team.agent_names();
+        // Check if agent is in the team's config
+        let team_to_check = team.as_deref().unwrap_or("default");
+        if let Ok(team_config) = crate::config::TeamConfig::load(team_to_check) {
+            let agent_names: Vec<&str> = team_config.agent_names();
             if agent_names.contains(&agent_name.as_str()) {
                 return Err(format!(
-                    "Agent '{}' is in use by team config 'default'. Use force=true to delete anyway.",
-                    agent_name
+                    "Agent '{}' is in use by team config '{}'. Use force=true to delete anyway.",
+                    agent_name, team_to_check
                 ));
             }
         }
@@ -298,18 +401,14 @@ pub async fn delete_agent_directory(agent_name: String, force: bool) -> Result<(
 }
 
 /// Save agent metadata to agent.json
+/// Searches both team-specific and shared agent directories
 #[tauri::command(rename_all = "snake_case")]
 pub async fn save_agent_metadata(agent_name: String, role: String, model: String) -> Result<(), String> {
     // Validate agent name
     validate_agent_name(&agent_name)?;
 
-    let agents_dir = get_agents_dir()?;
-    let agent_dir = agents_dir.join(&agent_name);
-
-    // Ensure agent directory exists
-    if !agent_dir.exists() {
-        return Err(format!("Agent directory '{}' does not exist", agent_name));
-    }
+    // Find agent in any location
+    let (agent_dir, _team) = find_agent(&agent_name)?;
 
     let metadata = AgentMetadata { role, model };
     let metadata_path = agent_dir.join("agent.json");
@@ -324,19 +423,17 @@ pub async fn save_agent_metadata(agent_name: String, role: String, model: String
 }
 
 /// Get agent metadata from agent.json
+/// Searches both team-specific and shared agent directories
 #[tauri::command(rename_all = "snake_case")]
 pub async fn get_agent_metadata(agent_name: String) -> Result<Option<AgentMetadata>, String> {
     // Validate agent name
     validate_agent_name(&agent_name)?;
 
-    let agents_dir = get_agents_dir()?;
-    let agent_dir = agents_dir.join(&agent_name);
-
-    if !agent_dir.exists() {
-        return Ok(None);
+    // Try to find agent, return None if not found
+    match find_agent(&agent_name) {
+        Ok((agent_dir, _team)) => Ok(read_agent_metadata(&agent_dir)),
+        Err(_) => Ok(None),
     }
-
-    Ok(read_agent_metadata(&agent_dir))
 }
 
 /// Get CLAUDE.md template for new agents

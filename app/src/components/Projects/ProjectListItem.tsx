@@ -32,7 +32,7 @@ export const ProjectListItem = memo(function ProjectListItem({
   const { data: files, error: filesError } = useQuery({
     queryKey: ['project-files', project.name],
     queryFn: async () => invoke<ProjectFile[]>('list_project_files', {
-      projectName: project.name
+      project_name: project.name
     }),
     enabled: isExpanded && !!project.name,
     // Increased refetch interval from 10s to 30s for better performance

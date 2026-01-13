@@ -171,6 +171,24 @@ pub fn get_teams_dir() -> Result<PathBuf, String> {
     Ok(get_nolan_data_root()?.join("teams"))
 }
 
+/// Get a specific team's directory
+/// Returns: <nolan_data_root>/teams/{team_name}/
+pub fn get_team_dir(team_name: &str) -> Result<PathBuf, String> {
+    Ok(get_teams_dir()?.join(team_name))
+}
+
+/// Get a team's agents directory
+/// Returns: <nolan_data_root>/teams/{team_name}/agents/
+pub fn get_team_agents_dir(team_name: &str) -> Result<PathBuf, String> {
+    Ok(get_team_dir(team_name)?.join("agents"))
+}
+
+/// Get path to a team's config file (new format)
+/// Returns: <nolan_data_root>/teams/{team_name}/team.yaml
+pub fn get_team_config_path(team_name: &str) -> Result<PathBuf, String> {
+    Ok(get_team_dir(team_name)?.join("team.yaml"))
+}
+
 /// Get cronos runs directory (user data - execution logs)
 /// Returns: <nolan_data_root>/cronos/runs
 pub fn get_cronos_runs_dir() -> Result<PathBuf, String> {

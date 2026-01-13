@@ -113,6 +113,7 @@ pub async fn execute_cron_agent_with_env(
             base_commit: None,
             label: None,
             analyzer_verdict: None,
+            pipeline_id: None,
         };
 
         // Emit skip event
@@ -299,6 +300,7 @@ async fn execute_single_run(
             base_commit: None,
             label,
             analyzer_verdict: None,
+            pipeline_id: None,
         });
     }
 
@@ -496,6 +498,7 @@ async fn execute_single_run(
         base_commit: wt_commit.clone(),
         label: label.clone(),
         analyzer_verdict: None,
+        pipeline_id: None,
     };
 
     let json = serde_json::to_string_pretty(&initial_log)
@@ -618,6 +621,7 @@ async fn execute_single_run(
         base_commit: wt_commit,
         label,
         analyzer_verdict: None,
+        pipeline_id: None,
     };
 
     // Write final JSON log
@@ -798,6 +802,7 @@ pub async fn execute_cron_agent_simple(
             base_commit: None,
             label: None,
             analyzer_verdict: None,
+            pipeline_id: None,
         });
     }
 
@@ -919,6 +924,7 @@ pub async fn execute_cron_agent_simple(
         base_commit: None,
         label: None,  // Simple mode doesn't support labels
         analyzer_verdict: None,
+        pipeline_id: None,
     };
 
     let json = serde_json::to_string_pretty(&run_log)

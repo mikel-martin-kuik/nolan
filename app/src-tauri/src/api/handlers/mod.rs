@@ -15,6 +15,7 @@ pub mod usage;
 pub mod organization;
 pub mod roles;
 pub mod policies;
+pub mod config;
 
 use axum::Json;
 use serde::Serialize;

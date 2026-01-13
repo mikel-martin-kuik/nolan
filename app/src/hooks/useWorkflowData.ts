@@ -17,8 +17,10 @@ import type {
   PipelineStage,
   WorkflowNode,
   WorkflowEdge,
-  PhaseNodeData
+  PhaseNodeData,
+  SupportAgentData
 } from '../types/workflow';
+import type { Pipeline } from '../types/generated/cronos/Pipeline';
 import dagre from 'dagre';
 
 const POLLING_INTERVAL = 10000; // 10 seconds
@@ -41,7 +43,19 @@ export function useWorkflowData(): UseWorkflowDataResult {
   const updateNodeStatus = useWorkflowVisualizerStore((state) => state.updateNodeStatus);
   const viewMode = useWorkflowVisualizerStore((state) => state.viewMode);
 
-  // Fetch run history
+  // Fetch pipelines from the new pipeline API
+  const fetchPipelines = useCallback(async () => {
+    try {
+      const pipelines = await invoke<Pipeline[]>('list_pipelines', { status: null });
+      // Convert backend Pipeline to frontend ImplementationPipeline
+      return pipelines.map(convertPipelineToImplementationPipeline);
+    } catch {
+      // Fallback to empty array if pipeline API not available
+      return [];
+    }
+  }, []);
+
+  // Fetch run history (used for DAG visualization and fallback pipeline correlation)
   const fetchRunHistory = useCallback(async () => {
     return invoke<CronRunLog[]>('get_cron_run_history', { limit: 100 });
   }, []);
@@ -58,6 +72,16 @@ export function useWorkflowData(): UseWorkflowDataResult {
   }, [currentTeamName]);
 
   // Use fetch hooks
+  const {
+    data: pipelinesFromApi,
+    loading: pipelinesLoading,
+    refresh: refetchPipelines,
+  } = useFetchData({
+    fetcher: fetchPipelines,
+    defaultValue: [],
+    errorMessage: 'Failed to load pipelines',
+  });
+
   const {
     data: runHistory,
     loading: runsLoading,
@@ -89,18 +113,22 @@ export function useWorkflowData(): UseWorkflowDataResult {
     errorMessage: 'Failed to load team config',
   });
 
-  // Pipeline correlation logic
+  // Use pipelines from API if available, otherwise fall back to correlation
   const pipelines = useMemo(() => {
+    if (pipelinesFromApi.length > 0) {
+      return pipelinesFromApi;
+    }
+    // Fallback: correlate from run history
     if (!runHistory.length) return [];
     return correlatePipelines(runHistory);
-  }, [runHistory]);
+  }, [pipelinesFromApi, runHistory]);
 
   // DAG construction from team phases
   const { nodes, edges } = useMemo(() => {
     if (!teamConfig?.team?.workflow?.phases) {
       return { nodes: [], edges: [] };
     }
-    return buildDagFromPhases(teamConfig.team.workflow.phases, runHistory);
+    return buildDagFromPhases(teamConfig.team.workflow, runHistory);
   }, [teamConfig, runHistory]);
 
   // Update store when data changes
@@ -136,6 +164,31 @@ export function useWorkflowData(): UseWorkflowDataResult {
     };
   }, [updateNodeStatus]);
 
+  // Subscribe to pipeline events for real-time pipeline updates
+  useEffect(() => {
+    const cleanups: (() => void)[] = [];
+
+    const pipelineEvents = [
+      'pipeline:created',
+      'pipeline:updated',
+      'pipeline:completed',
+      'pipeline:failed',
+      'pipeline:aborted',
+    ];
+
+    pipelineEvents.forEach((eventName) => {
+      listen<Pipeline>(eventName, () => {
+        refetchPipelines();
+      }).then((unlisten) => {
+        cleanups.push(unlisten);
+      });
+    });
+
+    return () => {
+      cleanups.forEach((cleanup) => cleanup());
+    };
+  }, [refetchPipelines]);
+
   // Polling when not in DAG view (DAG uses events primarily)
   usePollingEffect({
     interval: POLLING_INTERVAL,
@@ -143,6 +196,7 @@ export function useWorkflowData(): UseWorkflowDataResult {
     callback: () => {
       refetchRuns();
       refetchWorktrees();
+      refetchPipelines();
     },
   });
 
@@ -150,7 +204,8 @@ export function useWorkflowData(): UseWorkflowDataResult {
     refetchRuns();
     refetchWorktrees();
     refetchTeam();
-  }, [refetchRuns, refetchWorktrees, refetchTeam]);
+    refetchPipelines();
+  }, [refetchRuns, refetchWorktrees, refetchTeam, refetchPipelines]);
 
   return {
     pipelines,
@@ -158,7 +213,7 @@ export function useWorkflowData(): UseWorkflowDataResult {
     teamConfig,
     nodes,
     edges,
-    isLoading: runsLoading || worktreesLoading || teamLoading,
+    isLoading: runsLoading || worktreesLoading || teamLoading || pipelinesLoading,
     error: runsError,
     refetch,
   };
@@ -291,11 +346,12 @@ function mapRunStatus(
   return 'pending';
 }
 
-// Helper: Build DAG from team phases (using proper PhaseConfig type)
+// Helper: Build DAG from team workflow config
 function buildDagFromPhases(
-  phases: PhaseConfig[],
+  workflow: { phases: PhaseConfig[]; note_taker?: string; exception_handler?: string },
   runHistory?: CronRunLog[] | null
 ): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
+  const { phases, note_taker, exception_handler } = workflow;
   const g = new dagre.graphlib.Graph();
   g.setGraph({ rankdir: 'LR', nodesep: 50, ranksep: 100 });
   g.setDefaultEdgeLabel(() => ({}));
@@ -303,18 +359,20 @@ function buildDagFromPhases(
   const nodes: WorkflowNode[] = [];
   const edges: WorkflowEdge[] = [];
 
+  // Helper to determine agent status from run history
+  const getAgentStatus = (agentName: string): PhaseNodeData['status'] => {
+    const agentRuns = runHistory?.filter((r) => r.agent_name === agentName) || [];
+    const lastRun = agentRuns[0];
+    if (lastRun && !lastRun.completed_at) return 'running';
+    if (lastRun?.exit_code === 0) return 'success';
+    if (lastRun?.exit_code) return 'failed';
+    return 'idle';
+  };
+
   // Create nodes from phases
   phases.forEach((phase, index) => {
     const nodeId = phase.name || `phase-${index}`;
     g.setNode(nodeId, { width: 180, height: 80 });
-
-    // Determine status from recent runs
-    const agentRuns = runHistory?.filter((r) => r.agent_name === phase.owner) || [];
-    const lastRun = agentRuns[0];
-    let status: PhaseNodeData['status'] = 'idle';
-    if (lastRun && !lastRun.completed_at) status = 'running';
-    else if (lastRun?.exit_code === 0) status = 'success';
-    else if (lastRun?.exit_code) status = 'failed';
 
     nodes.push({
       id: nodeId,
@@ -324,7 +382,7 @@ function buildDagFromPhases(
         phaseId: nodeId,
         phaseName: phase.name,
         ownerAgent: phase.owner,
-        status,
+        status: getAgentStatus(phase.owner),
         outputFile: phase.output,
         requires: phase.requires,
       },
@@ -348,6 +406,8 @@ function buildDagFromPhases(
   dagre.layout(g);
 
   // Update node positions from dagre
+  let maxX = 0;
+  let maxY = 0;
   nodes.forEach((node) => {
     const nodeWithPosition = g.node(node.id);
     if (nodeWithPosition) {
@@ -355,8 +415,105 @@ function buildDagFromPhases(
         x: nodeWithPosition.x - 90, // Center based on width
         y: nodeWithPosition.y - 40, // Center based on height
       };
+      maxX = Math.max(maxX, node.position.x + 180);
+      maxY = Math.max(maxY, node.position.y + 80);
     }
   });
 
+  // Add peripheral support agent nodes (positioned below the main pipeline)
+  const supportAgentY = maxY + 60;
+  const supportAgentStartX = maxX / 2 - 180; // Center the support agents
+
+  if (note_taker) {
+    const noteTakerData: SupportAgentData = {
+      agentName: note_taker,
+      role: 'note_taker',
+      description: 'Documents workflow progress',
+      status: getAgentStatus(note_taker),
+    };
+    nodes.push({
+      id: 'support-note-taker',
+      type: 'supportAgent',
+      position: { x: supportAgentStartX, y: supportAgentY },
+      data: noteTakerData,
+    });
+  }
+
+  if (exception_handler) {
+    const guardianData: SupportAgentData = {
+      agentName: exception_handler,
+      role: 'guardian',
+      description: 'Handles workflow exceptions',
+      status: getAgentStatus(exception_handler),
+    };
+    nodes.push({
+      id: 'support-guardian',
+      type: 'supportAgent',
+      position: { x: supportAgentStartX + 180, y: supportAgentY },
+      data: guardianData,
+    });
+  }
+
   return { nodes, edges };
+}
+
+// Helper: Convert backend Pipeline to frontend ImplementationPipeline
+function convertPipelineToImplementationPipeline(pipeline: Pipeline): ImplementationPipeline {
+  return {
+    id: pipeline.id,
+    ideaId: pipeline.idea_id,
+    ideaTitle: pipeline.idea_title,
+    worktreeBranch: pipeline.worktree_branch || undefined,
+    createdAt: pipeline.created_at,
+    currentStage: mapBackendStageType(pipeline.current_stage),
+    overallStatus: mapBackendPipelineStatus(pipeline.status),
+    stages: pipeline.stages.map((stage) => ({
+      type: mapBackendStageType(stage.stage_type),
+      runId: stage.run_id || undefined,
+      agentName: stage.agent_name || undefined,
+      status: mapBackendStageStatus(stage.status),
+      startedAt: stage.started_at || undefined,
+      completedAt: stage.completed_at || undefined,
+      verdict: stage.verdict
+        ? {
+            outcome: stage.verdict.verdict || 'unknown',
+            summary: stage.verdict.reason || '',
+          }
+        : undefined,
+    })),
+  };
+}
+
+function mapBackendStageType(stageType: string): PipelineStage['type'] {
+  const mapping: Record<string, PipelineStage['type']> = {
+    implementer: 'implementer',
+    analyzer: 'analyzer',
+    qa: 'qa',
+    merger: 'merger',
+  };
+  return mapping[stageType] || 'implementer';
+}
+
+function mapBackendStageStatus(status: string): PipelineStage['status'] {
+  const mapping: Record<string, PipelineStage['status']> = {
+    pending: 'pending',
+    running: 'running',
+    success: 'success',
+    failed: 'failed',
+    skipped: 'skipped',
+    blocked: 'failed', // Map blocked to failed for UI purposes
+  };
+  return mapping[status] || 'pending';
+}
+
+function mapBackendPipelineStatus(status: string): ImplementationPipeline['overallStatus'] {
+  const mapping: Record<string, ImplementationPipeline['overallStatus']> = {
+    created: 'in_progress',
+    in_progress: 'in_progress',
+    completed: 'completed',
+    failed: 'failed',
+    blocked: 'blocked',
+    aborted: 'aborted',
+  };
+  return mapping[status] || 'in_progress';
 }

@@ -55,13 +55,17 @@ pub async fn get_agent(
 #[derive(Deserialize)]
 pub struct CreateAgentRequest {
     name: String,
+    /// Optional team name - if provided, creates in teams/{team}/agents/, else in agents/
+    team_name: Option<String>,
 }
 
 /// Create a new agent
+/// If team_name is provided, creates in teams/{team}/agents/{name}/
+/// Otherwise creates in shared agents/ directory
 pub async fn create_agent(
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<Json<serde_json::Value>, impl IntoResponse> {
-    match agents::create_agent_directory(req.name).await {
+    match agents::create_agent_directory(req.name, req.team_name).await {
         Ok(path) => Ok(Json(serde_json::json!({ "path": path }))),
         Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
     }

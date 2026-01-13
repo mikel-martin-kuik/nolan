@@ -74,7 +74,7 @@ export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
 
   const updateProposalMutation = useMutation({
     mutationFn: (updatedProposal: IdeaProposal) =>
-      invoke<IdeaReview>('update_review_proposal', { itemId: idea.id, proposal: updatedProposal }),
+      invoke<IdeaReview>('update_review_proposal', { item_id: idea.id, proposal: updatedProposal }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['idea-reviews'] });
       setEditingProposal(false);
@@ -83,7 +83,7 @@ export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
 
   const updateGapsMutation = useMutation({
     mutationFn: (updatedGaps: IdeaGap[]) =>
-      invoke<IdeaReview>('update_review_gaps', { itemId: idea.id, gaps: updatedGaps }),
+      invoke<IdeaReview>('update_review_gaps', { item_id: idea.id, gaps: updatedGaps }),
     onSuccess: (result) => {
       lastSavedGapsRef.current = JSON.stringify(result.gaps);
       setSaveStatus('saved');
@@ -100,8 +100,8 @@ export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
   const acceptMutation = useMutation({
     mutationFn: async () => {
       // Save gaps first to ensure they're persisted before accepting
-      await invoke<IdeaReview>('update_review_gaps', { itemId: idea.id, gaps });
-      return invoke<{ review: IdeaReview; route: string; route_detail: string }>('accept_and_route_review', { itemId: idea.id });
+      await invoke<IdeaReview>('update_review_gaps', { item_id: idea.id, gaps });
+      return invoke<{ review: IdeaReview; route: string; route_detail: string }>('accept_and_route_review', { item_id: idea.id });
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['idea-reviews'] });
@@ -197,12 +197,12 @@ export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
     <>
       <div className="h-full flex flex-col">
         {/* Header */}
-      <div className="flex items-center gap-3 mb-4 pb-4 border-b border-border">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 mb-4 pb-4 border-b border-border">
         <Button variant="ghost" size="sm" onClick={onBack} className="text-xs h-7 px-2">
           Back
         </Button>
         <div className="flex-1" />
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {isAccepted && (
             <span className="text-xs text-muted-foreground">Accepted</span>
           )}
@@ -236,11 +236,11 @@ export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
         </div>
       </div>
 
-      {/* Content - Two columns: Left (Original + Analysis + Questions) | Right (Spec) */}
+      {/* Content - Two columns on desktop, stacked on mobile */}
       <div className="flex-1 min-h-0 overflow-auto">
-        <div className="grid grid-cols-2 gap-4 h-full">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:h-full">
           {/* Left Column: Original, Analysis, Questions */}
-          <div className="flex flex-col gap-4 h-full">
+          <div className="flex flex-col gap-4">
             {/* Original Idea */}
             <div className="glass-card no-hover rounded-xl p-4 flex flex-col overflow-hidden">
               <div className="flex items-center justify-between mb-3">
@@ -416,8 +416,8 @@ export function IdeaDetailPage({ idea, review, onBack }: IdeaDetailPageProps) {
             </div>
           </div>
 
-          {/* Right Column: Proposed Spec (full height) */}
-          <div className="glass-card no-hover rounded-xl p-4 flex flex-col overflow-hidden h-full">
+          {/* Right Column: Proposed Spec (full height on desktop) */}
+          <div className="glass-card no-hover rounded-xl p-4 flex flex-col overflow-hidden lg:h-full">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Proposed Spec

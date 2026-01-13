@@ -154,8 +154,8 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
     setRelaunching(true);
     try {
       await invoke('relaunch_cron_session', {
-        runId: relaunchRunId,
-        followUpPrompt: relaunchPrompt.trim(),
+        run_id: relaunchRunId,
+        follow_up_prompt: relaunchPrompt.trim(),
       });
       showSuccess('Session relaunched');
       setRelaunchRunId(null);
@@ -171,7 +171,7 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
 
   const handleTriggerAnalyzer = async (runId: string) => {
     try {
-      await invoke('trigger_analyzer_for_run', { runId });
+      await invoke('trigger_analyzer_for_run', { run_id: runId });
       showSuccess('Analyzer triggered');
       setTimeout(fetchRunHistory, 1000);
     } catch (err) {
@@ -181,7 +181,7 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
 
   const handleTriggerQA = async (runId: string) => {
     try {
-      await invoke('trigger_qa_for_run', { runId });
+      await invoke('trigger_qa_for_run', { run_id: runId });
       showSuccess('QA validation triggered');
       setTimeout(fetchRunHistory, 1000);
     } catch (err) {
@@ -191,7 +191,7 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
 
   const handleTriggerMerge = async (runId: string) => {
     try {
-      await invoke('trigger_merge_for_run', { runId });
+      await invoke('trigger_merge_for_run', { run_id: runId });
       showSuccess('Merge triggered');
       setTimeout(fetchRunHistory, 1000);
     } catch (err) {

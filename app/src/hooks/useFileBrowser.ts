@@ -73,7 +73,7 @@ export function useFileBrowser(initialPath?: string): UseFileBrowserResult {
     queryFn: async () => {
       return invoke<DirectoryContents>('browse_directory', {
         path: currentPath,
-        showHidden,
+        show_hidden: showHidden,
       });
     },
     refetchOnWindowFocus: true,
@@ -193,9 +193,9 @@ export function useFileBrowser(initialPath?: string): UseFileBrowserResult {
     setIsSearching(true);
     try {
       const results = await invoke<SearchResult[]>('search_files', {
-        rootPath: currentPath,
+        root_path: currentPath,
         pattern: pattern.trim(),
-        maxResults: 50,
+        max_results: 50,
       });
       setSearchResults(results);
     } catch (err) {

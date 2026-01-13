@@ -185,7 +185,7 @@ fn validate_path(path: &str) -> Result<PathBuf, String> {
 }
 
 /// List contents of a directory
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn browse_directory(path: String, show_hidden: Option<bool>) -> Result<DirectoryContents, String> {
     let canonical = validate_path(&path)?;
     let show_hidden = show_hidden.unwrap_or(false);
@@ -356,7 +356,7 @@ pub async fn write_file_content(path: String, content: String) -> Result<(), Str
 }
 
 /// Search for files/directories matching a pattern
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn search_files(
     root_path: String,
     pattern: String,
@@ -600,7 +600,7 @@ pub async fn delete_directory(path: String, recursive: Option<bool>) -> Result<(
 }
 
 /// Rename/move a file or directory
-#[tauri::command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn rename_file(old_path: String, new_path: String) -> Result<FileSystemEntry, String> {
     let canonical_old = validate_path(&old_path)?;
 

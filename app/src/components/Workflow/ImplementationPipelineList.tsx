@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useWorkflowVisualizerStore } from '../../store/workflowVisualizerStore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -14,9 +14,13 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
-  Clock
+  Clock,
+  ArrowRight,
+  FileCode
 } from 'lucide-react';
 import type { ImplementationPipeline } from '../../types/workflow';
+import type { PipelineDefinition } from '../../types/generated/cronos/PipelineDefinition';
+import { invoke } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 const stageIcons = {
@@ -86,15 +90,7 @@ export function ImplementationPipelineList({ onPipelineSelect }: ImplementationP
   }
 
   if (pipelines.length === 0) {
-    return (
-      <Card className="h-full flex items-center justify-center">
-        <div className="text-center text-muted-foreground p-8">
-          <Code className="h-12 w-12 mx-auto mb-4 opacity-50" />
-          <p>No active pipelines</p>
-          <p className="text-sm">Pipelines appear when implementer agents run</p>
-        </div>
-      </Card>
-    );
+    return <PipelineTemplateView />;
   }
 
   return (
@@ -219,5 +215,128 @@ function PipelineRow({ pipeline, isSelected, onSelect }: PipelineRowProps) {
         })}
       </div>
     </button>
+  );
+}
+
+// =============================================================================
+// Pipeline Template View - Shows pipeline definition when no active pipelines
+// =============================================================================
+
+function PipelineTemplateView() {
+  const [definition, setDefinition] = useState<PipelineDefinition | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchDefinition() {
+      try {
+        const def = await invoke<PipelineDefinition>('get_default_pipeline_definition', {});
+        setDefinition(def);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load pipeline template');
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchDefinition();
+  }, []);
+
+  if (loading) {
+    return (
+      <Card className="h-full">
+        <CardContent className="flex items-center justify-center h-full">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (error || !definition) {
+    return (
+      <Card className="h-full flex items-center justify-center">
+        <div className="text-center text-muted-foreground p-8">
+          <Code className="h-12 w-12 mx-auto mb-4 opacity-50" />
+          <p>No active pipelines</p>
+          <p className="text-sm">Pipelines appear when implementer agents run</p>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="h-full overflow-auto">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <FileCode className="h-5 w-5" />
+          <span>{definition.name}</span>
+          <Badge variant="outline" className="ml-auto">v{definition.version}</Badge>
+        </CardTitle>
+        {definition.description && (
+          <p className="text-sm text-muted-foreground">{definition.description}</p>
+        )}
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          {/* Pipeline flow visualization */}
+          <div className="flex items-center justify-center gap-2 py-4 px-2 bg-muted/30 rounded-lg">
+            {definition.stages.map((stage, index) => {
+              const StageIcon = stageIcons[stage.name as keyof typeof stageIcons] || Code;
+              return (
+                <div key={stage.name} className="flex items-center">
+                  <div className="flex flex-col items-center">
+                    <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+                      <StageIcon className="h-5 w-5 text-muted-foreground" />
+                    </div>
+                    <span className="text-xs mt-1 capitalize">{stage.name}</span>
+                  </div>
+                  {index < definition.stages.length - 1 && (
+                    <ArrowRight className="h-4 w-4 text-muted-foreground mx-2" />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Stage details */}
+          <div className="space-y-3">
+            <h4 className="text-sm font-medium text-muted-foreground">Stage Details</h4>
+            {definition.stages.map((stage) => {
+              const StageIcon = stageIcons[stage.name as keyof typeof stageIcons] || Code;
+              return (
+                <div
+                  key={stage.name}
+                  className="p-3 border rounded-lg bg-card"
+                >
+                  <div className="flex items-center gap-2 mb-2">
+                    <StageIcon className="h-4 w-4 text-muted-foreground" />
+                    <span className="font-medium capitalize">{stage.name}</span>
+                    <div className="flex gap-1 ml-auto">
+                      {stage.retryable && (
+                        <Badge variant="outline" className="text-xs">retryable</Badge>
+                      )}
+                      {stage.skippable && (
+                        <Badge variant="outline" className="text-xs">skippable</Badge>
+                      )}
+                    </div>
+                  </div>
+                  {stage.description && (
+                    <p className="text-sm text-muted-foreground mb-2">{stage.description}</p>
+                  )}
+                  <div className="text-xs text-muted-foreground">
+                    <span className="font-mono bg-muted px-1 rounded">{stage.agent}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Info message */}
+          <div className="text-center text-sm text-muted-foreground pt-4 border-t">
+            <p>No active pipelines running</p>
+            <p className="text-xs">Accept an idea to start a new pipeline</p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

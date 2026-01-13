@@ -34,15 +34,15 @@ export function DecisionForm({ open, onOpenChange }: DecisionFormProps) {
   const createMutation = useMutation({
     mutationFn: () =>
       invoke<TeamDecision>('create_decision', {
-        teamId: teamId.trim(),
+        team_id: teamId.trim(),
         title: title.trim(),
         problem: problem.trim(),
-        proposedSolution: proposedSolution.trim(),
+        proposed_solution: proposedSolution.trim(),
         alternatives: alternatives.trim() ? alternatives.split('\n').map(a => a.trim()).filter(Boolean) : [],
         rationale: rationale.trim(),
         impact: impact.trim(),
         scope: scope.trim(),
-        agentId: agentId.trim() || null,
+        agent_id: agentId.trim() || null,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['decisions'] });

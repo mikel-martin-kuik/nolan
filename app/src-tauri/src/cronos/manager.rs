@@ -435,6 +435,7 @@ impl CronosManager {
                         worktree_branch: None,
                         base_commit: None,
                         analyzer_verdict: None,
+                        pipeline_id: None,
                         label: None,  // Label not available during recovery
                     };
 
@@ -520,6 +521,7 @@ impl CronosManager {
             worktree_branch: run_log.worktree_branch.clone(),
             base_commit: run_log.base_commit.clone(),
             analyzer_verdict: run_log.analyzer_verdict.clone(),  // Preserve any existing verdict
+            pipeline_id: run_log.pipeline_id.clone(),  // Preserve pipeline ID
             label: run_log.label.clone(),  // Preserve original label
         };
 
@@ -631,10 +633,32 @@ impl CronosManager {
     // Agent Configuration Management
     // ========================
 
-    /// Load all agent configs from disk (all agent types in unified directory)
+    /// Load all agent configs from disk
+    /// Scans both shared agents/ directory and teams/*/agents/ directories
     pub async fn load_agents(&self) -> Result<Vec<CronAgentConfig>, String> {
+        let mut configs = Vec::new();
+
+        // Load from shared agents directory (predefined/template agents)
         let agents_dir = paths::get_agents_dir()?;
-        self.load_agents_from_dir(&agents_dir)
+        configs.extend(self.load_agents_from_dir(&agents_dir)?);
+
+        // Load from team-specific agents directories
+        let teams_dir = paths::get_teams_dir()?;
+        if teams_dir.exists() {
+            if let Ok(team_entries) = std::fs::read_dir(&teams_dir) {
+                for team_entry in team_entries.flatten() {
+                    let team_path = team_entry.path();
+                    if team_path.is_dir() {
+                        let team_agents_dir = team_path.join("agents");
+                        if team_agents_dir.exists() {
+                            configs.extend(self.load_agents_from_dir(&team_agents_dir)?);
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(configs)
     }
 
     /// Load agents from a directory
@@ -660,7 +684,9 @@ impl CronosManager {
     }
 
     /// Get agent config by name
+    /// Searches both shared agents/ and teams/*/agents/ directories
     pub async fn get_agent(&self, name: &str) -> Result<CronAgentConfig, String> {
+        // Check shared agents directory first
         let agents_dir = paths::get_agents_dir()?;
         let config_path = agents_dir.join(name).join("agent.yaml");
 
@@ -669,6 +695,25 @@ impl CronosManager {
                 .map_err(|e| format!("Failed to read agent '{}': {}", name, e))?;
             return serde_yaml::from_str(&content)
                 .map_err(|e| format!("Invalid agent config: {}", e));
+        }
+
+        // Search team directories
+        let teams_dir = paths::get_teams_dir()?;
+        if teams_dir.exists() {
+            if let Ok(team_entries) = std::fs::read_dir(&teams_dir) {
+                for team_entry in team_entries.flatten() {
+                    let team_path = team_entry.path();
+                    if team_path.is_dir() {
+                        let team_config_path = team_path.join("agents").join(name).join("agent.yaml");
+                        if team_config_path.exists() {
+                            let content = std::fs::read_to_string(&team_config_path)
+                                .map_err(|e| format!("Failed to read agent '{}': {}", name, e))?;
+                            return serde_yaml::from_str(&content)
+                                .map_err(|e| format!("Invalid agent config: {}", e));
+                        }
+                    }
+                }
+            }
         }
 
         Err(format!("Agent '{}' not found", name))

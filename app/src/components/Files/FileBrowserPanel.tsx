@@ -219,7 +219,7 @@ export function FileBrowserPanel() {
     const newPath = `${parentPath}/${renameNewName.trim()}`;
 
     try {
-      await invoke('rename_file', { oldPath: renameTarget.path, newPath });
+      await invoke('rename_file', { old_path: renameTarget.path, new_path: newPath });
       showSuccess(`Renamed to: ${renameNewName}`);
       setRenameDialogOpen(false);
       setRenameTarget(null);

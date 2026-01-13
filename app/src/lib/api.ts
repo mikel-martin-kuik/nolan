@@ -175,6 +175,8 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   }},
   get_cron_run_log: { method: 'GET', path: (args) => `/api/cronos/runs/${getArg(args, 'run_id')}/log` },
   relaunch_cron_session: { method: 'POST', path: (args) => `/api/cronos/runs/${getArg(args, 'run_id')}/relaunch` },
+  skip_pipeline_stage: { method: 'POST', path: (args) => `/api/cronos/runs/${getArg(args, 'run_id')}/skip` },
+  abort_pipeline: { method: 'POST', path: (args) => `/api/cronos/pipelines/${getArg(args, 'pipeline_id')}/abort` },
   read_cron_agent_claude_md: { method: 'GET', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/claude-md` },
   write_cron_agent_claude_md: { method: 'PUT', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/claude-md` },
   init_cronos: { method: 'POST', path: '/api/cronos/init' },
@@ -226,6 +228,9 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   ollama_chat: { method: 'POST', path: '/api/ollama/chat' },
   ollama_get_config: { method: 'GET', path: '/api/ollama/config' },
   ollama_set_config: { method: 'PUT', path: '/api/ollama/config' },
+
+  // UI Configuration (read-only)
+  get_ui_config: { method: 'GET', path: '/api/config' },
 
   // Filesystem browser
   browse_directory: { method: 'GET', path: (args) => `/api/filesystem/browse?path=${encodeURIComponent(getArg(args, 'path') as string)}&showHidden=${args.showHidden || false}` },

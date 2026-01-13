@@ -1,5 +1,6 @@
 import js from '@eslint/js';
 import globals from 'globals';
+import tseslint from 'typescript-eslint';
 
 // Custom rule for Tauri invoke snake_case enforcement
 import noCamelcaseInvoke from './eslint-rules/no-camelcase-invoke.js';
@@ -8,6 +9,9 @@ import noCamelcaseInvoke from './eslint-rules/no-camelcase-invoke.js';
 export default [
   // Base JavaScript recommended rules
   js.configs.recommended,
+
+  // TypeScript support
+  ...tseslint.configs.recommended,
 
   // Global configuration
   {
@@ -41,8 +45,10 @@ export default [
       'tauri-ipc/no-camelcase-invoke': 'error',
 
       // Relax some rules for existing codebase
-      'no-unused-vars': 'off', // TypeScript handles this
-      'no-undef': 'off', // TypeScript handles this
+      '@typescript-eslint/no-unused-vars': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+      'no-unused-vars': 'off',
+      'no-undef': 'off',
     },
   },
 
@@ -54,7 +60,6 @@ export default [
       'src-tauri/**',
       '*.config.js',
       '*.config.ts',
-      'eslint-rules/**',
     ],
   },
 ];

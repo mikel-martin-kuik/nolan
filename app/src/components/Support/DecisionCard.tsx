@@ -55,7 +55,7 @@ export function DecisionCard({ decision }: DecisionCardProps) {
 
   const approveMutation = useMutation({
     mutationFn: () =>
-      invoke<TeamDecision>('approve_decision', { id: decision.id, approvedBy: 'user' }),
+      invoke<TeamDecision>('approve_decision', { id: decision.id, approved_by: 'user' }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['decisions'] });
     },

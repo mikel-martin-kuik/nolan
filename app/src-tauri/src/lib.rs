@@ -234,6 +234,15 @@ pub fn run() {
             cronos::commands::trigger_analyzer_for_run,
             cronos::commands::trigger_qa_for_run,
             cronos::commands::trigger_merge_for_run,
+            // Pipeline management commands
+            cronos::commands::list_pipelines,
+            cronos::commands::get_pipeline,
+            cronos::commands::retry_pipeline_stage,
+            cronos::commands::skip_pipeline_stage_cmd,
+            cronos::commands::abort_pipeline_cmd,
+            cronos::commands::list_pipeline_definitions,
+            cronos::commands::get_pipeline_definition,
+            cronos::commands::get_default_pipeline_definition,
             // Feedback commands
             list_feature_requests,
             create_feature_request,
@@ -287,6 +296,8 @@ pub fn run() {
             delete_file,
             delete_directory,
             rename_file,
+            // UI Configuration
+            get_ui_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

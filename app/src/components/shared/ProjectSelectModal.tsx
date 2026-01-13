@@ -79,8 +79,8 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
     setLoadingPrompt(true);
     try {
       const result = await invoke<string | { content: string }>('read_project_file', {
-        projectName,
-        filePath: 'prompt.md',
+        project_name: projectName,
+        file_path: 'prompt.md',
       });
       const content = typeof result === 'string' ? result : result?.content ?? '';
       setOriginalPrompt(content);
@@ -94,8 +94,8 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
     // Check if SPEC.md exists (from idea-to-project conversion)
     try {
       await invoke<string | { content: string }>('read_project_file', {
-        projectName,
-        filePath: 'SPEC.md',
+        project_name: projectName,
+        file_path: 'SPEC.md',
       });
       setHasSpec(true);
     } catch {

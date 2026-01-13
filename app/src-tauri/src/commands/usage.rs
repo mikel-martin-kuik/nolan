@@ -510,7 +510,7 @@ pub fn get_usage_stats(days: Option<u32>) -> Result<UsageStats, String> {
     Ok(aggregate_stats(&filtered_entries))
 }
 
-#[command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_usage_by_date_range(start_date: String, end_date: String) -> Result<UsageStats, String> {
     let claude_path = dirs::home_dir()
         .ok_or("Failed to get home directory")?
@@ -655,7 +655,7 @@ fn load_session_prompts(claude_path: &PathBuf) -> HashMap<String, String> {
 }
 
 /// Get usage stats for a specific agent (e.g., "ralph")
-#[command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn get_agent_usage_stats(agent_name: String, days: Option<u32>) -> Result<AgentStats, String> {
     let claude_path = dirs::home_dir()
         .ok_or("Failed to get home directory")?

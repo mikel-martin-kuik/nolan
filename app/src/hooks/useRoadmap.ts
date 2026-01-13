@@ -42,7 +42,7 @@ function createSection(title: string, level: number): RoadmapSection {
   const id = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   return {
     id,
-    title: title.replace(/[✅🔴🟡⬜🎯📊]/g, '').trim(),
+    title: title.replace(/[✅🔴🟡⬜🎯📊]/gu, '').trim(),
     level,
     content: '',
     status: 'not-started',

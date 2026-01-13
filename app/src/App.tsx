@@ -1,16 +1,17 @@
 import { useState, useEffect } from 'react';
-import { Home, FolderOpen, DollarSign, MessageCircle, Users, FileUser, Settings, Lightbulb, GitBranch, Files, Menu, X } from 'lucide-react';
+import { Home, FolderOpen, DollarSign, MessageCircle, FileUser, Settings, Lightbulb, GitBranch, Files, Menu, X } from 'lucide-react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { listen } from '@/lib/events';
 import { invoke, isBrowserMode } from '@/lib/api';
 import { queryClient } from './lib/queryClient';
 import { ThemeProvider } from './lib/theme';
 import { TeamProvider } from './contexts';
+import { ConfigProvider } from './contexts/ConfigContext';
 import { AppErrorBoundary } from './components/shared/AppErrorBoundary';
 import { StatusPanel } from './components/Status/StatusPanel';
 import { ProjectsPanel } from './components/Projects/ProjectsPanel';
 import { UsageAndMetricsPanel } from './components/Usage';
-import { TeamsPanel } from './components/Teams';
+// TeamsPanel removed - functionality moved to WorkflowVisualizerPanel
 import { ChatView } from './components/Chat';
 import { CronosPanel } from './components/Cronos';
 import { WorkflowVisualizerPanel } from './components/Workflow';
@@ -35,7 +36,7 @@ import { cn } from './lib/utils';
 import { HistoryEntry } from './types';
 import './App.css';
 
-type Tab = 'status' | 'chat' | 'projects' | 'files' | 'teams' | 'cronos' | 'workflows' | 'usage' | 'support' | 'settings';
+type Tab = 'status' | 'chat' | 'projects' | 'files' | 'cronos' | 'workflows' | 'usage' | 'support' | 'settings';
 
 function App() {
   const [activeTab, setActiveTabLocal] = useState<Tab>('status');
@@ -129,7 +130,7 @@ function App() {
           const historyHours = isPolling ? 1 : (isBrowserMode() ? 24 : 1);
           if (isBrowserMode()) {
             const entries = await invoke<HistoryEntry[]>('load_history_for_active_sessions', {
-              activeSessions: sessions,
+              active_sessions: sessions,
               hours: historyHours,
             });
             // Add entries that have a tmux_session
@@ -144,7 +145,7 @@ function App() {
           } else {
             // In Tauri mode, entries are emitted via events
             await invoke('load_history_for_active_sessions', {
-              activeSessions: sessions,
+              active_sessions: sessions,
               hours: historyHours,
             });
           }
@@ -157,7 +158,7 @@ function App() {
         if (isPolling && cachedSessions.length > 0 && isBrowserMode()) {
           try {
             const entries = await invoke<HistoryEntry[]>('load_history_for_active_sessions', {
-              activeSessions: cachedSessions,
+              active_sessions: cachedSessions,
               hours: 1,
             });
             entries.forEach(entry => {
@@ -213,7 +214,6 @@ function App() {
     { id: 'chat' as Tab, label: 'Chat', tooltip: 'Chat', icon: MessageCircle },
     { id: 'projects' as Tab, label: 'Projects', tooltip: 'Projects', icon: FolderOpen },
     { id: 'files' as Tab, label: 'Files', tooltip: 'File Browser', icon: Files },
-    { id: 'teams' as Tab, label: 'Teams', tooltip: 'Teams', icon: Users },
     { id: 'cronos' as Tab, label: 'Agents', tooltip: 'Agents', icon: FileUser },
     { id: 'workflows' as Tab, label: 'Workflows', tooltip: 'Workflows', icon: GitBranch },
     { id: 'usage' as Tab, label: 'Usage', tooltip: 'Usage', icon: DollarSign },
@@ -244,6 +244,7 @@ function App() {
     <AppErrorBoundary>
       <ThemeProvider defaultTheme="dark" storageKey="nolan-ui-theme">
         <QueryClientProvider client={queryClient}>
+        <ConfigProvider>
         <TeamProvider defaultTeam="default">
         {/* Gradient background */}
         <div className="h-screen bg-background relative overflow-hidden">
@@ -340,19 +341,18 @@ function App() {
               </aside>
 
               {/* Main content */}
-              <main className="flex-1 overflow-hidden overflow-auto px-2 sm:px-6 pb-2 sm:pb-6">
+              <main className="flex-1 overflow-auto px-2 sm:px-6 pb-2 sm:pb-6">
                 {activeTab === 'status' && <StatusPanel />}
                 {activeTab === 'chat' && <ChatView />}
                 {activeTab === 'projects' && <ProjectsPanel />}
                 {activeTab === 'files' && <FileBrowserPanel />}
-                {activeTab === 'teams' && <TeamsPanel />}
                 {activeTab === 'cronos' && <CronosPanel />}
                 {activeTab === 'workflows' && <WorkflowVisualizerPanel />}
                 {activeTab === 'usage' && <UsageAndMetricsPanel />}
                 {activeTab === 'support' && <SupportPanel />}
                 {activeTab === 'settings' && (
-                  <div className="max-w-2xl space-y-6">
-                    <h1 className="text-2xl font-bold">Settings</h1>
+                  <div className="max-w-2xl space-y-4 sm:space-y-6 pb-8">
+                    <h1 className="text-xl sm:text-2xl font-bold">Settings</h1>
                     <ServerSelector
                       currentUrl={localStorage.getItem('nolan-server-url') || 'http://localhost:3030'}
                       onConnect={() => {
@@ -380,6 +380,7 @@ function App() {
           <TerminalModal />
         </div>
         </TeamProvider>
+        </ConfigProvider>
         </QueryClientProvider>
       </ThemeProvider>
     </AppErrorBoundary>

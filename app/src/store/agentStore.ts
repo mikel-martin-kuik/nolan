@@ -113,11 +113,11 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       set({ loading: true, error: null });
 
       await invokeWithTimeout<string>('launch_team', {
-        teamName,
-        projectName,
-        initialPrompt,
-        updatedOriginalPrompt,
-        followupPrompt,
+        team_name: teamName,
+        project_name: projectName,
+        initial_prompt: initialPrompt,
+        updated_original_prompt: updatedOriginalPrompt,
+        followup_prompt: followupPrompt,
       }, 60000);
 
       set({ loading: false });

@@ -297,7 +297,7 @@ pub fn update_feature_request_status(id: String, status: String) -> Result<Featu
     Ok(updated)
 }
 
-#[command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn vote_feature_request(id: String, vote_type: String) -> Result<FeatureRequest, String> {
     // Validate vote type
     if vote_type != "up" && vote_type != "down" {
@@ -698,7 +698,7 @@ pub fn list_idea_reviews() -> Result<Vec<IdeaReview>, String> {
     Ok(reviews)
 }
 
-#[command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn delete_idea_review(item_id: String) -> Result<(), String> {
     let path = get_inbox_reviews_file()?;
     let reviews: Vec<IdeaReview> = read_jsonl(&path)?;
@@ -707,7 +707,7 @@ pub fn delete_idea_review(item_id: String) -> Result<(), String> {
     Ok(())
 }
 
-#[command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn update_review_gaps(item_id: String, gaps: Vec<IdeaGap>) -> Result<IdeaReview, String> {
     let path = get_inbox_reviews_file()?;
     let mut reviews: Vec<IdeaReview> = read_jsonl(&path)?;
@@ -732,7 +732,7 @@ pub fn update_review_gaps(item_id: String, gaps: Vec<IdeaGap>) -> Result<IdeaRev
     Ok(updated)
 }
 
-#[command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn update_review_proposal(item_id: String, proposal: IdeaProposal) -> Result<IdeaReview, String> {
     let path = get_inbox_reviews_file()?;
     let mut reviews: Vec<IdeaReview> = read_jsonl(&path)?;
@@ -751,7 +751,7 @@ pub fn update_review_proposal(item_id: String, proposal: IdeaProposal) -> Result
     Ok(updated)
 }
 
-#[command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn accept_review(item_id: String) -> Result<IdeaReview, String> {
     let path = get_inbox_reviews_file()?;
     let mut reviews: Vec<IdeaReview> = read_jsonl(&path)?;
@@ -777,7 +777,7 @@ pub fn accept_review(item_id: String) -> Result<IdeaReview, String> {
     Ok(updated)
 }
 
-#[command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn unaccept_review(item_id: String) -> Result<IdeaReview, String> {
     let path = get_inbox_reviews_file()?;
     let mut reviews: Vec<IdeaReview> = read_jsonl(&path)?;
@@ -814,7 +814,7 @@ pub struct AcceptAndRouteResult {
 /// Accept a review and route it based on complexity (async version for Tauri)
 /// - High complexity → Create project
 /// - Low/Medium complexity → Trigger cron-idea-implementer
-#[command]
+#[tauri::command(rename_all = "snake_case")]
 pub async fn accept_and_route_review(item_id: String) -> Result<AcceptAndRouteResult, String> {
     // First accept the review
     let _review = accept_review(item_id.clone())?;
@@ -860,7 +860,7 @@ pub fn list_decisions() -> Result<Vec<TeamDecision>, String> {
     Ok(decisions)
 }
 
-#[command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn list_decisions_by_team(team_id: String) -> Result<Vec<TeamDecision>, String> {
     let path = get_decisions_file()?;
     let decisions: Vec<TeamDecision> = read_jsonl(&path)?;
@@ -873,7 +873,7 @@ pub fn list_decisions_by_team(team_id: String) -> Result<Vec<TeamDecision>, Stri
     Ok(filtered)
 }
 
-#[command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn create_decision(
     team_id: String,
     title: String,
@@ -930,7 +930,7 @@ pub fn update_decision_status(id: String, status: String) -> Result<TeamDecision
     Ok(updated)
 }
 
-#[command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn approve_decision(id: String, approved_by: String) -> Result<TeamDecision, String> {
     let path = get_decisions_file()?;
     let mut decisions: Vec<TeamDecision> = read_jsonl(&path)?;
@@ -969,7 +969,7 @@ pub fn deprecate_decision(id: String) -> Result<TeamDecision, String> {
     Ok(updated)
 }
 
-#[command]
+#[tauri::command(rename_all = "snake_case")]
 pub fn supersede_decision(id: String, new_decision_id: String) -> Result<TeamDecision, String> {
     let path = get_decisions_file()?;
     let mut decisions: Vec<TeamDecision> = read_jsonl(&path)?;

@@ -17,6 +17,7 @@ export interface UseAgentTemplatesResult {
  * Hook for managing agent templates.
  *
  * Templates are embedded in the binary and can be installed to ~/.nolan/agents/
+ * (shared agents directory, distinct from team-specific agents in ~/.nolan/teams/{team}/agents/)
  */
 export function useAgentTemplates(): UseAgentTemplatesResult {
   const { error: showError, success: showSuccess } = useToastStore();

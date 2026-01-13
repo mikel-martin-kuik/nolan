@@ -59,37 +59,37 @@ export function ServerSelector({ onConnect, currentUrl }: ServerSelectorProps) {
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
             <Server className="h-5 w-5" />
             Server Connection
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-xs sm:text-sm">
             Choose between the embedded backend or a remote server
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <RadioGroup value={selectedOption} onValueChange={handleSelect}>
-            <div className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-accent/50 cursor-pointer">
-              <RadioGroupItem value="local" id="local" />
-              <label htmlFor="local" className="flex items-center gap-3 flex-1 cursor-pointer">
-                <Laptop className="h-5 w-5 text-muted-foreground" />
-                <div className="flex-1">
-                  <div className="font-medium">Embedded Backend</div>
-                  <div className="text-sm text-muted-foreground">
+            <div className="flex items-start sm:items-center space-x-3 p-3 sm:p-3 rounded-lg border hover:bg-accent/50 cursor-pointer min-h-[60px]">
+              <RadioGroupItem value="local" id="local" className="mt-1 sm:mt-0" />
+              <label htmlFor="local" className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 flex-1 cursor-pointer">
+                <Laptop className="h-5 w-5 text-muted-foreground hidden sm:block" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-sm sm:text-base">Embedded Backend</div>
+                  <div className="text-xs sm:text-sm text-muted-foreground">
                     Use the built-in Nolan server (default)
                   </div>
                 </div>
-                {!storedUrl && <Check className="h-4 w-4 text-green-500" />}
+                {!storedUrl && <Check className="h-4 w-4 text-green-500 flex-shrink-0" />}
               </label>
             </div>
 
-            <div className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-accent/50 cursor-pointer">
-              <RadioGroupItem value="remote" id="remote" />
-              <label htmlFor="remote" className="flex items-center gap-3 flex-1 cursor-pointer">
-                <Globe className="h-5 w-5 text-muted-foreground" />
-                <div>
-                  <div className="font-medium">Remote Server</div>
-                  <div className="text-sm text-muted-foreground">
+            <div className="flex items-start sm:items-center space-x-3 p-3 sm:p-3 rounded-lg border hover:bg-accent/50 cursor-pointer min-h-[60px]">
+              <RadioGroupItem value="remote" id="remote" className="mt-1 sm:mt-0" />
+              <label htmlFor="remote" className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 flex-1 cursor-pointer">
+                <Globe className="h-5 w-5 text-muted-foreground hidden sm:block" />
+                <div className="min-w-0">
+                  <div className="font-medium text-sm sm:text-base">Remote Server</div>
+                  <div className="text-xs sm:text-sm text-muted-foreground">
                     Connect to a Nolan server on the network
                   </div>
                 </div>
@@ -98,7 +98,7 @@ export function ServerSelector({ onConnect, currentUrl }: ServerSelectorProps) {
           </RadioGroup>
 
           {selectedOption === 'remote' && (
-            <div className="space-y-3 pl-7">
+            <div className="space-y-3 pl-0 sm:pl-7">
               <Input
                 type="text"
                 value={customUrl}
@@ -112,8 +112,8 @@ export function ServerSelector({ onConnect, currentUrl }: ServerSelectorProps) {
           )}
 
           {storedUrl && (
-            <div className="text-sm text-muted-foreground border-t pt-4">
-              Currently connected to: <code className="bg-muted px-1.5 py-0.5 rounded">{storedUrl}</code>
+            <div className="text-xs sm:text-sm text-muted-foreground border-t pt-4 break-words">
+              Currently connected to: <code className="bg-muted px-1.5 py-0.5 rounded break-all">{storedUrl}</code>
             </div>
           )}
         </CardContent>
@@ -125,20 +125,20 @@ export function ServerSelector({ onConnect, currentUrl }: ServerSelectorProps) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
           <Server className="h-5 w-5" />
           Server Connection
         </CardTitle>
-        <CardDescription>
+        <CardDescription className="text-xs sm:text-sm">
           Connected to the Nolan server hosting this page
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="flex items-center gap-3 p-3 rounded-lg border bg-accent/30">
-          <Check className="h-5 w-5 text-green-500" />
-          <div>
-            <div className="font-medium">Connected</div>
-            <div className="text-sm text-muted-foreground">
+          <Check className="h-5 w-5 text-green-500 flex-shrink-0" />
+          <div className="min-w-0">
+            <div className="font-medium text-sm sm:text-base">Connected</div>
+            <div className="text-xs sm:text-sm text-muted-foreground break-all">
               Using server at {window.location.origin}
             </div>
           </div>

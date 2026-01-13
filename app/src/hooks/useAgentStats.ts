@@ -104,7 +104,7 @@ export function useAgentStats(agentName: string): UseAgentStatsResult {
                    selectedDateRange === '7d' ? 7 : 30;
 
       const result = await invoke<AgentStats>('get_agent_usage_stats', {
-        agentName,
+        agent_name: agentName,
         days
       });
 

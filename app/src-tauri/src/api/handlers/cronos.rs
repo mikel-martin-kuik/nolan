@@ -407,3 +407,43 @@ pub async fn remove_worktree(
         Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
     }
 }
+
+// ========================
+// Pipeline Stage Actions
+// ========================
+
+/// Skip stage request
+#[derive(Deserialize)]
+pub struct SkipStageRequest {
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+/// Skip a pipeline stage
+pub async fn skip_stage(
+    Path(run_id): Path<String>,
+    Json(req): Json<SkipStageRequest>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::skip_pipeline_stage(run_id, req.reason).await {
+        Ok(log) => Ok(Json(serde_json::json!(log))),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+/// Abort pipeline request
+#[derive(Deserialize)]
+pub struct AbortPipelineRequest {
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+/// Abort an entire pipeline
+pub async fn abort_pipeline(
+    Path(pipeline_id): Path<String>,
+    Json(req): Json<AbortPipelineRequest>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::abort_pipeline(pipeline_id, req.reason).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}

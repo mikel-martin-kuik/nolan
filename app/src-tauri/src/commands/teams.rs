@@ -12,6 +12,7 @@ pub async fn get_team_config(team_name: String) -> Result<TeamConfig, String> {
 /// Save team configuration to file
 ///
 /// Security: Validates team name to prevent path traversal attacks
+/// Writes to new format: teams/{team_name}/team.yaml
 #[tauri::command(rename_all = "snake_case")]
 pub async fn save_team_config(team_name: String, config: TeamConfig) -> Result<(), String> {
     // Validate team_name doesn't contain path traversal
@@ -28,15 +29,22 @@ pub async fn save_team_config(team_name: String, config: TeamConfig) -> Result<(
         return Err("Team name must contain only lowercase letters, digits, and underscores".to_string());
     }
 
-    let teams_dir = crate::utils::paths::get_teams_dir()?;
-
-    // Ensure teams directory exists
-    if !teams_dir.exists() {
-        fs::create_dir_all(&teams_dir)
-            .map_err(|e| format!("Failed to create teams directory: {}", e))?;
+    // Create team directory structure: teams/{team_name}/
+    let team_dir = crate::utils::paths::get_team_dir(&team_name)?;
+    if !team_dir.exists() {
+        fs::create_dir_all(&team_dir)
+            .map_err(|e| format!("Failed to create team directory: {}", e))?;
     }
 
-    let config_path = teams_dir.join(format!("{}.yaml", team_name));
+    // Create agents subdirectory: teams/{team_name}/agents/
+    let agents_dir = crate::utils::paths::get_team_agents_dir(&team_name)?;
+    if !agents_dir.exists() {
+        fs::create_dir_all(&agents_dir)
+            .map_err(|e| format!("Failed to create team agents directory: {}", e))?;
+    }
+
+    // Write config to teams/{team_name}/team.yaml
+    let config_path = crate::utils::paths::get_team_config_path(&team_name)?;
 
     // Serialize to YAML
     let yaml_content = serde_yaml::to_string(&config)
@@ -49,45 +57,78 @@ pub async fn save_team_config(team_name: String, config: TeamConfig) -> Result<(
     Ok(())
 }
 
-/// Recursively scan a directory for team YAML files
+/// Recursively scan a directory for team configurations
+/// Supports both new format (team_name/team.yaml) and old format (team_name.yaml)
 /// Returns tuples of (team_id, group, relative_path)
 fn scan_teams_recursive(teams_dir: &std::path::Path) -> Result<Vec<(String, String, String)>, String> {
     let mut teams = Vec::new();
+    let mut seen_teams = std::collections::HashSet::new();
 
     for entry in WalkDir::new(teams_dir)
-        .max_depth(2)  // Root (depth 0), immediate children dirs (depth 1), files in subdirs (depth 2)
+        .max_depth(3)  // Support teams/{team}/team.yaml and pillar/{team}/team.yaml
         .into_iter()
         .filter_map(|e| e.ok())
     {
         let path = entry.path();
 
-        // Skip directories and non-yaml files
+        // Skip non-yaml files
         if !path.is_file() || path.extension().and_then(|s| s.to_str()) != Some("yaml") {
             continue;
         }
 
         // Skip departments.yaml and template files (starting with _)
-        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
-            if stem == "departments" || stem.starts_with('_') {
-                continue;
-            }
+        let file_stem = path.file_stem().and_then(|s| s.to_str());
+        if file_stem == Some("departments") || file_stem.map(|s| s.starts_with('_')).unwrap_or(false) {
+            continue;
+        }
 
-            // Get relative path from teams_dir
-            let relative = path.strip_prefix(teams_dir)
-                .map_err(|_| "Failed to get relative path")?;
+        // Get relative path from teams_dir
+        let relative = path.strip_prefix(teams_dir)
+            .map_err(|_| "Failed to get relative path")?;
 
-            // Determine group (parent directory name, or "" for root)
+        let relative_str = relative.to_str()
+            .ok_or("Invalid path encoding")?
+            .to_string();
+
+        // Determine team_id and group based on path structure
+        let (team_id, group) = if file_stem == Some("team") {
+            // New format: teams/{team}/team.yaml or teams/{group}/{team}/team.yaml
+            let parent = path.parent().ok_or("No parent directory")?;
+            let team_name = parent.file_name()
+                .and_then(|s| s.to_str())
+                .ok_or("Invalid team directory name")?;
+
+            // Check if there's a group (grandparent is not teams_dir)
+            let grandparent = parent.parent();
+            let group = if grandparent == Some(teams_dir) {
+                "".to_string()
+            } else {
+                grandparent
+                    .and_then(|p| p.strip_prefix(teams_dir).ok())
+                    .and_then(|p| p.to_str())
+                    .unwrap_or("")
+                    .to_string()
+            };
+
+            (team_name.to_string(), group)
+        } else {
+            // Old format: teams/{team}.yaml or teams/{group}/{team}.yaml
+            let stem = file_stem.ok_or("No file stem")?.to_string();
             let group = relative.parent()
                 .and_then(|p| p.to_str())
                 .unwrap_or("")
                 .to_string();
 
-            let relative_str = relative.to_str()
-                .ok_or("Invalid path encoding")?
-                .to_string();
+            (stem, group)
+        };
 
-            teams.push((stem.to_string(), group, relative_str));
+        // Skip duplicates (prefer new format over old)
+        if seen_teams.contains(&team_id) {
+            continue;
         }
+        seen_teams.insert(team_id.clone());
+
+        teams.push((team_id, group, relative_str));
     }
 
     Ok(teams)
@@ -179,11 +220,13 @@ pub async fn get_project_team(project_name: String) -> Result<String, String> {
     }
 }
 
-/// Rename a team configuration file
+/// Rename a team configuration
 ///
-/// This renames both the file and updates the team name inside the YAML content.
+/// This renames the team and updates the team name inside the YAML content.
+/// For new format (teams/{team}/): renames the entire team folder
+/// For old format (teams/{team}.yaml): renames the yaml file
 /// Security: Validates both names to prevent path traversal attacks
-/// Supports teams in subdirectories - renamed team stays in same directory
+/// Supports teams in subdirectories - renamed team stays in same group
 #[tauri::command(rename_all = "snake_case")]
 pub async fn rename_team_config(old_name: String, new_name: String) -> Result<(), String> {
     // Validate old_name doesn't contain path traversal
@@ -210,25 +253,16 @@ pub async fn rename_team_config(old_name: String, new_name: String) -> Result<()
         return Ok(());
     }
 
-    // Resolve old path (checks root and subdirectories)
-    let old_path = TeamConfig::resolve_team_path(&old_name)
-        .map_err(|_| format!("Team '{}' does not exist", old_name))?;
-
-    // New path should be in the same directory as old path (keep team in its pillar)
-    let parent_dir = old_path.parent()
-        .ok_or_else(|| "Failed to get parent directory".to_string())?;
-    let new_path = parent_dir.join(format!("{}.yaml", new_name));
-
-    // Check new file doesn't already exist (in same directory or anywhere)
-    if new_path.exists() {
-        return Err(format!("Team '{}' already exists in this directory", new_name));
-    }
-    // Also check if team exists elsewhere
+    // Check if new team already exists anywhere
     if TeamConfig::resolve_team_path(&new_name).is_ok() {
         return Err(format!("Team '{}' already exists", new_name));
     }
 
-    // Load the config, update the name, and save to new location
+    // Resolve old path (checks root and subdirectories)
+    let old_config_path = TeamConfig::resolve_team_path(&old_name)
+        .map_err(|_| format!("Team '{}' does not exist", old_name))?;
+
+    // Load and update the config
     let mut config = TeamConfig::load(&old_name)?;
     config.team.name = new_name.clone();
 
@@ -236,13 +270,38 @@ pub async fn rename_team_config(old_name: String, new_name: String) -> Result<()
     let yaml_content = serde_yaml::to_string(&config)
         .map_err(|e| format!("Failed to serialize config: {}", e))?;
 
-    // Write to new file
-    fs::write(&new_path, yaml_content)
-        .map_err(|e| format!("Failed to write new config file: {}", e))?;
+    // Check if this is new format (team.yaml inside a team folder)
+    let file_name = old_config_path.file_name().and_then(|s| s.to_str());
+    if file_name == Some("team.yaml") {
+        // New format: rename the entire team folder
+        let old_team_dir = old_config_path.parent()
+            .ok_or("Failed to get team directory")?;
+        let parent_dir = old_team_dir.parent()
+            .ok_or("Failed to get parent directory")?;
+        let new_team_dir = parent_dir.join(&new_name);
 
-    // Delete old file
-    fs::remove_file(&old_path)
-        .map_err(|e| format!("Failed to remove old config file: {}", e))?;
+        // Rename the folder
+        fs::rename(old_team_dir, &new_team_dir)
+            .map_err(|e| format!("Failed to rename team directory: {}", e))?;
+
+        // Update the team.yaml file with new name
+        let new_config_path = new_team_dir.join("team.yaml");
+        fs::write(&new_config_path, yaml_content)
+            .map_err(|e| format!("Failed to update config file: {}", e))?;
+    } else {
+        // Old format: just rename the yaml file
+        let parent_dir = old_config_path.parent()
+            .ok_or_else(|| "Failed to get parent directory".to_string())?;
+        let new_path = parent_dir.join(format!("{}.yaml", new_name));
+
+        // Write to new file
+        fs::write(&new_path, yaml_content)
+            .map_err(|e| format!("Failed to write new config file: {}", e))?;
+
+        // Delete old file
+        fs::remove_file(&old_config_path)
+            .map_err(|e| format!("Failed to remove old config file: {}", e))?;
+    }
 
     Ok(())
 }
@@ -277,11 +336,12 @@ pub async fn set_project_team(project_name: String, team_name: String) -> Result
     Ok(())
 }
 
-/// Delete a team configuration file
+/// Delete a team configuration
 ///
 /// Security: Validates team name to prevent path traversal attacks
 /// Prevents deletion of the "default" team
-/// Supports teams in subdirectories (pillar_1/, pillar_2/, etc.)
+/// For new format (teams/{team}/): deletes entire team folder
+/// For old format (teams/{team}.yaml): deletes just the yaml file
 #[tauri::command(rename_all = "snake_case")]
 pub async fn delete_team(team_name: String) -> Result<(), String> {
     // Prevent deletion of the default team
@@ -298,9 +358,19 @@ pub async fn delete_team(team_name: String) -> Result<(), String> {
     let config_path = TeamConfig::resolve_team_path(&team_name)
         .map_err(|_| format!("Team '{}' does not exist", team_name))?;
 
-    // Delete the file
-    fs::remove_file(&config_path)
-        .map_err(|e| format!("Failed to delete team config file: {}", e))?;
+    // Check if this is new format (team.yaml inside a team folder)
+    let file_name = config_path.file_name().and_then(|s| s.to_str());
+    if file_name == Some("team.yaml") {
+        // New format: delete the entire team folder
+        let team_dir = config_path.parent()
+            .ok_or("Failed to get team directory")?;
+        fs::remove_dir_all(team_dir)
+            .map_err(|e| format!("Failed to delete team directory: {}", e))?;
+    } else {
+        // Old format: delete just the yaml file
+        fs::remove_file(&config_path)
+            .map_err(|e| format!("Failed to delete team config file: {}", e))?;
+    }
 
     Ok(())
 }

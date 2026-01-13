@@ -6,10 +6,63 @@
  *
  * ✅ Allowed: invoke('get_team_config', { team_name: 'default' })
  * ❌ Error:   invoke('get_team_config', { teamName: 'default' })
+ *
+ * Handles shorthand properties correctly:
+ *   { showHidden } → { show_hidden: showHidden }
  */
 
+/**
+ * Convert camelCase to snake_case
+ */
+function toSnakeCase(str) {
+  return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+}
+
+/**
+ * Check if a string contains uppercase letters (camelCase indicator)
+ */
+function isCamelCase(str) {
+  return /[A-Z]/.test(str);
+}
+
+/**
+ * Check if this is an invoke() call
+ */
+function isInvokeCall(node) {
+  if (node.type !== 'CallExpression') return false;
+
+  const callee = node.callee;
+
+  // Direct invoke() call
+  if (callee.type === 'Identifier' && callee.name === 'invoke') {
+    return true;
+  }
+
+  // invokeCommand() call (our typed wrapper)
+  if (callee.type === 'Identifier' && callee.name === 'invokeCommand') {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Get the parameters object from an invoke call
+ * invoke('command', { params }) - second argument
+ */
+function getParamsObject(node) {
+  if (node.arguments.length < 2) return null;
+
+  const secondArg = node.arguments[1];
+  if (secondArg.type === 'ObjectExpression') {
+    return secondArg;
+  }
+
+  return null;
+}
+
 /** @type {import('eslint').Rule.RuleModule} */
-module.exports = {
+const rule = {
   meta: {
     type: 'problem',
     docs: {
@@ -26,55 +79,7 @@ module.exports = {
   },
 
   create(context) {
-    /**
-     * Convert camelCase to snake_case
-     */
-    function toSnakeCase(str) {
-      return str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
-    }
-
-    /**
-     * Check if a string contains uppercase letters (camelCase indicator)
-     */
-    function isCamelCase(str) {
-      return /[A-Z]/.test(str);
-    }
-
-    /**
-     * Check if this is an invoke() call
-     */
-    function isInvokeCall(node) {
-      if (node.type !== 'CallExpression') return false;
-
-      const callee = node.callee;
-
-      // Direct invoke() call
-      if (callee.type === 'Identifier' && callee.name === 'invoke') {
-        return true;
-      }
-
-      // invokeCommand() call (our typed wrapper)
-      if (callee.type === 'Identifier' && callee.name === 'invokeCommand') {
-        return true;
-      }
-
-      return false;
-    }
-
-    /**
-     * Get the parameters object from an invoke call
-     * invoke('command', { params }) - second argument
-     */
-    function getParamsObject(node) {
-      if (node.arguments.length < 2) return null;
-
-      const secondArg = node.arguments[1];
-      if (secondArg.type === 'ObjectExpression') {
-        return secondArg;
-      }
-
-      return null;
-    }
+    const sourceCode = context.sourceCode || context.getSourceCode();
 
     return {
       CallExpression(node) {
@@ -103,21 +108,31 @@ module.exports = {
 
           // Check for camelCase
           if (isCamelCase(keyName)) {
-            const snakeCase = toSnakeCase(keyName);
+            const snakeCaseKey = toSnakeCase(keyName);
 
             context.report({
               node: prop.key,
               messageId: 'camelCaseKey',
               data: {
                 key: keyName,
-                snakeCase: snakeCase,
+                snakeCase: snakeCaseKey,
               },
               fix(fixer) {
-                // Fix: replace the key with snake_case version
-                if (prop.key.type === 'Identifier') {
-                  return fixer.replaceText(prop.key, snakeCase);
-                } else if (prop.key.type === 'Literal') {
-                  return fixer.replaceText(prop.key, `'${snakeCase}'`);
+                // Check if this is a shorthand property: { foo } instead of { foo: value }
+                const isShorthand = prop.shorthand === true;
+
+                if (isShorthand) {
+                  // For shorthand { showHidden }, convert to { show_hidden: showHidden }
+                  // We need to replace the entire property, not just the key
+                  const originalVarName = keyName;
+                  return fixer.replaceText(prop, `${snakeCaseKey}: ${originalVarName}`);
+                } else {
+                  // For explicit { showHidden: value }, just replace the key
+                  if (prop.key.type === 'Identifier') {
+                    return fixer.replaceText(prop.key, snakeCaseKey);
+                  } else if (prop.key.type === 'Literal') {
+                    return fixer.replaceText(prop.key, `'${snakeCaseKey}'`);
+                  }
                 }
                 return null;
               },
@@ -128,3 +143,5 @@ module.exports = {
     };
   },
 };
+
+export default rule;

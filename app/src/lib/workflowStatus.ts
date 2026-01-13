@@ -35,7 +35,11 @@ import {
   getFileToAgent,
 } from '../types';
 
-// Status display configuration
+/**
+ * Status display configuration
+ * @deprecated Use useWorkflowStatusConfig() from hooks/useUIConfig instead.
+ * This constant is kept for backward compatibility.
+ */
 const STATUS_CONFIG: Record<WorkflowStatus, { label: string; color: string }> = {
   offline: { label: 'Offline', color: 'bg-muted-foreground/40' },
   idle: { label: 'Idle', color: 'bg-zinc-500' },
@@ -282,7 +286,7 @@ export function computeWorkflowState(
   let blockedByFile: WorkflowFile | null = null;
   let canStart = true;
   let awaitingQA = false;
-  let qaPass: 1 | 2 | null = null;
+  const qaPass: 1 | 2 | null = null;
 
   // Determine if this agent is "next up"
   const isNextUp = phaseOwner === agentName;

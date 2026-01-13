@@ -2,6 +2,10 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 
+// UI Configuration module
+pub mod ui_config;
+pub use ui_config::{UIConfig, load_ui_config, StatusConfig, PipelineStageConfig, SessionPrefixConfig, OllamaDefaults, AgentDisplayName};
+
 /// Root team configuration structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TeamConfig {
@@ -555,31 +559,43 @@ impl DepartmentsConfig {
 
 impl TeamConfig {
     /// Resolve team name to filesystem path
-    /// Checks root first (backward compat), then scans all subdirectories
+    /// Checks new format first (teams/{name}/team.yaml), then falls back to old format
     pub fn resolve_team_path(team_name: &str) -> Result<PathBuf, String> {
         let teams_dir = crate::utils::paths::get_teams_dir()?;
 
-        // Check root first (backward compatible)
-        let root_path = teams_dir.join(format!("{}.yaml", team_name));
-        if root_path.exists() {
-            return Ok(root_path);
+        // Priority 1: New format - teams/{name}/team.yaml
+        let new_format_path = teams_dir.join(team_name).join("team.yaml");
+        if new_format_path.exists() {
+            return Ok(new_format_path);
         }
 
-        // Dynamically scan all subdirectories (supports any department structure)
+        // Priority 2: Old format - teams/{name}.yaml (backward compat)
+        let old_format_path = teams_dir.join(format!("{}.yaml", team_name));
+        if old_format_path.exists() {
+            return Ok(old_format_path);
+        }
+
+        // Priority 3: Scan subdirectories for new format (pillar_1/team_a/team.yaml)
         if let Ok(entries) = fs::read_dir(&teams_dir) {
             for entry in entries.filter_map(|e| e.ok()) {
                 let path = entry.path();
                 if path.is_dir() {
-                    let subdir_path = path.join(format!("{}.yaml", team_name));
-                    if subdir_path.exists() {
-                        return Ok(subdir_path);
+                    // Check for new format in subdirectory: pillar_1/team_a/team.yaml
+                    let subdir_new_path = path.join(team_name).join("team.yaml");
+                    if subdir_new_path.exists() {
+                        return Ok(subdir_new_path);
+                    }
+                    // Check for old format in subdirectory: pillar_1/team_a.yaml
+                    let subdir_old_path = path.join(format!("{}.yaml", team_name));
+                    if subdir_old_path.exists() {
+                        return Ok(subdir_old_path);
                     }
                 }
             }
         }
 
         // Not found
-        Err(format!("Team config not found: {} (checked root and subdirectories)", team_name))
+        Err(format!("Team config not found: {} (checked new and old formats)", team_name))
     }
 
     /// Load team from resolved path

@@ -139,7 +139,7 @@ export const CronGroupEditor: React.FC<CronGroupEditorProps> = ({
     if (!deleteConfirm) return;
 
     try {
-      await invoke('delete_cron_group', { groupId: deleteConfirm });
+      await invoke('delete_cron_group', { group_id: deleteConfirm });
       showSuccess('Group deleted');
       onGroupsChange();
       setDeleteConfirm(null);
@@ -157,8 +157,8 @@ export const CronGroupEditor: React.FC<CronGroupEditorProps> = ({
 
     try {
       await invoke('set_agent_group', {
-        agentName: selectedAgent,
-        groupId: selectedGroup || null,
+        agent_name: selectedAgent,
+        group_id: selectedGroup || null,
       });
       showSuccess(`Updated agent group assignment`);
       onAgentsChange();

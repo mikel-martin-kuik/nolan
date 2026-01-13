@@ -55,11 +55,11 @@ export const OllamaSettings: React.FC = () => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle className="flex items-center gap-2 text-base sm:text-lg">
           <Sparkles className="h-5 w-5" />
           Local AI (Ollama)
         </CardTitle>
-        <CardDescription>
+        <CardDescription className="text-xs sm:text-sm">
           Enable AI-powered features like auto-generating agent descriptions
         </CardDescription>
       </CardHeader>
@@ -73,20 +73,22 @@ export const OllamaSettings: React.FC = () => {
         {/* URL Configuration */}
         <div className="space-y-2">
           <label className="text-sm font-medium">Server URL</label>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <Input
               value={ollamaUrl}
               onChange={(e) => setUrl(e.target.value)}
               placeholder="http://localhost:11434"
+              className="flex-1"
             />
             <Button
               variant="outline"
-              size="icon"
               onClick={checkConnection}
               disabled={loading}
               title="Test connection"
+              className="w-full sm:w-auto"
             >
               <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              <span className="ml-2 sm:hidden">Test Connection</span>
             </Button>
           </div>
         </div>

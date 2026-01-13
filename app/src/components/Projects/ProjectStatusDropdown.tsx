@@ -26,7 +26,7 @@ export function ProjectStatusDropdown({ projectName, currentStatus }: ProjectSta
     setIsUpdating(true);
     try {
       await invoke('update_project_status', {
-        projectName: projectName,
+        project_name: projectName,
         status: newStatus.toUpperCase(),
       });
       // Invalidate projects query to refresh UI

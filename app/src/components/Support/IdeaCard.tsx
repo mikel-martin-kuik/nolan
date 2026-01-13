@@ -63,7 +63,7 @@ export function IdeaCard({ idea, review, onClick, isDragging, isDragOverlay }: I
     : undefined;
 
   const acceptMutation = useMutation({
-    mutationFn: () => invoke<{ review: IdeaReview; route: string; route_detail: string }>('accept_and_route_review', { itemId: idea.id }),
+    mutationFn: () => invoke<{ review: IdeaReview; route: string; route_detail: string }>('accept_and_route_review', { item_id: idea.id }),
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['idea-reviews'] });
       queryClient.invalidateQueries({ queryKey: ['projects'] });
@@ -112,7 +112,7 @@ export function IdeaCard({ idea, review, onClick, isDragging, isDragOverlay }: I
   });
 
   const dispatchMutation = useMutation({
-    mutationFn: () => invoke<string>('dispatch_single_idea', { ideaId: idea.id }),
+    mutationFn: () => invoke<string>('dispatch_single_idea', { idea_id: idea.id }),
     onSuccess: () => {
       toast.success(`Dispatched "${idea.title}" for processing`);
     },

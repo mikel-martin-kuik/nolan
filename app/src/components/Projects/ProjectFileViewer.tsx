@@ -46,8 +46,8 @@ export function ProjectFileViewer({ project, file, isWorkflowFile, fileCompletio
     setError(null);
     try {
       const result = await invoke<string | { content: string }>('read_project_file', {
-        projectName: project,
-        filePath: file
+        project_name: project,
+        file_path: file
       });
       const fileContent = typeof result === 'string' ? result : result?.content ?? '';
       setContent(fileContent);
@@ -80,8 +80,8 @@ export function ProjectFileViewer({ project, file, isWorkflowFile, fileCompletio
     setError(null);
     try {
       await invoke('write_project_file', {
-        projectName: project,
-        filePath: file,
+        project_name: project,
+        file_path: file,
         content: editContent
       });
       setContent(editContent);

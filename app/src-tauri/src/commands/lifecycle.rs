@@ -173,18 +173,55 @@ pub fn register_session(tmux_session: &str, agent: &str, agent_dir: &str, team: 
 
 /// Default models for each agent (loaded from agent.json in agent directory)
 pub fn get_default_model(agent: &str) -> String {
+    get_default_model_for_team(agent, None)
+}
+
+/// Get default model for an agent, optionally searching in a specific team first
+pub fn get_default_model_for_team(agent: &str, team: Option<&str>) -> String {
     use std::fs;
 
-    // Try to read model from agent.json
-    if let Ok(agents_dir) = crate::utils::paths::get_agents_dir() {
-        let agent_json_path = agents_dir
-            .join(agent)
-            .join("agent.json");
-
-        if let Ok(content) = fs::read_to_string(&agent_json_path) {
+    // Helper to try reading model from agent.json at a path
+    fn try_read_model(agent_json_path: &std::path::Path) -> Option<String> {
+        if let Ok(content) = fs::read_to_string(agent_json_path) {
             if let Ok(metadata) = serde_json::from_str::<serde_json::Value>(&content) {
                 if let Some(model) = metadata.get("model").and_then(|m| m.as_str()) {
-                    return model.to_string();
+                    return Some(model.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    // If team specified, check team-specific agent first
+    if let Some(team_name) = team {
+        if let Ok(team_agents_dir) = crate::utils::paths::get_team_agents_dir(team_name) {
+            let agent_json_path = team_agents_dir.join(agent).join("agent.json");
+            if let Some(model) = try_read_model(&agent_json_path) {
+                return model;
+            }
+        }
+    }
+
+    // Check shared agents directory
+    if let Ok(agents_dir) = crate::utils::paths::get_agents_dir() {
+        let agent_json_path = agents_dir.join(agent).join("agent.json");
+        if let Some(model) = try_read_model(&agent_json_path) {
+            return model;
+        }
+    }
+
+    // Search all team directories if not found yet
+    if team.is_none() {
+        if let Ok(teams_dir) = crate::utils::paths::get_teams_dir() {
+            if let Ok(entries) = fs::read_dir(&teams_dir) {
+                for entry in entries.filter_map(|e| e.ok()) {
+                    let team_path = entry.path();
+                    if team_path.is_dir() {
+                        let agent_json_path = team_path.join("agents").join(agent).join("agent.json");
+                        if let Some(model) = try_read_model(&agent_json_path) {
+                            return model;
+                        }
+                    }
                 }
             }
         }
@@ -569,7 +606,8 @@ pub async fn launch_team(
     // Get paths using utility functions
     let nolan_root = crate::utils::paths::get_nolan_root()?;
     let projects_dir = crate::utils::paths::get_projects_dir()?;
-    let agents_base = crate::utils::paths::get_agents_dir()?;
+    // Team agents are in teams/{team}/agents/
+    let agents_base = crate::utils::paths::get_team_agents_dir(&team_name)?;
 
     // Compute DOCS_PATH for the project
     let docs_path = projects_dir.join(&project_name);
@@ -1217,7 +1255,8 @@ pub async fn start_agent(app_handle: AppHandle, team_name: String, agent: String
     // Get paths using utility functions (handles path detection properly)
     let nolan_root = crate::utils::paths::get_nolan_root()?;
     let projects_dir = crate::utils::paths::get_projects_dir()?;
-    let agent_dir = crate::utils::paths::get_agents_dir()?.join(&agent);
+    // Team agents are in teams/{team}/agents/{agent}/
+    let agent_dir = crate::utils::paths::get_team_agents_dir(&team_name)?.join(&agent);
 
     // Verify agent directory exists
     if !agent_dir.exists() {
@@ -1824,17 +1863,48 @@ pub async fn open_team_terminals(team_name: String) -> Result<String, String> {
     Ok(format!("Opened {} team terminals", opened.len()))
 }
 
+/// Find an agent directory by name, searching both team and shared directories
+/// Returns the path to the agent directory
+fn find_agent_dir(agent: &str) -> Result<std::path::PathBuf, String> {
+    use std::fs;
+
+    // Check shared agents directory first
+    let shared_agent_dir = crate::utils::paths::get_agents_dir()?.join(agent);
+    if shared_agent_dir.exists() {
+        return Ok(shared_agent_dir);
+    }
+
+    // Search all team directories
+    let teams_dir = crate::utils::paths::get_teams_dir()?;
+    if teams_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&teams_dir) {
+            for entry in entries.filter_map(|e| e.ok()) {
+                let team_path = entry.path();
+                if team_path.is_dir() {
+                    let team_agent_dir = team_path.join("agents").join(agent);
+                    if team_agent_dir.exists() {
+                        return Ok(team_agent_dir);
+                    }
+                }
+            }
+        }
+    }
+
+    Err(format!("Agent '{}' not found", agent))
+}
+
 /// Read agent's CLAUDE.md file content
 /// Creates the file with a template if it doesn't exist
+/// Searches both team-specific and shared agent directories
 #[tauri::command]
 pub async fn read_agent_claude_md(agent: String) -> Result<String, String> {
     use std::fs;
 
-    // Validate agent name format (shared directories don't need team context)
+    // Validate agent name format
     validate_agent_name_format(&agent)?;
 
-    // Get agent directory
-    let agent_dir = crate::utils::paths::get_agents_dir()?.join(&agent);
+    // Find agent directory
+    let agent_dir = find_agent_dir(&agent)?;
     let claude_md_path = agent_dir.join("CLAUDE.md");
 
     // Create file with template if it doesn't exist
@@ -1854,15 +1924,16 @@ pub async fn read_agent_claude_md(agent: String) -> Result<String, String> {
 }
 
 /// Write agent's CLAUDE.md file content
+/// Searches both team-specific and shared agent directories
 #[tauri::command]
 pub async fn write_agent_claude_md(agent: String, content: String) -> Result<String, String> {
     use std::fs;
 
-    // Validate agent name format (shared directories don't need team context)
+    // Validate agent name format
     validate_agent_name_format(&agent)?;
 
-    // Get agent directory
-    let agent_dir = crate::utils::paths::get_agents_dir()?.join(&agent);
+    // Find agent directory
+    let agent_dir = find_agent_dir(&agent)?;
     let claude_md_path = agent_dir.join("CLAUDE.md");
 
     // Write file content

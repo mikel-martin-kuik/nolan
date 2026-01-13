@@ -11,6 +11,7 @@ import { useToastStore } from '@/store/toastStore';
 import { useAgentStore } from '@/store/agentStore';
 import { Play, XCircle, LayoutGrid, ArrowRight, ArrowDown, ChevronDown, ChevronRight } from 'lucide-react';
 import { AgentCard } from '@/components/shared/AgentCard';
+import { ProjectSelectModal, LaunchParams } from '@/components/shared/ProjectSelectModal';
 import { getWorkflowSteps } from '@/types';
 import type { CronAgentInfo, TeamConfig, AgentStatus as AgentStatusType } from '@/types';
 import type { ProjectInfo } from '@/types/projects';
@@ -29,6 +30,7 @@ export const TeamAgentDetailPage: React.FC<TeamAgentDetailPageProps> = ({
   const [activeTab, setActiveTab] = useState<'workflow' | 'history'>('workflow');
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [showLaunchModal, setShowLaunchModal] = useState(false);
 
   // Extract team name from cron agent name (e.g., "team-nolan" -> "nolan")
   const teamName = useMemo(() => {
@@ -186,13 +188,21 @@ export const TeamAgentDetailPage: React.FC<TeamAgentDetailPageProps> = ({
   const layoutType: LayoutType = workflowAgents.length >= 6 ? 'two-row' : 'single-row';
 
   // Team control handlers
-  const handleLaunch = useCallback(async () => {
+  const handleLaunchClick = useCallback(() => {
+    setShowLaunchModal(true);
+  }, []);
+
+  const handleLaunchConfirm = useCallback(async (params: LaunchParams) => {
     setLoading(true);
     try {
-      // Generate a simple project name based on timestamp
-      const projectName = `project-${Date.now().toString(36)}`;
-      await launchTeam(teamName, projectName);
-      showSuccess(`Launched team ${teamName} with project ${projectName}`);
+      await launchTeam(
+        teamName,
+        params.projectName,
+        params.initialPrompt,
+        params.updatedOriginalPrompt,
+        params.followupPrompt
+      );
+      showSuccess(`Launched team ${teamName} with project ${params.projectName}`);
       updateStatus();
     } catch (err) {
       showError(`Failed to launch team: ${err}`);
@@ -262,7 +272,7 @@ export const TeamAgentDetailPage: React.FC<TeamAgentDetailPageProps> = ({
             : `Team configuration not found: ${teamName}`}
         </p>
         <p className="text-xs text-muted-foreground/70">
-          Expected at ~/.nolan/teams/{teamName}.yaml
+          Expected at ~/.nolan/teams/{teamName}/team.yaml
         </p>
         <Button variant="outline" onClick={onBack}>Back</Button>
       </div>
@@ -326,7 +336,7 @@ export const TeamAgentDetailPage: React.FC<TeamAgentDetailPageProps> = ({
                     <div className="flex gap-1.5">
                       <Tooltip content="Launch Team" side="bottom">
                         <button
-                          onClick={handleLaunch}
+                          onClick={handleLaunchClick}
                           disabled={loading || allActive}
                           className={cn(
                             "w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center",
@@ -637,6 +647,16 @@ export const TeamAgentDetailPage: React.FC<TeamAgentDetailPageProps> = ({
           </Card>
         )}
       </div>
+
+      {/* Project Selection Modal */}
+      <ProjectSelectModal
+        open={showLaunchModal}
+        onOpenChange={setShowLaunchModal}
+        onLaunch={handleLaunchConfirm}
+        projects={projects}
+        isLoading={loading}
+        teamName={teamName}
+      />
     </div>
   );
 };

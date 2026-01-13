@@ -1,6 +1,10 @@
 export type ProjectStatus = 'complete' | 'inprogress' | 'pending' | 'delegated' | 'archived';
 
-/** Display metadata for project statuses */
+/**
+ * Display metadata for project statuses
+ * @deprecated Use useProjectStatusConfig() from hooks/useUIConfig instead.
+ * This constant is kept for backward compatibility during migration.
+ */
 export const PROJECT_STATUS_META: Record<ProjectStatus, { label: string; color: string }> = {
   inprogress: { label: 'In Progress', color: 'text-blue-500' },
   pending: { label: 'Pending', color: 'text-yellow-500' },
@@ -9,7 +13,10 @@ export const PROJECT_STATUS_META: Record<ProjectStatus, { label: string; color: 
   archived: { label: 'Archived', color: 'text-muted-foreground' },
 };
 
-/** All valid status values in display order */
+/**
+ * All valid status values in display order
+ * @deprecated Use useProjectStatusConfig().values from hooks/useUIConfig instead.
+ */
 export const PROJECT_STATUS_OPTIONS: ProjectStatus[] = ['inprogress', 'pending', 'delegated', 'complete', 'archived'];
 
 /** Completion status for a workflow file based on HANDOFF markers */

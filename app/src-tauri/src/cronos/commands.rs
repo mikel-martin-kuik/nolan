@@ -92,10 +92,16 @@ async fn trigger_post_run_analyzer(
                         ).await {
                             Ok(verdict_result) => {
                                 // If COMPLETE and has worktree, trigger QA validation then merge
+                                println!("[Cronos] Analyzer verdict: {:?}, worktree_path: {:?}, worktree_branch: {:?}",
+                                    verdict_result.verdict_type,
+                                    verdict_result.worktree_path,
+                                    verdict_result.worktree_branch
+                                );
                                 if verdict_result.verdict_type == AnalyzerVerdictType::Complete {
                                     if let (Some(wt_path), Some(wt_branch)) =
-                                        (verdict_result.worktree_path, verdict_result.worktree_branch)
+                                        (verdict_result.worktree_path.clone(), verdict_result.worktree_branch.clone())
                                     {
+                                        println!("[Cronos] Triggering QA then merge for {} on {}", wt_branch, wt_path);
                                         trigger_qa_then_merge(
                                             wt_path,
                                             wt_branch,
@@ -103,7 +109,12 @@ async fn trigger_post_run_analyzer(
                                             verdict_result.agent_name,
                                             output_sender,
                                         ).await;
+                                    } else {
+                                        eprintln!("[Cronos] Skipping QA/merge: worktree info missing (path: {:?}, branch: {:?})",
+                                            verdict_result.worktree_path, verdict_result.worktree_branch);
                                     }
+                                } else {
+                                    println!("[Cronos] Verdict is {:?}, not triggering QA/merge", verdict_result.verdict_type);
                                 }
                             }
                             Err(e) => {
@@ -198,6 +209,8 @@ async fn process_analyzer_verdict(
                             });
 
                             // Capture result for follow-up actions
+                            println!("[Cronos] process_analyzer_verdict found run {}: worktree_path={:?}, worktree_branch={:?}",
+                                analyzed_run_id, run_log.worktree_path, run_log.worktree_branch);
                             result = Some(VerdictProcessingResult {
                                 verdict_type: verdict.verdict.clone(),
                                 agent_name: run_log.agent_name.clone(),
@@ -228,6 +241,8 @@ async fn trigger_qa_then_merge(
     agent_name: String,
     output_sender: broadcast::Sender<CronOutputEvent>,
 ) {
+    println!("[Cronos] trigger_qa_then_merge called: path={}, branch={}", worktree_path, worktree_branch);
+
     // Emit status event about triggering QA
     let _ = output_sender.send(CronOutputEvent {
         run_id: String::new(),
@@ -250,6 +265,7 @@ async fn trigger_qa_then_merge(
     if let Some(manager) = guard.as_ref() {
         match manager.get_agent("pred-qa-validation").await {
             Ok(qa_config) => {
+                println!("[Cronos] Found pred-qa-validation agent, executing...");
                 drop(guard); // Release lock before executing
 
                 let guard = CRONOS.read().await;
@@ -309,6 +325,8 @@ async fn trigger_worktree_merger(
     worktree_branch: String,
     output_sender: broadcast::Sender<CronOutputEvent>,
 ) {
+    println!("[Cronos] trigger_worktree_merger called: path={}, branch={}", worktree_path, worktree_branch);
+
     // Emit status event about triggering merger
     let _ = output_sender.send(CronOutputEvent {
         run_id: String::new(),
@@ -1235,6 +1253,120 @@ pub async fn trigger_analyzer_for_run(
     trigger_post_run_analyzer(trigger_info, output_sender).await;
 
     Ok(format!("Triggered analyzer '{}' for run {}", analyzer_name, run_id))
+}
+
+/// Manually trigger QA validation for a specific run
+#[tauri::command]
+pub async fn trigger_qa_for_run(
+    run_id: String,
+    app: AppHandle,
+) -> Result<String, String> {
+    // Find the run log
+    let runs_dir = crate::utils::paths::get_cronos_runs_dir()?;
+    let mut run_log: Option<CronRunLog> = None;
+
+    for date_entry in std::fs::read_dir(&runs_dir).into_iter().flatten().flatten() {
+        if date_entry.path().is_dir() {
+            for file_entry in std::fs::read_dir(date_entry.path()).into_iter().flatten().flatten() {
+                let path = file_entry.path();
+                if path.extension().map(|e| e == "json").unwrap_or(false) {
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        if let Ok(log) = serde_json::from_str::<CronRunLog>(&content) {
+                            if log.run_id == run_id {
+                                run_log = Some(log);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if run_log.is_some() { break; }
+    }
+
+    let run_log = run_log.ok_or_else(|| format!("Run {} not found", run_id))?;
+
+    // Check we have worktree info
+    let worktree_path = run_log.worktree_path
+        .ok_or_else(|| "Run has no worktree path - QA requires a worktree".to_string())?;
+    let worktree_branch = run_log.worktree_branch
+        .ok_or_else(|| "Run has no worktree branch - QA requires a branch".to_string())?;
+
+    // Setup output sender and app forwarding
+    let output_sender = OUTPUT_SENDER.clone();
+    let mut receiver = output_sender.subscribe();
+    tokio::spawn(async move {
+        while let Ok(event) = receiver.recv().await {
+            let _ = app.emit("cronos:output", &event);
+        }
+    });
+
+    // Trigger QA then merge
+    trigger_qa_then_merge(
+        worktree_path.clone(),
+        worktree_branch.clone(),
+        run_log.base_commit,
+        run_log.agent_name,
+        output_sender,
+    ).await;
+
+    Ok(format!("Triggered QA validation for branch {}", worktree_branch))
+}
+
+/// Manually trigger worktree merge for a specific run
+#[tauri::command]
+pub async fn trigger_merge_for_run(
+    run_id: String,
+    app: AppHandle,
+) -> Result<String, String> {
+    // Find the run log
+    let runs_dir = crate::utils::paths::get_cronos_runs_dir()?;
+    let mut run_log: Option<CronRunLog> = None;
+
+    for date_entry in std::fs::read_dir(&runs_dir).into_iter().flatten().flatten() {
+        if date_entry.path().is_dir() {
+            for file_entry in std::fs::read_dir(date_entry.path()).into_iter().flatten().flatten() {
+                let path = file_entry.path();
+                if path.extension().map(|e| e == "json").unwrap_or(false) {
+                    if let Ok(content) = std::fs::read_to_string(&path) {
+                        if let Ok(log) = serde_json::from_str::<CronRunLog>(&content) {
+                            if log.run_id == run_id {
+                                run_log = Some(log);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if run_log.is_some() { break; }
+    }
+
+    let run_log = run_log.ok_or_else(|| format!("Run {} not found", run_id))?;
+
+    // Check we have worktree info
+    let worktree_path = run_log.worktree_path
+        .ok_or_else(|| "Run has no worktree path - merge requires a worktree".to_string())?;
+    let worktree_branch = run_log.worktree_branch
+        .ok_or_else(|| "Run has no worktree branch - merge requires a branch".to_string())?;
+
+    // Setup output sender and app forwarding
+    let output_sender = OUTPUT_SENDER.clone();
+    let mut receiver = output_sender.subscribe();
+    tokio::spawn(async move {
+        while let Ok(event) = receiver.recv().await {
+            let _ = app.emit("cronos:output", &event);
+        }
+    });
+
+    // Trigger merge directly (skip QA)
+    trigger_worktree_merger(
+        worktree_path.clone(),
+        worktree_branch.clone(),
+        output_sender,
+    ).await;
+
+    Ok(format!("Triggered merge for branch {}", worktree_branch))
 }
 
 // ========================

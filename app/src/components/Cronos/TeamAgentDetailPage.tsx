@@ -257,20 +257,23 @@ export const TeamAgentDetailPage: React.FC<TeamAgentDetailPageProps> = ({
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-4 pb-4 border-b border-border">
-        <Button variant="ghost" size="sm" onClick={onBack} className="text-xs h-7 px-2">Back</Button>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-border">
+        <Button variant="ghost" size="sm" onClick={onBack} className="text-xs h-7 px-2 w-fit">Back</Button>
 
-        <div className="ml-auto text-right">
-          <h1 className="text-lg font-semibold">{teamConfig.team.name || teamName}</h1>
+        <div className="sm:ml-auto sm:text-right">
+          <h1 className="text-base sm:text-lg font-semibold">{teamConfig.team.name || teamName}</h1>
           <p className="text-xs text-muted-foreground">
-            {anyActive ? 'Active' : 'Inactive'} · {workflowAgents.length} agents · {teamStats.total} projects · {(teamStats.successRate * 100).toFixed(0)}% completed
-            {currentProject && ` · Working on: ${currentProject}`}
+            {anyActive ? 'Active' : 'Inactive'} · {workflowAgents.length} agents · {teamStats.total} projects
+            <span className="hidden sm:inline">
+              {' · '}{(teamStats.successRate * 100).toFixed(0)}% completed
+              {currentProject && ` · Working on: ${currentProject}`}
+            </span>
           </p>
         </div>
       </div>
 
       {/* Tab Bar */}
-      <div className="flex items-center gap-1 p-1 glass-card rounded-lg w-fit mb-4">
+      <div className="flex items-center gap-1 p-1 glass-card rounded-lg w-fit mb-3 sm:mb-4">
         <button
           onClick={() => setActiveTab('workflow')}
           className={cn(
@@ -300,99 +303,102 @@ export const TeamAgentDetailPage: React.FC<TeamAgentDetailPageProps> = ({
           <div className="h-full overflow-hidden flex flex-col gap-4">
             {/* Team Controls + Project Info */}
             <Card className="flex-shrink-0">
-              <CardContent className="py-4">
-                <div className="flex items-center gap-4">
-                  {/* Control Buttons */}
-                  <div className="flex gap-1.5">
-                    <Tooltip content="Launch Team" side="bottom">
-                      <button
-                        onClick={handleLaunch}
-                        disabled={loading || allActive}
-                        className={cn(
-                          "w-9 h-9 rounded-xl flex items-center justify-center",
-                          "active:scale-95 transition-all duration-200",
-                          "disabled:opacity-30 disabled:cursor-not-allowed",
-                          !anyActive
-                            ? "bg-emerald-500/15 border border-emerald-400/30 text-emerald-500 hover:bg-emerald-500/25"
-                            : "bg-secondary/50 border border-border text-muted-foreground hover:bg-emerald-500/10 hover:text-emerald-500"
-                        )}
-                      >
-                        <Play className="w-4 h-4" />
-                      </button>
-                    </Tooltip>
-                    <Tooltip content="Kill Team" side="bottom">
-                      <button
-                        onClick={handleKill}
-                        disabled={loading || !anyActive}
-                        className="w-9 h-9 rounded-xl flex items-center justify-center
-                          bg-secondary/50 border border-border text-muted-foreground
-                          hover:bg-red-500/10 hover:border-red-400/20 hover:text-red-500
-                          active:scale-95 transition-all duration-200
-                          disabled:opacity-30 disabled:cursor-not-allowed"
-                      >
-                        <XCircle className="w-4 h-4" />
-                      </button>
-                    </Tooltip>
-                    {!isBrowserMode() && (
-                      <Tooltip content="Open Terminals" side="bottom">
+              <CardContent className="py-3 sm:py-4">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+                  {/* Control Buttons + Project Progress Row */}
+                  <div className="flex items-center gap-3">
+                    {/* Control Buttons */}
+                    <div className="flex gap-1.5">
+                      <Tooltip content="Launch Team" side="bottom">
                         <button
-                          onClick={handleShowTerminals}
+                          onClick={handleLaunch}
+                          disabled={loading || allActive}
+                          className={cn(
+                            "w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center",
+                            "active:scale-95 transition-all duration-200",
+                            "disabled:opacity-30 disabled:cursor-not-allowed",
+                            !anyActive
+                              ? "bg-emerald-500/15 border border-emerald-400/30 text-emerald-500 hover:bg-emerald-500/25"
+                              : "bg-secondary/50 border border-border text-muted-foreground hover:bg-emerald-500/10 hover:text-emerald-500"
+                          )}
+                        >
+                          <Play className="w-4 h-4" />
+                        </button>
+                      </Tooltip>
+                      <Tooltip content="Kill Team" side="bottom">
+                        <button
+                          onClick={handleKill}
                           disabled={loading || !anyActive}
-                          className="w-9 h-9 rounded-xl flex items-center justify-center
+                          className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center
                             bg-secondary/50 border border-border text-muted-foreground
-                            hover:bg-accent hover:text-foreground
+                            hover:bg-red-500/10 hover:border-red-400/20 hover:text-red-500
                             active:scale-95 transition-all duration-200
                             disabled:opacity-30 disabled:cursor-not-allowed"
                         >
-                          <LayoutGrid className="w-4 h-4" />
+                          <XCircle className="w-4 h-4" />
                         </button>
                       </Tooltip>
+                      {!isBrowserMode() && (
+                        <Tooltip content="Open Terminals" side="bottom">
+                          <button
+                            onClick={handleShowTerminals}
+                            disabled={loading || !anyActive}
+                            className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl flex items-center justify-center
+                              bg-secondary/50 border border-border text-muted-foreground
+                              hover:bg-accent hover:text-foreground
+                              active:scale-95 transition-all duration-200
+                              disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <LayoutGrid className="w-4 h-4" />
+                          </button>
+                        </Tooltip>
+                      )}
+                    </div>
+
+                    {/* Project Progress */}
+                    {anyActive && (
+                      <div className="flex items-center gap-2 sm:gap-3 sm:ml-4">
+                        <span className="text-xs text-muted-foreground truncate max-w-[100px] sm:max-w-none">
+                          {currentProject || 'VIBING'}
+                        </span>
+                        {currentProject && currentProjectInfo && (
+                          <div className="hidden sm:flex items-center gap-2">
+                            {/* Segmented progress bar */}
+                            <div className="flex h-1.5 rounded-full overflow-hidden bg-muted-foreground/10">
+                              {stepCompletion.map((step, index) => (
+                                <Tooltip key={step.key} content={`${step.key}.md`} side="bottom">
+                                  <div
+                                    className={cn(
+                                      "h-full w-6 transition-colors",
+                                      step.complete ? "bg-primary" : "bg-muted-foreground/20",
+                                      index > 0 && "border-l border-background/50"
+                                    )}
+                                  />
+                                </Tooltip>
+                              ))}
+                            </div>
+                            <span className="text-[10px] text-muted-foreground tabular-nums">
+                              {completedCount}/{workflowSteps.length}
+                            </span>
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
 
-                  {/* Project Progress */}
-                  {anyActive && (
-                    <div className="flex items-center gap-3 ml-4">
-                      <span className="text-xs text-muted-foreground">
-                        {currentProject || 'VIBING'}
-                      </span>
-                      {currentProject && currentProjectInfo && (
-                        <div className="flex items-center gap-2">
-                          {/* Segmented progress bar */}
-                          <div className="flex h-1.5 rounded-full overflow-hidden bg-muted-foreground/10">
-                            {stepCompletion.map((step, index) => (
-                              <Tooltip key={step.key} content={`${step.key}.md`} side="bottom">
-                                <div
-                                  className={cn(
-                                    "h-full w-6 transition-colors",
-                                    step.complete ? "bg-primary" : "bg-muted-foreground/20",
-                                    index > 0 && "border-l border-background/50"
-                                  )}
-                                />
-                              </Tooltip>
-                            ))}
-                          </div>
-                          <span className="text-[10px] text-muted-foreground tabular-nums">
-                            {completedCount}/{workflowSteps.length}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
                   {/* Team Stats */}
-                  <div className="ml-auto flex items-center gap-4 text-center">
+                  <div className="sm:ml-auto grid grid-cols-3 sm:flex sm:items-center gap-3 sm:gap-4 text-center">
                     <div>
-                      <p className="text-lg font-bold">{teamStats.completed}</p>
+                      <p className="text-base sm:text-lg font-bold">{teamStats.completed}</p>
                       <p className="text-[10px] text-muted-foreground">Completed</p>
                     </div>
                     <div>
-                      <p className="text-lg font-bold">{teamStats.inProgress}</p>
+                      <p className="text-base sm:text-lg font-bold">{teamStats.inProgress}</p>
                       <p className="text-[10px] text-muted-foreground">In Progress</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Progress value={teamStats.successRate * 100} className="h-2 w-16" />
-                      <span className="text-sm font-medium">{(teamStats.successRate * 100).toFixed(0)}%</span>
+                      <Progress value={teamStats.successRate * 100} className="h-2 w-12 sm:w-16" />
+                      <span className="text-xs sm:text-sm font-medium">{(teamStats.successRate * 100).toFixed(0)}%</span>
                     </div>
                   </div>
                 </div>

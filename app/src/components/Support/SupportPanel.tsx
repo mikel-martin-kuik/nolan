@@ -86,19 +86,19 @@ export function SupportPanel() {
   }, [ideas, reviews]);
 
   return (
-    <div className="h-full flex flex-col gap-4">
+    <div className="h-full flex flex-col gap-2 sm:gap-4">
       {/* Header with New Button and Tabs */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
         {activeTab !== 'roadmap' && (
-          <Button size="sm" onClick={handleNewClick}>
+          <Button size="sm" onClick={handleNewClick} className="w-full sm:w-auto">
             New
           </Button>
         )}
-        <div className="flex items-center gap-1 p-1 glass-card rounded-lg">
+        <div className="flex items-center gap-1 p-1 glass-card rounded-lg overflow-x-auto">
           <button
             onClick={() => setActiveTab('requests')}
             className={cn(
-              "flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all",
+              "flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded text-xs font-medium transition-all whitespace-nowrap",
               activeTab === 'requests' && "bg-foreground/10 text-foreground",
               activeTab !== 'requests' && "text-muted-foreground hover:text-foreground"
             )}
@@ -113,7 +113,7 @@ export function SupportPanel() {
           <button
             onClick={() => setActiveTab('ideas')}
             className={cn(
-              "flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all",
+              "flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded text-xs font-medium transition-all whitespace-nowrap",
               activeTab === 'ideas' && "bg-foreground/10 text-foreground",
               activeTab !== 'ideas' && "text-muted-foreground hover:text-foreground"
             )}
@@ -128,12 +128,12 @@ export function SupportPanel() {
           <button
             onClick={() => setActiveTab('decisions')}
             className={cn(
-              "flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all",
+              "flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded text-xs font-medium transition-all whitespace-nowrap",
               activeTab === 'decisions' && "bg-foreground/10 text-foreground",
               activeTab !== 'decisions' && "text-muted-foreground hover:text-foreground"
             )}
           >
-            <FileCheck className="w-3 h-3" />
+            <FileCheck className="w-3 h-3 hidden sm:block" />
             <span>Decisions</span>
             {approvedDecisionsCount > 0 && (
               <span className="text-[10px] px-1 rounded bg-foreground/10">
@@ -144,12 +144,12 @@ export function SupportPanel() {
           <button
             onClick={() => setActiveTab('roadmap')}
             className={cn(
-              "flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all",
+              "flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded text-xs font-medium transition-all whitespace-nowrap",
               activeTab === 'roadmap' && "bg-foreground/10 text-foreground",
               activeTab !== 'roadmap' && "text-muted-foreground hover:text-foreground"
             )}
           >
-            <Compass className="w-3 h-3" />
+            <Compass className="w-3 h-3 hidden sm:block" />
             <span>Roadmap</span>
           </button>
         </div>

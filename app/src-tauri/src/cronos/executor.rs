@@ -15,26 +15,6 @@ use crate::utils::paths;
 use crate::tmux::session;
 use crate::git::worktree;
 
-/// Get the agent directory, checking both cronos and predefined paths
-fn get_agent_dir(agent_name: &str) -> Result<PathBuf, String> {
-    // Check cronos agents directory first
-    let cronos_dir = paths::get_agents_dir()?.join(agent_name);
-    if cronos_dir.exists() {
-        return Ok(cronos_dir);
-    }
-
-    // Check predefined agents directory (for pred-* agents)
-    if agent_name.starts_with("pred-") {
-        let nolan_root = paths::get_nolan_root()?;
-        let predefined_dir = nolan_root.join("predefined").join("agents").join(agent_name);
-        if predefined_dir.exists() {
-            return Ok(predefined_dir);
-        }
-    }
-
-    Err(format!("Agent directory for '{}' not found", agent_name))
-}
-
 /// Extract total cost from Claude output log file
 /// The cost is in a JSON line with type: "result" and total_cost_usd field
 fn extract_cost_from_log(log_file: &PathBuf) -> Option<f32> {
@@ -289,7 +269,7 @@ async fn execute_single_run(
     }
 
     // Read agent's CLAUDE.md for prompt
-    let agent_dir = get_agent_dir(&config.name)?;
+    let agent_dir = paths::get_agents_dir()?.join(&config.name);
     let claude_md_path = agent_dir.join("CLAUDE.md");
     let prompt = std::fs::read_to_string(&claude_md_path)
         .map_err(|e| format!("Failed to read CLAUDE.md from {:?}: {}", claude_md_path, e))?;
@@ -790,7 +770,7 @@ pub async fn execute_cron_agent_simple(
     let json_file = runs_dir.join(format!("{}-{}.json", config.name, &run_id));
 
     // Read agent's CLAUDE.md for prompt
-    let agent_dir = get_agent_dir(&config.name)?;
+    let agent_dir = paths::get_agents_dir()?.join(&config.name);
     let claude_md_path = agent_dir.join("CLAUDE.md");
     let prompt = std::fs::read_to_string(&claude_md_path)
         .map_err(|e| format!("Failed to read CLAUDE.md from {:?}: {}", claude_md_path, e))?;

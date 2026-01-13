@@ -1,0 +1,65 @@
+# Nolan - Full Stack Deployment
+#
+# Usage:
+#   docker compose up -d
+#   docker compose logs -f
+#
+# Access:
+#   Frontend: http://<SERVER_IP>:8080
+#   Backend API: http://<SERVER_IP>:3030
+#
+# See DEPLOYMENT.md for full documentation.
+
+services:
+  # ==========================================================================
+  # Backend - Rust API Server
+  # ==========================================================================
+  backend:
+    image: nolan-server:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nolan-backend
+    restart: unless-stopped
+    ports:
+      - "3030:3030"
+    environment:
+      - NOLAN_API_HOST=0.0.0.0
+      - NOLAN_API_PORT=3030
+      - RUST_LOG=info
+    volumes:
+      - nolan-data:/home/nolan/.nolan
+      - nolan-projects:/projects
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3030/api/auth/status"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+  # ==========================================================================
+  # Frontend - React/Vite served by Nginx
+  # ==========================================================================
+  frontend:
+    image: nolan-frontend:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        # Default API URL - can be changed in UI settings at runtime
+        VITE_API_URL: http://localhost:3030
+    container_name: nolan-frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  nolan-data:
+  nolan-projects:

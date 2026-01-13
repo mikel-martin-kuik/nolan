@@ -3,6 +3,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
   Play,
   Loader2,
   Shield,
@@ -11,12 +17,19 @@ import {
   Rocket,
   GitCommit,
   Sparkles,
+  MoreVertical,
+  Trash2,
+  FlaskConical,
+  CheckCircle,
+  GitMerge,
 } from 'lucide-react';
 import type { CronAgentInfo } from '@/types';
 
 interface PredefinedAgentCardProps {
   agent: CronAgentInfo;
   onTrigger: (name: string) => void;
+  onUninstall?: (name: string) => void;
+  isUninstalling?: boolean;
 }
 
 // Map icon names to Lucide icons
@@ -27,11 +40,16 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   Rocket,
   GitCommit,
   Sparkles,
+  FlaskConical,
+  CheckCircle,
+  GitMerge,
 };
 
 export const PredefinedAgentCard: React.FC<PredefinedAgentCardProps> = ({
   agent,
   onTrigger,
+  onUninstall,
+  isUninstalling,
 }) => {
   const isRunning = agent.is_running;
 
@@ -65,9 +83,34 @@ export const PredefinedAgentCard: React.FC<PredefinedAgentCardProps> = ({
               )}
             </div>
           </div>
-          {!agent.enabled && (
-            <Badge variant="secondary">Disabled</Badge>
-          )}
+          <div className="flex items-center gap-1">
+            {!agent.enabled && (
+              <Badge variant="secondary">Disabled</Badge>
+            )}
+            {onUninstall && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={() => onUninstall(agent.name)}
+                    disabled={isRunning || isUninstalling}
+                    className="text-destructive focus:text-destructive"
+                  >
+                    {isUninstalling ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4 mr-2" />
+                    )}
+                    Uninstall
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </div>
         </div>
         <CardDescription className="text-xs mt-2">
           {agent.description}

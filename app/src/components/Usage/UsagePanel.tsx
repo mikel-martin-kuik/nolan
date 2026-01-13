@@ -103,50 +103,52 @@ export const UsagePanel: React.FC = () => {
           ) : stats ? (
             <div className="space-y-6">
               {/* Summary Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Card className="p-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
+                <Card className="p-3 sm:p-4">
                   <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                     <DollarSign className="h-3 w-3" />
-                    Total Cost
+                    <span className="hidden sm:inline">Total Cost</span>
+                    <span className="sm:hidden">Cost</span>
                   </div>
-                  <p className="text-2xl font-bold">{formatCurrency(stats.total_cost)}</p>
+                  <p className="text-lg sm:text-2xl font-bold">{formatCurrency(stats.total_cost)}</p>
                 </Card>
 
-                <Card className="p-4">
+                <Card className="p-3 sm:p-4">
                   <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                     <Zap className="h-3 w-3" />
-                    Total Sessions
+                    Sessions
                   </div>
-                  <p className="text-2xl font-bold">{formatNumber(stats.total_sessions)}</p>
+                  <p className="text-lg sm:text-2xl font-bold">{formatNumber(stats.total_sessions)}</p>
                 </Card>
 
-                <Card className="p-4">
+                <Card className="p-3 sm:p-4">
                   <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                     <Hash className="h-3 w-3" />
-                    Total Tokens
+                    Tokens
                   </div>
-                  <p className="text-2xl font-bold">{formatTokens(stats.total_tokens)}</p>
+                  <p className="text-lg sm:text-2xl font-bold">{formatTokens(stats.total_tokens)}</p>
                 </Card>
 
-                <Card className="p-4">
+                <Card className="p-3 sm:p-4">
                   <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                     <BarChart3 className="h-3 w-3" />
-                    Avg Cost/Session
+                    <span className="hidden sm:inline">Avg/Session</span>
+                    <span className="sm:hidden">Avg</span>
                   </div>
-                  <p className="text-2xl font-bold">
+                  <p className="text-lg sm:text-2xl font-bold">
                     {formatCurrency(stats.total_sessions > 0 ? stats.total_cost / stats.total_sessions : 0)}
                   </p>
                 </Card>
               </div>
 
               {/* Tab Navigation */}
-              <div className="flex items-center gap-1 p-1 glass-card rounded-lg w-fit">
+              <div className="flex items-center gap-1 p-1 glass-card rounded-lg w-full sm:w-fit overflow-x-auto">
                 {tabs.map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
-                      'flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all',
+                      'flex items-center justify-center gap-1.5 px-2 sm:px-3 py-1.5 rounded text-xs font-medium transition-all whitespace-nowrap flex-shrink-0',
                       activeTab === tab.id
                         ? 'bg-foreground/10 text-foreground'
                         : 'text-muted-foreground hover:text-foreground'
@@ -159,9 +161,9 @@ export const UsagePanel: React.FC = () => {
 
               {/* Tab Content */}
               {activeTab === 'overview' && (
-                <div className="space-y-6">
-                  <Card className="p-6">
-                    <div className="flex items-center justify-between mb-4">
+                <div className="space-y-4 sm:space-y-6">
+                  <Card className="p-3 sm:p-6">
+                    <div className="flex items-center justify-between mb-3 sm:mb-4">
                       <h3 className="text-sm font-semibold">Token Breakdown</h3>
                       <button
                         onClick={() => setShowPricingModal(true)}
@@ -171,41 +173,41 @@ export const UsagePanel: React.FC = () => {
                         <Info className="h-4 w-4" />
                       </button>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
                       <div>
                         <p className="text-xs text-muted-foreground">Input</p>
-                        <p className="text-lg font-semibold">{formatTokens(stats.total_input_tokens)}</p>
+                        <p className="text-base sm:text-lg font-semibold">{formatTokens(stats.total_input_tokens)}</p>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">Output</p>
-                        <p className="text-lg font-semibold">{formatTokens(stats.total_output_tokens)}</p>
+                        <p className="text-base sm:text-lg font-semibold">{formatTokens(stats.total_output_tokens)}</p>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">C/Write</p>
-                        <p className="text-lg font-semibold">{formatTokens(stats.total_cache_creation_tokens)}</p>
+                        <p className="text-base sm:text-lg font-semibold">{formatTokens(stats.total_cache_creation_tokens)}</p>
                       </div>
                       <div>
                         <p className="text-xs text-muted-foreground">C/Read</p>
-                        <p className="text-lg font-semibold">{formatTokens(stats.total_cache_read_tokens)}</p>
+                        <p className="text-base sm:text-lg font-semibold">{formatTokens(stats.total_cache_read_tokens)}</p>
                       </div>
                     </div>
                   </Card>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Card className="p-6">
-                      <h3 className="text-sm font-semibold mb-4">Most Used Models</h3>
-                      <div className="space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                    <Card className="p-3 sm:p-6">
+                      <h3 className="text-sm font-semibold mb-3 sm:mb-4">Most Used Models</h3>
+                      <div className="space-y-2 sm:space-y-3">
                         {stats.by_model.slice(0, 3).map((model) => (
-                          <div key={model.model} className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="text-xs">
+                          <div key={model.model} className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Badge variant="outline" className="text-xs flex-shrink-0">
                                 {getModelDisplayName(model.model)}
                               </Badge>
-                              <span className="text-xs text-muted-foreground">
+                              <span className="text-xs text-muted-foreground hidden sm:inline">
                                 {model.session_count} sessions
                               </span>
                             </div>
-                            <span className="text-sm font-medium">
+                            <span className="text-sm font-medium flex-shrink-0">
                               {formatCurrency(model.total_cost)}
                             </span>
                           </div>
@@ -213,20 +215,20 @@ export const UsagePanel: React.FC = () => {
                       </div>
                     </Card>
 
-                    <Card className="p-6">
-                      <h3 className="text-sm font-semibold mb-4">Top Projects</h3>
-                      <div className="space-y-3">
+                    <Card className="p-3 sm:p-6">
+                      <h3 className="text-sm font-semibold mb-3 sm:mb-4">Top Projects</h3>
+                      <div className="space-y-2 sm:space-y-3">
                         {stats.by_project.slice(0, 3).map((project) => (
-                          <div key={project.project_path} className="flex items-center justify-between">
-                            <div className="flex flex-col">
-                              <span className="text-sm font-medium truncate max-w-[200px]" title={project.project_path}>
+                          <div key={project.project_path} className="flex items-center justify-between gap-2">
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-sm font-medium truncate" title={project.project_path}>
                                 {project.project_name}
                               </span>
                               <span className="text-xs text-muted-foreground">
                                 {project.session_count} sessions
                               </span>
                             </div>
-                            <span className="text-sm font-medium">
+                            <span className="text-sm font-medium flex-shrink-0">
                               {formatCurrency(project.total_cost)}
                             </span>
                           </div>
@@ -238,17 +240,17 @@ export const UsagePanel: React.FC = () => {
               )}
 
               {activeTab === 'models' && (
-                <Card className="p-6">
+                <Card className="p-3 sm:p-6">
                   <h3 className="text-sm font-semibold mb-4">Usage by Model</h3>
                   <div className="space-y-4">
                     {stats.by_model.map((model) => (
                       <div key={model.model} className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 sm:gap-3">
+                          <div className="flex items-center gap-2 sm:gap-3">
                             <Badge variant="outline" className="text-xs">
                               {getModelDisplayName(model.model)}
                             </Badge>
-                            <span className="text-sm text-muted-foreground">
+                            <span className="text-xs sm:text-sm text-muted-foreground">
                               {model.session_count} sessions
                             </span>
                           </div>
@@ -256,21 +258,21 @@ export const UsagePanel: React.FC = () => {
                             {formatCurrency(model.total_cost)}
                           </span>
                         </div>
-                        <div className="grid grid-cols-4 gap-2 text-xs">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
                           <div>
-                            <span className="text-muted-foreground">Input: </span>
+                            <span className="text-muted-foreground">In: </span>
                             <span className="font-medium">{formatTokens(model.input_tokens)}</span>
                           </div>
                           <div>
-                            <span className="text-muted-foreground">Output: </span>
+                            <span className="text-muted-foreground">Out: </span>
                             <span className="font-medium">{formatTokens(model.output_tokens)}</span>
                           </div>
                           <div>
-                            <span className="text-muted-foreground">Cache W: </span>
+                            <span className="text-muted-foreground">C/W: </span>
                             <span className="font-medium">{formatTokens(model.cache_creation_tokens)}</span>
                           </div>
                           <div>
-                            <span className="text-muted-foreground">Cache R: </span>
+                            <span className="text-muted-foreground">C/R: </span>
                             <span className="font-medium">{formatTokens(model.cache_read_tokens)}</span>
                           </div>
                         </div>
@@ -281,11 +283,11 @@ export const UsagePanel: React.FC = () => {
               )}
 
               {activeTab === 'projects' && (
-                <Card className="p-6">
+                <Card className="p-3 sm:p-6">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-semibold">Usage by Project</h3>
                     <span className="text-xs text-muted-foreground">
-                      {stats.by_project.length} total projects
+                      {stats.by_project.length} projects
                     </span>
                   </div>
                   <div className="space-y-3">
@@ -357,12 +359,12 @@ export const UsagePanel: React.FC = () => {
               )}
 
               {activeTab === 'sessions' && (
-                <Card className="p-6">
+                <Card className="p-3 sm:p-6">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-sm font-semibold">Usage by Session</h3>
                     {sessionStats && sessionStats.length > 0 && (
                       <span className="text-xs text-muted-foreground">
-                        {sessionStats.length} total sessions
+                        {sessionStats.length} sessions
                       </span>
                     )}
                   </div>
@@ -437,8 +439,8 @@ export const UsagePanel: React.FC = () => {
               )}
 
               {activeTab === 'timeline' && (
-                <Card className="p-6">
-                  <h3 className="text-sm font-semibold mb-6 flex items-center gap-2">
+                <Card className="p-3 sm:p-6">
+                  <h3 className="text-sm font-semibold mb-4 sm:mb-6 flex items-center gap-2">
                     <Calendar className="h-4 w-4" />
                     <span>Daily Usage</span>
                   </h3>

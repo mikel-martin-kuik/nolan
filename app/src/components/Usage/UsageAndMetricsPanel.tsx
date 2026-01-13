@@ -32,13 +32,13 @@ export const UsageAndMetricsPanel: React.FC = () => {
   return (
     <div className="h-full flex flex-col">
       {/* Main Tab Navigation */}
-      <div className="flex items-center gap-2 mb-4">
+      <div className="flex items-center gap-2 mb-2 sm:mb-4 overflow-x-auto">
         {mainTabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveMainTab(tab.id)}
             className={cn(
-              'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
+              'flex items-center gap-1 sm:gap-2 px-2 sm:px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap',
               activeMainTab === tab.id
                 ? 'bg-primary text-primary-foreground'
                 : 'bg-secondary/50 text-muted-foreground hover:text-foreground hover:bg-secondary'
@@ -46,7 +46,8 @@ export const UsageAndMetricsPanel: React.FC = () => {
             title={tab.description}
           >
             {tab.icon}
-            {tab.label}
+            <span className="hidden sm:inline">{tab.label}</span>
+            <span className="sm:hidden text-xs">{tab.id === 'usage' ? 'Usage' : 'Metrics'}</span>
           </button>
         ))}
       </div>

@@ -1041,16 +1041,35 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
                 }
             }
 
-            // Copy .claude settings into worktree
+            // Copy .claude settings into worktree (includes statusline config)
             let ralph_claude = base_agent_dir.join(".claude");
             if ralph_claude.exists() {
                 let claude_dest = worktree_path.join(".claude");
                 if !claude_dest.exists() {
                     // Use cp -r for directory copy
-                    let _ = Command::new("cp")
+                    let cp_result = Command::new("cp")
                         .args(["-r", &ralph_claude.to_string_lossy(), &claude_dest.to_string_lossy()])
                         .output();
+
+                    // Log if copy failed (helps debug statusline issues)
+                    match cp_result {
+                        Ok(output) if !output.status.success() => {
+                            eprintln!("Warning: Failed to copy .claude settings to worktree: {}",
+                                String::from_utf8_lossy(&output.stderr));
+                        }
+                        Err(e) => {
+                            eprintln!("Warning: Failed to copy .claude settings to worktree: {}", e);
+                        }
+                        Ok(_) => {
+                            // Verify the copy succeeded
+                            if !claude_dest.exists() {
+                                eprintln!("Warning: .claude directory not found after copy to worktree");
+                            }
+                        }
+                    }
                 }
+            } else {
+                eprintln!("Warning: ralph .claude directory not found at {:?}", ralph_claude);
             }
         }
 
@@ -1066,11 +1085,33 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
     // Add --chrome flag if requested (enables Chrome DevTools integration)
     let chrome_flag = if chrome.unwrap_or(false) { " --chrome" } else { "" };
 
-    // Build worktree env vars if applicable
-    let worktree_env = if let (Some(ref wt_path), Some(ref wt_branch)) = (&worktree_path_str, &worktree_branch) {
-        format!(" WORKTREE_PATH=\"{}\" WORKTREE_BRANCH=\"{}\"", wt_path, wt_branch)
+    // Build worktree env vars if applicable (including REPO_PATH for merge agents)
+    let (worktree_env, repo_path_str) = if let (Some(ref wt_path), Some(ref wt_branch)) = (&worktree_path_str, &worktree_branch) {
+        // Detect the main repository path from the worktree
+        // git worktree list returns the main repo as the first entry
+        let repo_path = Command::new("git")
+            .args(["-C", wt_path, "worktree", "list"])
+            .output()
+            .ok()
+            .and_then(|output| {
+                if output.status.success() {
+                    String::from_utf8_lossy(&output.stdout)
+                        .lines()
+                        .next()
+                        .and_then(|line| line.split_whitespace().next())
+                        .map(String::from)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| nolan_root.to_string_lossy().to_string());
+
+        (
+            format!(" WORKTREE_PATH=\"{}\" WORKTREE_BRANCH=\"{}\" REPO_PATH=\"{}\"", wt_path, wt_branch, repo_path),
+            Some(repo_path)
+        )
     } else {
-        String::new()
+        (String::new(), None)
     };
 
     // Create tmux session for Ralph (team-independent, TEAM_NAME is empty)
@@ -1096,14 +1137,17 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
         ("AGENT_DIR", agent_dir_str.as_ref()),
     ];
 
-    // Add worktree env vars if applicable
-    let wt_path_ref: String;
-    let wt_branch_ref: String;
-    if let (Some(ref wt_path), Some(ref wt_branch)) = (&worktree_path_str, &worktree_branch) {
-        wt_path_ref = wt_path.clone();
-        wt_branch_ref = wt_branch.clone();
-        env_vars.push(("WORKTREE_PATH", &wt_path_ref));
-        env_vars.push(("WORKTREE_BRANCH", &wt_branch_ref));
+    // Add worktree env vars if applicable (including REPO_PATH)
+    // Need to own the strings so they live long enough for the env_vars references
+    let wt_path_owned = worktree_path_str.clone().unwrap_or_default();
+    let wt_branch_owned = worktree_branch.clone().unwrap_or_default();
+    let repo_path_owned = repo_path_str.clone().unwrap_or_default();
+    if let (Some(_), Some(_)) = (&worktree_path_str, &worktree_branch) {
+        env_vars.push(("WORKTREE_PATH", &wt_path_owned));
+        env_vars.push(("WORKTREE_BRANCH", &wt_branch_owned));
+        if repo_path_str.is_some() {
+            env_vars.push(("REPO_PATH", &repo_path_owned));
+        }
     }
     for (key, value) in &env_vars {
         let _ = Command::new("tmux")

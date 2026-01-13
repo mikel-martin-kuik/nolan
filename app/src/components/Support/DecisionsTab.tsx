@@ -55,9 +55,9 @@ export function DecisionsTab() {
   return (
     <div className="space-y-3">
       {/* Toolbar */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
         <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-          <SelectTrigger className="h-8 w-[100px] text-xs">
+          <SelectTrigger className="h-8 w-[90px] sm:w-[100px] text-xs flex-shrink-0">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -70,7 +70,7 @@ export function DecisionsTab() {
           value={filterStatus}
           onValueChange={(v) => setFilterStatus(v as DecisionStatus | 'all')}
         >
-          <SelectTrigger className="h-8 w-[130px] text-xs">
+          <SelectTrigger className="h-8 w-[110px] sm:w-[130px] text-xs flex-shrink-0">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

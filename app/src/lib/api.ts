@@ -10,16 +10,25 @@
  *   const agents = await invoke<AgentInfo[]>('list_agent_directories');
  */
 
-// API server base URL (configurable via environment variable or localStorage)
+// API server base URL
 const getApiBaseUrl = (): string => {
-  // Check localStorage first (user preference)
+  // In browser mode (not Tauri), always use same-origin (nginx proxy)
+  if (typeof window !== 'undefined' && !('__TAURI__' in window) && !('__TAURI_INTERNALS__' in window)) {
+    return ''; // Same-origin - nginx proxies /api/ to backend
+  }
+
+  // In Tauri mode, check localStorage for remote server preference
   if (typeof window !== 'undefined') {
     const stored = localStorage.getItem('nolan-server-url');
     if (stored) return stored;
   }
 
-  // Fall back to environment variable or default
-  return import.meta.env.VITE_API_URL || 'http://localhost:3030';
+  // Fall back to environment variable or localhost for Tauri desktop
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl !== undefined && envUrl !== null) {
+    return envUrl;
+  }
+  return 'http://localhost:3030';
 };
 
 const API_BASE = getApiBaseUrl();

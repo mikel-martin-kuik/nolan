@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Home, FolderOpen, DollarSign, MessageCircle, Users, FileUser, Settings, Lightbulb, GitBranch, Files } from 'lucide-react';
+import { Home, FolderOpen, DollarSign, MessageCircle, Users, FileUser, Settings, Lightbulb, GitBranch, Files, Menu, X } from 'lucide-react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { listen } from '@/lib/events';
 import { invoke, isBrowserMode } from '@/lib/api';
@@ -39,6 +39,7 @@ type Tab = 'status' | 'chat' | 'projects' | 'files' | 'teams' | 'cronos' | 'work
 
 function App() {
   const [activeTab, setActiveTabLocal] = useState<Tab>('status');
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const { toasts, removeToast } = useToastStore();
   const { status: authStatus, loading: authLoading, login, logout, setupPassword } = useAuth();
   const { activeTab: navStoreTab, setActiveTab: setNavStoreTab } = useNavigationStore();
@@ -51,6 +52,7 @@ function App() {
   const setActiveTab = (tab: Tab) => {
     setActiveTabLocal(tab);
     setNavStoreTab(tab);
+    setMobileNavOpen(false); // Close mobile nav on tab change
   };
 
   // Subscribe to navigation store changes
@@ -64,19 +66,24 @@ function App() {
   const needsAuth = isBrowserMode() && authStatus?.authRequired && !authStatus?.authenticated;
   const needsSetup = isBrowserMode() && authStatus?.authRequired && !authStatus?.passwordConfigured;
 
+  // Skip API calls if auth is required but not completed
+  const canMakeApiCalls = !isBrowserMode() || (authStatus && !needsAuth && !needsSetup);
+
   // Load default team configuration on mount
   useEffect(() => {
+    if (!canMakeApiCalls) return;
     loadTeam('default').catch((err) => {
       console.error('Failed to load default team:', err);
     });
-  }, [loadTeam]);
+  }, [loadTeam, canMakeApiCalls]);
 
   // Initialize session labels (for Ralph custom naming)
   useEffect(() => {
+    if (!canMakeApiCalls) return;
     fetchSessionLabels();
     initSessionLabelsListener();
     return () => cleanupSessionLabelsListener();
-  }, [fetchSessionLabels]);
+  }, [fetchSessionLabels, canMakeApiCalls]);
 
   // Listen for navigate-to-chat events from other components
   useEffect(() => {
@@ -87,6 +94,9 @@ function App() {
 
   // Setup live output streaming
   useEffect(() => {
+    // Skip if auth is required but not completed
+    if (!canMakeApiCalls) return;
+
     let unlisten: (() => void) | null = null;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     let pollIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -196,7 +206,7 @@ function App() {
       if (timeoutId) clearTimeout(timeoutId);
       if (pollIntervalId) clearInterval(pollIntervalId);
     };
-  }, [addEntry]);
+  }, [addEntry, canMakeApiCalls]);
 
   const tabs = [
     { id: 'status' as Tab, label: 'Dashboard', tooltip: 'Dashboard', icon: Home },
@@ -239,14 +249,41 @@ function App() {
         <div className="h-screen bg-background relative overflow-hidden">
 
           {/* Main container */}
-          <div className="relative z-10 flex flex-col h-full p-4 gap-4">
-            {/* Brand Header - blended into background */}
-            <BrandHeader />
+          <div className="relative z-10 flex flex-col h-full p-2 sm:p-4 gap-2 sm:gap-4">
+            {/* Mobile header with hamburger */}
+            <div className="flex md:hidden items-center gap-2">
+              <button
+                onClick={() => setMobileNavOpen(!mobileNavOpen)}
+                className="w-10 h-10 rounded-xl flex items-center justify-center bg-card/50 backdrop-blur-xl border border-border"
+              >
+                {mobileNavOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </button>
+              <BrandHeader />
+            </div>
+
+            {/* Desktop Brand Header - hidden on mobile */}
+            <div className="hidden md:block">
+              <BrandHeader />
+            </div>
 
             {/* Main layout with sidenav and content */}
-            <div className="flex flex-1 gap-4 overflow-hidden">
+            <div className="flex flex-1 gap-2 sm:gap-4 overflow-hidden">
+              {/* Mobile nav backdrop */}
+              {mobileNavOpen && (
+                <div
+                  className="fixed inset-0 bg-black/50 z-[90] md:hidden"
+                  onClick={() => setMobileNavOpen(false)}
+                />
+              )}
+
               {/* Bubble sidenav */}
-              <aside className="flex flex-col items-center justify-between py-4 px-2 bg-card/50 backdrop-blur-xl rounded-2xl border border-border shadow-xl relative z-[100]">
+              <aside className={cn(
+                "flex flex-col items-center justify-between py-4 px-2 bg-card/50 backdrop-blur-xl rounded-2xl border border-border shadow-xl z-[100]",
+                // Desktop: always visible
+                "hidden md:flex",
+                // Mobile: slide-in overlay
+                mobileNavOpen && "!flex fixed left-2 top-16 bottom-2 z-[100]"
+              )}>
                 <nav className="flex flex-col items-center gap-3">
                   {tabs.map((tab) => {
                     const Icon = tab.icon;
@@ -303,7 +340,7 @@ function App() {
               </aside>
 
               {/* Main content */}
-              <main className="flex-1 overflow-hidden overflow-auto px-6 pb-6">
+              <main className="flex-1 overflow-hidden overflow-auto px-2 sm:px-6 pb-2 sm:pb-6">
                 {activeTab === 'status' && <StatusPanel />}
                 {activeTab === 'chat' && <ChatView />}
                 {activeTab === 'projects' && <ProjectsPanel />}

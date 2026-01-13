@@ -21,7 +21,8 @@ export function ServerSelector({ onConnect, currentUrl }: ServerSelectorProps) {
       return storedUrl ? 'remote' : 'local';
     }
     // In browser mode
-    if (!storedUrl || currentUrl === 'http://localhost:3030') return 'localhost';
+    if (!storedUrl || storedUrl === '') return 'sameserver';
+    if (storedUrl === 'http://localhost:3030') return 'localhost';
     return 'custom';
   });
   const [customUrl, setCustomUrl] = useState(
@@ -35,8 +36,12 @@ export function ServerSelector({ onConnect, currentUrl }: ServerSelectorProps) {
       // Tauri mode: use embedded backend
       localStorage.removeItem('nolan-server-url');
       window.location.reload();
+    } else if (value === 'sameserver') {
+      // Browser mode: use same origin (nginx proxy)
+      localStorage.setItem('nolan-server-url', '');
+      onConnect('');
     } else if (value === 'localhost') {
-      // Browser mode: use localhost
+      // Browser mode: use localhost (for local development)
       localStorage.setItem('nolan-server-url', 'http://localhost:3030');
       onConnect('http://localhost:3030');
     }
@@ -116,7 +121,7 @@ export function ServerSelector({ onConnect, currentUrl }: ServerSelectorProps) {
     );
   }
 
-  // Browser mode
+  // Browser mode - just show connection status, always use same-origin
   return (
     <Card>
       <CardHeader>
@@ -125,58 +130,19 @@ export function ServerSelector({ onConnect, currentUrl }: ServerSelectorProps) {
           Server Connection
         </CardTitle>
         <CardDescription>
-          Select which Nolan server to connect to
+          Connected to the Nolan server hosting this page
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
-        <RadioGroup value={selectedOption} onValueChange={handleSelect}>
-          <div className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-accent/50 cursor-pointer">
-            <RadioGroupItem value="localhost" id="localhost" />
-            <label htmlFor="localhost" className="flex items-center gap-3 flex-1 cursor-pointer">
-              <Server className="h-5 w-5 text-muted-foreground" />
-              <div className="flex-1">
-                <div className="font-medium">Localhost</div>
-                <div className="text-sm text-muted-foreground">
-                  Connect to http://localhost:3030
-                </div>
-              </div>
-              {currentUrl === 'http://localhost:3030' && <Check className="h-4 w-4 text-green-500" />}
-            </label>
+      <CardContent>
+        <div className="flex items-center gap-3 p-3 rounded-lg border bg-accent/30">
+          <Check className="h-5 w-5 text-green-500" />
+          <div>
+            <div className="font-medium">Connected</div>
+            <div className="text-sm text-muted-foreground">
+              Using server at {window.location.origin}
+            </div>
           </div>
-
-          <div className="flex items-center space-x-3 p-3 rounded-lg border hover:bg-accent/50 cursor-pointer">
-            <RadioGroupItem value="custom" id="custom" />
-            <label htmlFor="custom" className="flex items-center gap-3 flex-1 cursor-pointer">
-              <Globe className="h-5 w-5 text-muted-foreground" />
-              <div>
-                <div className="font-medium">Custom Server</div>
-                <div className="text-sm text-muted-foreground">
-                  Connect to a remote Nolan server
-                </div>
-              </div>
-            </label>
-          </div>
-        </RadioGroup>
-
-        {selectedOption === 'custom' && (
-          <div className="space-y-3 pl-7">
-            <Input
-              type="text"
-              value={customUrl}
-              onChange={(e) => setCustomUrl(e.target.value)}
-              placeholder="https://your-server.com:3030"
-            />
-            <Button onClick={handleCustomSubmit} className="w-full">
-              Connect
-            </Button>
-          </div>
-        )}
-
-        {storedUrl && storedUrl !== 'http://localhost:3030' && (
-          <div className="text-sm text-muted-foreground border-t pt-4">
-            Currently connected to: <code className="bg-muted px-1.5 py-0.5 rounded">{currentUrl}</code>
-          </div>
-        )}
+        </div>
       </CardContent>
     </Card>
   );

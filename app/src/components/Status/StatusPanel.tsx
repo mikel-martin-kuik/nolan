@@ -1,65 +1,29 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useAgentStore } from '../../store/agentStore';
 import { useToastStore } from '../../store/toastStore';
-import { useTeamStore } from '../../store/teamStore';
-import { useCollapsedTeamsStore } from '../../store/collapsedTeamsStore';
-import { useDepartmentStore } from '../../store/departmentStore';
 import { AgentCard } from '../shared/AgentCard';
-import { TeamCard } from '../shared/TeamCard';
 import { ConfirmDialog } from '../shared/ConfirmDialog';
-import { ProjectSelectModal, LaunchParams } from '../shared/ProjectSelectModal';
 import { Tooltip } from '../ui/tooltip';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
-import { Users, Plus, XCircle, LayoutGrid, ChevronDown, ChevronRight } from 'lucide-react';
+import { Users, Plus, XCircle, LayoutGrid } from 'lucide-react';
 import { invoke, isBrowserMode } from '@/lib/api';
-import type { TeamConfig } from '@/types';
 import { getRalphDisplayName, parseRalphSession } from '@/lib/agentIdentity';
-import { getTeamMembers } from '@/types';
-import type { ProjectInfo } from '@/types/projects';
 import { QuickLaunchModal } from '../shared/QuickLaunchModal';
 
 export const StatusPanel: React.FC = () => {
   const {
-    teamAgents,
     freeAgents,
     updateStatus,
-    launchTeam,
-    killTeam,
     killAllInstances,
     loading,
     setupEventListeners
   } = useAgentStore();
   const { error: showError, success: showSuccess } = useToastStore();
-  const { currentTeam, availableTeams, teamConfigs, loadAvailableTeams, loadAllTeams } = useTeamStore();
-  const { loadDepartments, collapsedDepartments, toggleDepartmentCollapsed, getGroupedTeams } = useDepartmentStore();
-
-  // Get team member names from team config for dialog display
-  const teamMemberNames = useMemo(() => {
-    const members = getTeamMembers(currentTeam);
-    // Capitalize names for display
-    return members.map(name => name.charAt(0).toUpperCase() + name.slice(1)).join(', ');
-  }, [currentTeam]);
 
   // Confirmation dialog states
-  const [showProjectSelectModal, setShowProjectSelectModal] = useState(false);
-  const [showKillDialog, setShowKillDialog] = useState(false);
   const [showKillRalphDialog, setShowKillRalphDialog] = useState(false);
   const [showModelSelectDialog, setShowModelSelectDialog] = useState(false);
-
-  // Track which team is being targeted for launch/kill operations
-  const [targetTeam, setTargetTeam] = useState<string>('');
-
-  // Projects for the launch modal
-  const [projects, setProjects] = useState<ProjectInfo[]>([]);
-  const [projectsLoading, setProjectsLoading] = useState(false);
-
-  // Track collapsed state for each team (persisted)
-  const { collapsedTeams, toggleCollapsed } = useCollapsedTeamsStore();
-  const collapsedTeamsSet = useMemo(() => new Set(collapsedTeams), [collapsedTeams]);
-
-  // Get teams grouped by department
-  const departmentGroups = getGroupedTeams(availableTeams);
 
   // Get visual display name for ralph (persisted fun name)
   const ralphDisplayName = getRalphDisplayName();
@@ -87,27 +51,6 @@ export const StatusPanel: React.FC = () => {
     };
   }, [updateStatus, setupEventListeners]);
 
-  // Load all teams and departments on mount
-  useEffect(() => {
-    const initTeams = async () => {
-      await loadAvailableTeams();
-      await loadAllTeams();
-      await loadDepartments();
-    };
-    initTeams().catch((err) => {
-      console.error('Failed to initialize teams:', err);
-    });
-  }, [loadAvailableTeams, loadAllTeams, loadDepartments]);
-
-  // Get agents for a specific team
-  const getAgentsForTeam = useCallback((teamConfig: TeamConfig) => {
-    const teamName = teamConfig.team.name;
-
-    // Filter teamAgents by team field (exclude ralph - it's a free agent)
-    return teamAgents.filter(a => a.team === teamName && a.name !== 'ralph');
-  }, [teamAgents]);
-
-
   // Extract ralph names from free agents for display (memoized)
   // Ralph sessions are agent-ralph-{name} (e.g., agent-ralph-ziggy)
   const freeAgentsWithNames = useMemo(() => {
@@ -122,84 +65,6 @@ export const StatusPanel: React.FC = () => {
       return 0;
     });
   }, [freeAgents]);
-
-
-  // Handler functions (wrapped with useCallback to prevent re-creation on every render)
-  const handleLaunchTeamClick = useCallback(async (teamName: string) => {
-    // Store the target team for the launch operation
-    setTargetTeam(teamName);
-
-    // Show modal immediately, fetch projects in background
-    setShowProjectSelectModal(true);
-    setProjectsLoading(true);
-
-    try {
-      // Add timeout to prevent UI hang if backend is unresponsive
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('Backend timeout')), 10000);
-      });
-      const projectList = await Promise.race([
-        invoke<ProjectInfo[]>('list_projects'),
-        timeoutPromise
-      ]);
-      setProjects(projectList);
-    } catch (error) {
-      console.error('Failed to fetch projects:', error);
-      setProjects([]);
-    } finally {
-      setProjectsLoading(false);
-    }
-  }, []);
-
-  const handleProjectLaunch = useCallback(async (params: LaunchParams) => {
-    try {
-      const { projectName, isNew, initialPrompt, updatedOriginalPrompt, followupPrompt } = params;
-
-      // If it's a new project, create it first with the target team
-      if (isNew) {
-        await invoke('create_project', { projectName, teamName: targetTeam });
-      }
-
-      // Launch team with project context (team-scoped)
-      // For new projects: pass initialPrompt (written to prompt.md and sent to first phase owner)
-      // For existing projects: pass updatedOriginalPrompt (only written if modified) and followupPrompt (sent to note-taker)
-      await launchTeam(targetTeam, projectName, initialPrompt, updatedOriginalPrompt, followupPrompt);
-
-      // Open team terminals after successful launch
-      try {
-        await invoke('open_team_terminals', { teamName: targetTeam });
-      } catch (terminalError) {
-        console.error('Failed to open team terminals:', terminalError);
-        // Non-fatal - agents are still launched
-      }
-    } catch (error) {
-      console.error('Failed to launch team:', error);
-      showError(`Failed to launch team: ${error}`);
-    }
-  }, [targetTeam, launchTeam, showError]);
-
-  const handleKillTeamClick = useCallback((teamName: string) => {
-    setTargetTeam(teamName);
-    setShowKillDialog(true);
-  }, []);
-
-  const handleConfirmKill = useCallback(async () => {
-    try {
-      await killTeam(targetTeam);
-    } catch (error) {
-      console.error('Failed to kill team:', error);
-      showError(`Failed to kill team: ${error}`);
-    }
-  }, [targetTeam, killTeam, showError]);
-
-  const handleShowTerminals = useCallback(async (teamName: string) => {
-    try {
-      await invoke('open_team_terminals', { teamName });
-    } catch (error) {
-      console.error('Failed to open team terminals:', error);
-      showError(`Failed to open terminals: ${error}`);
-    }
-  }, [showError]);
 
   // Handler for showing quick launch modal for Ralph
   const handleSpawnRalphClick = () => {
@@ -258,76 +123,11 @@ export const StatusPanel: React.FC = () => {
   return (
     <div className="h-full">
       <div className="w-full h-full flex flex-col">
-        {/* Teams List (scrollable area) */}
-        <div className="flex-1 min-h-0 overflow-auto">
-          {/* Team List - Grouped by Department (hide header when only "Other" group exists) */}
-          <div className="space-y-4">
-            {departmentGroups.map((group) => {
-              const isDeptCollapsed = collapsedDepartments.includes(group.name);
-              // Hide department header when there's only one "Other" group (no departments configured)
-              const showDepartmentHeader = !(departmentGroups.length === 1 && group.isOther);
-
-              return (
-                <div key={group.name}>
-                  {/* Department Header - hidden when only "Other" group */}
-                  {showDepartmentHeader && (
-                    <button
-                      onClick={() => toggleDepartmentCollapsed(group.name)}
-                      className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-secondary/30 rounded-lg transition-colors mb-2"
-                    >
-                      {isDeptCollapsed ? (
-                        <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                      )}
-                      <span className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-                        {group.name}
-                      </span>
-                      <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5 ml-auto">
-                        {group.teams.length}
-                      </Badge>
-                    </button>
-                  )}
-
-                  {/* Team Cards (collapsible only when department header is shown) */}
-                  {(!showDepartmentHeader || !isDeptCollapsed) && (
-                    <div className={showDepartmentHeader ? "space-y-3 pl-2" : "space-y-3"}>
-                      {group.teams.map(teamName => {
-                        const teamConfig = teamConfigs.get(teamName);
-                        if (!teamConfig) return null;
-
-                        const teamAgentsList = getAgentsForTeam(teamConfig);
-
-                        return (
-                          <div key={teamName}>
-                            <TeamCard
-                              teamName={teamConfig.team.name || teamName}
-                              teamConfig={teamConfig}
-                              agents={teamAgentsList}
-                              collapsed={collapsedTeamsSet.has(teamName)}
-                              onToggleCollapse={() => toggleCollapsed(teamName)}
-                              showActions={true}
-                              loading={loading}
-                              onLaunch={() => handleLaunchTeamClick(teamName)}
-                              onKill={() => handleKillTeamClick(teamName)}
-                              onShowTerminals={() => handleShowTerminals(teamName)}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Ralph - Free Agent (fixed at bottom) */}
-        <div className="flex-shrink-0 pt-4 border-t border-border/30">
+        {/* Ralph - Free Agents */}
+        <div className="flex-shrink-0 pt-4">
           {/* Header with controls */}
-          <div className="flex items-center gap-3 mb-4">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-secondary/30 border border-border/40">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 mb-2 sm:mb-4">
+            <div className="flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-full bg-secondary/30 border border-border/40">
               <Users className="w-3.5 h-3.5 text-muted-foreground" />
               <span className="text-xs text-muted-foreground uppercase tracking-wider">Free Agents</span>
               {freeAgents.filter(a => a.active).length > 0 && (
@@ -366,59 +166,34 @@ export const StatusPanel: React.FC = () => {
             </div>
           </div>
 
-          {/* Free Agent Cards - horizontally scrollable */}
-          <div className="flex gap-2 lg:gap-3 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+          {/* Free Agent Cards - responsive grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 lg:gap-3">
             {freeAgentsWithNames
               .filter(agent => agent.active)
               .map((agent) => (
-                <div key={agent.session} className="flex-shrink-0 w-[clamp(120px,calc(70vw/2),160px)]">
-                  <AgentCard
-                    agent={agent}
-                    variant="dashboard"
-                    showActions={true}
-                    ralphName={agent.ralphName}
-                  />
-                </div>
+                <AgentCard
+                  key={agent.session}
+                  agent={agent}
+                  variant="dashboard"
+                  showActions={true}
+                  ralphName={agent.ralphName}
+                />
               ))}
 
             {/* Spawn Ralph Button */}
-            <div className="flex-shrink-0 w-[clamp(120px,calc(70vw/2),160px)]">
-              <Button
-                variant="outline"
-                onClick={handleSpawnRalphClick}
-                disabled={loading}
-                className="w-full h-full py-4 rounded-xl border-dashed hover:border-purple-400/40"
-                aria-label={`Spawn new ${ralphDisplayName} instance`}
-              >
-                <Plus className="w-6 h-6 text-foreground/50" />
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              onClick={handleSpawnRalphClick}
+              disabled={loading}
+              className="w-full h-full min-h-[80px] py-4 rounded-xl border-dashed hover:border-purple-400/40"
+              aria-label={`Spawn new ${ralphDisplayName} instance`}
+            >
+              <Plus className="w-6 h-6 text-foreground/50" />
+            </Button>
           </div>
         </div>
 
       </div>
-
-      {/* Project Select Modal for Launch */}
-      <ProjectSelectModal
-        open={showProjectSelectModal}
-        onOpenChange={setShowProjectSelectModal}
-        onLaunch={handleProjectLaunch}
-        projects={projects}
-        isLoading={projectsLoading || loading}
-        teamName={targetTeam}
-      />
-
-      {/* Kill Team confirmation dialog */}
-      <ConfirmDialog
-        open={showKillDialog}
-        onOpenChange={setShowKillDialog}
-        title="Kill All Team Agents"
-        description={`This will terminate all running team agents (${teamMemberNames}). Are you sure?`}
-        confirmLabel="Kill All"
-        cancelLabel="Cancel"
-        onConfirm={handleConfirmKill}
-        variant="destructive"
-      />
 
       {/* Kill All Ralph confirmation dialog */}
       <ConfirmDialog

@@ -4,6 +4,15 @@ import { RE_RALPH_SESSION, RE_TEAM_SESSION } from '../lib/agentIdentity';
 // Re-export cronos types
 export * from './cronos';
 
+// Template types (for predefined agent templates embedded in binary)
+export interface TemplateInfo {
+  name: string;
+  description: string;
+  model: string;
+  command: string | null;
+  installed: boolean;
+}
+
 // Re-export feedback types
 export * from './feedback';
 

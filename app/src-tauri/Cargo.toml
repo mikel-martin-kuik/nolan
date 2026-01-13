@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "An AI Command Center"
 authors = ["Mikel Martin"]
 edition = "2021"
+default-run = "nolan"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -14,10 +15,14 @@ edition = "2021"
 name = "nolan_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+default = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# Tauri core (needed for command macros)
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2.5.3"
 tauri-plugin-single-instance = "2.3.7"
@@ -56,6 +61,11 @@ reqwest = { version = "0.13", features = ["json"] }
 
 # TypeScript type generation
 ts-rs = { version = "11", features = ["serde-compat", "chrono-impl"] }
+
+[[bin]]
+name = "nolan-server"
+path = "src/bin/server.rs"
+required-features = []  # No features required - headless server
 
 [dev-dependencies]
 tempfile = "3"

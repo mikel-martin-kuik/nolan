@@ -9,6 +9,7 @@ pub mod events;
 pub mod git;
 pub mod ollama;
 pub mod shell;
+pub mod templates;
 pub mod tmux;
 pub mod utils;
 
@@ -25,6 +26,7 @@ use commands::filesystem::*;
 use commands::*;
 use tauri::Manager;
 
+/// Run the Tauri desktop application
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Cleanup orphaned terminal streams from previous crashes
@@ -177,6 +179,10 @@ pub fn run() {
             commands::agents::get_agent_template,
             commands::agents::save_agent_metadata,
             commands::agents::get_agent_metadata,
+            // Template commands
+            commands::templates::list_agent_templates,
+            commands::templates::install_agent_template,
+            commands::templates::uninstall_agent_template,
             // Organization commands (V1.1)
             commands::organization::get_organization_config,
             // Role commands (V1.2)
@@ -223,9 +229,11 @@ pub fn run() {
             // Predefined agent commands
             cronos::commands::trigger_predefined_agent,
             cronos::commands::list_agent_commands,
-            // Session relaunch command
+            // Session relaunch and pipeline trigger commands
             cronos::commands::relaunch_cron_session,
             cronos::commands::trigger_analyzer_for_run,
+            cronos::commands::trigger_qa_for_run,
+            cronos::commands::trigger_merge_for_run,
             // Feedback commands
             list_feature_requests,
             create_feature_request,

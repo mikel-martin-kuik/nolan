@@ -142,22 +142,22 @@ export const LivePanel: React.FC = () => {
   return (
     <div className="h-full flex flex-col gap-4">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-            <h1 className="text-lg font-semibold">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+            <h1 className="text-base sm:text-lg font-semibold">
               Live
             </h1>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground hidden sm:block">
               Real-time agent activity
             </p>
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
           <button
             onClick={handleRestartFeed}
             disabled={isRestarting}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
+            className="flex items-center gap-2 px-2 sm:px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors disabled:opacity-50"
             title="Restart live feed"
           >
             <RefreshCw className={cn('w-4 h-4', isRestarting && 'animate-spin')} />
@@ -166,10 +166,10 @@ export const LivePanel: React.FC = () => {
           {totalMessages > 0 && (
             <button
               onClick={clearAll}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+              className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 rounded-lg text-sm text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
             >
               <Trash2 className="w-4 h-4" />
-              Clear All
+              <span className="hidden sm:inline">Clear All</span>
             </button>
           )}
         </div>

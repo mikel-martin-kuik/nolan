@@ -82,9 +82,9 @@ export const AgentStatsPanel: React.FC<AgentStatsPanelProps> = ({ agentName }) =
     <div className="h-full">
       <div className="w-full space-y-6 h-full flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold capitalize">{agentName} Stats</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <h2 className="text-base sm:text-lg font-semibold capitalize">{agentName} Stats</h2>
             <Button
               variant="ghost"
               size="sm"
@@ -97,8 +97,8 @@ export const AgentStatsPanel: React.FC<AgentStatsPanelProps> = ({ agentName }) =
           </div>
 
           {/* Date Range Filter */}
-          <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
+          <div className="flex items-center gap-2 overflow-x-auto">
+            <Filter className="h-4 w-4 text-muted-foreground flex-shrink-0" />
             <div className="flex gap-1">
               {(['7d', '30d', 'all'] as const).map((range) => (
                 <Button
@@ -107,8 +107,9 @@ export const AgentStatsPanel: React.FC<AgentStatsPanelProps> = ({ agentName }) =
                   size="sm"
                   onClick={() => setSelectedDateRange(range as DateRange)}
                   disabled={loading}
+                  className="text-xs sm:text-sm whitespace-nowrap"
                 >
-                  {range === 'all' ? 'All Time' : range === '7d' ? '7 Days' : '30 Days'}
+                  {range === 'all' ? 'All' : range === '7d' ? '7d' : '30d'}
                 </Button>
               ))}
             </div>
@@ -131,45 +132,45 @@ export const AgentStatsPanel: React.FC<AgentStatsPanelProps> = ({ agentName }) =
           ) : stats ? (
             <div className="space-y-6">
               {/* Summary Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                <Card className="p-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-4">
+                <Card className="p-3 sm:p-4">
                   <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                     <MessageSquare className="h-3 w-3" />
-                    Total Sessions
+                    <span className="hidden sm:inline">Total </span>Sessions
                   </div>
-                  <p className="text-2xl font-bold">{stats.total_sessions}</p>
+                  <p className="text-lg sm:text-2xl font-bold">{stats.total_sessions}</p>
                 </Card>
 
-                <Card className="p-4">
+                <Card className="p-3 sm:p-4">
                   <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                     <DollarSign className="h-3 w-3" />
-                    Total Cost
+                    <span className="hidden sm:inline">Total </span>Cost
                   </div>
-                  <p className="text-2xl font-bold">{formatCurrency(stats.total_cost)}</p>
+                  <p className="text-lg sm:text-2xl font-bold">{formatCurrency(stats.total_cost)}</p>
                 </Card>
 
-                <Card className="p-4">
+                <Card className="p-3 sm:p-4">
                   <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                     <Clock className="h-3 w-3" />
-                    Total Duration
+                    Duration
                   </div>
-                  <p className="text-2xl font-bold">{formatDuration(stats.total_duration_secs)}</p>
+                  <p className="text-lg sm:text-2xl font-bold">{formatDuration(stats.total_duration_secs)}</p>
                 </Card>
 
-                <Card className="p-4">
+                <Card className="p-3 sm:p-4">
                   <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                     <BarChart3 className="h-3 w-3" />
-                    Avg Cost/Session
+                    Avg Cost
                   </div>
-                  <p className="text-2xl font-bold">{formatCurrency(stats.avg_cost_per_session)}</p>
+                  <p className="text-lg sm:text-2xl font-bold">{formatCurrency(stats.avg_cost_per_session)}</p>
                 </Card>
 
-                <Card className="p-4">
+                <Card className="p-3 sm:p-4 col-span-2 sm:col-span-1">
                   <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                     <Hash className="h-3 w-3" />
-                    Total Tokens
+                    Tokens
                   </div>
-                  <p className="text-2xl font-bold">{formatTokens(stats.total_tokens)}</p>
+                  <p className="text-lg sm:text-2xl font-bold">{formatTokens(stats.total_tokens)}</p>
                 </Card>
               </div>
 
@@ -375,7 +376,7 @@ export const AgentStatsPanel: React.FC<AgentStatsPanelProps> = ({ agentName }) =
                           </div>
                           <span className="font-semibold">{formatCurrency(model.total_cost)}</span>
                         </div>
-                        <div className="grid grid-cols-4 gap-4 text-xs text-muted-foreground pl-2">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 text-xs text-muted-foreground pl-2">
                           <div>
                             <span className="block">Input</span>
                             <span className="text-foreground">{formatTokens(model.input_tokens)}</span>

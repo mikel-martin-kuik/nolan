@@ -57,8 +57,8 @@ export const Toast: React.FC<ToastProps> = ({ id, type, message, duration = 5000
   return (
     <div
       className={`
-        ${bgColor} ${borderColor} border rounded-lg p-4 shadow-lg
-        flex items-start gap-3 min-w-[320px] max-w-md
+        ${bgColor} ${borderColor} border rounded-lg p-3 sm:p-4 shadow-lg
+        flex items-start gap-2 sm:gap-3 w-[calc(100vw-2rem)] sm:min-w-[320px] sm:w-auto max-w-md
         animate-in slide-in-from-right duration-300
       `}
     >
@@ -76,7 +76,7 @@ export const Toast: React.FC<ToastProps> = ({ id, type, message, duration = 5000
 
 export const ToastContainer: React.FC<{ toasts: ToastProps[] }> = ({ toasts }) => {
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col-reverse gap-2 pointer-events-none">
+    <div className="fixed bottom-2 sm:bottom-4 left-4 right-4 sm:left-auto sm:right-4 z-50 flex flex-col-reverse gap-2 pointer-events-none">
       {toasts.map((toast) => (
         <div key={toast.id} className="pointer-events-auto">
           <Toast {...toast} />

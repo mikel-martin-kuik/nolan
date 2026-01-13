@@ -5,6 +5,7 @@ pub mod history;
 pub mod projects;
 pub mod teams;
 pub mod agents;
+pub mod templates;
 pub mod usage;
 pub mod organization;
 pub mod roles;

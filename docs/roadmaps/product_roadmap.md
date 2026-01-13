@@ -16,7 +16,7 @@ The product roadmap defines **what we build in Nolan** to support the business v
 | **Phase 1:** Cost & Execution | Mostly Complete | 98% |
 | **Phase 2:** Safety & Versioning | Not Started | 0% |
 | **Phase 3:** Context & Communication | Complete | 100% |
-| **Phase 4:** Autonomy & Scale | In Progress | 55% |
+| **Phase 4:** Autonomy & Scale | In Progress | 70% |
 | **Phase 5:** Enterprise | Not Started | 0% |
 | **Phase 6:** Spec-Driven Development | In Progress | 15% |
 
@@ -47,6 +47,10 @@ The product roadmap defines **what we build in Nolan** to support the business v
 - [x] Cronos agent detail pages with output panels
 - [x] Cron group editor for managing cron agent collections
 - [x] Quick launch modal for rapid agent/team spawning
+- [x] TeamAgentDetailPage for detailed team agent views
+- [x] File browser manager for project exploration
+- [x] Agent console with enhanced output panels
+- [x] Usage stats panel with filtering capabilities
 
 ### Usage & Cost Tracking
 - [x] Per-project, per-model, per-agent cost breakdown
@@ -139,13 +143,22 @@ The product roadmap defines **what we build in Nolan** to support the business v
 
 ---
 
-## Phase 4: Autonomy & Scale (55% In Progress)
+## Phase 4: Autonomy & Scale (70% In Progress)
 
 ### 4.1 Agent Autonomy
 - [x] Cronos automated task execution (idea processing, git commits, workflow monitoring)
 - [x] cron-idea-processor: AI analysis of ideas with proposal generation
 - [x] cron-idea-merger: Consolidation of related ideas
+- [x] cron-idea-implementer: Creates projects from approved ideas
 - [x] cron-workflow-monitor: Workflow health tracking
+- [x] cron-git-commit: Automated git commits with summaries
+- [x] cron-dependency-check: Validates project dependencies
+- [x] cron-security-audit: Security scanning and vulnerability detection
+- [x] cron-bug-finder: Identifies bugs in codebase
+- [x] cron-ui-audit: UI/UX audit and improvements
+- [x] cron-code-indexer: Indexes codebase for context
+- [x] cron-roadmap: Updates roadmaps from activity
+- [x] cron-roadmap-alignment: Validates roadmap alignment
 - [ ] Decision framework
 - [ ] Long-term memory
 - [ ] Automated quality gates
@@ -445,6 +458,21 @@ NolanServer
 ---
 
 ## Recently Completed (Jan 2026)
+
+### Cronos Agent Expansion (Jan 12-13)
+- File browser manager implementation for cron-idea-implementer
+- TeamAgentDetailPage component for detailed cron agent views
+- New cron agents added:
+  - cron-bug-finder: Identifies bugs in codebase
+  - cron-security-audit: Security scanning and vulnerability detection
+  - cron-ui-audit: UI/UX audit and improvements
+  - cron-code-indexer: Indexes codebase for context
+  - cron-roadmap-alignment: Validates roadmap alignment
+  - cron-dependency-check: Validates project dependencies
+- Cron-git integration with automated commit summaries
+- Agent console implementation with enhanced output panels
+- Usage stats panel enhancements
+- Total of 12 active cron agents now operational
 
 ### Repository & State Consolidation (Jan 11)
 - State directory consolidation (`.state/scheduler/`, `.state/handoffs/`, `.state/feedback/`)

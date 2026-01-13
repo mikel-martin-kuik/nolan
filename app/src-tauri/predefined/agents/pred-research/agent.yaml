@@ -1,0 +1,31 @@
+name: pred-research
+description: Research a topic using web search and documentation to provide comprehensive analysis
+model: sonnet
+timeout: 900
+enabled: true
+agent_type: predefined
+guardrails:
+  allowed_tools:
+    - Read
+    - Glob
+    - Grep
+    - WebFetch
+    - WebSearch
+  forbidden_paths:
+    - "**/.env"
+    - "**/secrets/**"
+  max_file_edits: 1
+context: {}
+concurrency:
+  allow_parallel: true
+  queue_if_running: false
+retry:
+  enabled: false
+  max_retries: 3
+  delay_secs: 60
+  exponential_backoff: false
+catch_up: skip
+invocation:
+  command: /research
+  button_label: Research
+  icon: Search

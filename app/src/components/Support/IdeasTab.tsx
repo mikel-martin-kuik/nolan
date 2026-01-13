@@ -514,9 +514,9 @@ export function IdeasTab() {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="grid grid-cols-4 gap-3">
+        <div className="flex gap-3 overflow-x-auto pb-2 -mx-2 px-2 sm:mx-0 sm:px-0 sm:grid sm:grid-cols-4">
           {COLUMNS.map((column) => (
-            <div key={column.id} className="space-y-2">
+            <div key={column.id} className="min-w-[240px] sm:min-w-0 space-y-2">
               {/* Column Header */}
               <div className="flex items-center justify-between px-1">
                 <span className="text-xs font-medium text-muted-foreground">

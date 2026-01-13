@@ -1,11 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { FileList } from './FileList';
 import { FileViewer } from './FileViewer';
 import { BreadcrumbNav } from './BreadcrumbNav';
 import { useFileBrowser } from '@/hooks';
 import { useFileBrowserStore } from '@/store/fileBrowserStore';
 import { useNavigationStore } from '@/store/navigationStore';
-import { RefreshCw, Search, Eye, EyeOff, Home, Star } from 'lucide-react';
+import { RefreshCw, Search, Eye, EyeOff, Home, Star, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip } from '@/components/ui/tooltip';
@@ -38,6 +38,18 @@ export function FileBrowserPanel() {
 
   const { lastPath, addRecentPath, favorites, addFavorite, removeFavorite, isFavorite } = useFileBrowserStore();
   const { context, clearContext } = useNavigationStore();
+
+  // Mobile: track whether to show file viewer (vs file list)
+  const [showMobileViewer, setShowMobileViewer] = useState(false);
+
+  // When a file is selected on mobile, show the viewer
+  const handleFileSelect = (entry: Parameters<typeof selectFile>[0]) => {
+    selectFile(entry);
+    if (entry && !('entries' in entry)) {
+      // It's a file, show viewer on mobile
+      setShowMobileViewer(true);
+    }
+  };
 
   // Handle deep-linking from navigation context
   useEffect(() => {
@@ -82,13 +94,20 @@ export function FileBrowserPanel() {
   const homePath = '/home';
 
   return (
-    <div className="h-full flex flex-col gap-4">
+    <div className="h-full flex flex-col gap-2 sm:gap-4">
       {/* Main Content */}
-      <div className="flex-1 flex overflow-hidden gap-4 min-h-0">
+      <div className="flex-1 flex flex-col md:flex-row overflow-hidden gap-2 sm:gap-4 min-h-0">
         {/* Left: File List */}
-        <div className="w-[360px] flex flex-col overflow-hidden flex-shrink-0 glass-card p-3 rounded-lg">
+        <div className={cn(
+          "flex flex-col overflow-hidden glass-card p-2 sm:p-3 rounded-lg",
+          // Desktop: fixed width sidebar
+          "md:w-[360px] md:flex-shrink-0",
+          // Mobile: full width, hide when viewing file
+          "w-full",
+          showMobileViewer && "hidden md:flex"
+        )}>
           {/* Header with controls */}
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-1 sm:gap-2 mb-2 sm:mb-3 flex-wrap">
             {/* Home button */}
             <Tooltip content="Go to home directory">
               <Button
@@ -146,7 +165,7 @@ export function FileBrowserPanel() {
           />
 
           {/* Search input */}
-          <div className="relative mb-3">
+          <div className="relative mb-2 sm:mb-3">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
               placeholder="Search files..."
@@ -172,7 +191,7 @@ export function FileBrowserPanel() {
               isLoading={isLoading || isSearching}
               error={error ? String(error) : null}
               selectedPath={selectedFile?.path || null}
-              onSelect={selectFile}
+              onSelect={handleFileSelect}
               onNavigateUp={navigateUp}
               hasParent={!!directory?.parent}
               isSearchResults={!!searchResults}
@@ -181,7 +200,7 @@ export function FileBrowserPanel() {
 
           {/* Favorites quick access */}
           {favorites.length > 0 && !searchResults && (
-            <div className="mt-3 pt-3 border-t border-border">
+            <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-border">
               <div className="text-xs text-muted-foreground mb-2">Favorites</div>
               <div className="flex flex-wrap gap-1">
                 {favorites.slice(0, 5).map((path) => (
@@ -203,7 +222,23 @@ export function FileBrowserPanel() {
         </div>
 
         {/* Right: File Viewer */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className={cn(
+          "flex-1 flex flex-col overflow-hidden",
+          // Mobile: full width, hide when not viewing file
+          !showMobileViewer && "hidden md:flex"
+        )}>
+          {/* Mobile back button */}
+          <div className="flex md:hidden items-center gap-2 mb-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowMobileViewer(false)}
+              className="gap-1"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Back to files
+            </Button>
+          </div>
           <FileViewer
             file={selectedFile}
             content={fileContent}

@@ -14,7 +14,7 @@ import { useToastStore } from '@/store/toastStore';
 import { useOllamaStore } from '@/store/ollamaStore';
 import { useCronOutputStore } from '@/store/cronOutputStore';
 import { Tooltip } from '@/components/ui/tooltip';
-import { Sparkles, Loader2, RefreshCcw, Play } from 'lucide-react';
+import { Sparkles, Loader2, RefreshCcw, Play, TestTube, GitMerge } from 'lucide-react';
 import { CRON_PRESETS, CRON_MODELS } from '@/types/cronos';
 import { CronAgentOutputPanel } from './CronAgentOutputPanel';
 import type { CronAgentInfo, CronAgentConfig, CronRunLog } from '@/types';
@@ -179,6 +179,26 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
     }
   };
 
+  const handleTriggerQA = async (runId: string) => {
+    try {
+      await invoke('trigger_qa_for_run', { runId });
+      showSuccess('QA validation triggered');
+      setTimeout(fetchRunHistory, 1000);
+    } catch (err) {
+      showError(`Failed to trigger QA: ${err}`);
+    }
+  };
+
+  const handleTriggerMerge = async (runId: string) => {
+    try {
+      await invoke('trigger_merge_for_run', { runId });
+      showSuccess('Merge triggered');
+      setTimeout(fetchRunHistory, 1000);
+    } catch (err) {
+      showError(`Failed to trigger merge: ${err}`);
+    }
+  };
+
   const hasAnalyzer = config?.post_run_analyzer?.analyzer_agent;
 
   const canRelaunch = (run: CronRunLog) => {
@@ -191,15 +211,33 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
     return false;
   };
 
+  // Can trigger QA if run has worktree and is not running
+  const canTriggerQA = (run: CronRunLog) => {
+    return run.worktree_path && run.worktree_branch && run.status !== 'running';
+  };
+
+  // Can trigger merge if run has worktree and is not running
+  const canTriggerMerge = (run: CronRunLog) => {
+    return run.worktree_path && run.worktree_branch && run.status !== 'running';
+  };
+
+  // Check if any menu actions are available
+  const hasMenuActions = (run: CronRunLog) => {
+    return canRelaunch(run) ||
+           (hasAnalyzer && run.status !== 'running') ||
+           canTriggerQA(run) ||
+           canTriggerMerge(run);
+  };
+
   // Context menu handlers
   const handleRunContextMenu = (e: React.MouseEvent, run: CronRunLog) => {
     e.preventDefault();
     e.stopPropagation();
 
     // Only show menu if there are actions available
-    if (!canRelaunch(run) && !(hasAnalyzer && run.status !== 'running')) return;
+    if (!hasMenuActions(run)) return;
 
-    const menuHeight = 100;
+    const menuHeight = 160; // Increased for more items
     const viewportHeight = window.innerHeight;
     const y = e.clientY + menuHeight > viewportHeight
       ? e.clientY - menuHeight
@@ -268,21 +306,23 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
-      <div className="flex items-center gap-3 mb-4 pb-4 border-b border-border">
-        <Button variant="ghost" size="sm" onClick={onBack} className="text-xs h-7 px-2">Back</Button>
+      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-3 sm:mb-4 pb-3 sm:pb-4 border-b border-border">
+        <Button variant="ghost" size="sm" onClick={onBack} className="text-xs h-7 px-2 w-fit">Back</Button>
 
-        <div className="ml-auto text-right">
-          <h1 className="text-lg font-semibold">{agent.name}</h1>
+        <div className="sm:ml-auto sm:text-right">
+          <h1 className="text-base sm:text-lg font-semibold">{agent.name}</h1>
           <p className="text-xs text-muted-foreground">
-            {agent.enabled ? 'Active' : 'Inactive'} · {agent.stats.total_runs} runs · {(agent.stats.success_rate * 100).toFixed(0)}% success
-            {agent.stats.total_cost_usd != null && ` · $${agent.stats.total_cost_usd.toFixed(2)}`}
-            {agent.next_run && ` · Next: ${new Date(agent.next_run).toLocaleString()}`}
+            {agent.enabled ? 'Active' : 'Inactive'} · {agent.stats.total_runs} runs · {(agent.stats.success_rate * 100).toFixed(0)}%
+            <span className="hidden sm:inline">
+              {agent.stats.total_cost_usd != null && ` · $${agent.stats.total_cost_usd.toFixed(2)}`}
+              {agent.next_run && ` · Next: ${new Date(agent.next_run).toLocaleString()}`}
+            </span>
           </p>
         </div>
       </div>
 
       {/* Tab Bar */}
-      <div className="flex items-center gap-1 p-1 glass-card rounded-lg w-fit mb-4">
+      <div className="flex items-center gap-1 p-1 glass-card rounded-lg w-fit mb-3 sm:mb-4">
         <button
           onClick={() => setActiveTab('status')}
           className={cn(
@@ -310,7 +350,7 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
         {/* Schedule Tab */}
         {activeTab === 'schedule' && (
           <div className="h-full overflow-hidden">
-          <div className="grid grid-cols-2 gap-6 h-full">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 h-full overflow-auto md:overflow-hidden">
             {/* Config */}
             <Card className="flex flex-col h-full overflow-hidden">
               <CardHeader className="flex-shrink-0">
@@ -414,46 +454,48 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
         {/* Status Tab - Health on top, Run History + Logs side by side */}
         {activeTab === 'status' && (
           <div className="h-full overflow-hidden flex flex-col gap-4">
-          {/* Health Summary - Compact horizontal layout */}
+          {/* Health Summary - Responsive layout */}
           <Card className="flex-shrink-0">
-            <CardContent className="py-4">
-              <div className="flex items-center gap-6">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">Health:</span>
-                  <span className="text-sm font-medium">{agent.health.status}</span>
+            <CardContent className="py-3 sm:py-4">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6">
+                <div className="flex items-center gap-4 sm:gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs sm:text-sm text-muted-foreground">Health:</span>
+                    <span className="text-xs sm:text-sm font-medium">{agent.health.status}</span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-1 sm:flex-none sm:max-w-xs">
+                    <span className="text-xs sm:text-sm text-muted-foreground">Success:</span>
+                    <Progress value={agent.stats.success_rate * 100} className="h-2 w-16 sm:w-24" />
+                    <span className="text-xs sm:text-sm font-medium">{(agent.stats.success_rate * 100).toFixed(0)}%</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2 flex-1 max-w-xs">
-                  <span className="text-sm text-muted-foreground">Success:</span>
-                  <Progress value={agent.stats.success_rate * 100} className="h-2 flex-1" />
-                  <span className="text-sm font-medium">{(agent.stats.success_rate * 100).toFixed(0)}%</span>
-                </div>
-                <div className="flex items-center gap-4 text-center">
+                <div className="grid grid-cols-3 sm:flex sm:items-center gap-3 sm:gap-4 text-center">
                   <div>
-                    <p className="text-lg font-bold">{agent.stats.success_count}</p>
+                    <p className="text-base sm:text-lg font-bold">{agent.stats.success_count}</p>
                     <p className="text-[10px] text-muted-foreground">Success</p>
                   </div>
                   <div>
-                    <p className="text-lg font-bold">{agent.stats.failure_count}</p>
+                    <p className="text-base sm:text-lg font-bold">{agent.stats.failure_count}</p>
                     <p className="text-[10px] text-muted-foreground">Failed</p>
                   </div>
                   <div>
-                    <p className="text-lg font-bold">{agent.stats.total_runs}</p>
+                    <p className="text-base sm:text-lg font-bold">{agent.stats.total_runs}</p>
                     <p className="text-[10px] text-muted-foreground">Total</p>
                   </div>
                   {agent.stats.avg_duration_secs != null && (
-                    <div>
+                    <div className="hidden sm:block">
                       <p className="text-lg font-bold">{(agent.stats.avg_duration_secs / 60).toFixed(1)}m</p>
                       <p className="text-[10px] text-muted-foreground">Avg Time</p>
                     </div>
                   )}
                   {agent.stats.total_cost_usd != null && (
-                    <div>
+                    <div className="hidden sm:block">
                       <p className="text-lg font-bold">${agent.stats.total_cost_usd.toFixed(2)}</p>
                       <p className="text-[10px] text-muted-foreground">Total Cost</p>
                     </div>
                   )}
                   {agent.stats.avg_cost_usd != null && (
-                    <div>
+                    <div className="hidden sm:block">
                       <p className="text-lg font-bold">${agent.stats.avg_cost_usd.toFixed(2)}</p>
                       <p className="text-[10px] text-muted-foreground">Avg Cost</p>
                     </div>
@@ -465,7 +507,7 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
           </Card>
 
           {/* Run History + Output Logs side by side */}
-          <div className="grid grid-cols-2 gap-4 flex-1 min-h-0">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-1 min-h-0 overflow-auto md:overflow-hidden">
             {/* Run History */}
             <Card className="flex flex-col h-full">
               <CardHeader className="py-3 flex-shrink-0">
@@ -639,6 +681,30 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
             >
               <Play className="w-4 h-4" />
               Run analyzer
+            </button>
+          )}
+          {canTriggerQA(contextMenu.run) && (
+            <button
+              onClick={() => {
+                handleTriggerQA(contextMenu.run.run_id);
+                setContextMenu(null);
+              }}
+              className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
+            >
+              <TestTube className="w-4 h-4" />
+              Run QA validation
+            </button>
+          )}
+          {canTriggerMerge(contextMenu.run) && (
+            <button
+              onClick={() => {
+                handleTriggerMerge(contextMenu.run.run_id);
+                setContextMenu(null);
+              }}
+              className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
+            >
+              <GitMerge className="w-4 h-4" />
+              Merge changes
             </button>
           )}
         </div>,

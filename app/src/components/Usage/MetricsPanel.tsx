@@ -72,11 +72,11 @@ export const MetricsPanel: React.FC = () => {
 
   return (
     <div className="h-full">
-      <div className="w-full space-y-6 h-full flex flex-col">
+      <div className="w-full space-y-4 sm:space-y-6 h-full flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h2 className="text-lg font-semibold">Execution Metrics</h2>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <h2 className="text-base sm:text-lg font-semibold">Execution Metrics</h2>
             <Button
               variant="ghost"
               size="sm"
@@ -90,7 +90,7 @@ export const MetricsPanel: React.FC = () => {
 
           {/* Date Range Filter */}
           <div className="flex items-center gap-2">
-            <Filter className="h-4 w-4 text-muted-foreground" />
+            <Filter className="h-4 w-4 text-muted-foreground hidden sm:block" />
             <div className="flex gap-1">
               {(['7d', '30d', 'all'] as const).map((range) => (
                 <Button
@@ -99,8 +99,9 @@ export const MetricsPanel: React.FC = () => {
                   size="sm"
                   onClick={() => setSelectedDateRange(range as MetricsDateRange)}
                   disabled={loading}
+                  className="text-xs sm:text-sm"
                 >
-                  {range === 'all' ? 'All Time' : range === '7d' ? '7 Days' : '30 Days'}
+                  {range === 'all' ? 'All' : range}
                 </Button>
               ))}
             </div>
@@ -121,89 +122,93 @@ export const MetricsPanel: React.FC = () => {
               </Button>
             </div>
           ) : dashboard ? (
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               {/* Summary Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-                <Card className="p-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-4">
+                <Card className="p-3 sm:p-4">
                   <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                     <Activity className="h-3 w-3" />
-                    Executions
+                    <span className="hidden sm:inline">Executions</span>
+                    <span className="sm:hidden">Execs</span>
                   </div>
-                  <p className="text-2xl font-bold">{formatNumber(dashboard.total_executions)}</p>
+                  <p className="text-lg sm:text-2xl font-bold">{formatNumber(dashboard.total_executions)}</p>
                 </Card>
 
-                <Card className="p-4">
+                <Card className="p-3 sm:p-4">
                   <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                     <DollarSign className="h-3 w-3" />
-                    Total Cost
+                    Cost
                   </div>
-                  <p className="text-2xl font-bold">{formatCurrency(dashboard.total_cost)}</p>
+                  <p className="text-lg sm:text-2xl font-bold">{formatCurrency(dashboard.total_cost)}</p>
                 </Card>
 
-                <Card className="p-4">
+                <Card className="p-3 sm:p-4">
                   <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                     <Clock className="h-3 w-3" />
-                    Avg Duration
+                    <span className="hidden sm:inline">Avg Duration</span>
+                    <span className="sm:hidden">Duration</span>
                   </div>
-                  <p className="text-2xl font-bold">{formatDuration(dashboard.avg_duration_secs)}</p>
+                  <p className="text-lg sm:text-2xl font-bold">{formatDuration(dashboard.avg_duration_secs)}</p>
                 </Card>
 
-                <Card className="p-4">
+                <Card className="p-3 sm:p-4">
                   <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                     <Hash className="h-3 w-3" />
-                    Total Tokens
+                    Tokens
                   </div>
-                  <p className="text-2xl font-bold">{formatTokens(dashboard.total_tokens)}</p>
+                  <p className="text-lg sm:text-2xl font-bold">{formatTokens(dashboard.total_tokens)}</p>
                 </Card>
 
-                <Card className="p-4">
+                <Card className="p-3 sm:p-4 col-span-2 sm:col-span-1">
                   <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                     <BarChart3 className="h-3 w-3" />
-                    Avg Cost/Exec
+                    <span className="hidden sm:inline">Avg/Exec</span>
+                    <span className="sm:hidden">Avg Cost</span>
                   </div>
-                  <p className="text-2xl font-bold">{formatCurrency(dashboard.avg_cost_per_execution)}</p>
+                  <p className="text-lg sm:text-2xl font-bold">{formatCurrency(dashboard.avg_cost_per_execution)}</p>
                 </Card>
               </div>
 
               {/* Tab Navigation */}
-              <div className="flex items-center gap-1 p-1 glass-card rounded-lg w-fit">
+              <div className="flex items-center gap-1 p-1 glass-card rounded-lg w-full sm:w-fit overflow-x-auto">
                 {tabs.map((tab) => (
                   <button
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
-                      'flex items-center justify-center gap-1.5 px-3 py-1.5 rounded text-xs font-medium transition-all',
+                      'flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded text-xs font-medium transition-all whitespace-nowrap flex-shrink-0',
                       activeTab === tab.id
                         ? 'bg-foreground/10 text-foreground'
                         : 'text-muted-foreground hover:text-foreground'
                     )}
                   >
                     {tab.icon}
-                    {tab.label}
+                    <span className="hidden sm:inline">{tab.label}</span>
+                    <span className="sm:hidden">{tab.label.slice(0, 4)}</span>
                   </button>
                 ))}
               </div>
 
               {/* Tab Content */}
               {activeTab === 'overview' && (
-                <div className="space-y-6">
+                <div className="space-y-4 sm:space-y-6">
                   {/* Recent Executions */}
-                  <Card className="p-6">
-                    <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+                  <Card className="p-3 sm:p-6">
+                    <h3 className="text-sm font-semibold mb-3 sm:mb-4 flex items-center gap-2">
                       <Zap className="h-4 w-4" />
                       Recent Executions
                     </h3>
-                    <div className="space-y-3">
+                    <div className="space-y-2 sm:space-y-3">
                       {dashboard.recent_executions.slice(0, 5).map((exec) => (
                         <div
                           key={exec.execution_id}
-                          className="flex items-center justify-between py-2 border-b border-border/50 last:border-0"
+                          className="flex flex-col sm:flex-row sm:items-center justify-between py-2 border-b border-border/50 last:border-0 gap-1"
                         >
                           <div className="flex flex-col">
-                            <span className="text-sm font-medium">{exec.project_name}</span>
-                            <div className="flex items-center gap-2 mt-1">
+                            <span className="text-sm font-medium truncate">{exec.project_name}</span>
+                            <div className="flex flex-wrap items-center gap-1 sm:gap-2 mt-1">
                               <span className="text-xs text-muted-foreground">
-                                {new Date(exec.started_at).toLocaleString()}
+                                {new Date(exec.started_at).toLocaleDateString()}
                               </span>
                               <Badge variant="outline" className="text-xs">
                                 {exec.agent_count} agents
@@ -213,7 +218,7 @@ export const MetricsPanel: React.FC = () => {
                               </span>
                             </div>
                           </div>
-                          <div className="text-right">
+                          <div className="text-left sm:text-right">
                             <p className="text-sm font-semibold">{formatCurrency(exec.cost_usd)}</p>
                             <p className="text-xs text-muted-foreground">
                               {formatTokens(exec.total_tokens)} tokens
@@ -224,23 +229,23 @@ export const MetricsPanel: React.FC = () => {
                     </div>
                   </Card>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                     {/* Top Projects */}
-                    <Card className="p-6">
-                      <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+                    <Card className="p-3 sm:p-6">
+                      <h3 className="text-sm font-semibold mb-3 sm:mb-4 flex items-center gap-2">
                         <FolderOpen className="h-4 w-4" />
                         Top Projects
                       </h3>
-                      <div className="space-y-3">
+                      <div className="space-y-2 sm:space-y-3">
                         {dashboard.by_project.slice(0, 3).map((project) => (
-                          <div key={project.project_name} className="flex items-center justify-between">
-                            <div className="flex flex-col">
-                              <span className="text-sm font-medium">{project.project_name}</span>
+                          <div key={project.project_name} className="flex items-center justify-between gap-2">
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-sm font-medium truncate">{project.project_name}</span>
                               <span className="text-xs text-muted-foreground">
-                                {project.total_executions} executions
+                                {project.total_executions} execs
                               </span>
                             </div>
-                            <span className="text-sm font-semibold">
+                            <span className="text-sm font-semibold flex-shrink-0">
                               {formatCurrency(project.total_cost)}
                             </span>
                           </div>
@@ -249,23 +254,23 @@ export const MetricsPanel: React.FC = () => {
                     </Card>
 
                     {/* Top Agents */}
-                    <Card className="p-6">
-                      <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+                    <Card className="p-3 sm:p-6">
+                      <h3 className="text-sm font-semibold mb-3 sm:mb-4 flex items-center gap-2">
                         <Users className="h-4 w-4" />
                         Most Active Agents
                       </h3>
-                      <div className="space-y-3">
+                      <div className="space-y-2 sm:space-y-3">
                         {dashboard.by_agent.slice(0, 3).map((agent) => (
-                          <div key={agent.agent_name} className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="text-xs capitalize">
+                          <div key={agent.agent_name} className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Badge variant="outline" className="text-xs capitalize flex-shrink-0">
                                 {agent.agent_name}
                               </Badge>
-                              <span className="text-xs text-muted-foreground">
-                                {agent.execution_count} executions
+                              <span className="text-xs text-muted-foreground hidden sm:inline">
+                                {agent.execution_count} execs
                               </span>
                             </div>
-                            <span className="text-sm font-semibold">
+                            <span className="text-sm font-semibold flex-shrink-0">
                               {formatCurrency(agent.total_cost)}
                             </span>
                           </div>
@@ -277,16 +282,16 @@ export const MetricsPanel: React.FC = () => {
               )}
 
               {activeTab === 'trends' && (
-                <Card className="p-6">
-                  <h3 className="text-sm font-semibold mb-6 flex items-center gap-2">
+                <Card className="p-3 sm:p-6">
+                  <h3 className="text-sm font-semibold mb-4 sm:mb-6 flex items-center gap-2">
                     <TrendingUp className="h-4 w-4" />
                     Daily Execution Trends
                   </h3>
                   {dashboard.daily_metrics.length > 0 ? (
                     <div className="space-y-4">
                       {/* Simple bar chart visualization */}
-                      <div className="relative h-48">
-                        <div className="flex items-end gap-1 h-full">
+                      <div className="relative h-32 sm:h-48">
+                        <div className="flex items-end gap-0.5 sm:gap-1 h-full">
                           {dashboard.daily_metrics.slice(0, 30).map((day) => {
                             const maxExecs = Math.max(...dashboard.daily_metrics.slice(0, 30).map(d => d.execution_count));
                             const height = maxExecs > 0 ? (day.execution_count / maxExecs) * 100 : 0;
@@ -296,8 +301,8 @@ export const MetricsPanel: React.FC = () => {
                                 key={day.date}
                                 className="flex-1 h-full flex flex-col items-center justify-end group relative"
                               >
-                                {/* Tooltip */}
-                                <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
+                                {/* Tooltip - hidden on mobile */}
+                                <div className="hidden sm:block absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none z-10">
                                   <div className="bg-popover border border-border rounded-lg shadow-lg p-3 whitespace-nowrap">
                                     <p className="text-sm font-semibold">{day.date}</p>
                                     <p className="text-xs text-muted-foreground">
@@ -322,28 +327,28 @@ export const MetricsPanel: React.FC = () => {
                       </div>
 
                       {/* Trend Summary */}
-                      <div className="grid grid-cols-4 gap-4 pt-4 border-t border-border">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 pt-3 sm:pt-4 border-t border-border">
                         <div>
-                          <p className="text-xs text-muted-foreground">Total Executions</p>
-                          <p className="text-lg font-semibold">
+                          <p className="text-xs text-muted-foreground">Executions</p>
+                          <p className="text-base sm:text-lg font-semibold">
                             {formatNumber(dashboard.daily_metrics.slice(0, 30).reduce((sum, d) => sum + d.execution_count, 0))}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs text-muted-foreground">Total Cost</p>
-                          <p className="text-lg font-semibold">
+                          <p className="text-xs text-muted-foreground">Cost</p>
+                          <p className="text-base sm:text-lg font-semibold">
                             {formatCurrency(dashboard.daily_metrics.slice(0, 30).reduce((sum, d) => sum + d.total_cost, 0))}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs text-muted-foreground">Avg Rejections/Day</p>
-                          <p className="text-lg font-semibold">
+                          <p className="text-xs text-muted-foreground">Rej/Day</p>
+                          <p className="text-base sm:text-lg font-semibold">
                             {(dashboard.daily_metrics.slice(0, 30).reduce((sum, d) => sum + d.total_rejections, 0) / Math.min(30, dashboard.daily_metrics.length)).toFixed(1)}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs text-muted-foreground">Avg Retries/Day</p>
-                          <p className="text-lg font-semibold">
+                          <p className="text-xs text-muted-foreground">Retry/Day</p>
+                          <p className="text-base sm:text-lg font-semibold">
                             {(dashboard.daily_metrics.slice(0, 30).reduce((sum, d) => sum + d.total_retries, 0) / Math.min(30, dashboard.daily_metrics.length)).toFixed(1)}
                           </p>
                         </div>
@@ -358,8 +363,8 @@ export const MetricsPanel: React.FC = () => {
               )}
 
               {activeTab === 'projects' && (
-                <Card className="p-6">
-                  <div className="flex items-center justify-between mb-4">
+                <Card className="p-3 sm:p-6">
+                  <div className="flex items-center justify-between mb-3 sm:mb-4">
                     <h3 className="text-sm font-semibold flex items-center gap-2">
                       <FolderOpen className="h-4 w-4" />
                       Project Metrics
@@ -436,8 +441,8 @@ export const MetricsPanel: React.FC = () => {
               )}
 
               {activeTab === 'agents' && (
-                <Card className="p-6">
-                  <div className="flex items-center justify-between mb-4">
+                <Card className="p-3 sm:p-6">
+                  <div className="flex items-center justify-between mb-3 sm:mb-4">
                     <h3 className="text-sm font-semibold flex items-center gap-2">
                       <Users className="h-4 w-4" />
                       Agent Performance
@@ -533,10 +538,10 @@ export const MetricsPanel: React.FC = () => {
               )}
 
               {activeTab === 'quality' && (
-                <div className="space-y-6">
+                <div className="space-y-4 sm:space-y-6">
                   {/* Quality Overview */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <Card className="p-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+                    <Card className="p-3 sm:p-6">
                       <div className="flex items-center gap-2 text-muted-foreground text-xs mb-2">
                         <Star className="h-3 w-3" />
                         Avg Prompt Quality
@@ -547,7 +552,7 @@ export const MetricsPanel: React.FC = () => {
                           .reduce((sum, d) => sum + (d.avg_prompt_quality || 0), 0) /
                           Math.max(1, dashboard.daily_metrics.filter(d => d.avg_prompt_quality !== undefined).length);
                         return (
-                          <p className={cn('text-3xl font-bold', getQualityColor(avgPrompt || undefined))}>
+                          <p className={cn('text-2xl sm:text-3xl font-bold', getQualityColor(avgPrompt || undefined))}>
                             {formatQualityScore(avgPrompt || undefined)}
                           </p>
                         );
@@ -555,7 +560,7 @@ export const MetricsPanel: React.FC = () => {
                       <p className="text-xs text-muted-foreground mt-1">AI-evaluated score (1-5)</p>
                     </Card>
 
-                    <Card className="p-6">
+                    <Card className="p-3 sm:p-6">
                       <div className="flex items-center gap-2 text-muted-foreground text-xs mb-2">
                         <Star className="h-3 w-3" />
                         Avg Output Quality
@@ -566,7 +571,7 @@ export const MetricsPanel: React.FC = () => {
                           .reduce((sum, d) => sum + (d.avg_output_quality || 0), 0) /
                           Math.max(1, dashboard.daily_metrics.filter(d => d.avg_output_quality !== undefined).length);
                         return (
-                          <p className={cn('text-3xl font-bold', getQualityColor(avgOutput || undefined))}>
+                          <p className={cn('text-2xl sm:text-3xl font-bold', getQualityColor(avgOutput || undefined))}>
                             {formatQualityScore(avgOutput || undefined)}
                           </p>
                         );
@@ -574,7 +579,7 @@ export const MetricsPanel: React.FC = () => {
                       <p className="text-xs text-muted-foreground mt-1">AI-evaluated score (1-5)</p>
                     </Card>
 
-                    <Card className="p-6">
+                    <Card className="p-3 sm:p-6">
                       <div className="flex items-center gap-2 text-muted-foreground text-xs mb-2">
                         <Activity className="h-3 w-3" />
                         Sample Coverage
@@ -585,9 +590,9 @@ export const MetricsPanel: React.FC = () => {
                         const coverage = totalExecs > 0 ? (totalSamples / totalExecs) * 100 : 0;
                         return (
                           <>
-                            <p className="text-3xl font-bold">{coverage.toFixed(1)}%</p>
+                            <p className="text-2xl sm:text-3xl font-bold">{coverage.toFixed(1)}%</p>
                             <p className="text-xs text-muted-foreground mt-1">
-                              {formatNumber(totalSamples)} of {formatNumber(totalExecs)} executions evaluated
+                              {formatNumber(totalSamples)} of {formatNumber(totalExecs)} evaluated
                             </p>
                           </>
                         );
@@ -596,8 +601,8 @@ export const MetricsPanel: React.FC = () => {
                   </div>
 
                   {/* Quality by Project */}
-                  <Card className="p-6">
-                    <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+                  <Card className="p-3 sm:p-6">
+                    <h3 className="text-sm font-semibold mb-3 sm:mb-4 flex items-center gap-2">
                       <FolderOpen className="h-4 w-4" />
                       Quality by Project
                     </h3>
@@ -628,36 +633,36 @@ export const MetricsPanel: React.FC = () => {
                   </Card>
 
                   {/* Execution Issues */}
-                  <Card className="p-6">
-                    <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+                  <Card className="p-3 sm:p-6">
+                    <h3 className="text-sm font-semibold mb-3 sm:mb-4 flex items-center gap-2">
                       <AlertTriangle className="h-4 w-4" />
                       Execution Issues
                     </h3>
-                    <div className="grid grid-cols-2 gap-6">
+                    <div className="grid grid-cols-2 gap-3 sm:gap-6">
                       <div>
                         <div className="flex items-center gap-2 mb-2">
                           <AlertTriangle className="h-4 w-4 text-orange-500" />
-                          <span className="text-sm font-medium">Total Rejections</span>
+                          <span className="text-xs sm:text-sm font-medium">Rejections</span>
                         </div>
-                        <p className="text-2xl font-bold">
+                        <p className="text-xl sm:text-2xl font-bold">
                           {formatNumber(dashboard.daily_metrics.reduce((sum, d) => sum + d.total_rejections, 0))}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
                           Avg {(dashboard.daily_metrics.reduce((sum, d) => sum + d.total_rejections, 0) /
-                            Math.max(1, dashboard.total_executions)).toFixed(2)} per execution
+                            Math.max(1, dashboard.total_executions)).toFixed(2)}/exec
                         </p>
                       </div>
                       <div>
                         <div className="flex items-center gap-2 mb-2">
                           <RotateCcw className="h-4 w-4 text-yellow-500" />
-                          <span className="text-sm font-medium">Total Retries</span>
+                          <span className="text-xs sm:text-sm font-medium">Retries</span>
                         </div>
-                        <p className="text-2xl font-bold">
+                        <p className="text-xl sm:text-2xl font-bold">
                           {formatNumber(dashboard.daily_metrics.reduce((sum, d) => sum + d.total_retries, 0))}
                         </p>
                         <p className="text-xs text-muted-foreground mt-1">
                           Avg {(dashboard.daily_metrics.reduce((sum, d) => sum + d.total_retries, 0) /
-                            Math.max(1, dashboard.total_executions)).toFixed(2)} per execution
+                            Math.max(1, dashboard.total_executions)).toFixed(2)}/exec
                         </p>
                       </div>
                     </div>

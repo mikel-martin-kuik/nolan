@@ -31,8 +31,3 @@ retry:
   delay_secs: 60
   exponential_backoff: false
 catch_up: skip
-post_run_analyzer:
-  analyzer_agent: pred-idea-analyzer
-  on_success: true
-  on_failure: true
-  on_timeout: true

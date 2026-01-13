@@ -1,0 +1,32 @@
+name: pred-build-nolan
+description: Build the Nolan application (both Tauri backend and React frontend)
+model: haiku
+timeout: 600
+enabled: true
+agent_type: predefined
+guardrails:
+  allowed_tools:
+    - Read
+    - Glob
+    - Grep
+    - Bash
+  forbidden_paths:
+    - "**/.env"
+    - "**/secrets/**"
+    - "**/*.key"
+  max_file_edits: 0
+context:
+  working_directory: /home/mmartin/Proyectos/nolan/app
+concurrency:
+  allow_parallel: false
+  queue_if_running: false
+retry:
+  enabled: true
+  max_retries: 2
+  delay_secs: 30
+  exponential_backoff: false
+catch_up: skip
+invocation:
+  command: /build
+  button_label: Build
+  icon: Hammer

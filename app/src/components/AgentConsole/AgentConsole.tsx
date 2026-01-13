@@ -17,19 +17,22 @@ export const AgentConsole: React.FC = () => {
         onValueChange={(v) => setActiveTab(v as AgentTab)}
         className="h-full flex flex-col"
       >
-        <div className="flex-shrink-0 px-4 pt-3 border-b border-border">
+        <div className="flex-shrink-0 px-2 sm:px-4 pt-2 sm:pt-3 border-b border-border">
           <TabsList className="grid w-full grid-cols-3 max-w-md">
-            <TabsTrigger value="cron" className="flex items-center gap-2">
+            <TabsTrigger value="cron" className="flex items-center gap-1 sm:gap-2">
               <Clock className="h-4 w-4" />
-              <span>Scheduled</span>
+              <span className="hidden sm:inline">Scheduled</span>
+              <span className="sm:hidden text-xs">Sched</span>
             </TabsTrigger>
-            <TabsTrigger value="predefined" className="flex items-center gap-2">
+            <TabsTrigger value="predefined" className="flex items-center gap-1 sm:gap-2">
               <Play className="h-4 w-4" />
-              <span>On-Demand</span>
+              <span className="hidden sm:inline">On-Demand</span>
+              <span className="sm:hidden text-xs">Demand</span>
             </TabsTrigger>
-            <TabsTrigger value="event" className="flex items-center gap-2">
+            <TabsTrigger value="event" className="flex items-center gap-1 sm:gap-2">
               <Zap className="h-4 w-4" />
-              <span>Event-Driven</span>
+              <span className="hidden sm:inline">Event-Driven</span>
+              <span className="sm:hidden text-xs">Event</span>
             </TabsTrigger>
           </TabsList>
         </div>

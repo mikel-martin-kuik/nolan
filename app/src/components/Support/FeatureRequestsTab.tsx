@@ -54,9 +54,9 @@ export function FeatureRequestsTab() {
   return (
     <div className="space-y-3">
       {/* Toolbar */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 overflow-x-auto pb-1">
         <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortOption)}>
-          <SelectTrigger className="h-8 w-[120px] text-xs">
+          <SelectTrigger className="h-8 w-[100px] sm:w-[120px] text-xs flex-shrink-0">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -70,7 +70,7 @@ export function FeatureRequestsTab() {
           value={filterStatus}
           onValueChange={(v) => setFilterStatus(v as FeatureRequestStatus | 'all')}
         >
-          <SelectTrigger className="h-8 w-[120px] text-xs">
+          <SelectTrigger className="h-8 w-[100px] sm:w-[120px] text-xs flex-shrink-0">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>

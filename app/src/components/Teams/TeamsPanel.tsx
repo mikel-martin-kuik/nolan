@@ -4,7 +4,8 @@ import { invoke } from '@/lib/api';
 import { useTeamStore } from '../../store/teamStore';
 import { useDepartmentStore } from '../../store/departmentStore';
 import { useToastStore } from '../../store/toastStore';
-import { Users, Plus, Check, FileText, Trash2, X, Save, ChevronDown, ChevronRight } from 'lucide-react';
+import { cn } from '../../lib/utils';
+import { Users, Plus, Check, FileText, Trash2, X, Save, ChevronDown, ChevronRight, ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -46,6 +47,9 @@ export const TeamsPanel: React.FC = () => {
   const [selectedTeam, setSelectedTeam] = useState<string | null>(null);
   const [teamConfig, setTeamConfig] = useState<TeamConfig | null>(null);
   const [agentInfos, setAgentInfos] = useState<AgentDirectoryInfo[]>([]);
+
+  // Mobile: track whether to show team details (vs team list)
+  const [showMobileDetails, setShowMobileDetails] = useState(false);
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
@@ -133,6 +137,7 @@ export const TeamsPanel: React.FC = () => {
 
   const handleSelectTeam = async (teamName: string) => {
     setSelectedTeam(teamName);
+    setShowMobileDetails(true); // Show details on mobile when team is selected
     try {
       await loadTeam(teamName);
       setTeamConfig(useTeamStore.getState().currentTeam);
@@ -516,9 +521,9 @@ export const TeamsPanel: React.FC = () => {
   }, [contextMenu, handleClickOutside]);
 
   return (
-    <div className="h-full flex flex-col gap-4">
+    <div className="h-full flex flex-col gap-2 sm:gap-4">
       {/* Toolbar */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={openCreateTeamModal}>
           New Team
         </Button>
@@ -538,14 +543,22 @@ export const TeamsPanel: React.FC = () => {
             setDepartmentsModal(true);
           }}
         >
-          New Department
+          <span className="hidden sm:inline">New Department</span>
+          <span className="sm:hidden">Dept</span>
         </Button>
       </div>
 
       {/* Team List and Details */}
-      <div className="flex-1 flex gap-4 overflow-hidden min-h-0">
-        {/* Team List - Fixed Width */}
-        <div className="w-[320px] flex flex-col flex-shrink-0 bg-card/50 backdrop-blur-sm rounded-xl border border-border overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row gap-2 sm:gap-4 overflow-hidden min-h-0">
+        {/* Team List */}
+        <div className={cn(
+          "flex flex-col bg-card/50 backdrop-blur-sm rounded-xl border border-border overflow-hidden",
+          // Desktop: fixed width sidebar
+          "md:w-[320px] md:flex-shrink-0",
+          // Mobile: full width, hide when viewing details
+          "w-full",
+          showMobileDetails && "hidden md:flex"
+        )}>
           <div className="flex items-center justify-between px-4 pt-4 pb-2 flex-shrink-0">
             <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
               Available Teams ({availableTeams.length})
@@ -680,12 +693,28 @@ export const TeamsPanel: React.FC = () => {
         </div>
 
         {/* Team Details - Flexible */}
-        <div className="flex-1 bg-card/50 backdrop-blur-sm rounded-xl border border-border p-6 overflow-auto">
+        <div className={cn(
+          "flex-1 bg-card/50 backdrop-blur-sm rounded-xl border border-border p-3 sm:p-6 overflow-auto",
+          // Mobile: full width, hide when not viewing details
+          !showMobileDetails && "hidden md:flex md:flex-col"
+        )}>
+          {/* Mobile back button */}
+          <div className="flex md:hidden items-center gap-2 mb-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowMobileDetails(false)}
+              className="gap-1"
+            >
+              <ChevronLeft className="w-4 h-4" />
+              Back to teams
+            </Button>
+          </div>
           {teamConfig ? (
             <div>
               {/* Team Header - Clickable */}
               <div
-                className="flex items-center justify-between mb-6 pb-4 border-b border-border cursor-pointer group"
+                className="flex items-center justify-between mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-border cursor-pointer group"
                 onClick={openTeamSettingsModal}
               >
                 <div>
@@ -699,11 +728,11 @@ export const TeamsPanel: React.FC = () => {
               </div>
 
               {/* Agents Grid */}
-              <div className="mb-6">
-                <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-3">
+              <div className="mb-4 sm:mb-6">
+                <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider mb-2 sm:mb-3">
                   Agents
                 </h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3">
                   {teamConfig.team.agents.map((agent, index) => {
                     const info = getAgentInfo(agent.name);
                     return (

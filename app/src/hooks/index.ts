@@ -2,6 +2,7 @@
 export { useAuth } from './useAuth';
 export { useCronosAgents, type UseCronosAgentsResult, type GroupedCronAgents } from './useCronosAgents';
 export { usePredefinedAgents, type UsePredefinedAgentsResult } from './usePredefinedAgents';
+export { useAgentTemplates, type UseAgentTemplatesResult } from './useAgentTemplates';
 export { useEventAgents, type UseEventAgentsResult } from './useEventAgents';
 export { useFetchData, type UseFetchDataOptions, type UseFetchDataResult } from './useFetchData';
 export { useFreeAgentMessages } from './useFreeAgentMessages';

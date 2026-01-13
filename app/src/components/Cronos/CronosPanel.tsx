@@ -4,10 +4,11 @@ import { CronAgentDetailPage } from './CronAgentDetailPage';
 import { TeamAgentDetailPage } from './TeamAgentDetailPage';
 import { CronGroupEditor } from './CronGroupEditor';
 import { TaskMonitoringDashboard } from './TaskMonitoringDashboard';
+import { TemplateCard } from '../AgentConsole/TemplateCard';
 import { useCronOutputStore } from '../../store/cronOutputStore';
 import { useCollapsedCronGroupsStore } from '../../store/collapsedCronGroupsStore';
 import { useNavigationStore } from '../../store/navigationStore';
-import { useCronosAgents } from '../../hooks';
+import { useCronosAgents, useAgentTemplates } from '../../hooks';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -46,6 +47,29 @@ export const CronosPanel: React.FC = () => {
     triggerAgent,
     toggleAgentEnabled,
   } = useCronosAgents();
+
+  // Agent templates (embedded in binary)
+  const {
+    templates,
+    installing,
+    installTemplate,
+    refreshTemplates,
+  } = useAgentTemplates();
+
+  // Available (not installed) templates
+  const availableTemplates = useMemo(
+    () => templates.filter(t => !t.installed),
+    [templates]
+  );
+
+  // Handle template install
+  const handleInstallTemplate = useCallback(async (name: string) => {
+    const success = await installTemplate(name);
+    if (success) {
+      // Refresh agents list after install
+      setTimeout(refreshAgents, 500);
+    }
+  }, [installTemplate, refreshAgents]);
 
   // Collapsed groups state (persisted)
   const { isCollapsed, toggleCollapsed } = useCollapsedCronGroupsStore();
@@ -140,17 +164,16 @@ export const CronosPanel: React.FC = () => {
 
   // Render agent cards for a group
   const renderAgentCards = (agentList: CronAgentInfo[]) => (
-    <div className="flex flex-wrap gap-2 lg:gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 lg:gap-3">
       {agentList.map((agent) => (
-        <div key={agent.name} className="w-[clamp(180px,calc(100%/4-12px),220px)]">
-          <CronAgentCard
-            agent={agent}
-            onTrigger={handleTrigger}
-            onDelete={(name) => setDeleteConfirm(name)}
-            onToggleEnabled={handleToggleEnabled}
-            onClick={handleCardClick}
-          />
-        </div>
+        <CronAgentCard
+          key={agent.name}
+          agent={agent}
+          onTrigger={handleTrigger}
+          onDelete={(name) => setDeleteConfirm(name)}
+          onToggleEnabled={handleToggleEnabled}
+          onClick={handleCardClick}
+        />
       ))}
     </div>
   );
@@ -221,7 +244,7 @@ export const CronosPanel: React.FC = () => {
     <div className="h-full">
       <div className="w-full h-full flex flex-col">
         {/* Header */}
-        <div className="flex items-center gap-2 mb-4">
+        <div className="flex flex-wrap items-center gap-2 mb-2 sm:mb-4">
           <Button
             size="sm"
             onClick={() => setCreatorOpen(true)}
@@ -233,23 +256,24 @@ export const CronosPanel: React.FC = () => {
             size="sm"
             onClick={() => setTemplateSelectorOpen(true)}
           >
-            Templates
+            <span className="hidden sm:inline">Templates</span>
+            <span className="sm:hidden">Tmplt</span>
           </Button>
           <Button
             variant="outline"
             size="sm"
             onClick={() => setGroupEditorOpen(true)}
           >
-            <Settings2 className="h-4 w-4 mr-1" />
-            Groups
+            <Settings2 className="h-4 w-4 sm:mr-1" />
+            <span className="hidden sm:inline">Groups</span>
           </Button>
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => { refreshGroups(); refreshAgents(); }}
+            onClick={() => { refreshGroups(); refreshAgents(); refreshTemplates(); }}
             disabled={loading}
           >
-            {loading ? 'Refreshing...' : 'Refresh'}
+            {loading ? '...' : 'Refresh'}
           </Button>
 
           <div className="flex-1" />
@@ -286,7 +310,10 @@ export const CronosPanel: React.FC = () => {
                     {/* Render type-based groups first */}
                     {typeGroups.map((groupKey) => {
                       const groupAgents = groupedAgents.grouped[groupKey] || [];
-                      if (groupAgents.length === 0) return null;
+                      const isPredefinedGroup = groupKey === 'type:predefined';
+                      // Show predefined group even if empty (to show available templates)
+                      if (groupAgents.length === 0 && !isPredefinedGroup) return null;
+                      if (groupAgents.length === 0 && isPredefinedGroup && availableTemplates.length === 0) return null;
 
                       const collapsed = isCollapsed(groupKey);
                       const enabledCount = groupAgents.filter(a => a.enabled).length;
@@ -319,18 +346,91 @@ export const CronosPanel: React.FC = () => {
                                   <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
                                     {enabledCount}/{groupAgents.length}
                                   </Badge>
+                                  {isPredefinedGroup && availableTemplates.length > 0 && (
+                                    <Badge variant="outline" className="text-[10px] px-1.5 py-0.5">
+                                      {availableTemplates.length} available
+                                    </Badge>
+                                  )}
                                 </div>
                               </div>
                             </CollapsibleTrigger>
                             <CollapsibleContent>
-                              <div className="p-3">
-                                {renderAgentCards(groupAgents)}
+                              <div className="p-3 space-y-4">
+                                {/* Installed agents */}
+                                {groupAgents.length > 0 && renderAgentCards(groupAgents)}
+
+                                {/* Available templates (only for predefined group) */}
+                                {isPredefinedGroup && availableTemplates.length > 0 && (
+                                  <div>
+                                    <div className="text-xs text-muted-foreground mb-2 font-medium">
+                                      Available Templates
+                                    </div>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 lg:gap-3">
+                                      {availableTemplates.map((template) => (
+                                        <TemplateCard
+                                          key={template.name}
+                                          template={template}
+                                          onInstall={handleInstallTemplate}
+                                          isInstalling={installing === template.name}
+                                        />
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </CollapsibleContent>
                           </div>
                         </Collapsible>
                       );
                     })}
+
+                    {/* Show On-Demand section even if no agents but templates available */}
+                    {!typeGroups.includes('type:predefined') && availableTemplates.length > 0 && (
+                      <Collapsible
+                        open={!isCollapsed('type:predefined')}
+                        onOpenChange={() => toggleCollapsed('type:predefined')}
+                      >
+                        <div className="border border-border/50 rounded-lg overflow-hidden">
+                          <CollapsibleTrigger asChild>
+                            <div
+                              className="flex items-center gap-3 px-3 py-2 bg-secondary/20 hover:bg-secondary/30 cursor-pointer transition-colors"
+                            >
+                              {isCollapsed('type:predefined') ? (
+                                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                              )}
+                              <span className="font-medium text-sm">On-Demand</span>
+                              <div className="ml-auto flex items-center gap-2">
+                                <Badge variant="secondary" className="text-[10px] px-1.5 py-0.5">
+                                  0/0
+                                </Badge>
+                                <Badge variant="outline" className="text-[10px] px-1.5 py-0.5">
+                                  {availableTemplates.length} available
+                                </Badge>
+                              </div>
+                            </div>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent>
+                            <div className="p-3">
+                              <div className="text-xs text-muted-foreground mb-2 font-medium">
+                                Available Templates
+                              </div>
+                              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 lg:gap-3">
+                                {availableTemplates.map((template) => (
+                                  <TemplateCard
+                                    key={template.name}
+                                    template={template}
+                                    onInstall={handleInstallTemplate}
+                                    isInstalling={installing === template.name}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+                          </CollapsibleContent>
+                        </div>
+                      </Collapsible>
+                    )}
 
                     {/* Render custom groups */}
                     {groups.map((group) => {
@@ -420,14 +520,14 @@ export const CronosPanel: React.FC = () => {
 
         {/* Template Selector Dialog */}
         <Dialog open={templateSelectorOpen} onOpenChange={setTemplateSelectorOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Agent Templates</DialogTitle>
             <DialogDescription>
               Choose a template to quickly create a new agent
             </DialogDescription>
           </DialogHeader>
-          <div className="grid grid-cols-2 gap-4 py-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 py-4">
             {AGENT_TEMPLATES.map((template) => (
               <Card
                 key={template.id}

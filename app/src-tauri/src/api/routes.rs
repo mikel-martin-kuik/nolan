@@ -163,6 +163,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/ollama/chat", post(handlers::ollama::chat))
         .route("/api/ollama/config", get(handlers::ollama::get_config))
         .route("/api/ollama/config", put(handlers::ollama::update_config))
+        // Filesystem browser
+        .route("/api/filesystem/browse", get(handlers::filesystem::browse_directory))
+        .route("/api/filesystem/read", get(handlers::filesystem::read_file))
+        .route("/api/filesystem/write", put(handlers::filesystem::write_file))
+        .route("/api/filesystem/search", get(handlers::filesystem::search_files))
+        .route("/api/filesystem/metadata", get(handlers::filesystem::get_metadata))
         // Add state and auth middleware
         .with_state(state)
         .layer(middleware::from_fn_with_state(auth_state, auth::auth_middleware));

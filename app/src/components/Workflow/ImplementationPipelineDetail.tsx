@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
+import { RunLogViewerModal } from './RunLogViewerModal';
 import {
   Code,
   Search,
@@ -51,6 +52,7 @@ export function ImplementationPipelineDetail() {
   const [abortStageDialog, setAbortStageDialog] = useState<{ open: boolean; agentName: string } | null>(null);
   const [abortPipelineDialog, setAbortPipelineDialog] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [logViewer, setLogViewer] = useState<{ runId: string; stageName: string } | null>(null);
 
   const pipeline = pipelines.find((p) => p.id === selectedPipelineId);
 
@@ -143,9 +145,8 @@ export function ImplementationPipelineDetail() {
     }
   };
 
-  const handleViewLogs = async (runId: string) => {
-    // TODO: Open log viewer modal
-    showSuccess(`Opening logs for run ${runId}`);
+  const handleViewLogs = (runId: string, stageName: string) => {
+    setLogViewer({ runId, stageName });
   };
 
   return (
@@ -229,7 +230,7 @@ export function ImplementationPipelineDetail() {
                     <Button
                       size="sm"
                       variant="ghost"
-                      onClick={() => handleViewLogs(stage.run_id!)}
+                      onClick={() => handleViewLogs(stage.run_id!, config.label)}
                       disabled={actionLoading}
                     >
                       <FileText className="h-3 w-3" />
@@ -397,6 +398,13 @@ export function ImplementationPipelineDetail() {
         confirmLabel="Abort Pipeline"
         onConfirm={handleAbortPipeline}
         variant="destructive"
+      />
+
+      {/* Log Viewer Modal */}
+      <RunLogViewerModal
+        runId={logViewer?.runId ?? null}
+        stageName={logViewer?.stageName}
+        onClose={() => setLogViewer(null)}
       />
     </Card>
   );

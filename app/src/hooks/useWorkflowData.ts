@@ -139,11 +139,15 @@ export function useWorkflowData(): UseWorkflowDataResult {
 
       if (event_type === 'status' && content === 'started') {
         updateNodeStatus(agent_name, 'running');
+        // Refresh pipelines when an agent starts (may affect pipeline stage status)
+        refetchPipelines();
       } else if (event_type === 'complete') {
         updateNodeStatus(
           agent_name,
           content === 'success' ? 'success' : 'failed'
         );
+        // Refresh pipelines when an agent completes
+        refetchPipelines();
       }
     }).then((unlisten) => {
       cleanup = unlisten;
@@ -152,7 +156,7 @@ export function useWorkflowData(): UseWorkflowDataResult {
     return () => {
       if (cleanup) cleanup();
     };
-  }, [updateNodeStatus]);
+  }, [updateNodeStatus, refetchPipelines]);
 
   // Subscribe to pipeline events for real-time pipeline updates
   useEffect(() => {

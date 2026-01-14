@@ -9,11 +9,34 @@ use std::fs;
 use chrono::Utc;
 
 use crate::cronos::types::{
-    PhaseVerdict, PhaseVerdictType, PipelineEvent, PipelineEventType,
+    AgentRole, PhaseVerdict, PhaseVerdictType, PipelineEvent, PipelineEventType,
     PipelineStageStatus, PipelineStatus, TeamPipeline, TeamPipelineNextAction,
     TeamPipelineStage, TeamPipelineStageType,
 };
 use crate::config::TeamConfig;
+
+/// Agent names for team pipeline stages
+/// Use Default::default() for backwards-compatible hardcoded names,
+/// or populate from role-based lookup for dynamic agent assignment
+#[derive(Clone, Debug)]
+pub struct TeamPipelineAgents {
+    pub validator: String,
+}
+
+impl Default for TeamPipelineAgents {
+    fn default() -> Self {
+        Self {
+            validator: "pred-phase-validator".to_string(),
+        }
+    }
+}
+
+impl TeamPipelineAgents {
+    /// Get the role for phase validator (Analyzer role)
+    pub fn validator_role() -> AgentRole {
+        AgentRole::Analyzer
+    }
+}
 
 /// Manager for team pipeline state persistence and operations
 pub struct TeamPipelineManager {
@@ -33,12 +56,33 @@ impl TeamPipelineManager {
     }
 
     /// Create a new team pipeline when a team workflow starts
+    /// Uses default agent names - prefer create_pipeline_with_agents for role-based lookup
     pub fn create_pipeline(
         &self,
         pipeline_id: &str,
         team: &TeamConfig,
         project_name: &str,
         docs_path: &str,
+    ) -> Result<TeamPipeline, String> {
+        self.create_pipeline_with_agents(
+            pipeline_id,
+            team,
+            project_name,
+            docs_path,
+            TeamPipelineAgents::default(),
+        )
+    }
+
+    /// Create a new team pipeline with specific agent names
+    /// Use TeamPipelineAgents::default() for backwards-compatible hardcoded names,
+    /// or populate from role-based CronosManager lookup for dynamic assignment
+    pub fn create_pipeline_with_agents(
+        &self,
+        pipeline_id: &str,
+        team: &TeamConfig,
+        project_name: &str,
+        docs_path: &str,
+        agents: TeamPipelineAgents,
     ) -> Result<TeamPipeline, String> {
         let now = Utc::now().to_rfc3339();
 
@@ -81,7 +125,7 @@ impl TeamPipelineManager {
                 phase_name: phase.name.clone(),
                 stage_type: TeamPipelineStageType::PhaseValidation,
                 status: PipelineStageStatus::Pending,
-                agent_name: "pred-phase-validator".to_string(),
+                agent_name: agents.validator.clone(),
                 run_id: None,
                 started_at: None,
                 completed_at: None,

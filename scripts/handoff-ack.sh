@@ -78,6 +78,76 @@ HEARTBEAT_FILE="$NOLAN_DATA_ROOT/.state/handoffs/.heartbeat"
 # Ensure directories exist
 mkdir -p "$PENDING_DIR" "$PROCESSED_DIR"
 
+# Team pipelines directory
+TEAM_PIPELINES_DIR="$NOLAN_DATA_ROOT/.state/team-pipelines"
+
+# Emit pipeline event for a team pipeline
+# Usage: emit_pipeline_event <pipeline_id> <event_type> <message> [metadata_json]
+emit_pipeline_event() {
+    local pipeline_id="$1"
+    local event_type="$2"
+    local message="$3"
+    local metadata="${4:-null}"
+
+    local pipeline_file="$TEAM_PIPELINES_DIR/${pipeline_id}.json"
+
+    if [[ ! -f "$pipeline_file" ]]; then
+        return 1
+    fi
+
+    local timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+    python3 -c "
+import json
+import sys
+from pathlib import Path
+
+pipeline_path = Path('$pipeline_file')
+pipeline = json.loads(pipeline_path.read_text())
+
+event = {
+    'timestamp': '$timestamp',
+    'event_type': '$event_type',
+    'stage_type': None,
+    'run_id': None,
+    'message': '$message',
+    'metadata': $metadata
+}
+
+pipeline['events'].append(event)
+pipeline['updated_at'] = '$timestamp'
+
+pipeline_path.write_text(json.dumps(pipeline, indent=2))
+" 2>/dev/null
+}
+
+# Find active team pipeline for a project
+# Returns pipeline_id if found, empty string otherwise
+find_pipeline_for_project() {
+    local project="$1"
+
+    if [[ ! -d "$TEAM_PIPELINES_DIR" ]]; then
+        return 1
+    fi
+
+    python3 -c "
+import json
+import sys
+from pathlib import Path
+
+pipelines_dir = Path('$TEAM_PIPELINES_DIR')
+
+for f in pipelines_dir.glob('*.json'):
+    try:
+        p = json.loads(f.read_text())
+        if p.get('project_name') == '$project' and p.get('status') == 'in_progress':
+            print(p.get('id', ''))
+            sys.exit(0)
+    except:
+        pass
+" 2>/dev/null
+}
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -209,14 +279,26 @@ print(d.get('instruction_file', ''))
                 echo -e "${GREEN}ACK'd: $filename${NC}"
                 found=1
 
-                # Extract project and msg_id from handoff for Task Log update
-                local project msg_id
-                read -r project msg_id < <(python3 -c "
+                # Extract project, msg_id, from_agent, and phase from handoff for Task Log update
+                local project msg_id from_agent phase
+                read -r project msg_id from_agent phase < <(python3 -c "
 import yaml
 with open('$PROCESSED_DIR/$filename') as f:
     d = yaml.safe_load(f)
-print(d.get('project', ''), d.get('task_id', d.get('id', '')))
+print(d.get('project', ''), d.get('task_id', d.get('id', '')), d.get('from_agent', ''), d.get('phase', ''))
 " 2>/dev/null) || true
+
+                # Emit pipeline event if project has an active team pipeline
+                if [[ -n "$project" ]]; then
+                    local pipeline_id
+                    pipeline_id=$(find_pipeline_for_project "$project") || true
+
+                    if [[ -n "$pipeline_id" ]]; then
+                        local metadata="{\"handoff_id\": \"$msg_id\", \"from_agent\": \"$from_agent\", \"phase\": \"$phase\"}"
+                        emit_pipeline_event "$pipeline_id" "handoff_acknowledged" "Handoff acknowledged for $project" "$metadata" && \
+                            echo -e "  ${CYAN}Pipeline event emitted${NC}"
+                    fi
+                fi
 
                 # Update instruction file status to 'reviewed'
                 if [[ -n "$instruction_file" ]] && [[ -f "$instruction_file" ]]; then

@@ -6,8 +6,9 @@ set -e
 
 # Configuration
 PI5_HOST="pi5"
-LOCAL_SRC="$(dirname "$(dirname "$(realpath "$0")")")"  # nolan/app
+LOCAL_SRC="$(dirname "$(dirname "$(realpath "$0")")")"  # nolan repo root
 REMOTE_SRC="/root/nolan-build"
+REMOTE_DEPLOY="$REMOTE_SRC/deploy"
 LOCAL_DATA="$HOME/.nolan"
 REMOTE_DATA="/srv/nolan/data"
 EXCLUDE_FILE="$LOCAL_DATA/.rsync-exclude"
@@ -68,11 +69,11 @@ cmd_deploy() {
 
     echo ""
     echo "=== Rebuilding Docker image on Pi5 (~30 min) ==="
-    ssh "$PI5_HOST" "cd $REMOTE_SRC && docker build -t nolan-server:latest . 2>&1 | tee build.log"
+    ssh "$PI5_HOST" "cd $REMOTE_DEPLOY && docker compose -f docker-compose.pi5.yml build 2>&1 | tee build.log"
 
     echo ""
     echo "=== Restarting containers ==="
-    ssh "$PI5_HOST" "cd $REMOTE_SRC && docker compose -f docker-compose.pi5.yml up -d"
+    ssh "$PI5_HOST" "cd $REMOTE_DEPLOY && docker compose -f docker-compose.pi5.yml up -d"
 
     echo ""
     cmd_status
@@ -80,20 +81,20 @@ cmd_deploy() {
 
 cmd_restart() {
     echo "Restarting Nolan on Pi5..."
-    ssh "$PI5_HOST" "cd $REMOTE_SRC && docker compose -f docker-compose.pi5.yml restart"
+    ssh "$PI5_HOST" "cd $REMOTE_DEPLOY && docker compose -f docker-compose.pi5.yml restart"
     cmd_status
 }
 
 cmd_status() {
     echo "=== Pi5 Nolan Status ==="
-    ssh "$PI5_HOST" "docker compose -f $REMOTE_SRC/docker-compose.pi5.yml ps"
+    ssh "$PI5_HOST" "docker compose -f $REMOTE_DEPLOY/docker-compose.pi5.yml ps"
     echo ""
     echo "=== API Health ==="
     ssh "$PI5_HOST" "curl -s http://localhost:3030/api/auth/status" && echo ""
 }
 
 cmd_logs() {
-    ssh "$PI5_HOST" "docker compose -f $REMOTE_SRC/docker-compose.pi5.yml logs -f"
+    ssh "$PI5_HOST" "docker compose -f $REMOTE_DEPLOY/docker-compose.pi5.yml logs -f"
 }
 
 cmd_ssh() {

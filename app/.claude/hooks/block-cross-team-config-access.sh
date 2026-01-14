@@ -84,7 +84,7 @@ if [[ "$is_workflow_agent" == true ]]; then
         exit 2
     fi
 
-    if [[ "$file_path" =~ /scripts/(handoff-ack|coordinator-heartbeat|assign)\.sh$ ]]; then
+    if [[ "$file_path" =~ /scripts/(handoff-ack|assign)\.sh$ ]]; then
         echo "BLOCKED: Access restricted." >&2
         exit 2
     fi

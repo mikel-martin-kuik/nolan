@@ -15,6 +15,71 @@ pub enum AgentType {
     Team,       // Team workflow (group of agents)
 }
 
+/// Agent Identity - what the agent does
+/// This enum cleanly separates agent role/capability from triggering mechanisms
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+#[serde(rename_all = "snake_case")]
+pub enum AgentRole {
+    /// Creates code and implements features
+    Implementer,
+    /// Evaluates work and provides verdicts
+    Analyzer,
+    /// Runs tests and QA validation
+    Tester,
+    /// Git merge operations
+    Merger,
+    /// Compiles and packages
+    Builder,
+    /// Security and code analysis
+    Scanner,
+    /// Code organization and indexing
+    Indexer,
+    /// Workflow observation and reporting
+    Monitor,
+    /// Information gathering and research
+    Researcher,
+    /// Design and planning
+    Planner,
+    /// User-spawned flexible agent
+    Free,
+}
+
+/// Unified trigger configuration - how the agent is invoked
+/// Multiple triggers can be active simultaneously
+#[derive(Clone, Debug, Serialize, Deserialize, Default, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+pub struct TriggerConfig {
+    /// Cron schedule trigger
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schedule: Option<CronSchedule>,
+
+    /// Manual command invocation
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub command: Option<InvocationConfig>,
+
+    /// Event-based triggers (multiple allowed)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub events: Option<Vec<EventTrigger>>,
+
+    /// Pipeline stage trigger
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pipeline_stage: Option<PipelineStageConfig>,
+}
+
+/// Configuration for pipeline stage triggers
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+pub struct PipelineStageConfig {
+    /// The pipeline this agent belongs to
+    pub pipeline: String,
+    /// Stage type in the pipeline
+    pub stage_type: PipelineStageType,
+    /// Order within stage (for multiple agents in same stage)
+    #[serde(default)]
+    pub order: u32,
+}
+
 /// Event trigger configuration (for Event type agents)
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/types/generated/cronos/")]
@@ -63,6 +128,12 @@ pub struct CronAgentConfig {
     pub enabled: bool,
     #[serde(default)]
     pub agent_type: AgentType,              // Type discriminator (default: Cron)
+    /// Agent role - what this agent does (optional for backwards compat)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<AgentRole>,
+    /// Unified trigger config (optional for backwards compat)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub triggers: Option<TriggerConfig>,
     #[serde(default)]
     pub schedule: Option<CronSchedule>,     // Only required for Cron type
     pub guardrails: CronGuardrails,
@@ -88,6 +159,92 @@ pub struct CronAgentConfig {
     // If set, this agent will be triggered after completion to analyze results
     #[serde(default)]
     pub post_run_analyzer: Option<PostRunAnalyzerConfig>,
+}
+
+impl CronAgentConfig {
+    /// Get the effective role, inferring from name if not specified
+    pub fn effective_role(&self) -> AgentRole {
+        if let Some(role) = &self.role {
+            return role.clone();
+        }
+
+        // Infer from agent name patterns
+        // Use suffix-based matching: the LAST role keyword determines the role
+        // e.g., "implementer-analyzer" -> Analyzer (analyzes implementer output)
+        let name = self.name.to_lowercase();
+
+        // Build a list of (position, role) for all matching patterns
+        let mut matches: Vec<(usize, AgentRole)> = Vec::new();
+
+        if let Some(pos) = name.find("implement") {
+            matches.push((pos, AgentRole::Implementer));
+        }
+        if let Some(pos) = name.find("analyz") {
+            matches.push((pos, AgentRole::Analyzer));
+        }
+        if let Some(pos) = name.find("qa") {
+            matches.push((pos, AgentRole::Tester));
+        }
+        if let Some(pos) = name.find("validat") {
+            matches.push((pos, AgentRole::Tester));
+        }
+        if let Some(pos) = name.find("test") {
+            if !name.contains("contest") {
+                matches.push((pos, AgentRole::Tester));
+            }
+        }
+        if let Some(pos) = name.find("merge") {
+            matches.push((pos, AgentRole::Merger));
+        }
+        if let Some(pos) = name.find("build") {
+            matches.push((pos, AgentRole::Builder));
+        }
+        if let Some(pos) = name.find("scan") {
+            matches.push((pos, AgentRole::Scanner));
+        }
+        if let Some(pos) = name.find("security") {
+            matches.push((pos, AgentRole::Scanner));
+        }
+        if let Some(pos) = name.find("audit") {
+            matches.push((pos, AgentRole::Scanner));
+        }
+        if let Some(pos) = name.find("index") {
+            matches.push((pos, AgentRole::Indexer));
+        }
+        if let Some(pos) = name.find("monitor") {
+            matches.push((pos, AgentRole::Monitor));
+        }
+        if let Some(pos) = name.find("research") {
+            matches.push((pos, AgentRole::Researcher));
+        }
+        if let Some(pos) = name.find("plan") {
+            if !name.contains("explain") {
+                matches.push((pos, AgentRole::Planner));
+            }
+        }
+
+        // Return the role with the highest position (last match wins)
+        if let Some((_, role)) = matches.into_iter().max_by_key(|(pos, _)| *pos) {
+            role
+        } else {
+            AgentRole::Free
+        }
+    }
+
+    /// Get the effective trigger config, building from legacy fields if not specified
+    pub fn effective_triggers(&self) -> TriggerConfig {
+        if let Some(triggers) = &self.triggers {
+            return triggers.clone();
+        }
+
+        // Build from legacy fields
+        TriggerConfig {
+            schedule: self.schedule.clone(),
+            command: self.invocation.clone(),
+            events: self.event_trigger.as_ref().map(|e| vec![e.clone()]),
+            pipeline_stage: None,
+        }
+    }
 }
 
 /// Configuration for automatic post-run analysis
@@ -841,4 +998,183 @@ pub enum TeamPipelineNextAction {
     EscalateToHuman { phase_name: String, reason: String },
     Complete,
     Fail { reason: String },
+}
+
+#[cfg(test)]
+mod agent_role_tests {
+    use super::*;
+
+    fn make_test_config(name: &str, role: Option<AgentRole>) -> CronAgentConfig {
+        CronAgentConfig {
+            name: name.to_string(),
+            description: "Test agent".to_string(),
+            model: "sonnet".to_string(),
+            timeout: 300,
+            enabled: true,
+            agent_type: AgentType::Cron,
+            role,
+            triggers: None,
+            schedule: None,
+            guardrails: CronGuardrails {
+                allowed_tools: vec!["Read".to_string()],
+                forbidden_paths: None,
+                max_file_edits: None,
+            },
+            context: CronContext {
+                working_directory: None,
+            },
+            group: None,
+            concurrency: ConcurrencyPolicy::default(),
+            retry: RetryPolicy::default(),
+            catch_up: CatchUpPolicy::default(),
+            event_trigger: None,
+            invocation: None,
+            worktree: None,
+            post_run_analyzer: None,
+        }
+    }
+
+    #[test]
+    fn test_role_inference_implementer() {
+        let config = make_test_config("cron-idea-implementer", None);
+        assert_eq!(config.effective_role(), AgentRole::Implementer);
+    }
+
+    #[test]
+    fn test_role_inference_analyzer() {
+        let config = make_test_config("cron-implementer-analyzer", None);
+        assert_eq!(config.effective_role(), AgentRole::Analyzer);
+    }
+
+    #[test]
+    fn test_role_inference_tester_qa() {
+        let config = make_test_config("pred-qa-validation", None);
+        assert_eq!(config.effective_role(), AgentRole::Tester);
+    }
+
+    #[test]
+    fn test_role_inference_tester_test() {
+        let config = make_test_config("test-runner", None);
+        assert_eq!(config.effective_role(), AgentRole::Tester);
+    }
+
+    #[test]
+    fn test_role_inference_merger() {
+        let config = make_test_config("pred-merge-changes", None);
+        assert_eq!(config.effective_role(), AgentRole::Merger);
+    }
+
+    #[test]
+    fn test_role_inference_builder() {
+        let config = make_test_config("pred-build-nolan", None);
+        assert_eq!(config.effective_role(), AgentRole::Builder);
+    }
+
+    #[test]
+    fn test_role_inference_scanner() {
+        let config = make_test_config("cron-security-audit", None);
+        assert_eq!(config.effective_role(), AgentRole::Scanner);
+    }
+
+    #[test]
+    fn test_role_inference_indexer() {
+        let config = make_test_config("cron-code-indexer", None);
+        assert_eq!(config.effective_role(), AgentRole::Indexer);
+    }
+
+    #[test]
+    fn test_role_inference_monitor() {
+        let config = make_test_config("cron-workflow-monitor", None);
+        assert_eq!(config.effective_role(), AgentRole::Monitor);
+    }
+
+    #[test]
+    fn test_role_inference_researcher() {
+        let config = make_test_config("pred-research", None);
+        assert_eq!(config.effective_role(), AgentRole::Researcher);
+    }
+
+    #[test]
+    fn test_role_inference_planner() {
+        let config = make_test_config("planning-agent", None);
+        assert_eq!(config.effective_role(), AgentRole::Planner);
+    }
+
+    #[test]
+    fn test_role_inference_free() {
+        let config = make_test_config("ralph", None);
+        assert_eq!(config.effective_role(), AgentRole::Free);
+    }
+
+    #[test]
+    fn test_explicit_role_overrides_inference() {
+        let config = make_test_config("cron-idea-implementer", Some(AgentRole::Analyzer));
+        assert_eq!(config.effective_role(), AgentRole::Analyzer);
+    }
+
+    #[test]
+    fn test_trigger_config_from_legacy_schedule() {
+        let mut config = make_test_config("test", None);
+        config.schedule = Some(CronSchedule {
+            cron: "0 0 * * *".to_string(),
+            timezone: None,
+        });
+
+        let triggers = config.effective_triggers();
+        assert!(triggers.schedule.is_some());
+        assert!(triggers.command.is_none());
+        assert!(triggers.events.is_none());
+    }
+
+    #[test]
+    fn test_trigger_config_from_legacy_invocation() {
+        let mut config = make_test_config("test", None);
+        config.invocation = Some(InvocationConfig {
+            command: Some("/test".to_string()),
+            button_label: "Test".to_string(),
+            icon: None,
+        });
+
+        let triggers = config.effective_triggers();
+        assert!(triggers.command.is_some());
+        assert_eq!(triggers.command.unwrap().command, Some("/test".to_string()));
+    }
+
+    #[test]
+    fn test_trigger_config_from_legacy_event() {
+        let mut config = make_test_config("test", None);
+        config.event_trigger = Some(EventTrigger {
+            event_type: EventType::IdeaApproved,
+            pattern: None,
+            debounce_ms: 1000,
+        });
+
+        let triggers = config.effective_triggers();
+        assert!(triggers.events.is_some());
+        assert_eq!(triggers.events.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_explicit_trigger_config_overrides_legacy() {
+        let mut config = make_test_config("test", None);
+        config.schedule = Some(CronSchedule {
+            cron: "0 0 * * *".to_string(),
+            timezone: None,
+        });
+        config.triggers = Some(TriggerConfig {
+            schedule: None,
+            command: Some(InvocationConfig {
+                command: Some("/explicit".to_string()),
+                button_label: "Explicit".to_string(),
+                icon: None,
+            }),
+            events: None,
+            pipeline_stage: None,
+        });
+
+        let triggers = config.effective_triggers();
+        // Should use explicit config, not legacy schedule
+        assert!(triggers.schedule.is_none());
+        assert!(triggers.command.is_some());
+    }
 }

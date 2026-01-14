@@ -726,6 +726,86 @@ impl CronosManager {
         Err(format!("Agent '{}' not found", name))
     }
 
+    /// Find agents by role
+    /// Returns all agents that have the specified role (explicit or inferred)
+    pub async fn find_agents_by_role(&self, role: AgentRole) -> Result<Vec<CronAgentConfig>, String> {
+        let agents = self.load_agents().await?;
+        Ok(agents
+            .into_iter()
+            .filter(|agent| agent.effective_role() == role)
+            .collect())
+    }
+
+    /// Find first agent matching role, preferring those with specific pipeline stage config
+    /// Used by pipeline manager to find the right agent for each stage
+    pub async fn find_agent_for_pipeline_stage(
+        &self,
+        role: AgentRole,
+        stage_type: PipelineStageType,
+    ) -> Result<Option<CronAgentConfig>, String> {
+        let agents = self.load_agents().await?;
+
+        // First try: agents with explicit pipeline_stage config matching the stage type
+        let with_stage = agents.iter().find(|agent| {
+            agent.effective_role() == role
+                && agent.effective_triggers().pipeline_stage.as_ref()
+                    .map(|ps| ps.stage_type == stage_type)
+                    .unwrap_or(false)
+        });
+
+        if let Some(agent) = with_stage {
+            return Ok(Some(agent.clone()));
+        }
+
+        // Fallback: any agent with matching role
+        Ok(agents.into_iter().find(|agent| agent.effective_role() == role))
+    }
+
+    /// Find agent for a team pipeline phase
+    /// Maps phase name to role and finds appropriate agent
+    pub async fn find_agent_for_team_phase(
+        &self,
+        phase_name: &str,
+        team_name: &str,
+    ) -> Result<Option<CronAgentConfig>, String> {
+        let role = match phase_name.to_lowercase().as_str() {
+            "research" => AgentRole::Researcher,
+            "planning" => AgentRole::Planner,
+            "plan review" | "plan-review" | "planreview" => AgentRole::Analyzer,
+            "implementation" => AgentRole::Implementer,
+            "qa" | "testing" | "validation" => AgentRole::Tester,
+            "audit" | "review" => AgentRole::Analyzer,
+            _ => AgentRole::Free,
+        };
+
+        // Prefer team-specific agent first
+        let team_agent = self.find_team_agent(team_name, role.clone()).await?;
+        if team_agent.is_some() {
+            return Ok(team_agent);
+        }
+
+        // Fallback to any agent with matching role
+        let agents = self.find_agents_by_role(role).await?;
+        Ok(agents.into_iter().next())
+    }
+
+    /// Find an agent specific to a team with the given role
+    async fn find_team_agent(
+        &self,
+        team_name: &str,
+        role: AgentRole,
+    ) -> Result<Option<CronAgentConfig>, String> {
+        let teams_dir = paths::get_teams_dir()?;
+        let team_agents_dir = teams_dir.join(team_name).join("agents");
+
+        if !team_agents_dir.exists() {
+            return Ok(None);
+        }
+
+        let agents = self.load_agents_from_dir(&team_agents_dir)?;
+        Ok(agents.into_iter().find(|agent| agent.effective_role() == role))
+    }
+
     /// Save agent config to the agents directory
     pub async fn save_agent(&self, config: &CronAgentConfig) -> Result<(), String> {
         let agents_dir = paths::get_agents_dir()?;

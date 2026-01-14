@@ -6,10 +6,12 @@ echo "  Nolan Setup"
 echo "========================================="
 echo ""
 
-# Detect Nolan app root (where this script lives)
+# Detect Nolan root (where this script lives) and app root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NOLAN_APP_ROOT="$SCRIPT_DIR"
+NOLAN_ROOT="$SCRIPT_DIR"
+NOLAN_APP_ROOT="$SCRIPT_DIR/app"
 
+echo "Detected Nolan root: $NOLAN_ROOT"
 echo "Detected Nolan app root: $NOLAN_APP_ROOT"
 echo ""
 
@@ -61,7 +63,7 @@ if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
 fi
 
 # Verify/create data directories
-REPO_ROOT="$(dirname "$NOLAN_APP_ROOT")"
+REPO_ROOT="$NOLAN_ROOT"
 if [ ! -d "$NOLAN_DATA_ROOT/projects" ]; then
     echo "Creating projects directory: $NOLAN_DATA_ROOT/projects"
     mkdir -p "$NOLAN_DATA_ROOT/projects"
@@ -414,6 +416,6 @@ fi
 if command -v ttyd &> /dev/null; then
     echo ""
     echo "To start web terminal for browser mode:"
-    echo "  $NOLAN_APP_ROOT/scripts/start-ttyd.sh"
+    echo "  $NOLAN_ROOT/scripts/start-ttyd.sh"
 fi
 echo ""

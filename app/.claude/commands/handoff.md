@@ -1,7 +1,7 @@
 ---
 description: Initiate agent handoff with validation checklist
 argument-hint: <from-agent> <to-agent>
-allowed-tools: Read, Bash(cat:*), Bash(grep:*), Bash(python3:*), Bash(handoff-ack:*), Bash(coordinator-heartbeat:*)
+allowed-tools: Read, Bash(cat:*), Bash(grep:*), Bash(python3:*), Bash(handoff-ack:*)
 ---
 # Handoff Management
 
@@ -23,10 +23,10 @@ print(coord)
 " 2>/dev/null); if [[ -z "$coord" ]]; then echo "ERROR: Could not determine coordinator."; exit 1; fi; if [ "$agent" != "$coord" ]; then echo "ERROR: This command is restricted."; exit 1; fi`
 
 ## Pending Handoffs
-!`"${NOLAN_ROOT}/app/scripts/handoff-ack.sh" list 2>/dev/null || echo "No pending handoffs"`
+!`"${NOLAN_ROOT}/scripts/handoff-ack.sh" list 2>/dev/null || echo "No pending handoffs"`
 
 ## System Status
-!`"${NOLAN_ROOT}/app/scripts/handoff-ack.sh" status 2>/dev/null || echo "Status unavailable"`
+!`"${NOLAN_ROOT}/scripts/handoff-ack.sh" status 2>/dev/null || echo "Status unavailable"`
 
 ## Actions
 

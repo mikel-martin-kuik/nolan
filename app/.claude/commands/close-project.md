@@ -32,7 +32,7 @@ print(coord)
 !`docs_path="$PROJECTS_DIR/$1"; coord_file=$(python3 -c "import yaml,sys; from pathlib import Path; import os; d=yaml.safe_load((Path('$docs_path')/'.team').read_text()); t=d['team'] if isinstance(d,dict) and 'team' in d else str(d).strip(); cp=Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan')))/'teams'/t/'team.yaml'; c=yaml.safe_load(cp.read_text()) if cp else sys.exit(1); n=c['team']['workflow']['coordinator']; a=next((x for x in c['team']['agents'] if x['name']==n),None); print(a['output_file'])" 2>/dev/null); coord_path="$docs_path/$coord_file"; if [ -f "$coord_path" ]; then if grep -q "## Current Assignment" "$coord_path"; then echo "Active assignment found:"; grep -A2 "## Current Assignment" "$coord_path" | head -5; else echo "No active assignment"; fi; else echo "No coordinator file found: $coord_file"; fi`
 
 ## Task History (Audit Trail)
-!`"${NOLAN_ROOT}/app/scripts/task.sh" history "$1" 2>/dev/null || echo "No task history found"`
+!`"${NOLAN_ROOT}/scripts/task.sh" history "$1" 2>/dev/null || echo "No task history found"`
 
 ## Pending Handoffs Check
 !`pending=$(find "${NOLAN_DATA_ROOT:-$HOME/.nolan}/.state/handoffs/pending" -name "*.handoff" -exec grep -l "project: $1" {} \; 2>/dev/null | wc -l); if [ "$pending" -gt 0 ]; then echo "WARNING: $pending pending handoff(s) for this project"; echo "Run /handoff to review before closing."; else echo "No pending handoffs"; fi`

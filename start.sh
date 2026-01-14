@@ -4,7 +4,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GUI_BINARY="$SCRIPT_DIR/src-tauri/target/release/nolan"
+NOLAN_ROOT="$SCRIPT_DIR"
+APP_DIR="$SCRIPT_DIR/app"
+GUI_BINARY="$APP_DIR/src-tauri/target/release/nolan"
 
 # Colors
 RED='\033[0;31m'
@@ -97,7 +99,7 @@ start_ttyd() {
     fi
 
     # Start ttyd
-    local ATTACH_SCRIPT="$SCRIPT_DIR/scripts/ttyd-attach.sh"
+    local ATTACH_SCRIPT="$APP_DIR/scripts/ttyd-attach.sh"
     if [ ! -f "$ATTACH_SCRIPT" ]; then
         echo -e "  ${YELLOW}⚠ ttyd-attach.sh not found${NC}"
         return 0
@@ -153,7 +155,7 @@ build_if_needed() {
         echo -e "${YELLOW}GUI binary not found. Building...${NC}"
         echo ""
 
-        cd "$SCRIPT_DIR"
+        cd "$APP_DIR"
 
         if [ ! -d "node_modules" ]; then
             echo "Installing npm dependencies..."
@@ -168,7 +170,7 @@ build_if_needed() {
             echo -e "${RED}✗ Build failed${NC}"
             echo ""
             echo "Try manual build:"
-            echo "  cd $SCRIPT_DIR"
+            echo "  cd $APP_DIR"
             echo "  npm install"
             echo "  npm run tauri build"
             exit 1
@@ -184,7 +186,7 @@ launch_gui() {
     echo ""
 
     # Set environment variables for the GUI process
-    export NOLAN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    export NOLAN_ROOT="$NOLAN_ROOT"
     export NOLAN_DATA_ROOT="${NOLAN_DATA_ROOT:-$HOME/.nolan}"
 
     # Start supporting services
@@ -225,13 +227,13 @@ launch_dev() {
     echo ""
 
     # Set environment variables for the dev process
-    export NOLAN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    export NOLAN_ROOT="$NOLAN_ROOT"
     export NOLAN_DATA_ROOT="${NOLAN_DATA_ROOT:-$HOME/.nolan}"
 
     # Start supporting services
     start_services
 
-    cd "$SCRIPT_DIR"
+    cd "$APP_DIR"
 
     if [ ! -d "node_modules" ]; then
         echo "Installing npm dependencies..."

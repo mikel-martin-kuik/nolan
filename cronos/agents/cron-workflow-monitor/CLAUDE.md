@@ -12,7 +12,7 @@ Run the workflow monitor script to check for:
 
 Run this command:
 ```bash
-NOLAN_ROOT="$NOLAN_ROOT" /home/mmartin/Proyectos/nolan/app/scripts/workflow-monitor.sh
+"${NOLAN_ROOT}/scripts/workflow-monitor.sh"
 ```
 
 ## Output

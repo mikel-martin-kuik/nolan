@@ -8,7 +8,7 @@ allowed-tools: Bash(task.sh:*)
 !`agent="${AGENT_NAME:-}"; if [[ "$agent" == "ralph" ]] || [[ "$agent" =~ ^ralph- ]]; then exit 0; fi; coord=$(python3 -c "import yaml, os; from pathlib import Path; data_root=Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.nolan'))); t=os.environ.get('TEAM_NAME') or 'default'; cp=data_root/'teams'/t/'team.yaml'; c=yaml.safe_load(cp.read_text()) if cp else exit(1); print(c['team']['workflow']['coordinator'])" 2>/dev/null || echo "dan"); if [ "$agent" != "$coord" ]; then echo "ERROR: This command is restricted."; exit 1; fi`
 
 ## Active Tasks
-!`"${NOLAN_ROOT}/app/scripts/task.sh" list 2>/dev/null`
+!`"${NOLAN_ROOT}/scripts/task.sh" list 2>/dev/null`
 
 ## Usage
 

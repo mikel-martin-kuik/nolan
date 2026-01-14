@@ -4,6 +4,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use once_cell::sync::Lazy;
 use crate::config::TeamConfig;
+use crate::cronos::executor::ExtraEnvVars;
 use crate::constants::{
     PROTECTED_SESSIONS,
     RE_AGENT_SESSION,
@@ -910,8 +911,34 @@ pub async fn on_phase_complete(
     if let Some(action) = manager.get_next_action(&pipeline) {
         match action {
             crate::cronos::types::TeamPipelineNextAction::TriggerValidator { phase_name, output_file } => {
-                // Log validator trigger - actual trigger can be done via cron scheduler
                 eprintln!("Triggering validator for phase: {} output: {}", phase_name, output_file);
+
+                // Build environment variables for the phase validator
+                let mut env_vars = ExtraEnvVars::new();
+                env_vars.insert("DOCS_PATH".to_string(), pipeline.docs_path.clone());
+                env_vars.insert("PHASE_NAME".to_string(), phase_name.clone());
+                env_vars.insert("OUTPUT_FILE".to_string(), output_file.clone());
+                env_vars.insert("TEAM_PIPELINE_ID".to_string(), pipeline_id.clone());
+
+                // Load team config to get required sections
+                if let Ok(team_config) = TeamConfig::load(&team_name) {
+                    // Get agent config for required sections
+                    if let Some(agent_config) = team_config.team.agents.iter()
+                        .find(|a| a.output_file.as_deref() == Some(&output_file)) {
+                        let sections = agent_config.required_sections.clone();
+                        if !sections.is_empty() {
+                            env_vars.insert("REQUIRED_SECTIONS".to_string(), sections.join(","));
+                        }
+                    }
+                }
+
+                // Trigger the pred-phase-validator via CronScheduler
+                tokio::spawn(async move {
+                    if let Err(e) = trigger_phase_validator(env_vars).await {
+                        eprintln!("Failed to trigger phase validator: {}", e);
+                    }
+                });
+
                 Ok(format!("Phase {} complete, validator triggered for {}", phase_name, output_file))
             }
             crate::cronos::types::TeamPipelineNextAction::TriggerNextPhase { phase_name, agent_name } => {
@@ -927,6 +954,35 @@ pub async fn on_phase_complete(
     } else {
         Ok(format!("Phase {} complete", phase_name))
     }
+}
+
+/// Trigger the pred-phase-validator agent with environment variables
+async fn trigger_phase_validator(env_vars: ExtraEnvVars) -> Result<(), String> {
+    use crate::cronos::commands::CRONOS;
+    use crate::cronos::executor;
+    use crate::cronos::types::RunTrigger;
+
+    let guard = CRONOS.read().await;
+    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+
+    // Get the pred-phase-validator config
+    let config = manager.get_agent("pred-phase-validator").await
+        .map_err(|e| format!("Phase validator agent not found: {}", e))?;
+
+    // Execute with environment variables
+    let run_log = executor::execute_cron_agent_with_env(
+        &config,
+        manager,
+        RunTrigger::Manual,
+        false,  // not dry_run
+        None,   // no output_sender
+        None,   // no cancellation
+        Some(env_vars),
+        Some("phase-validation".to_string()),
+    ).await?;
+
+    eprintln!("Phase validator completed with status: {:?}", run_log.status);
+    Ok(())
 }
 
 /// Kill all team agents (requires user confirmation in frontend)

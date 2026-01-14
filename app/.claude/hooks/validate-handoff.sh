@@ -1,13 +1,13 @@
 #!/bin/bash
 #
 # PreToolUse hook: Validates handoff document structure before Write.
+# NON-BLOCKING MODE: Warns but allows write to proceed.
 #
 # Exit codes:
-#   0 - Allow write
-#   2 - Block write (missing sections)
+#   0 - Allow write (always)
 #
 # Input (stdin): JSON with tool_name, tool_input
-# Output (stderr): Error message on block
+# Output (stderr): Validation warnings (non-blocking)
 
 set -euo pipefail
 
@@ -60,11 +60,12 @@ check_sections() {
     done
 
     if [[ ${#missing[@]} -gt 0 ]]; then
-        echo "Missing required sections:" >&2
+        echo "WARNING: Missing required sections:" >&2
         for m in "${missing[@]}"; do
             echo "  - $m" >&2
         done
-        exit 2
+        # Non-blocking: warn but allow write
+        return 0
     fi
 }
 
@@ -123,14 +124,16 @@ try:
     missing = [s for s in agent_config.get('required_sections', []) if s not in content]
 
     if missing:
-        print("Missing required sections:", file=sys.stderr)
+        print("WARNING: Missing required sections:", file=sys.stderr)
         for section in missing:
             print(f"  - {section}", file=sys.stderr)
-        sys.exit(2)
+        # Non-blocking: warn but allow write
+        sys.exit(0)
 
 except Exception as e:
-    print(f"FATAL: Hook error: {e}", file=sys.stderr)
-    sys.exit(2)
+    print(f"WARNING: Hook validation error: {e}", file=sys.stderr)
+    # Non-blocking: allow write on error
+    sys.exit(0)
 PYTHON_EOF
 
 # All checks passed

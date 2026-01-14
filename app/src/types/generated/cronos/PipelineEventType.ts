@@ -3,4 +3,4 @@
 /**
  * Pipeline event types for audit trail
  */
-export type PipelineEventType = "pipeline_created" | "stage_started" | "stage_completed" | "stage_failed" | "stage_skipped" | "verdict_received" | "pipeline_completed" | "pipeline_failed" | "pipeline_aborted" | "retry_triggered";
+export type PipelineEventType = "pipeline_created" | "stage_started" | "stage_completed" | "stage_failed" | "stage_skipped" | "verdict_received" | "pipeline_completed" | "pipeline_failed" | "pipeline_aborted" | "pipeline_manually_completed" | "retry_triggered";

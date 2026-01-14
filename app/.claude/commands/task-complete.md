@@ -5,10 +5,10 @@ allowed-tools: Bash(task.sh:*), Read
 # Complete Current Task
 
 ## Current Task Status
-!`if [ -z "${AGENT_NAME:-}" ]; then echo "ERROR: AGENT_NAME not set"; exit 1; fi; "${NOLAN_ROOT}/app/scripts/task.sh" current "${AGENT_NAME}" 2>/dev/null || echo "No active task"`
+!`if [ -z "${AGENT_NAME:-}" ]; then echo "ERROR: AGENT_NAME not set"; exit 1; fi; "${NOLAN_ROOT}/scripts/task.sh" current "${AGENT_NAME}" 2>/dev/null || echo "No active task"`
 
 ## Complete Task
-!`if [ -z "${AGENT_NAME:-}" ]; then echo "ERROR: AGENT_NAME not set"; exit 1; fi; "${NOLAN_ROOT}/app/scripts/task.sh" complete "${AGENT_NAME}"`
+!`if [ -z "${AGENT_NAME:-}" ]; then echo "ERROR: AGENT_NAME not set"; exit 1; fi; "${NOLAN_ROOT}/scripts/task.sh" complete "${AGENT_NAME}"`
 
 ## Next Steps
 

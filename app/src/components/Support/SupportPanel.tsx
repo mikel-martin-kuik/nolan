@@ -9,7 +9,7 @@ import { DecisionsTab } from './DecisionsTab';
 import { IdeaForm } from './IdeaForm';
 import { FeatureRequestForm } from './FeatureRequestForm';
 import { DecisionForm } from './DecisionForm';
-import { RoadmapViewer } from '../Projects/RoadmapViewer';
+import { RoadmapViewer } from './RoadmapViewer';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Compass, FileCheck, Zap } from 'lucide-react';

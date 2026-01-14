@@ -8,7 +8,7 @@
 #   Frontend: http://<SERVER_IP>:8080
 #   Backend API: http://<SERVER_IP>:3030
 #
-# See DEPLOYMENT.md for full documentation.
+# See docs/DEPLOYMENT.md for full documentation.
 
 services:
   # ==========================================================================
@@ -17,8 +17,8 @@ services:
   backend:
     image: nolan-server:latest
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: deploy/Dockerfile
     container_name: nolan-backend
     restart: unless-stopped
     ports:
@@ -45,8 +45,8 @@ services:
   frontend:
     image: nolan-frontend:latest
     build:
-      context: .
-      dockerfile: Dockerfile.frontend
+      context: ..
+      dockerfile: deploy/Dockerfile.frontend
       args:
         # Default API URL - can be changed in UI settings at runtime
         VITE_API_URL: http://localhost:3030

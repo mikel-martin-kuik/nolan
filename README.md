@@ -5,7 +5,6 @@ The natural language software development platform of the future.
 ## Quick Start
 
 ```bash
-cd app
 ./setup.sh   # First time only
 ./start.sh   # Launch Nolan
 ```
@@ -22,7 +21,7 @@ That's it. The app auto-builds on first run.
 ## Development
 
 ```bash
-bash app/start.sh --dev   # Dev mode with hot reload
+./start.sh --dev   # Dev mode with hot reload
 ```
 
 ## Terminal Access
@@ -48,7 +47,7 @@ Nolan provides multiple ways to interact with agent terminals:
 
 ## Docker Deployment
 
-See [DEPLOYMENT.md](app/DEPLOYMENT.md) for full Docker deployment guide.
+See [DEPLOYMENT.md](docs/DEPLOYMENT.md) for full Docker deployment guide.
 
 ### Environment Variables
 
@@ -93,10 +92,15 @@ The frontend fetches runtime configuration from the backend on startup, so envir
 
 ```
 nolan/
-  app/.claude        (claude settings)
-  app/src/           (frontend)
-  app/src-tauri/     (backend)
-  app/scripts/       (shell scripts)
+  app/               (application source)
+    .claude/         (claude settings)
+    src/             (frontend)
+    src-tauri/       (backend)
+    scripts/         (app scripts)
   cronos/agents/     (cron agent definitions)
+  deploy/            (docker deployment)
   docs/              (documentation)
+  scripts/           (user utilities)
+  setup.sh           (first-time setup)
+  start.sh           (launch app)
 ```

@@ -22,7 +22,7 @@
 #     -v nolan-data:/home/nolan/.nolan \
 #     nolan-server
 #
-# See DEPLOYMENT.md for full documentation and troubleshooting.
+# See docs/DEPLOYMENT.md for full documentation and troubleshooting.
 
 # ==============================================================================
 # Stage 1: Build the Rust binary
@@ -46,7 +46,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy only Cargo files first for better layer caching
-COPY src-tauri/Cargo.toml src-tauri/Cargo.lock* ./src-tauri/
+COPY app/src-tauri/Cargo.toml app/src-tauri/Cargo.lock* ./src-tauri/
 
 # Create a dummy main.rs to build dependencies
 RUN mkdir -p src-tauri/src/bin && \
@@ -60,7 +60,7 @@ RUN cargo build --release --bin nolan-server 2>/dev/null || true
 
 # Copy actual source code
 WORKDIR /build
-COPY src-tauri ./src-tauri
+COPY app/src-tauri ./src-tauri
 
 # Build the actual binary
 WORKDIR /build/src-tauri
@@ -122,7 +122,7 @@ WORKDIR /nolan/app
 COPY --from=builder /build/src-tauri/target/release/nolan-server /nolan/app/nolan-server
 
 # Copy entrypoint script
-COPY docker-entrypoint.sh /nolan/app/docker-entrypoint.sh
+COPY deploy/docker-entrypoint.sh /nolan/app/docker-entrypoint.sh
 RUN chmod +x /nolan/app/docker-entrypoint.sh && \
     chown nolan:nolan /nolan/app/nolan-server /nolan/app/docker-entrypoint.sh
 

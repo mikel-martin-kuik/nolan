@@ -75,7 +75,6 @@ sensitive_patterns=(
     '\.claude/hooks/'
     '\.claude/settings\.json'
     '/scripts/handoff-ack'
-    '/scripts/coordinator-heartbeat'
     '/teams/.*\.yaml'
     'validate-phase-complete'
     'validate-handoff'
@@ -125,7 +124,7 @@ python_read_patterns=(
     'python3.*runpy'
 )
 
-sensitive_file_patterns='hooks|settings\.json|handoff-ack|coordinator-heartbeat|teams/.*\.yaml'
+sensitive_file_patterns='hooks|settings\.json|handoff-ack|teams/.*\.yaml'
 
 for py_pattern in "${python_read_patterns[@]}"; do
     if echo "$command" | grep -qE "$py_pattern" && echo "$command" | grep -qE "$sensitive_file_patterns"; then
@@ -135,14 +134,14 @@ for py_pattern in "${python_read_patterns[@]}"; do
 done
 
 # Block shell redirections to read sensitive files
-if echo "$command" | grep -qE '<.*\.claude/|<.*teams/.*\.yaml|<.*handoff-ack|<.*coordinator-heartbeat'; then
+if echo "$command" | grep -qE '<.*\.claude/|<.*teams/.*\.yaml|<.*handoff-ack'; then
     echo "BLOCKED: Cannot read infrastructure files." >&2
     exit 2
 fi
 
 # Block copy-then-read bypass attempts
 # Catches: cp file /tmp && cat /tmp/file, mv file /tmp, ln -s file /tmp
-if echo "$command" | grep -qE '(cp|mv|ln).*\.claude/|cp.*teams/.*\.yaml|cp.*handoff-ack|cp.*coordinator-heartbeat'; then
+if echo "$command" | grep -qE '(cp|mv|ln).*\.claude/|cp.*teams/.*\.yaml|cp.*handoff-ack'; then
     echo "BLOCKED: Cannot copy infrastructure files." >&2
     exit 2
 fi

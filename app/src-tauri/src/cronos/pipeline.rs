@@ -10,11 +10,55 @@ use std::fs;
 use chrono::Utc;
 
 use crate::cronos::types::{
-    AnalyzerVerdict, AnalyzerVerdictType, CronRunLog, CronRunStatus, Pipeline,
+    AgentRole, AnalyzerVerdict, AnalyzerVerdictType, CronRunLog, CronRunStatus, Pipeline,
     PipelineDefinition, PipelineEvent, PipelineEventType, PipelineInputs,
     PipelineNextAction, PipelineStage, PipelineStageStatus, PipelineStageType,
     PipelineStatus,
 };
+
+/// Agent names for each pipeline stage
+/// Use Default::default() for backwards-compatible hardcoded names,
+/// or populate from role-based lookup for dynamic agent assignment
+#[derive(Clone, Debug)]
+pub struct PipelineAgents {
+    pub implementer: String,
+    pub analyzer: String,
+    pub qa: String,
+    pub merger: String,
+}
+
+impl Default for PipelineAgents {
+    fn default() -> Self {
+        Self {
+            implementer: "cron-idea-implementer".to_string(),
+            analyzer: "cron-implementer-analyzer".to_string(),
+            qa: "pred-qa-validation".to_string(),
+            merger: "pred-merge-changes".to_string(),
+        }
+    }
+}
+
+impl PipelineAgents {
+    /// Map PipelineStageType to AgentRole for role-based lookup
+    pub fn role_for_stage(stage_type: &PipelineStageType) -> AgentRole {
+        match stage_type {
+            PipelineStageType::Implementer => AgentRole::Implementer,
+            PipelineStageType::Analyzer => AgentRole::Analyzer,
+            PipelineStageType::Qa => AgentRole::Tester,
+            PipelineStageType::Merger => AgentRole::Merger,
+        }
+    }
+
+    /// Get agent name for a specific stage
+    pub fn agent_for_stage(&self, stage_type: &PipelineStageType) -> &str {
+        match stage_type {
+            PipelineStageType::Implementer => &self.implementer,
+            PipelineStageType::Analyzer => &self.analyzer,
+            PipelineStageType::Qa => &self.qa,
+            PipelineStageType::Merger => &self.merger,
+        }
+    }
+}
 
 /// Manager for pipeline state persistence and operations
 pub struct PipelineManager {
@@ -101,6 +145,7 @@ impl PipelineManager {
     // =========================================================================
 
     /// Create a new pipeline when an implementer agent starts
+    /// Uses default agent names - prefer create_pipeline_with_agents for role-based lookup
     pub fn create_pipeline(
         &self,
         pipeline_id: &str,
@@ -112,6 +157,34 @@ impl PipelineManager {
         base_commit: Option<&str>,
         env_vars: HashMap<String, String>,
     ) -> Result<Pipeline, String> {
+        self.create_pipeline_with_agents(
+            pipeline_id,
+            idea_id,
+            idea_title,
+            run_id,
+            worktree_path,
+            worktree_branch,
+            base_commit,
+            env_vars,
+            PipelineAgents::default(),
+        )
+    }
+
+    /// Create a new pipeline with specific agent names for each stage
+    /// Use PipelineAgents::default() for backwards-compatible hardcoded names,
+    /// or populate from role-based CronosManager lookup for dynamic assignment
+    pub fn create_pipeline_with_agents(
+        &self,
+        pipeline_id: &str,
+        idea_id: &str,
+        idea_title: &str,
+        run_id: &str,
+        worktree_path: Option<&str>,
+        worktree_branch: Option<&str>,
+        base_commit: Option<&str>,
+        env_vars: HashMap<String, String>,
+        agents: PipelineAgents,
+    ) -> Result<Pipeline, String> {
         let now = Utc::now().to_rfc3339();
 
         let inputs = PipelineInputs {
@@ -122,12 +195,12 @@ impl PipelineManager {
             timestamp: now.clone(),
         };
 
-        // Initialize all stages
+        // Initialize all stages using provided agent names
         let stages = vec![
             PipelineStage {
                 stage_type: PipelineStageType::Implementer,
                 status: PipelineStageStatus::Running,
-                agent_name: "cron-idea-implementer".to_string(),
+                agent_name: agents.implementer.clone(),
                 run_id: Some(run_id.to_string()),
                 started_at: Some(now.clone()),
                 completed_at: None,
@@ -138,7 +211,7 @@ impl PipelineManager {
             PipelineStage {
                 stage_type: PipelineStageType::Analyzer,
                 status: PipelineStageStatus::Pending,
-                agent_name: "cron-implementer-analyzer".to_string(),
+                agent_name: agents.analyzer.clone(),
                 run_id: None,
                 started_at: None,
                 completed_at: None,
@@ -149,7 +222,7 @@ impl PipelineManager {
             PipelineStage {
                 stage_type: PipelineStageType::Qa,
                 status: PipelineStageStatus::Pending,
-                agent_name: "pred-qa-validation".to_string(),
+                agent_name: agents.qa.clone(),
                 run_id: None,
                 started_at: None,
                 completed_at: None,
@@ -160,7 +233,7 @@ impl PipelineManager {
             PipelineStage {
                 stage_type: PipelineStageType::Merger,
                 status: PipelineStageStatus::Pending,
-                agent_name: "pred-merge-changes".to_string(),
+                agent_name: agents.merger.clone(),
                 run_id: None,
                 started_at: None,
                 completed_at: None,
@@ -273,6 +346,9 @@ impl PipelineManager {
         let idea_id = run_log.run_id.split('-').last()
             .unwrap_or(&run_log.run_id).to_string();
 
+        // Use default agent names for stages (implementer already known from run_log)
+        let agents = PipelineAgents::default();
+
         Pipeline {
             id: pipeline_id,
             status: PipelineStatus::InProgress,
@@ -297,7 +373,7 @@ impl PipelineManager {
                 PipelineStage {
                     stage_type: PipelineStageType::Analyzer,
                     status: PipelineStageStatus::Pending,
-                    agent_name: "cron-implementer-analyzer".to_string(),
+                    agent_name: agents.analyzer.clone(),
                     run_id: None,
                     verdict: None,
                     attempt: 0,
@@ -308,7 +384,7 @@ impl PipelineManager {
                 PipelineStage {
                     stage_type: PipelineStageType::Qa,
                     status: PipelineStageStatus::Pending,
-                    agent_name: "pred-qa-validation".to_string(),
+                    agent_name: agents.qa.clone(),
                     run_id: None,
                     verdict: None,
                     attempt: 0,
@@ -319,7 +395,7 @@ impl PipelineManager {
                 PipelineStage {
                     stage_type: PipelineStageType::Merger,
                     status: PipelineStageStatus::Pending,
-                    agent_name: "pred-merge-changes".to_string(),
+                    agent_name: agents.merger.clone(),
                     run_id: None,
                     verdict: None,
                     attempt: 0,

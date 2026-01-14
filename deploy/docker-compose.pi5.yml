@@ -12,8 +12,8 @@ services:
   backend:
     image: nolan-server:latest
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: deploy/Dockerfile
     container_name: nolan-backend
     restart: unless-stopped
     ports:
@@ -40,8 +40,8 @@ services:
   frontend:
     image: nolan-frontend:latest
     build:
-      context: .
-      dockerfile: Dockerfile.frontend
+      context: ..
+      dockerfile: deploy/Dockerfile.frontend
       args:
         VITE_API_URL: ""
     container_name: nolan-frontend

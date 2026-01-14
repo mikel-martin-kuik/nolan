@@ -9,9 +9,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix",
-    "validate-team": "python3 scripts/validate-team-config.py",
-    "migrate-teams": "bash scripts/migrate-to-teams.sh"
+    "lint:fix": "eslint src/ --fix"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

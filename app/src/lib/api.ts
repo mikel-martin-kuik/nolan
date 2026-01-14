@@ -266,6 +266,8 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   get_ui_config: { method: 'GET', path: '/api/config' },
   get_ssh_terminal_config: { method: 'GET', path: '/api/config/ssh-terminal' },
   update_ssh_terminal_config: { method: 'PUT', path: '/api/config/ssh-terminal' },
+  get_providers_status: { method: 'GET', path: '/api/config/providers' },
+  set_default_cli_provider: { method: 'PUT', path: '/api/config/providers/default' },
 
   // Filesystem browser
   browse_directory: { method: 'GET', path: (args) => `/api/filesystem/browse?path=${encodeURIComponent(getArg(args, 'path') as string)}&showHidden=${args.showHidden || false}` },

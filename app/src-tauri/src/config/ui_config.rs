@@ -161,6 +161,10 @@ pub struct UIConfig {
     pub runtime: RuntimeConfig,
     #[serde(default)]
     pub ssh_terminal: SshTerminalConfig,
+    /// Default CLI provider for all agents (when not specified per-agent)
+    /// Options: "claude", "opencode"
+    #[serde(default)]
+    pub default_cli_provider: Option<String>,
 }
 
 impl Default for UIConfig {
@@ -221,6 +225,7 @@ impl Default for UIConfig {
             ollama_defaults: OllamaDefaults::default(),
             runtime: RuntimeConfig::default(),
             ssh_terminal: SshTerminalConfig::default(),
+            default_cli_provider: None,
         }
     }
 }
@@ -257,6 +262,55 @@ pub fn update_ssh_terminal_config(base_url: String, enabled: bool) -> Result<(),
         .map_err(|e| format!("Failed to write config: {}", e))?;
 
     Ok(())
+}
+
+/// Update the default CLI provider in config file
+/// Preserves other config values, only updates default_cli_provider field
+pub fn update_default_cli_provider(provider: Option<String>) -> Result<(), String> {
+    let path = get_config_path()?;
+
+    // Validate provider if specified
+    if let Some(ref p) = provider {
+        let valid_providers = ["claude", "opencode"];
+        if !valid_providers.contains(&p.as_str()) {
+            return Err(format!(
+                "Invalid CLI provider '{}'. Valid options: {}",
+                p,
+                valid_providers.join(", ")
+            ));
+        }
+    }
+
+    // Load existing config
+    let mut config = if path.exists() {
+        let content = fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read config: {}", e))?;
+        serde_yaml::from_str::<UIConfig>(&content)
+            .unwrap_or_else(|_| UIConfig::default())
+    } else {
+        UIConfig::default()
+    };
+
+    // Update default CLI provider
+    config.default_cli_provider = provider;
+
+    // Write back to file
+    let yaml_content = serde_yaml::to_string(&config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+
+    fs::write(&path, yaml_content)
+        .map_err(|e| format!("Failed to write config: {}", e))?;
+
+    Ok(())
+}
+
+/// Get the effective default CLI provider
+/// Returns the configured default, or "claude" if not configured
+pub fn get_default_cli_provider() -> String {
+    match load_ui_config() {
+        Ok(config) => config.default_cli_provider.unwrap_or_else(|| "claude".to_string()),
+        Err(_) => "claude".to_string(),
+    }
 }
 
 /// Load UI configuration from file, returning defaults if file doesn't exist

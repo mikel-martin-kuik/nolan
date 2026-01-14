@@ -25,6 +25,7 @@ import { ServerSelector } from './components/Settings/ServerSelector';
 import { AuthStatus } from './components/Settings/AuthStatus';
 import { OllamaSettings } from './components/Settings/OllamaSettings';
 import { SshTerminalSettings } from './components/Settings/SshTerminalSettings';
+import { ProviderSettings } from './components/Settings/ProviderSettings';
 import { useAuth } from './hooks/useAuth';
 import { useToastStore } from './store/toastStore';
 import { useLiveOutputStore } from './store/liveOutputStore';
@@ -365,6 +366,7 @@ function App() {
                       />
                     )}
                     <OllamaSettings />
+                    <ProviderSettings />
                     {isBrowserMode() && <SshTerminalSettings />}
                   </div>
                 )}

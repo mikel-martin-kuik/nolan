@@ -57,6 +57,9 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // SSH Terminal Configuration
         .route("/api/config/ssh-terminal", get(handlers::config::get_ssh_terminal_config))
         .route("/api/config/ssh-terminal", put(handlers::config::update_ssh_terminal))
+        // CLI Providers Configuration
+        .route("/api/config/providers", get(handlers::config::get_providers_status))
+        .route("/api/config/providers/default", put(handlers::config::set_default_cli_provider))
         // Roles (V1.2)
         .route("/api/roles", get(handlers::roles::list_roles))
         .route("/api/roles/{name}", get(handlers::roles::get_role))

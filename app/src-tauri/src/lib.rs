@@ -294,6 +294,8 @@ pub fn run() {
             rename_file,
             // UI Configuration
             get_ui_config,
+            // CLI Providers
+            get_providers_status,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

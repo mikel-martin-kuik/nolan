@@ -2,7 +2,8 @@
 
 use axum::Json;
 use serde::{Deserialize, Serialize};
-use crate::config::{load_ui_config, update_ssh_terminal_config, UIConfig, SshTerminalConfig};
+use crate::config::{load_ui_config, update_ssh_terminal_config, update_default_cli_provider, get_default_cli_provider, UIConfig, SshTerminalConfig};
+use crate::cli_providers;
 
 /// Get UI configuration
 pub async fn get_config() -> Result<Json<UIConfig>, (axum::http::StatusCode, String)> {
@@ -46,5 +47,73 @@ pub async fn update_ssh_terminal(
             base_url: payload.base_url,
             enabled: payload.enabled,
         },
+    }))
+}
+
+// =============================================================================
+// CLI Provider Configuration
+// =============================================================================
+
+/// Individual provider status
+#[derive(Debug, Serialize)]
+pub struct ProviderInfo {
+    pub name: String,
+    pub available: bool,
+    pub description: String,
+}
+
+/// Response for provider status
+#[derive(Debug, Serialize)]
+pub struct ProvidersStatusResponse {
+    pub providers: Vec<ProviderInfo>,
+    pub default_provider: String,
+}
+
+/// Get CLI providers status
+pub async fn get_providers_status() -> Json<ProvidersStatusResponse> {
+    let providers = cli_providers::supported_providers()
+        .into_iter()
+        .map(|name| {
+            let description = match name {
+                "claude" => "Claude Code CLI - Anthropic's official AI coding assistant",
+                "opencode" => "OpenCode CLI - Open-source, multi-provider coding assistant",
+                _ => "Unknown provider",
+            };
+            ProviderInfo {
+                name: name.to_string(),
+                available: cli_providers::is_provider_available(name),
+                description: description.to_string(),
+            }
+        })
+        .collect();
+
+    Json(ProvidersStatusResponse {
+        providers,
+        default_provider: get_default_cli_provider(),
+    })
+}
+
+/// Request body for setting default CLI provider
+#[derive(Debug, Deserialize)]
+pub struct SetDefaultProviderRequest {
+    /// Provider name ("claude" or "opencode"), or null to reset to system default
+    pub provider: Option<String>,
+}
+
+/// Response for default provider operations
+#[derive(Debug, Serialize)]
+pub struct DefaultProviderResponse {
+    pub default_provider: String,
+}
+
+/// Set the default CLI provider for all agents
+pub async fn set_default_cli_provider(
+    Json(payload): Json<SetDefaultProviderRequest>,
+) -> Result<Json<DefaultProviderResponse>, (axum::http::StatusCode, String)> {
+    update_default_cli_provider(payload.provider)
+        .map_err(|e| (axum::http::StatusCode::BAD_REQUEST, e))?;
+
+    Ok(Json(DefaultProviderResponse {
+        default_provider: get_default_cli_provider(),
     }))
 }

@@ -12,6 +12,7 @@ use serde::Deserialize;
 use super::types::*;
 use super::manager::CronosManager;
 use crate::cli_providers::{self, CliSpawnConfig, OutputFormat};
+use crate::config::get_default_cli_provider;
 use crate::utils::paths;
 use crate::tmux::session;
 use crate::git::worktree;
@@ -307,8 +308,11 @@ async fn execute_single_run(
         });
     }
 
-    // Get CLI provider for this agent (defaults to "claude" if not specified)
-    let cli_provider = cli_providers::get_provider(config.cli_provider.as_deref(), true);
+    // Get CLI provider for this agent
+    // Priority: agent config > global default > hardcoded "claude"
+    let effective_provider = config.cli_provider.clone()
+        .or_else(|| Some(get_default_cli_provider()));
+    let cli_provider = cli_providers::get_provider(effective_provider.as_deref(), true);
 
     // Build guardrail system prompt
     let system_prompt_append = config.guardrails.forbidden_paths.as_ref().map(|forbidden| {
@@ -822,7 +826,10 @@ pub async fn execute_cron_agent_simple(
     }
 
     // Get CLI provider for this agent
-    let cli_provider = cli_providers::get_provider(config.cli_provider.as_deref(), true);
+    // Priority: agent config > global default > hardcoded "claude"
+    let effective_provider = config.cli_provider.clone()
+        .or_else(|| Some(get_default_cli_provider()));
+    let cli_provider = cli_providers::get_provider(effective_provider.as_deref(), true);
 
     // Build CLI spawn configuration for simple mode
     let work_dir = config.context.working_directory

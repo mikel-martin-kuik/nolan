@@ -84,3 +84,43 @@ pub async fn session_exists(session_name: String) -> Result<bool, String> {
 pub fn get_ui_config() -> Result<crate::config::UIConfig, String> {
     crate::config::load_ui_config()
 }
+
+/// Provider info for frontend
+#[derive(serde::Serialize)]
+pub struct ProviderInfo {
+    pub name: String,
+    pub available: bool,
+    pub description: String,
+}
+
+/// Providers status response
+#[derive(serde::Serialize)]
+pub struct ProvidersStatusResponse {
+    pub providers: Vec<ProviderInfo>,
+    pub default_provider: String,
+}
+
+/// Get CLI providers status
+#[tauri::command]
+pub fn get_providers_status() -> ProvidersStatusResponse {
+    let providers = crate::cli_providers::supported_providers()
+        .into_iter()
+        .map(|name| {
+            let description = match name {
+                "claude" => "Claude Code CLI - Anthropic's official AI coding assistant",
+                "opencode" => "OpenCode CLI - Open-source, multi-provider coding assistant",
+                _ => "Unknown provider",
+            };
+            ProviderInfo {
+                name: name.to_string(),
+                available: crate::cli_providers::is_provider_available(name),
+                description: description.to_string(),
+            }
+        })
+        .collect();
+
+    ProvidersStatusResponse {
+        providers,
+        default_provider: crate::cli_providers::default_provider().to_string(),
+    }
+}

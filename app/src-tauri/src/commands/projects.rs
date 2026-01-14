@@ -1245,3 +1245,190 @@ pub async fn update_file_marker(
 
     Ok(())
 }
+
+/// Response for get_project_info_by_path - returns project info if path is within a project
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectPathInfo {
+    /// Whether the path is within the projects directory
+    pub is_in_projects: bool,
+    /// Whether the path is at the projects root (listing all projects)
+    pub is_projects_root: bool,
+    /// Project info if path is within a specific project directory
+    pub project: Option<ProjectInfo>,
+    /// The projects root path (for navigation)
+    pub projects_root: String,
+}
+
+/// Get project info for a given filesystem path
+/// Returns information about whether the path is within the projects directory
+/// and project details if it's within a specific project
+#[tauri::command(rename_all = "snake_case")]
+pub async fn get_project_info_by_path(path: String) -> Result<ProjectPathInfo, String> {
+    let projects_dir = get_projects_dir()?;
+    let projects_root = projects_dir.to_string_lossy().to_string();
+
+    // Normalize paths for comparison
+    let query_path = PathBuf::from(&path);
+    let canonical_projects = projects_dir.canonicalize()
+        .unwrap_or_else(|_| projects_dir.clone());
+
+    // Try to canonicalize the query path, fallback to the path itself
+    let canonical_query = query_path.canonicalize()
+        .unwrap_or_else(|_| query_path.clone());
+
+    // Check if path is within projects directory
+    if !canonical_query.starts_with(&canonical_projects) {
+        return Ok(ProjectPathInfo {
+            is_in_projects: false,
+            is_projects_root: false,
+            project: None,
+            projects_root,
+        });
+    }
+
+    // Check if at projects root
+    if canonical_query == canonical_projects {
+        return Ok(ProjectPathInfo {
+            is_in_projects: true,
+            is_projects_root: true,
+            project: None,
+            projects_root,
+        });
+    }
+
+    // Extract project name from path (first component after projects dir)
+    let relative = canonical_query.strip_prefix(&canonical_projects)
+        .map_err(|_| "Failed to get relative path")?;
+
+    let project_name = relative.iter().next()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string());
+
+    let project_name = match project_name {
+        Some(name) => name,
+        None => return Ok(ProjectPathInfo {
+            is_in_projects: true,
+            is_projects_root: true,
+            project: None,
+            projects_root,
+        }),
+    };
+
+    // Skip hidden/template directories
+    if project_name.starts_with('.') || project_name.starts_with('_') {
+        return Ok(ProjectPathInfo {
+            is_in_projects: true,
+            is_projects_root: false,
+            project: None,
+            projects_root,
+        });
+    }
+
+    // Get full project info using existing list_projects logic
+    let project_path = projects_dir.join(&project_name);
+
+    if !project_path.is_dir() {
+        return Ok(ProjectPathInfo {
+            is_in_projects: true,
+            is_projects_root: false,
+            project: None,
+            projects_root,
+        });
+    }
+
+    // Read project team file
+    let project_team_file = match ProjectTeamFile::read(&project_path) {
+        Ok(ptf) => ptf,
+        Err(_) => return Ok(ProjectPathInfo {
+            is_in_projects: true,
+            is_projects_root: false,
+            project: None,
+            projects_root,
+        }),
+    };
+    let team = project_team_file.team.clone();
+
+    // Load team config
+    let team_config = match load_project_team(&project_path) {
+        Ok(config) => config,
+        Err(_) => return Ok(ProjectPathInfo {
+            is_in_projects: true,
+            is_projects_root: false,
+            project: None,
+            projects_root,
+        }),
+    };
+
+    // Get project metadata
+    let file_count = count_md_files(&project_path);
+
+    let metadata = fs::metadata(&project_path)
+        .map_err(|e| format!("Failed to read metadata: {}", e))?;
+    let last_modified = metadata
+        .modified()
+        .ok()
+        .and_then(|time| {
+            time.duration_since(std::time::UNIX_EPOCH)
+                .ok()
+                .map(|d| {
+                    let secs = d.as_secs();
+                    chrono::DateTime::from_timestamp(secs as i64, 0)
+                        .map(|dt| dt.to_rfc3339())
+                        .unwrap_or_default()
+                })
+        })
+        .unwrap_or_default();
+
+    // Parse status from NOTES.md
+    let notes_path = project_path.join("NOTES.md");
+    let (status, status_detail) = if notes_path.exists() {
+        match fs::read_to_string(&notes_path) {
+            Ok(content) => parse_project_status(&content),
+            Err(_) => (ProjectStatus::Pending, None),
+        }
+    } else {
+        (ProjectStatus::Pending, None)
+    };
+
+    // Get expected files from team config
+    let (expected_files, config_workflow_files) = get_expected_files_from_config(&team_config);
+
+    // Use workflow files from .team if stored, otherwise fall back to team config
+    let workflow_files = if project_team_file.workflow_files.is_empty() {
+        config_workflow_files
+    } else {
+        project_team_file.workflow_files.clone()
+    };
+
+    // Get file scaffolding info
+    let (existing_files, missing_files) = get_file_scaffolding(&project_path, &expected_files);
+
+    // Get workflow file completion status
+    let file_completions = get_file_completions(
+        &project_path,
+        &workflow_files,
+        &project_name,
+        Some(&team_config),
+    );
+
+    let project_info = ProjectInfo {
+        name: project_name,
+        path: project_path.to_string_lossy().to_string(),
+        file_count,
+        last_modified,
+        status,
+        status_detail,
+        existing_files,
+        missing_files,
+        file_completions,
+        team,
+        workflow_files,
+    };
+
+    Ok(ProjectPathInfo {
+        is_in_projects: true,
+        is_projects_root: false,
+        project: Some(project_info),
+        projects_root,
+    })
+}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Home, FolderOpen, DollarSign, MessageCircle, FileUser, Settings, Lightbulb, GitBranch, Files, Menu, X } from 'lucide-react';
+import { Home, DollarSign, MessageCircle, FileUser, Settings, Lightbulb, GitBranch, Files, Menu, X } from 'lucide-react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { listen } from '@/lib/events';
 import { invoke, isBrowserMode } from '@/lib/api';
@@ -10,7 +10,6 @@ import { TeamProvider } from './contexts';
 import { ConfigProvider } from './contexts/ConfigContext';
 import { AppErrorBoundary } from './components/shared/AppErrorBoundary';
 import { StatusPanel } from './components/Status/StatusPanel';
-import { ProjectsPanel } from './components/Projects/ProjectsPanel';
 import { UsageAndMetricsPanel } from './components/Usage';
 // TeamsPanel removed - functionality moved to WorkflowVisualizerPanel
 import { ChatView } from './components/Chat';
@@ -36,7 +35,7 @@ import { cn } from './lib/utils';
 import { HistoryEntry } from './types';
 import './App.css';
 
-type Tab = 'status' | 'chat' | 'projects' | 'files' | 'cronos' | 'workflows' | 'usage' | 'support' | 'settings';
+type Tab = 'status' | 'chat' | 'files' | 'cronos' | 'workflows' | 'usage' | 'support' | 'settings';
 
 function App() {
   const [activeTab, setActiveTabLocal] = useState<Tab>('status');
@@ -212,7 +211,6 @@ function App() {
   const tabs = [
     { id: 'status' as Tab, label: 'Dashboard', tooltip: 'Dashboard', icon: Home },
     { id: 'chat' as Tab, label: 'Chat', tooltip: 'Chat', icon: MessageCircle },
-    { id: 'projects' as Tab, label: 'Projects', tooltip: 'Projects', icon: FolderOpen },
     { id: 'files' as Tab, label: 'Files', tooltip: 'File Browser', icon: Files },
     { id: 'cronos' as Tab, label: 'Agents', tooltip: 'Agents', icon: FileUser },
     { id: 'workflows' as Tab, label: 'Workflows', tooltip: 'Workflows', icon: GitBranch },
@@ -344,7 +342,6 @@ function App() {
               <main className="flex-1 overflow-auto px-2 sm:px-6 pb-2 sm:pb-6">
                 {activeTab === 'status' && <StatusPanel />}
                 {activeTab === 'chat' && <ChatView />}
-                {activeTab === 'projects' && <ProjectsPanel />}
                 {activeTab === 'files' && <FileBrowserPanel />}
                 {activeTab === 'cronos' && <CronosPanel />}
                 {activeTab === 'workflows' && <WorkflowVisualizerPanel />}

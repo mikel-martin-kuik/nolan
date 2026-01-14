@@ -1,10 +1,8 @@
 import { create } from 'zustand';
 
-export type Tab = 'status' | 'chat' | 'projects' | 'files' | 'cronos' | 'workflows' | 'usage' | 'support' | 'settings';
+export type Tab = 'status' | 'chat' | 'files' | 'cronos' | 'workflows' | 'usage' | 'support' | 'settings';
 
 export interface NavigationContext {
-  // For projects tab: project name to select
-  projectName?: string;
   // For cronos tab: agent name to select
   cronAgentName?: string;
   // For files tab: path to navigate to

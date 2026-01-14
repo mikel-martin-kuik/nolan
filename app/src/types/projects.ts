@@ -52,3 +52,15 @@ export interface ProjectFile {
   last_modified_ago: string | null;
   is_recent: boolean;
 }
+
+/** Response from get_project_info_by_path - returns project context for a filesystem path */
+export interface ProjectPathInfo {
+  /** Whether the path is within the projects directory */
+  is_in_projects: boolean;
+  /** Whether the path is at the projects root (listing all projects) */
+  is_projects_root: boolean;
+  /** Project info if path is within a specific project directory */
+  project: ProjectInfo | null;
+  /** The projects root path (for navigation) */
+  projects_root: string;
+}

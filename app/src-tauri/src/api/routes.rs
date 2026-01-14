@@ -82,6 +82,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // Projects (static routes before dynamic {name} routes)
         .route("/api/projects", get(handlers::projects::list_projects))
         .route("/api/projects", post(handlers::projects::create_project))
+        .route("/api/projects/by-path", get(handlers::projects::get_project_info_by_path))
         .route("/api/projects/roadmap", get(handlers::projects::read_roadmap))
         .route("/api/projects/roadmap/files", get(handlers::projects::list_roadmap_files))
         .route("/api/projects/{name}/files", get(handlers::projects::list_files))

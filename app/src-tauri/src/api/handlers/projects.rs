@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::commands::projects::{self, ProjectInfo, ProjectFile};
+use crate::commands::projects::{self, ProjectInfo, ProjectFile, ProjectPathInfo};
 use crate::commands::teams;
 
 /// Error response
@@ -180,5 +180,21 @@ pub async fn update_file_marker(
     match projects::update_file_marker(name, req.file_path, req.completed, req.agent_name).await {
         Ok(()) => Ok(Json(serde_json::json!({ "success": true }))),
         Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
+/// Query params for get project info by path
+#[derive(Deserialize)]
+pub struct ProjectInfoByPathQuery {
+    pub path: String,
+}
+
+/// Get project info by filesystem path
+pub async fn get_project_info_by_path(
+    Query(query): Query<ProjectInfoByPathQuery>,
+) -> Result<Json<ProjectPathInfo>, impl IntoResponse> {
+    match projects::get_project_info_by_path(query.path).await {
+        Ok(info) => Ok(Json(info)),
+        Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
     }
 }

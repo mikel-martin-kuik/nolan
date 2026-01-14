@@ -19,22 +19,6 @@ static OUTPUT_SENDER: once_cell::sync::Lazy<broadcast::Sender<CronOutputEvent>> 
         tx
     });
 
-/// Global pipeline manager instance
-static PIPELINE_MANAGER: once_cell::sync::Lazy<tokio::sync::RwLock<Option<PipelineManager>>> =
-    once_cell::sync::Lazy::new(|| tokio::sync::RwLock::new(None));
-
-/// Get or initialize the pipeline manager
-async fn get_pipeline_manager() -> Result<std::sync::Arc<PipelineManager>, String> {
-    let mut guard = PIPELINE_MANAGER.write().await;
-    if guard.is_none() {
-        let data_root = crate::utils::paths::get_nolan_data_root()?;
-        *guard = Some(PipelineManager::new(&data_root));
-    }
-    // Clone the manager ref - we can't return a reference to the guard
-    // So we wrap in Arc for the actual implementation
-    Ok(std::sync::Arc::new(PipelineManager::new(&crate::utils::paths::get_nolan_data_root()?)))
-}
-
 /// Helper to get a fresh PipelineManager (since it's stateless, just needs the path)
 fn get_pipeline_manager_sync() -> Result<PipelineManager, String> {
     let data_root = crate::utils::paths::get_nolan_data_root()?;
@@ -2604,6 +2588,24 @@ pub async fn abort_pipeline(
     }))
 }
 
+/// Manually mark a pipeline as completed
+#[tauri::command(rename_all = "snake_case")]
+pub async fn complete_pipeline(
+    pipeline_id: String,
+    reason: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let pm = get_pipeline_manager_sync()?;
+    let reason_str = reason.unwrap_or_else(|| "Manually completed".to_string());
+
+    let pipeline = pm.complete_pipeline(&pipeline_id, &reason_str)?;
+
+    Ok(serde_json::json!({
+        "pipeline_id": pipeline.id,
+        "status": pipeline.status,
+        "reason": reason_str
+    }))
+}
+
 // ========================
 // Pipeline API Commands
 // ========================
@@ -2779,6 +2781,16 @@ pub async fn abort_pipeline_cmd(
 
     // Mark pipeline as aborted
     pm.abort_pipeline(&pipeline_id, &reason)
+}
+
+/// Manually mark a pipeline as completed
+#[tauri::command]
+pub async fn complete_pipeline_cmd(
+    pipeline_id: String,
+    reason: String,
+) -> Result<Pipeline, String> {
+    let pm = get_pipeline_manager_sync()?;
+    pm.complete_pipeline(&pipeline_id, &reason)
 }
 
 // ========================

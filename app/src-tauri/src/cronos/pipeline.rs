@@ -572,6 +572,29 @@ impl PipelineManager {
         Ok(pipeline)
     }
 
+    /// Manually mark a pipeline as completed
+    pub fn complete_pipeline(&self, pipeline_id: &str, reason: &str) -> Result<Pipeline, String> {
+        let mut pipeline = self.get_pipeline(pipeline_id)?;
+        let now = Utc::now().to_rfc3339();
+
+        pipeline.status = PipelineStatus::Completed;
+        pipeline.completed_at = Some(now.clone());
+        pipeline.updated_at = now.clone();
+
+        let event = PipelineEvent {
+            timestamp: now,
+            event_type: PipelineEventType::PipelineManuallyCompleted,
+            stage_type: None,
+            run_id: None,
+            message: format!("Pipeline manually completed: {}", reason),
+            metadata: None,
+        };
+        pipeline.events.push(event);
+
+        self.save_pipeline(&pipeline)?;
+        Ok(pipeline)
+    }
+
     /// Determine the next action based on current pipeline state
     pub fn get_next_action(&self, pipeline: &Pipeline) -> Option<PipelineNextAction> {
         // Find current stage

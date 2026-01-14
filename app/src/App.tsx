@@ -24,6 +24,7 @@ import { PasswordPrompt } from './components/Settings/PasswordPrompt';
 import { ServerSelector } from './components/Settings/ServerSelector';
 import { AuthStatus } from './components/Settings/AuthStatus';
 import { OllamaSettings } from './components/Settings/OllamaSettings';
+import { SshTerminalSettings } from './components/Settings/SshTerminalSettings';
 import { useAuth } from './hooks/useAuth';
 import { useToastStore } from './store/toastStore';
 import { useLiveOutputStore } from './store/liveOutputStore';
@@ -364,6 +365,7 @@ function App() {
                       />
                     )}
                     <OllamaSettings />
+                    {isBrowserMode() && <SshTerminalSettings />}
                   </div>
                 )}
               </main>

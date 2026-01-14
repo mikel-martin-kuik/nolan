@@ -50,9 +50,9 @@ This is how we win: We don't just write code faster—we eliminate code as a hum
 | Phase 1: Cost & Execution | Mostly Complete | 98% |
 | Phase 2: Safety & Versioning | Not Started | 0% |
 | Phase 3: Context & Communication | Complete | 100% |
-| Phase 4: Autonomy & Scale | In Progress | 70% |
+| Phase 4: Autonomy & Scale | In Progress | 75% |
 | Phase 5: Enterprise | Not Started | 0% |
-| **Phase 6: Spec-Driven Development** | In Progress | 15% |
+| **Phase 6: Spec-Driven Development** | In Progress | 20% |
 
 ### Transition Phases
 

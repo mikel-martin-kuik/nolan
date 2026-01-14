@@ -230,6 +230,8 @@ pub fn run() {
             cronos::commands::retry_pipeline_stage,
             cronos::commands::skip_pipeline_stage_cmd,
             cronos::commands::abort_pipeline_cmd,
+            cronos::commands::complete_pipeline,
+            cronos::commands::complete_pipeline_cmd,
             cronos::commands::list_pipeline_definitions,
             cronos::commands::get_pipeline_definition,
             cronos::commands::get_default_pipeline_definition,

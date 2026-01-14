@@ -4,9 +4,10 @@ import { invoke } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
-import { Plus, Users, Clock, CheckCircle2, XCircle, AlertCircle, NotebookPen, Shield, ArrowRight, Trash2 } from 'lucide-react';
+import { Plus, Users, Clock, CheckCircle2, XCircle, NotebookPen, Shield, ArrowRight, Trash2, FolderKanban, Circle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { TeamConfig, AgentConfig, AgentDirectoryInfo, CronRunLog, CronRunStatus } from '@/types';
+import type { TeamConfig, AgentConfig, AgentDirectoryInfo } from '@/types';
+import type { ProjectInfo, ProjectStatus } from '@/types/projects';
 
 interface TeamHistoryTabProps {
   teamConfig: TeamConfig | null;
@@ -17,25 +18,22 @@ interface TeamHistoryTabProps {
   onRemoveAgentFromTeam: (agentName: string) => void;
 }
 
-// Status badge component for run history
-const RunStatusBadge: React.FC<{ status: CronRunStatus }> = ({ status }) => {
-  const statusConfig: Record<CronRunStatus, { color: string; icon: React.ReactNode }> = {
-    success: { color: 'bg-green-500/20 text-green-600', icon: <CheckCircle2 className="w-3 h-3" /> },
-    failed: { color: 'bg-red-500/20 text-red-600', icon: <XCircle className="w-3 h-3" /> },
-    running: { color: 'bg-blue-500/20 text-blue-600', icon: <Clock className="w-3 h-3 animate-spin" /> },
-    timeout: { color: 'bg-orange-500/20 text-orange-600', icon: <AlertCircle className="w-3 h-3" /> },
-    cancelled: { color: 'bg-gray-500/20 text-gray-600', icon: <XCircle className="w-3 h-3" /> },
-    skipped: { color: 'bg-yellow-500/20 text-yellow-600', icon: <AlertCircle className="w-3 h-3" /> },
-    retrying: { color: 'bg-purple-500/20 text-purple-600', icon: <Clock className="w-3 h-3" /> },
-    interrupted: { color: 'bg-orange-500/20 text-orange-600', icon: <AlertCircle className="w-3 h-3" /> },
+// Project status badge component
+const ProjectStatusBadge: React.FC<{ status: ProjectStatus }> = ({ status }) => {
+  const statusConfig: Record<ProjectStatus, { color: string; icon: React.ReactNode; label: string }> = {
+    complete: { color: 'bg-green-500/20 text-green-600', icon: <CheckCircle2 className="w-3 h-3" />, label: 'Complete' },
+    inprogress: { color: 'bg-blue-500/20 text-blue-600', icon: <Clock className="w-3 h-3" />, label: 'In Progress' },
+    pending: { color: 'bg-yellow-500/20 text-yellow-600', icon: <Circle className="w-3 h-3" />, label: 'Pending' },
+    delegated: { color: 'bg-purple-500/20 text-purple-600', icon: <Users className="w-3 h-3" />, label: 'Delegated' },
+    archived: { color: 'bg-gray-500/20 text-gray-600', icon: <XCircle className="w-3 h-3" />, label: 'Archived' },
   };
 
-  const config = statusConfig[status] || statusConfig.cancelled;
+  const config = statusConfig[status] || statusConfig.pending;
 
   return (
     <Badge variant="secondary" className={cn('gap-1 text-[10px]', config.color)}>
       {config.icon}
-      {status}
+      {config.label}
     </Badge>
   );
 };
@@ -188,7 +186,7 @@ export const TeamHistoryTab: React.FC<TeamHistoryTabProps> = ({
   onRemoveAgentFromTeam,
 }) => {
   const [agentInfos, setAgentInfos] = useState<AgentDirectoryInfo[]>([]);
-  const [runHistory, setRunHistory] = useState<CronRunLog[]>([]);
+  const [projects, setProjects] = useState<ProjectInfo[]>([]);
   const [loading, setLoading] = useState(false);
 
   // Fetch agent directory info for role/model display
@@ -201,15 +199,18 @@ export const TeamHistoryTab: React.FC<TeamHistoryTabProps> = ({
     }
   }, []);
 
-  // Fetch run history
-  const fetchRunHistory = useCallback(async () => {
+  // Fetch projects for this team
+  const fetchProjects = useCallback(async () => {
+    if (!teamConfig?.team?.name) return;
     try {
-      const runs = await invoke<CronRunLog[]>('get_cron_run_history', { limit: 50 });
-      setRunHistory(runs);
+      const allProjects = await invoke<ProjectInfo[]>('list_projects');
+      // Filter projects that belong to this team
+      const teamProjects = allProjects.filter(p => p.team === teamConfig.team.name);
+      setProjects(teamProjects);
     } catch (err) {
-      console.error('Failed to load run history:', err);
+      console.error('Failed to load projects:', err);
     }
-  }, []);
+  }, [teamConfig?.team?.name]);
 
   // Create a stable key from agent names to detect when agents change
   const agentNamesKey = teamConfig?.team?.agents?.map(a => a.name).join(',') || '';
@@ -218,29 +219,16 @@ export const TeamHistoryTab: React.FC<TeamHistoryTabProps> = ({
   // Load data on mount and when team/agents change
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchAgentInfos(), fetchRunHistory()]).finally(() => {
+    Promise.all([fetchAgentInfos(), fetchProjects()]).finally(() => {
       setLoading(false);
     });
-  }, [fetchAgentInfos, fetchRunHistory, teamConfig?.team?.name, agentNamesKey, phasesKey]);
+  }, [fetchAgentInfos, fetchProjects, teamConfig?.team?.name, agentNamesKey, phasesKey]);
 
   // Get agent info by name
   const getAgentInfo = (name: string) => agentInfos.find(a => a.name === name);
 
   // Get workflow phases with their owner agents (in order)
   const workflowPhases = teamConfig?.team?.workflow?.phases || [];
-
-  // Filter runs for team agents
-  const teamAgentNames = teamConfig?.team?.agents?.map(a => a.name) || [];
-  const teamRuns = runHistory.filter(run => teamAgentNames.includes(run.agent_name));
-
-  // Format duration
-  const formatDuration = (secs?: number) => {
-    if (!secs) return '-';
-    if (secs < 60) return `${secs}s`;
-    const mins = Math.floor(secs / 60);
-    const remainingSecs = secs % 60;
-    return `${mins}m ${remainingSecs}s`;
-  };
 
   // Format time ago
   const formatTimeAgo = (dateStr: string) => {
@@ -399,14 +387,14 @@ export const TeamHistoryTab: React.FC<TeamHistoryTabProps> = ({
           </div>
         </div>
 
-        {/* Right Column: Run History */}
+        {/* Right Column: Team Projects */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">
-              Run History
+              Team Projects
             </h3>
             <Badge variant="secondary" className="text-[10px]">
-              {teamRuns.length} runs
+              {projects.length} projects
             </Badge>
           </div>
 
@@ -414,35 +402,72 @@ export const TeamHistoryTab: React.FC<TeamHistoryTabProps> = ({
             {loading ? (
               <div className="text-center py-8">
                 <Clock className="w-6 h-6 animate-spin text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">Loading history...</p>
+                <p className="text-sm text-muted-foreground">Loading projects...</p>
               </div>
-            ) : teamRuns.length === 0 ? (
+            ) : projects.length === 0 ? (
               <div className="text-center py-8">
-                <Clock className="w-6 h-6 text-muted-foreground/30 mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">No runs yet</p>
+                <FolderKanban className="w-6 h-6 text-muted-foreground/30 mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">No projects yet</p>
               </div>
             ) : (
-              teamRuns.slice(0, 20).map((run) => (
-                <div
-                  key={run.run_id}
-                  className="p-3 rounded-lg bg-card/50 border border-border hover:border-primary/30 transition-colors"
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-medium text-sm capitalize truncate">{run.agent_name}</span>
-                    <RunStatusBadge status={run.status} />
+              projects.map((project) => {
+                // Calculate workflow progress
+                const completedPhases = project.file_completions.filter(fc => fc.completed).length;
+                const totalPhases = project.file_completions.length;
+                const progressPercent = totalPhases > 0 ? Math.round((completedPhases / totalPhases) * 100) : 0;
+
+                return (
+                  <div
+                    key={project.name}
+                    className="p-3 rounded-lg bg-card/50 border border-border hover:border-primary/30 transition-colors"
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-sm truncate">{project.name}</span>
+                      <ProjectStatusBadge status={project.status} />
+                    </div>
+                    {/* Workflow progress */}
+                    <div className="mt-2">
+                      <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
+                        <span>Workflow Progress</span>
+                        <span>{completedPhases}/{totalPhases} phases</span>
+                      </div>
+                      <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+                        <div
+                          className={cn(
+                            'h-full rounded-full transition-all',
+                            progressPercent === 100 ? 'bg-green-500' :
+                            progressPercent > 0 ? 'bg-blue-500' : 'bg-muted'
+                          )}
+                          style={{ width: `${progressPercent}%` }}
+                        />
+                      </div>
+                    </div>
+                    {/* Phase completion indicators */}
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {project.file_completions.map((fc) => (
+                        <div
+                          key={fc.file}
+                          className={cn(
+                            'px-1.5 py-0.5 rounded text-[9px]',
+                            fc.completed
+                              ? 'bg-green-500/20 text-green-600'
+                              : fc.exists
+                              ? 'bg-yellow-500/20 text-yellow-600'
+                              : 'bg-muted text-muted-foreground'
+                          )}
+                          title={fc.completed ? `Completed by ${fc.completed_by}` : fc.exists ? 'In progress' : 'Not started'}
+                        >
+                          {fc.file.replace('.md', '')}
+                        </div>
+                      ))}
+                    </div>
+                    {/* Last modified */}
+                    <div className="text-[10px] text-muted-foreground mt-2">
+                      {project.last_modified && formatTimeAgo(project.last_modified)}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <span>{formatTimeAgo(run.started_at)}</span>
-                    <span>{formatDuration(run.duration_secs)}</span>
-                    {run.total_cost_usd && (
-                      <span>${run.total_cost_usd.toFixed(4)}</span>
-                    )}
-                  </div>
-                  {run.error && (
-                    <p className="text-xs text-destructive mt-1 truncate">{run.error}</p>
-                  )}
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

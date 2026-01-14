@@ -173,7 +173,7 @@ pub async fn start_agent_core(team_name: &str, agent: &str) -> Result<String, St
     // AGENT_WORK_ROOT defaults to agent_dir for normal team agents (can be overridden for external repo deployments)
     // AGENT_DIR always points to the agent's configuration directory
     let cmd = format!(
-        "export AGENT_NAME={} TEAM_NAME={} NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\"; claude --dangerously-skip-permissions --model {}; exec bash",
+        "export AGENT_NAME={} TEAM_NAME={} NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\"; claude --dangerously-skip-permissions --model {}; sleep 0.5; tmux kill-session",
         agent,
         team_name,
         nolan_root.to_string_lossy(),
@@ -359,7 +359,7 @@ pub async fn spawn_ralph_core(model: Option<String>, force: bool, worktree_path:
         agent_dir.to_string_lossy().to_string()
     };
     let cmd = format!(
-        "export AGENT_NAME=ralph TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\"{worktree_env}; claude --dangerously-skip-permissions --model {}; exec bash",
+        "export AGENT_NAME=ralph TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\"{worktree_env}; claude --dangerously-skip-permissions --model {}; sleep 0.5; tmux kill-session",
         nolan_root.to_string_lossy(),
         nolan_data_root.to_string_lossy(),
         projects_dir.to_string_lossy(),
@@ -492,7 +492,7 @@ pub async fn recover_ralph_instance(instance: &OrphanedRalphInstance, model: Opt
     let model_str = model.unwrap_or_else(|| crate::commands::lifecycle::get_default_model("ralph"));
     let agents_dir_for_env = crate::utils::paths::get_agents_dir()?.join("ralph");
     let cmd = format!(
-        "export AGENT_NAME=ralph TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\"; claude --dangerously-skip-permissions --model {} --continue; exec bash",
+        "export AGENT_NAME=ralph TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\"; claude --dangerously-skip-permissions --model {} --continue; sleep 0.5; tmux kill-session",
         nolan_root.to_string_lossy(),
         nolan_data_root.to_string_lossy(),
         projects_dir.to_string_lossy(),
@@ -772,7 +772,7 @@ pub async fn recover_team_session(orphan: &OrphanedTeamSession) -> Result<String
     // Build command with --continue flag to resume the previous Claude session
     // AGENT_WORK_ROOT defaults to agent_dir for recovery (same as agent_dir for team agents)
     let cmd = format!(
-        "export AGENT_NAME={} TEAM_NAME=\"{}\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\" DOCS_PATH=\"{}\" OUTPUT_FILE=\"{}\"; claude --dangerously-skip-permissions --model {} --continue; exec bash",
+        "export AGENT_NAME={} TEAM_NAME=\"{}\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\" DOCS_PATH=\"{}\" OUTPUT_FILE=\"{}\"; claude --dangerously-skip-permissions --model {} --continue; sleep 0.5; tmux kill-session",
         orphan.agent,
         orphan.team,
         nolan_root.to_string_lossy(),

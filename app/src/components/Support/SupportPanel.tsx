@@ -14,10 +14,10 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Compass, FileCheck, Zap } from 'lucide-react';
 
-type TabType = 'requests' | 'ideas' | 'hotfixes' | 'decisions' | 'roadmap';
+type TabType = 'roadmap' | 'decisions' | 'ideas' | 'requests' | 'hotfixes';
 
 export function SupportPanel() {
-  const [activeTab, setActiveTab] = useState<TabType>('requests');
+  const [activeTab, setActiveTab] = useState<TabType>('roadmap');
   const [ideaFormOpen, setIdeaFormOpen] = useState(false);
   const [requestFormOpen, setRequestFormOpen] = useState(false);
   const [decisionFormOpen, setDecisionFormOpen] = useState(false);
@@ -108,17 +108,29 @@ export function SupportPanel() {
         )}
         <div className="flex items-center gap-1 p-1 glass-card rounded-lg overflow-x-auto">
           <button
-            onClick={() => setActiveTab('requests')}
+            onClick={() => setActiveTab('roadmap')}
             className={cn(
               "flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded text-xs font-medium transition-all whitespace-nowrap",
-              activeTab === 'requests' && "bg-foreground/10 text-foreground",
-              activeTab !== 'requests' && "text-muted-foreground hover:text-foreground"
+              activeTab === 'roadmap' && "bg-foreground/10 text-foreground",
+              activeTab !== 'roadmap' && "text-muted-foreground hover:text-foreground"
             )}
           >
-            <span>Requests</span>
-            {(stats?.total_requests ?? 0) > 0 && (
+            <Compass className="w-3 h-3 hidden sm:block" />
+            <span>Roadmap</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('decisions')}
+            className={cn(
+              "flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded text-xs font-medium transition-all whitespace-nowrap",
+              activeTab === 'decisions' && "bg-foreground/10 text-foreground",
+              activeTab !== 'decisions' && "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <FileCheck className="w-3 h-3 hidden sm:block" />
+            <span>Decisions</span>
+            {approvedDecisionsCount > 0 && (
               <span className="text-[10px] px-1 rounded bg-foreground/10">
-                {stats?.total_requests}
+                {approvedDecisionsCount}
               </span>
             )}
           </button>
@@ -138,6 +150,21 @@ export function SupportPanel() {
             )}
           </button>
           <button
+            onClick={() => setActiveTab('requests')}
+            className={cn(
+              "flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded text-xs font-medium transition-all whitespace-nowrap",
+              activeTab === 'requests' && "bg-foreground/10 text-foreground",
+              activeTab !== 'requests' && "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <span>Requests</span>
+            {(stats?.total_requests ?? 0) > 0 && (
+              <span className="text-[10px] px-1 rounded bg-foreground/10">
+                {stats?.total_requests}
+              </span>
+            )}
+          </button>
+          <button
             onClick={() => setActiveTab('hotfixes')}
             className={cn(
               "flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded text-xs font-medium transition-all whitespace-nowrap",
@@ -152,33 +179,6 @@ export function SupportPanel() {
                 {pendingHotfixesCount}
               </span>
             )}
-          </button>
-          <button
-            onClick={() => setActiveTab('decisions')}
-            className={cn(
-              "flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded text-xs font-medium transition-all whitespace-nowrap",
-              activeTab === 'decisions' && "bg-foreground/10 text-foreground",
-              activeTab !== 'decisions' && "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <FileCheck className="w-3 h-3 hidden sm:block" />
-            <span>Decisions</span>
-            {approvedDecisionsCount > 0 && (
-              <span className="text-[10px] px-1 rounded bg-foreground/10">
-                {approvedDecisionsCount}
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab('roadmap')}
-            className={cn(
-              "flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 rounded text-xs font-medium transition-all whitespace-nowrap",
-              activeTab === 'roadmap' && "bg-foreground/10 text-foreground",
-              activeTab !== 'roadmap' && "text-muted-foreground hover:text-foreground"
-            )}
-          >
-            <Compass className="w-3 h-3 hidden sm:block" />
-            <span>Roadmap</span>
           </button>
         </div>
       </div>

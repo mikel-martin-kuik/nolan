@@ -1,19 +1,14 @@
-# Nolan - Full Stack Deployment
+# Nolan - Pi5 Deployment with Bind Mounts for rsync
 #
 # Usage:
-#   docker compose up -d
-#   docker compose logs -f
+#   docker compose -f docker-compose.pi5.yml up -d
+#   docker compose -f docker-compose.pi5.yml logs -f
 #
-# Access:
-#   Frontend: http://<SERVER_IP>:8080
-#   Backend API: http://<SERVER_IP>:3030
-#
-# See DEPLOYMENT.md for full documentation.
+# Data directories (for rsync):
+#   /srv/nolan/data -> container /home/nolan/.nolan
+#   /srv/nolan/projects -> container /projects
 
 services:
-  # ==========================================================================
-  # Backend - Rust API Server
-  # ==========================================================================
   backend:
     image: nolan-server:latest
     build:
@@ -30,26 +25,25 @@ services:
       - NOLAN_TTYD_PORT=7681
       - RUST_LOG=info
     volumes:
-      - nolan-data:/home/nolan/.nolan
-      - nolan-projects:/projects
+      # Bind mounts for rsync support
+      - /srv/nolan/data:/home/nolan/.nolan
+      - /srv/nolan/projects:/projects
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3030/api/auth/status"]
       interval: 30s
       timeout: 3s
       retries: 3
       start_period: 10s
+    # Run as nolan user (UID 1000)
+    user: "1000:1000"
 
-  # ==========================================================================
-  # Frontend - React/Vite served by Nginx
-  # ==========================================================================
   frontend:
     image: nolan-frontend:latest
     build:
       context: .
       dockerfile: Dockerfile.frontend
       args:
-        # Default API URL - can be changed in UI settings at runtime
-        VITE_API_URL: http://localhost:3030
+        VITE_API_URL: ""
     container_name: nolan-frontend
     restart: unless-stopped
     ports:
@@ -61,7 +55,3 @@ services:
       interval: 30s
       timeout: 3s
       retries: 3
-
-volumes:
-  nolan-data:
-  nolan-projects:

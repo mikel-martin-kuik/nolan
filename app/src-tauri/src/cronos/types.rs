@@ -595,6 +595,7 @@ pub enum PipelineEventType {
     PipelineCompleted,
     PipelineFailed,
     PipelineAborted,
+    PipelineManuallyCompleted,
     RetryTriggered,
 }
 
@@ -731,4 +732,113 @@ pub struct PipelineTransitions {
     pub on_followup: Option<String>,
     /// For analyzer: action when verdict is FAILED
     pub on_failed: Option<String>,
+}
+
+// ============================================================================
+// Team Pipeline Types - Pipeline tracking for team agent workflows
+// ============================================================================
+
+/// Type of team pipeline stage - derived from team.yaml phases
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+#[serde(rename_all = "snake_case")]
+pub enum TeamPipelineStageType {
+    PhaseExecution,    // Agent working on phase output
+    PhaseValidation,   // Validator checking output quality
+}
+
+/// Verdict from a phase validator agent
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+pub struct PhaseVerdict {
+    /// The verdict: COMPLETE, REVISION, or FAILED
+    pub verdict: PhaseVerdictType,
+    /// Brief explanation of the verdict
+    pub reason: String,
+    /// If REVISION, the prompt to use for session relaunch
+    pub revision_prompt: Option<String>,
+    /// List of specific findings from validation
+    pub findings: Vec<String>,
+    /// Run ID of the validator that produced this verdict
+    #[serde(default)]
+    pub validator_run_id: Option<String>,
+}
+
+/// Type of phase verdict
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+#[serde(rename_all = "UPPERCASE")]
+pub enum PhaseVerdictType {
+    Complete,   // Phase output meets requirements, proceed to next phase
+    Revision,   // Phase output needs work, retry with feedback
+    Failed,     // Phase cannot be completed, escalate to human
+}
+
+/// A stage within a team pipeline
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+pub struct TeamPipelineStage {
+    /// Phase name from team.yaml
+    pub phase_name: String,
+    /// Current stage type (execution or validation)
+    pub stage_type: TeamPipelineStageType,
+    /// Stage status (reuse PipelineStageStatus)
+    pub status: PipelineStageStatus,
+    /// Agent responsible for this stage
+    pub agent_name: String,
+    /// Run ID if stage has started
+    pub run_id: Option<String>,
+    /// When stage started
+    pub started_at: Option<String>,
+    /// When stage completed
+    pub completed_at: Option<String>,
+    /// Validator verdict (for validation stages)
+    pub verdict: Option<PhaseVerdict>,
+    /// Skip reason if stage was skipped
+    pub skip_reason: Option<String>,
+    /// Attempt number (1-based)
+    #[serde(default)]
+    pub attempt: u32,
+    /// Output file path
+    pub output_file: Option<String>,
+}
+
+/// Full team pipeline state (persisted to .state/team-pipelines/{id}.json)
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+pub struct TeamPipeline {
+    pub id: String,
+    pub status: PipelineStatus,  // Reuse existing enum
+    pub created_at: String,
+    pub updated_at: String,
+    pub completed_at: Option<String>,
+
+    // Correlation
+    pub team_name: String,
+    pub project_name: String,
+    pub docs_path: String,
+
+    // Stages - dynamically built from team.yaml phases
+    pub stages: Vec<TeamPipelineStage>,
+    pub current_phase: String,  // Current phase name
+    pub current_stage_type: TeamPipelineStageType,
+
+    // Audit trail
+    pub events: Vec<PipelineEvent>,  // Reuse existing event type
+
+    // Cost tracking
+    pub total_cost_usd: Option<f32>,
+}
+
+/// Next action for team pipeline state machine
+#[derive(Clone, Debug, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "../../src/types/generated/cronos/")]
+#[serde(rename_all = "snake_case")]
+pub enum TeamPipelineNextAction {
+    TriggerValidator { phase_name: String, output_file: String },
+    TriggerNextPhase { phase_name: String, agent_name: String },
+    RetryPhase { phase_name: String, agent_name: String, prompt: String },
+    EscalateToHuman { phase_name: String, reason: String },
+    Complete,
+    Fail { reason: String },
 }

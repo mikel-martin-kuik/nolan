@@ -16,19 +16,19 @@ The product roadmap defines **what we build in Nolan** to support the business v
 | **Phase 1:** Cost & Execution | Mostly Complete | 98% |
 | **Phase 2:** Safety & Versioning | Not Started | 0% |
 | **Phase 3:** Context & Communication | Complete | 100% |
-| **Phase 4:** Autonomy & Scale | In Progress | 70% |
+| **Phase 4:** Autonomy & Scale | In Progress | 75% |
 | **Phase 5:** Enterprise | Not Started | 0% |
-| **Phase 6:** Spec-Driven Development | In Progress | 15% |
+| **Phase 6:** Spec-Driven Development | In Progress | 20% |
 
 ---
 
-## Current State (v0.4.7)
+## Current State (v0.4.8)
 
 ### Core Features
 - [x] Default team with core workflow agents (Dan, Ana, Bill, Enzo, Carl, Frank, Guardian)
 - [x] Phase-gate workflow with automatic handoffs and QA gates
 - [x] Document-based outputs (research.md, plan.md, progress.md, implementation-audit.md)
-- [x] Tauri-based dashboard with 8 main tabs (Status, Chat, Projects, Teams, Agents, Cronos, Usage, Settings)
+- [x] Tauri-based dashboard with 8 main tabs (Status, Chat, Ideas, Teams, Agents, Cronos, Usage, Settings)
 - [x] Stop hook automation for handoffs with coordinator ACK protocol
 - [x] Cronos scheduler integration for automated task execution
 - [x] Full REST API with authentication and WebSocket streaming
@@ -38,10 +38,10 @@ The product roadmap defines **what we build in Nolan** to support the business v
 
 ### Dashboard & UI
 - [x] Real-time agent output streaming with activity indicators
-- [x] Native terminal integration (xterm.js embedded + external)
+- [x] SSH-based terminal integration (replaced xterm.js with ttyd + external terminals)
 - [x] Workflow-aware agent grouping (Needs Attention, Active, Blocked, Idle, Complete)
 - [x] Collapsible team cards with persisted state
-- [x] Projects panel with file viewer and workflow steps
+- [x] Ideas Kanban with centralized workflow (Projects panel deprecated)
 - [x] Team Chat interface with per-team message views
 - [x] Department grouping for team organization
 - [x] Cronos agent detail pages with output panels
@@ -51,6 +51,9 @@ The product roadmap defines **what we build in Nolan** to support the business v
 - [x] File browser manager for project exploration
 - [x] Agent console with enhanced output panels
 - [x] Usage stats panel with filtering capabilities
+- [x] Run Log Viewer Modal for pipeline execution detail
+- [x] Pipeline management UI with stage status tracking
+- [x] Hotfixes panel for quick fixes that bypass idea pipeline
 
 ### Usage & Cost Tracking
 - [x] Per-project, per-model, per-agent cost breakdown
@@ -143,7 +146,7 @@ The product roadmap defines **what we build in Nolan** to support the business v
 
 ---
 
-## Phase 4: Autonomy & Scale (70% In Progress)
+## Phase 4: Autonomy & Scale (75% In Progress)
 
 ### 4.1 Agent Autonomy
 - [x] Cronos automated task execution (idea processing, git commits, workflow monitoring)
@@ -165,7 +168,9 @@ The product roadmap defines **what we build in Nolan** to support the business v
 
 ### 4.2 Multi-Project Management
 - [x] Project file isolation (per-project documents)
-- [x] Projects panel with workflow steps
+- [x] Ideas-centric workflow (Projects panel deprecated)
+- [x] Implementation pipeline with analyzer + QA stages
+- [x] Git worktree isolation for concurrent implementations
 - [ ] Project templates
 - [ ] Cross-project coordination
 
@@ -196,7 +201,7 @@ The product roadmap defines **what we build in Nolan** to support the business v
 
 ---
 
-## Phase 6: Spec-Driven Development (15% In Progress)
+## Phase 6: Spec-Driven Development (20% In Progress)
 
 > **The Breakthrough**: This phase transforms Nolan from an agent orchestrator into a spec-first development platform. Specs become the source of truth. Code becomes a generated artifact.
 
@@ -205,7 +210,7 @@ The product roadmap defines **what we build in Nolan** to support the business v
 **New Agents Required**:
 - `cron-spec-generator`: Converts accepted proposals to formal specs
 - `spec-reviewer` (or extend Enzo's role): Reviews specs before project creation
-- `cron-idea-implementer`: Auto-creates projects from approved ideas (in development)
+- `cron-idea-implementer`: Auto-creates projects from approved ideas (IMPLEMENTED)
 
 **Priority**: NEAR-TERM (enables Transition Phase 2: Spec Foundation)
 
@@ -213,7 +218,7 @@ The product roadmap defines **what we build in Nolan** to support the business v
 
 The Ideas/Support system provides the foundation for spec-driven development:
 
-**What exists today (Jan 11, 2026):**
+**What exists today (Jan 14, 2026):**
 - [x] `ideas.jsonl`: User-submitted ideas with title, description, status
 - [x] `cron-idea-processor`: AI agent that analyzes ideas and creates proposals
 - [x] `inbox-reviews.jsonl`: AI-generated proposals with gaps identified
@@ -221,15 +226,19 @@ The Ideas/Support system provides the foundation for spec-driven development:
 - [x] Full Kanban UI: New → Analysis → Ready → Done
 - [x] Idea detail pages with proposal viewing
 - [x] Idea editing and status management
+- [x] `cron-idea-implementer`: Auto-creates projects from accepted ideas
+- [x] Implementation pipeline: Implementer → Analyzer → QA → Merge
+- [x] Git worktree isolation for parallel implementations
+- [x] Hotfixes system for quick fixes bypassing full pipeline
 
-**Current Flow (gap being closed):**
+**Current Flow (operational):**
 ```
-Idea → cron-idea-processor → Proposal → User accepts → [cron-idea-implementer] → Project → Code
-                                              ↓
-                                     inbox-reviews.jsonl
+Idea → cron-idea-processor → Proposal → User accepts → cron-idea-implementer → Worktree → Code
+                                              ↓                    ↓
+                                     inbox-reviews.jsonl     Analyzer → QA → Merge
 ```
 
-**Progress**: The cron-idea-implementer agent is in development to close the gap between accepted proposals and project creation.
+**Progress**: The idea-to-merge pipeline is operational. Focus shifting to spec layer formalization.
 
 ### Target Flow
 ```
@@ -458,6 +467,15 @@ NolanServer
 ---
 
 ## Recently Completed (Jan 2026)
+
+### Pipeline & UI Infrastructure (Jan 13-14)
+- Projects panel deprecated, centralized on Ideas workflow
+- SSH-based terminal support (replaced embedded xterm.js with ttyd + external terminals)
+- Run Log Viewer Modal for pipeline execution detail
+- Hotfixes system for quick fixes bypassing the full idea pipeline
+- Pipeline management UI with stage status tracking
+- Dependency management restructuring and workflow phase tracking improvements
+- Docker containerization improvements for deployment
 
 ### Cronos Agent Expansion (Jan 12-13)
 - File browser manager implementation for cron-idea-implementer

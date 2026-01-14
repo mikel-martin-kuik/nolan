@@ -271,6 +271,14 @@ session_prefixes:
 ollama_defaults:
   url: "http://localhost:11434"
   model: "qwen2.5:1.5b"
+
+# SSH Web Terminal (ttyd)
+# Provides browser-based terminal access to agent tmux sessions
+# Install ttyd: sudo apt install ttyd (or brew install ttyd on macOS)
+# Run: ttyd -p 7681 -W -a /path/to/ttyd-attach.sh
+ssh_terminal:
+  enabled: true
+  base_url: "http://localhost:7681"
 EOF
     echo "  ✓ UI configuration created"
 fi
@@ -343,4 +351,69 @@ echo ""
 echo "To launch Nolan:"
 echo "  cd $NOLAN_APP_ROOT"
 echo "  ./start.sh"
+echo ""
+
+# Install ttyd (needed for browser mode)
+echo "-----------------------------------------"
+echo "Web Terminal (Browser Mode)"
+echo "-----------------------------------------"
+if command -v ttyd &> /dev/null; then
+    echo "✓ ttyd is already installed"
+else
+    echo "Installing ttyd for web terminal access..."
+
+    # Detect OS and architecture
+    OS="$(uname -s)"
+    ARCH="$(uname -m)"
+    TTYD_VERSION="1.7.7"
+
+    case "$OS" in
+        Linux)
+            # Try apt first, fall back to GitHub release
+            if command -v apt-get &> /dev/null; then
+                if sudo apt-get install -y ttyd 2>/dev/null; then
+                    echo "  ✓ Installed via apt"
+                else
+                    # apt install failed (e.g., arm64), use GitHub release
+                    echo "  apt install failed, downloading from GitHub..."
+                    case "$ARCH" in
+                        x86_64)  TTYD_ARCH="x86_64" ;;
+                        aarch64) TTYD_ARCH="aarch64" ;;
+                        armv7l)  TTYD_ARCH="armhf" ;;
+                        *)       echo "  ✗ Unsupported architecture: $ARCH"; TTYD_ARCH="" ;;
+                    esac
+                    if [ -n "$TTYD_ARCH" ]; then
+                        sudo curl -fsSL "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${TTYD_ARCH}" -o /usr/local/bin/ttyd
+                        sudo chmod +x /usr/local/bin/ttyd
+                        echo "  ✓ Installed from GitHub release"
+                    fi
+                fi
+            elif command -v pacman &> /dev/null; then
+                sudo pacman -S --noconfirm ttyd
+                echo "  ✓ Installed via pacman"
+            else
+                echo "  ⚠ Could not install ttyd automatically"
+                echo "    Please install manually from: https://github.com/tsl0922/ttyd"
+            fi
+            ;;
+        Darwin)
+            if command -v brew &> /dev/null; then
+                brew install ttyd
+                echo "  ✓ Installed via Homebrew"
+            else
+                echo "  ⚠ Homebrew not found. Install ttyd with: brew install ttyd"
+            fi
+            ;;
+        *)
+            echo "  ⚠ Unsupported OS: $OS"
+            echo "    Please install ttyd manually from: https://github.com/tsl0922/ttyd"
+            ;;
+    esac
+fi
+
+if command -v ttyd &> /dev/null; then
+    echo ""
+    echo "To start web terminal for browser mode:"
+    echo "  $NOLAN_APP_ROOT/scripts/start-ttyd.sh"
+fi
 echo ""

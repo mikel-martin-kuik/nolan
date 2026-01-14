@@ -448,6 +448,23 @@ pub async fn abort_pipeline(
     }
 }
 
+#[derive(Debug, Deserialize)]
+pub struct CompletePipelineRequest {
+    #[serde(default)]
+    pub reason: Option<String>,
+}
+
+/// Manually mark a pipeline as completed
+pub async fn complete_pipeline(
+    Path(pipeline_id): Path<String>,
+    Json(req): Json<CompletePipelineRequest>,
+) -> Result<Json<serde_json::Value>, impl IntoResponse> {
+    match commands::complete_pipeline(pipeline_id, req.reason).await {
+        Ok(result) => Ok(Json(result)),
+        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
+    }
+}
+
 // ========================
 // Pipeline Definition & Listing
 // ========================

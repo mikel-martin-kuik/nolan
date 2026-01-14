@@ -2,10 +2,12 @@ import React, { useState, useCallback } from 'react';
 import { MessageRenderer } from '../Sessions/MessageRenderer';
 import {
   Compass, RefreshCw, ArrowLeft, ChevronRight, ChevronDown,
-  Circle, CheckCircle2, Clock, Briefcase, Wrench, FileText
+  Circle, CheckCircle2, Clock, Briefcase, Wrench, FileText, Sparkles
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useRoadmap, type RoadmapSection, type RoadmapTab } from '@/hooks';
+import { invoke } from '@/lib/api';
+import { useToastStore } from '@/store/toastStore';
 
 interface RoadmapViewerProps {
   onBack?: () => void;
@@ -126,6 +128,9 @@ const NavItem = ({ section, activeId, onNavigate, depth = 0 }: NavItemProps) => 
 };
 
 export function RoadmapViewer({ onBack }: RoadmapViewerProps) {
+  const [updating, setUpdating] = useState(false);
+  const { success: showSuccess, error: showError } = useToastStore();
+
   const {
     content,
     loading,
@@ -142,6 +147,18 @@ export function RoadmapViewer({ onBack }: RoadmapViewerProps) {
     handleTabChange,
     loadRoadmap,
   } = useRoadmap();
+
+  const handleUpdateRoadmap = useCallback(async () => {
+    setUpdating(true);
+    try {
+      await invoke('trigger_cron_agent', { name: 'cron-roadmap' });
+      showSuccess('Roadmap update started');
+    } catch (err) {
+      showError(`Failed to trigger roadmap update: ${err}`);
+    } finally {
+      setUpdating(false);
+    }
+  }, [showSuccess, showError]);
 
   const handleNavigate = useCallback((id: string) => {
     setActiveSection(id);
@@ -190,6 +207,15 @@ export function RoadmapViewer({ onBack }: RoadmapViewerProps) {
               <span>{overallProgress}% complete</span>
               <ProgressBar progress={overallProgress} className="w-16" />
             </div>
+            <button
+              onClick={handleUpdateRoadmap}
+              disabled={updating}
+              className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium hover:bg-accent rounded transition-colors disabled:opacity-50"
+              title="Update roadmap"
+            >
+              <Sparkles className={cn("w-3.5 h-3.5", updating && "animate-pulse")} />
+              <span>Update</span>
+            </button>
             <button
               onClick={() => loadRoadmap()}
               disabled={loading}

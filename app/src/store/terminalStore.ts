@@ -48,12 +48,12 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     if (!state.sshEnabled || !state.sshBaseUrl) {
       return null;
     }
-    // Append session as path parameter for tmux attach
-    // The SSH web terminal (wetty/gotty/Guacamole) should be configured
-    // to run: tmux attach -t {session}
+    // Append session as arg parameter for ttyd
+    // ttyd with -a flag passes ?arg=value as command arguments
+    // The ttyd-attach.sh script receives session as $1
     const baseUrl = state.sshBaseUrl.endsWith('/')
       ? state.sshBaseUrl.slice(0, -1)
       : state.sshBaseUrl;
-    return `${baseUrl}?session=${encodeURIComponent(session)}`;
+    return `${baseUrl}?arg=${encodeURIComponent(session)}`;
   },
 }));

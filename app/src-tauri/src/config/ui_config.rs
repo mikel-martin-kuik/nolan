@@ -231,6 +231,34 @@ fn get_config_path() -> Result<PathBuf, String> {
     Ok(PathBuf::from(nolan_root).join("config.yaml"))
 }
 
+/// Update SSH terminal configuration in config file
+/// Preserves other config values, only updates ssh_terminal section
+pub fn update_ssh_terminal_config(base_url: String, enabled: bool) -> Result<(), String> {
+    let path = get_config_path()?;
+
+    // Load existing config
+    let mut config = if path.exists() {
+        let content = fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read config: {}", e))?;
+        serde_yaml::from_str::<UIConfig>(&content)
+            .unwrap_or_else(|_| UIConfig::default())
+    } else {
+        UIConfig::default()
+    };
+
+    // Update SSH terminal config
+    config.ssh_terminal = SshTerminalConfig { base_url, enabled };
+
+    // Write back to file
+    let yaml_content = serde_yaml::to_string(&config)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+
+    fs::write(&path, yaml_content)
+        .map_err(|e| format!("Failed to write config: {}", e))?;
+
+    Ok(())
+}
+
 /// Load UI configuration from file, returning defaults if file doesn't exist
 /// Environment variables override config file values:
 /// - OLLAMA_URL: Override ollama_defaults.url

@@ -50,6 +50,7 @@ interface WorkflowVisualizerStore {
   // Pipeline actions
   skipStage: (runId: string, reason?: string) => Promise<void>;
   abortPipeline: (pipelineId: string, reason?: string) => Promise<void>;
+  completePipeline: (pipelineId: string, reason?: string) => Promise<void>;
   retryStage: (runId: string, prompt?: string) => Promise<void>;
 
   // Loading state
@@ -148,6 +149,17 @@ export const useWorkflowVisualizerStore = create<WorkflowVisualizerStore>()(
           await get().fetchPipelines();
         } catch (err) {
           set({ error: err instanceof Error ? err.message : 'Failed to abort pipeline' });
+          throw err;
+        }
+      },
+
+      completePipeline: async (pipelineId: string, reason?: string) => {
+        try {
+          await invoke('complete_pipeline', { pipeline_id: pipelineId, reason: reason || 'Manually completed' });
+          // Refresh pipelines after action
+          await get().fetchPipelines();
+        } catch (err) {
+          set({ error: err instanceof Error ? err.message : 'Failed to complete pipeline' });
           throw err;
         }
       },

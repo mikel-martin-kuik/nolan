@@ -1,0 +1,18 @@
+# Ignore build artifacts - Docker builds from scratch
+src-tauri/target/
+
+# Development files
+node_modules/
+dist/
+
+# IDE files
+.idea/
+.vscode/
+
+# Git
+.git/
+
+# Misc
+*.log
+*.swp
+*~

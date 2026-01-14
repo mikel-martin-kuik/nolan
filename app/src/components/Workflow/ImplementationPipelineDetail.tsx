@@ -44,6 +44,7 @@ export function ImplementationPipelineDetail() {
   const fetchPipelines = useWorkflowVisualizerStore((state) => state.fetchPipelines);
   const skipStage = useWorkflowVisualizerStore((state) => state.skipStage);
   const abortPipeline = useWorkflowVisualizerStore((state) => state.abortPipeline);
+  const completePipeline = useWorkflowVisualizerStore((state) => state.completePipeline);
   const retryStage = useWorkflowVisualizerStore((state) => state.retryStage);
   const { success: showSuccess, error: showError } = useToastStore();
 
@@ -51,6 +52,7 @@ export function ImplementationPipelineDetail() {
   const [skipDialog, setSkipDialog] = useState<{ open: boolean; stageType: string; runId: string } | null>(null);
   const [abortStageDialog, setAbortStageDialog] = useState<{ open: boolean; agentName: string } | null>(null);
   const [abortPipelineDialog, setAbortPipelineDialog] = useState(false);
+  const [completePipelineDialog, setCompletePipelineDialog] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
   const [logViewer, setLogViewer] = useState<{ runId: string; stageName: string } | null>(null);
 
@@ -145,6 +147,19 @@ export function ImplementationPipelineDetail() {
     }
   };
 
+  const handleCompletePipeline = async () => {
+    setActionLoading(true);
+    try {
+      await completePipeline(pipeline.id, 'Manually completed by user');
+      showSuccess('Pipeline marked as complete');
+      setCompletePipelineDialog(false);
+    } catch (error) {
+      showError(`Failed to complete pipeline: ${error}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleViewLogs = (runId: string, stageName: string) => {
     setLogViewer({ runId, stageName });
   };
@@ -180,15 +195,26 @@ export function ImplementationPipelineDetail() {
             {pipeline.status}
           </Badge>
           {(pipeline.status === 'in_progress' || pipeline.status === 'created') && (
-            <Button
-              size="sm"
-              variant="destructive"
-              onClick={() => setAbortPipelineDialog(true)}
-              disabled={actionLoading}
-            >
-              <StopCircle className="h-3 w-3 mr-1" />
-              Abort
-            </Button>
+            <>
+              <Button
+                size="sm"
+                variant="default"
+                onClick={() => setCompletePipelineDialog(true)}
+                disabled={actionLoading}
+              >
+                <CheckCircle className="h-3 w-3 mr-1" />
+                Complete
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => setAbortPipelineDialog(true)}
+                disabled={actionLoading}
+              >
+                <StopCircle className="h-3 w-3 mr-1" />
+                Abort
+              </Button>
+            </>
           )}
         </div>
       </CardHeader>
@@ -398,6 +424,16 @@ export function ImplementationPipelineDetail() {
         confirmLabel="Abort Pipeline"
         onConfirm={handleAbortPipeline}
         variant="destructive"
+      />
+
+      {/* Complete Pipeline Confirmation Dialog */}
+      <ConfirmDialog
+        open={completePipelineDialog}
+        onOpenChange={setCompletePipelineDialog}
+        title="Mark Pipeline as Complete?"
+        description="This will mark the pipeline as manually completed. Use this if the work was completed outside the pipeline or no further action is needed."
+        confirmLabel="Complete Pipeline"
+        onConfirm={handleCompletePipeline}
       />
 
       {/* Log Viewer Modal */}

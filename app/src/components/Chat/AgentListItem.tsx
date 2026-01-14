@@ -141,7 +141,7 @@ export const AgentListItem: React.FC<AgentListItemProps> = memo(({
     if (sshEnabled) {
       const sshUrl = getSshTerminalUrl(agent.session);
       if (sshUrl) {
-        window.open(sshUrl, '_blank', 'noopener,noreferrer');
+        window.open(sshUrl, agent.session, 'width=730,height=450,menubar=no,toolbar=no,location=no,status=no');
         return;
       }
     }

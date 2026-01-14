@@ -87,6 +87,22 @@ RUN apt-get update && apt-get install -y \
     libayatana-appindicator3-1 \
     && rm -rf /var/lib/apt/lists/*
 
+# Install ttyd from GitHub releases (not available in Debian arm64 repos)
+# ttyd provides web-based terminal access to agent tmux sessions
+ARG TARGETARCH
+RUN TTYD_VERSION="1.7.7" && \
+    if [ "$TARGETARCH" = "arm64" ]; then \
+        TTYD_ARCH="aarch64"; \
+    else \
+        TTYD_ARCH="x86_64"; \
+    fi && \
+    for i in 1 2 3; do \
+        curl -fsSL --retry 3 --retry-delay 5 \
+            "https://github.com/tsl0922/ttyd/releases/download/${TTYD_VERSION}/ttyd.${TTYD_ARCH}" \
+            -o /usr/local/bin/ttyd && break || sleep 10; \
+    done && \
+    chmod +x /usr/local/bin/ttyd
+
 # Create non-root user for running the server
 # Claude CLI refuses --dangerously-skip-permissions as root
 RUN useradd -m -s /bin/bash -u 1000 nolan
@@ -121,12 +137,14 @@ ENV NOLAN_DATA_ROOT=/home/nolan/.nolan
 # nolan_root/cronos/agents is where cron agent definitions live
 ENV NOLAN_APP_ROOT=/nolan/app
 ENV RUST_LOG=info
+ENV NOLAN_TTYD_PORT=7681
 
 # Switch to non-root user
 USER nolan
 
-# Expose the API port
+# Expose the API port and terminal port
 EXPOSE 3030
+EXPOSE 7681
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \

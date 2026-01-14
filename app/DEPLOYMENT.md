@@ -144,15 +144,120 @@ ssh -L 3030:localhost:3030 user@server
 curl http://localhost:3030/health
 ```
 
+## Pi5 Deployment Commands
+
+Unified deployment script: `scripts/pi5-deploy.sh`
+
+### Paths
+
+```
+Local source:  ~/Proyectos/nolan/app/
+Pi5 source:    pi5:/root/nolan-build/
+
+Local data:    ~/.nolan/
+Pi5 data:      pi5:/srv/nolan/data/
+```
+
+### Commands
+
+```bash
+./scripts/pi5-deploy.sh <command> [options]
+```
+
+| Command | Description |
+|---------|-------------|
+| `push` | Sync data `~/.nolan/ → pi5:/srv/nolan/data/` |
+| `pull` | Sync data `pi5:/srv/nolan/data/ → ~/.nolan/` |
+| `deploy` | Sync source + rebuild + restart (~30 min) |
+| `deploy --no-build` | Sync source only, skip rebuild |
+| `restart` | Restart containers on Pi5 |
+| `status` | Show container status |
+| `logs` | Follow container logs |
+| `ssh` | SSH into Pi5 |
+
+### Data Sync Exclusions
+
+The file `~/.nolan/.rsync-exclude` controls what's excluded from data sync:
+
+```
+# Machine-specific files
+session-registry.jsonl
+server-password
+.state/scheduler/
+.state/handoffs/
+```
+
 ## Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `NOLAN_API_HOST` | `127.0.0.1` | Bind address (use `0.0.0.0` for network access) |
 | `NOLAN_API_PORT` | `3030` | API server port |
+| `NOLAN_TTYD_PORT` | `7681` | Web terminal (ttyd) port |
 | `RUST_LOG` | - | Log level (e.g., `info`, `debug`) |
 | `OLLAMA_URL` | `http://localhost:11434` | Ollama server URL (optional) |
 | `OLLAMA_MODEL` | `qwen2.5:1.5b` | Default Ollama model (optional) |
+
+## Web Terminal (ttyd)
+
+For browser-based deployments, Nolan includes ttyd for web-based terminal access to agent tmux sessions. This replaces the need for native terminal emulators when accessing Nolan via a web browser.
+
+### Docker Deployment
+
+ttyd is **automatically included and started** in Docker deployments. Access terminals at:
+```
+http://<server>:7681/?arg=<session-name>
+```
+
+Example:
+```
+http://192.168.1.87:7681/?arg=agent-default-nova
+```
+
+### Local Development (Browser Mode)
+
+For local development when using browser mode (not Tauri), you need to run ttyd manually:
+
+```bash
+# Install ttyd
+# Ubuntu/Debian:
+sudo apt install ttyd
+
+# macOS:
+brew install ttyd
+
+# Arch:
+sudo pacman -S ttyd
+
+# Start ttyd (from nolan/app directory)
+./scripts/start-ttyd.sh
+
+# Or manually:
+ttyd -p 7681 -W -a ./scripts/ttyd-attach.sh
+```
+
+### Configuration
+
+Web terminal settings are stored in `~/.nolan/config.yaml`:
+
+```yaml
+ssh_terminal:
+  enabled: true
+  base_url: "http://localhost:7681"
+```
+
+In browser mode, you can also configure this via Settings > Web Terminal in the UI.
+
+### How It Works
+
+1. ttyd runs a web-based terminal server on port 7681
+2. When you click "Terminal" on an agent card, it opens `http://localhost:7681/?arg=<session>`
+3. The ttyd-attach.sh script receives the session name and runs `tmux attach -t <session>`
+4. You get a full terminal session in your browser
+
+### Tauri Desktop App
+
+The Tauri desktop app uses **native terminal emulators** (gnome-terminal, iTerm2, Terminal.app) instead of ttyd. The web terminal settings don't appear in Tauri mode.
 
 ## Future Optimizations
 

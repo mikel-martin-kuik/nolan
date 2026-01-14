@@ -52,8 +52,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/departments", put(handlers::teams::update_departments))
         // Organization (V1.1)
         .route("/api/organization", get(handlers::organization::get_organization))
-        // UI Configuration (read-only)
+        // UI Configuration
         .route("/api/config", get(handlers::config::get_config))
+        // SSH Terminal Configuration
+        .route("/api/config/ssh-terminal", get(handlers::config::get_ssh_terminal_config))
+        .route("/api/config/ssh-terminal", put(handlers::config::update_ssh_terminal))
         // Roles (V1.2)
         .route("/api/roles", get(handlers::roles::list_roles))
         .route("/api/roles/{name}", get(handlers::roles::get_role))
@@ -119,6 +122,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/cronos/runs/{run_id}/relaunch", post(handlers::cronos::relaunch_session))
         .route("/api/cronos/runs/{run_id}/skip", post(handlers::cronos::skip_stage))
         .route("/api/cronos/pipelines/{pipeline_id}/abort", post(handlers::cronos::abort_pipeline))
+        .route("/api/cronos/pipelines/{pipeline_id}/complete", post(handlers::cronos::complete_pipeline))
         .route("/api/cronos/running", get(handlers::cronos::get_running))
         .route("/api/cronos/health", get(handlers::cronos::get_health))
         .route("/api/cronos/init", post(handlers::cronos::init))

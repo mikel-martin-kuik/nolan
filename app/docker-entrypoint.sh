@@ -221,6 +221,12 @@ session_prefixes:
 ollama_defaults:
   url: "http://localhost:11434"
   model: "qwen2.5:1.5b"
+
+# SSH Web Terminal (ttyd)
+# Provides browser-based terminal access to agent tmux sessions
+ssh_terminal:
+  enabled: true
+  base_url: "http://localhost:7681"
 EOF
     echo "✓ UI config created"
 fi
@@ -253,6 +259,60 @@ fi
 if [ "$deps_ok" = false ]; then
     echo ""
     echo "WARNING: Some dependencies are missing. Server may not function correctly."
+fi
+
+echo ""
+echo "========================================="
+echo "  Starting Services"
+echo "========================================="
+echo ""
+
+# Start ttyd (web terminal server) if available
+TTYD_PORT="${NOLAN_TTYD_PORT:-7681}"
+if command -v ttyd &> /dev/null; then
+    echo "Starting ttyd on port $TTYD_PORT..."
+    # Create a wrapper script that attaches to the requested tmux session
+    # ttyd with -a flag passes URL ?arg=value as positional arguments ($1, $2, etc.)
+    cat > /tmp/ttyd-attach.sh << 'TTYD_SCRIPT'
+#!/bin/bash
+# ttyd session attach script
+# Session name passed as first argument via ttyd URL: ?arg=session_name
+SESSION="$1"
+if [ -z "$SESSION" ]; then
+    echo "╔════════════════════════════════════════════════════════════╗"
+    echo "║              Nolan Web Terminal                            ║"
+    echo "╚════════════════════════════════════════════════════════════╝"
+    echo ""
+    echo "No session specified. Available tmux sessions:"
+    echo ""
+    tmux list-sessions 2>/dev/null || echo "  (no active sessions)"
+    echo ""
+    echo "To connect to a session, use: ?arg=<session_name>"
+    echo ""
+    exec bash
+fi
+
+# Check if session exists
+if tmux has-session -t "$SESSION" 2>/dev/null; then
+    exec tmux attach-session -t "$SESSION"
+else
+    echo "Session '$SESSION' not found."
+    echo ""
+    echo "Available sessions:"
+    tmux list-sessions 2>/dev/null || echo "  (no active sessions)"
+    echo ""
+    exec bash
+fi
+TTYD_SCRIPT
+    chmod +x /tmp/ttyd-attach.sh
+
+    # Start ttyd with URL arg support
+    # -p: port, -W: writable, -a: allow URL args as command arguments
+    ttyd -p "$TTYD_PORT" -W -a /tmp/ttyd-attach.sh &
+    TTYD_PID=$!
+    echo "  ✓ ttyd started (PID: $TTYD_PID)"
+else
+    echo "  ⚠ ttyd not found, web terminal disabled"
 fi
 
 echo ""

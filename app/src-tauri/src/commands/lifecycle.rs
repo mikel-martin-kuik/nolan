@@ -3,7 +3,6 @@ use regex::Regex;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use once_cell::sync::Lazy;
-use walkdir::WalkDir;
 use crate::config::TeamConfig;
 use crate::constants::{
     PROTECTED_SESSIONS,
@@ -629,6 +628,31 @@ pub async fn launch_team(
     let projects_dir_str = projects_dir.to_string_lossy();
     let docs_path_str = docs_path.to_string_lossy();
 
+    // Create team pipeline for tracking workflow progress
+    let team_pipeline_manager = crate::cronos::team_pipeline::TeamPipelineManager::new(&nolan_data_root);
+
+    // Only create pipeline for new projects or projects without active pipeline
+    let pipeline_id = format!("{}-{}", team_name, project_name);
+    let existing_pipeline = team_pipeline_manager.find_pipeline_by_project(&project_name);
+
+    if initial_prompt.is_some() || existing_pipeline.map(|p| p.is_none()).unwrap_or(true) {
+        match team_pipeline_manager.create_pipeline(
+            &pipeline_id,
+            &team,
+            &project_name,
+            &docs_path.to_string_lossy(),
+        ) {
+            Ok(pipeline) => {
+                eprintln!("Created team pipeline: {} with {} stages",
+                    pipeline.id, pipeline.stages.len());
+            }
+            Err(e) => {
+                eprintln!("Warning: Failed to create team pipeline: {}", e);
+                // Non-fatal - workflow continues without pipeline tracking
+            }
+        }
+    }
+
     // Handle prompt.md writing and determine what to send to Dan
     let prompt_file = docs_path.join("prompt.md");
     let spec_file = docs_path.join("SPEC.md");
@@ -716,7 +740,7 @@ pub async fn launch_team(
 
         // Create tmux session with Claude - includes TEAM_NAME, DOCS_PATH, and OUTPUT_FILE
         let cmd = format!(
-            "export AGENT_NAME={} TEAM_NAME=\"{}\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\" DOCS_PATH=\"{}\" OUTPUT_FILE=\"{}\"; claude --dangerously-skip-permissions --model {}; exec bash",
+            "export AGENT_NAME={} TEAM_NAME=\"{}\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\" DOCS_PATH=\"{}\" OUTPUT_FILE=\"{}\"; claude --dangerously-skip-permissions --model {}; sleep 0.5; tmux kill-session",
             agent, team_name, nolan_root_str, nolan_data_root_str, projects_dir_str, agent_dir_str, docs_path_str, output_file, model
         );
 
@@ -853,6 +877,55 @@ pub async fn launch_team(
         Ok(msg)
     } else {
         Err(msg)
+    }
+}
+
+/// Called when a phase completes (HANDOFF marker detected)
+/// Updates the team pipeline and triggers validator
+#[tauri::command(rename_all = "snake_case")]
+pub async fn on_phase_complete(
+    _app_handle: AppHandle,
+    team_name: String,
+    project_name: String,
+    phase_name: String,
+    _agent_name: String,
+) -> Result<String, String> {
+    let nolan_data_root = crate::utils::paths::get_nolan_data_root()?;
+    let manager = crate::cronos::team_pipeline::TeamPipelineManager::new(&nolan_data_root);
+
+    // Find active pipeline for this project
+    let pipeline_id = format!("{}-{}", team_name, project_name);
+
+    // Update execution stage to success
+    let pipeline = manager.update_stage(
+        &pipeline_id,
+        &phase_name,
+        crate::cronos::types::TeamPipelineStageType::PhaseExecution,
+        crate::cronos::types::PipelineStageStatus::Success,
+        None,
+        None,
+    )?;
+
+    // Get next action
+    if let Some(action) = manager.get_next_action(&pipeline) {
+        match action {
+            crate::cronos::types::TeamPipelineNextAction::TriggerValidator { phase_name, output_file } => {
+                // Log validator trigger - actual trigger can be done via cron scheduler
+                eprintln!("Triggering validator for phase: {} output: {}", phase_name, output_file);
+                Ok(format!("Phase {} complete, validator triggered for {}", phase_name, output_file))
+            }
+            crate::cronos::types::TeamPipelineNextAction::TriggerNextPhase { phase_name, agent_name } => {
+                eprintln!("Phase complete, next phase: {} owner: {}", phase_name, agent_name);
+                Ok(format!("Phase complete, triggering next phase: {}", phase_name))
+            }
+            crate::cronos::types::TeamPipelineNextAction::Complete => {
+                eprintln!("All phases complete for pipeline: {}", pipeline_id);
+                Ok("All phases complete".to_string())
+            }
+            _ => Ok(format!("Phase {} complete", phase_name))
+        }
+    } else {
+        Ok(format!("Phase {} complete", phase_name))
     }
 }
 
@@ -1148,7 +1221,7 @@ pub async fn spawn_agent(app_handle: AppHandle, _team_name: String, agent: Strin
     // Create tmux session for Ralph (team-independent, TEAM_NAME is empty)
     // If worktree is enabled, run from worktree directory for isolated file changes
     let cmd = format!(
-        "export AGENT_NAME={} TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\"{worktree_env}; claude --dangerously-skip-permissions --model {}{}; exec bash",
+        "export AGENT_NAME={} TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\"{worktree_env}; claude --dangerously-skip-permissions --model {}{}; sleep 0.5; tmux kill-session",
         agent, nolan_root_str, nolan_data_root_str, projects_dir_str, agent_dir_str, model_str, chrome_flag
     );
 
@@ -1270,7 +1343,7 @@ pub async fn start_agent(app_handle: AppHandle, team_name: String, agent: String
 
     // Create tmux session with inherited project context - includes TEAM_NAME and OUTPUT_FILE
     let cmd = format!(
-        "export AGENT_NAME={} TEAM_NAME=\"{}\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\" DOCS_PATH=\"{}\" OUTPUT_FILE=\"{}\"; claude --dangerously-skip-permissions --model {}; exec bash",
+        "export AGENT_NAME={} TEAM_NAME=\"{}\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_DIR=\"{}\" DOCS_PATH=\"{}\" OUTPUT_FILE=\"{}\"; claude --dangerously-skip-permissions --model {}; sleep 0.5; tmux kill-session",
         agent, team_name, nolan_root_str, nolan_data_root_str, projects_dir_str, agent_dir_str, docs_path, output_file, model
     );
 

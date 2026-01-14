@@ -25,7 +25,29 @@ export interface Idea {
   created_at: string;
   updated_at?: string;
   created_by?: string;
+  tags?: string[];
 }
+
+// Preset tag colors for category-based coloring
+export const TAG_COLORS: Record<string, string> = {
+  // Roadmap areas
+  ui: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+  backend: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
+  agents: 'bg-green-500/20 text-green-400 border-green-500/30',
+  infrastructure: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
+  // Sources
+  'user-feedback': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
+  'cron-agent': 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+  'security-audit': 'bg-red-500/20 text-red-400 border-red-500/30',
+  // Feature types
+  feature: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
+  bugfix: 'bg-rose-500/20 text-rose-400 border-rose-500/30',
+  enhancement: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
+  refactor: 'bg-slate-500/20 text-slate-400 border-slate-500/30',
+};
+
+// Default color for unknown tags
+export const DEFAULT_TAG_COLOR = 'bg-muted/50 text-muted-foreground border-muted';
 
 // Hotfix types - simple fixes that bypass the full idea pipeline
 export type HotfixStatus = 'pending' | 'in_progress' | 'completed' | 'failed';

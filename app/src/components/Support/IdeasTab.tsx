@@ -1,8 +1,12 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { invoke } from '@/lib/api';
-import { Idea, IdeaReview, IdeaComplexity } from '@/types';
+import { Idea, IdeaReview, IdeaComplexity, TAG_COLORS, DEFAULT_TAG_COLOR } from '@/types';
 import type { ProjectInfo } from '@/types/projects';
+
+function getTagColor(tag: string): string {
+  return TAG_COLORS[tag] || DEFAULT_TAG_COLOR;
+}
 import { IdeaCard } from './IdeaCard';
 import { IdeaDetailPage } from './IdeaDetailPage';
 import { IdeaEditDialog } from './IdeaEditDialog';
@@ -144,6 +148,7 @@ export function IdeasTab() {
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [activeId, setActiveId] = useState<string | null>(null);
   const [pendingMove, setPendingMove] = useState<PendingMove | null>(null);
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
 
   // Team launch modal state (for high complexity ideas)
   const [teamLaunchOpen, setTeamLaunchOpen] = useState(false);
@@ -294,6 +299,12 @@ export function IdeasTab() {
     refetchInterval: 30000,
   });
 
+  const { data: allTags = [] } = useQuery({
+    queryKey: ['idea-tags'],
+    queryFn: () => invoke<string[]>('list_all_idea_tags'),
+    refetchInterval: 30000,
+  });
+
   // Create a map of item_id -> review for quick lookup
   const reviewMap = useMemo(() => {
     const map = new Map<string, IdeaReview>();
@@ -305,6 +316,28 @@ export function IdeasTab() {
     return map;
   }, [reviews]);
 
+  // Filter ideas by selected tags
+  const filteredIdeas = useMemo(() => {
+    if (selectedTags.size === 0) return ideas;
+    return ideas.filter((idea) => {
+      if (!idea.tags || idea.tags.length === 0) return false;
+      return Array.from(selectedTags).every((tag) => idea.tags?.includes(tag));
+    });
+  }, [ideas, selectedTags]);
+
+  // Toggle tag selection
+  const toggleTag = (tag: string) => {
+    setSelectedTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) {
+        next.delete(tag);
+      } else {
+        next.add(tag);
+      }
+      return next;
+    });
+  };
+
   // Group ideas by column and complexity
   const columnIdeas = useMemo(() => {
     type GroupedByComplexity = Record<ComplexityGroup, { idea: Idea; review?: IdeaReview }[]>;
@@ -315,7 +348,7 @@ export function IdeasTab() {
       done: { high: [], medium: [], low: [], unknown: [] },
     };
 
-    ideas.forEach((idea) => {
+    filteredIdeas.forEach((idea) => {
       const review = reviewMap.get(idea.id);
       const column = getIdeaColumn(idea, review);
       const complexity: ComplexityGroup = review?.complexity || 'unknown';
@@ -332,7 +365,7 @@ export function IdeasTab() {
     });
 
     return grouped;
-  }, [ideas, reviewMap]);
+  }, [filteredIdeas, reviewMap]);
 
   // Get total count for a column
   const getColumnCount = (columnId: WorkflowColumn) => {
@@ -493,15 +526,45 @@ export function IdeasTab() {
 
   return (
     <div className="space-y-3">
-      {/* Header with dispatch button */}
-      {dispatchableCount > 0 && (
-        <div className="flex items-center justify-end">
+      {/* Header with dispatch button and tag filter */}
+      <div className="flex items-center justify-between gap-4">
+        {/* Tag Filter Bar */}
+        {allTags.length > 0 && (
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 flex-1">
+            <span className="text-[10px] text-muted-foreground shrink-0">Filter:</span>
+            {allTags.map((tag) => (
+              <button
+                key={tag}
+                onClick={() => toggleTag(tag)}
+                className={cn(
+                  'inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium border transition-all',
+                  selectedTags.has(tag)
+                    ? getTagColor(tag)
+                    : 'bg-muted/30 text-muted-foreground border-transparent hover:bg-muted/50'
+                )}
+              >
+                {tag}
+              </button>
+            ))}
+            {selectedTags.size > 0 && (
+              <button
+                onClick={() => setSelectedTags(new Set())}
+                className="text-[10px] text-muted-foreground hover:text-foreground ml-1"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Dispatch button */}
+        {dispatchableCount > 0 && (
           <Button
             variant="outline"
             size="sm"
             onClick={() => dispatchAllMutation.mutate()}
             disabled={dispatchAllMutation.isPending}
-            className="text-xs gap-1.5"
+            className="text-xs gap-1.5 shrink-0"
           >
             {dispatchAllMutation.isPending ? (
               <Loader2 className="h-3 w-3 animate-spin" />
@@ -510,8 +573,8 @@ export function IdeasTab() {
             )}
             Dispatch All ({dispatchableCount})
           </Button>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Kanban Board with Drag and Drop */}
       <DndContext

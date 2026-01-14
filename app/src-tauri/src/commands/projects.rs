@@ -40,6 +40,15 @@ pub enum ProjectStatus {
 /// Valid status values for update_project_status
 const VALID_STATUSES: &[&str] = &["COMPLETE", "INPROGRESS", "PENDING", "DELEGATED", "ARCHIVED"];
 
+/// Workflow phase status file (e.g., plan.md.status)
+/// These files track approval status for workflow documents
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct WorkflowPhaseStatus {
+    pub status: String,
+    pub reason: Option<String>,
+    pub timestamp: Option<String>,
+}
+
 /// Get expected workflow files from team config
 /// Returns: (all_expected_files, workflow_files_with_handoff_tracking)
 /// Requires team config - no fallback
@@ -309,8 +318,10 @@ fn parse_handoff_marker(content: &str) -> Option<(String, String)> {
 }
 
 /// Get completion status for workflow files (and prompt.md)
-/// Primary source of truth: .state/handoffs/processed/ directory
-/// Fallback: HANDOFF markers in files (for legacy compatibility)
+/// Priority order for completion detection:
+/// 1. Status files (.md.status) - APPROVED status indicates completion
+/// 2. .state/handoffs/processed/ directory
+/// 3. HANDOFF markers in files (legacy compatibility)
 fn get_file_completions(
     project_path: &PathBuf,
     workflow_files: &[String],
@@ -319,7 +330,7 @@ fn get_file_completions(
 ) -> Vec<FileCompletion> {
     let mut completions = Vec::new();
 
-    // Get processed handoffs from .state/handoffs/ directory (primary source of truth)
+    // Get processed handoffs from .state/handoffs/ directory (secondary source)
     let processed_handoffs = get_processed_handoffs(project_name);
 
     // Check workflow files
@@ -327,11 +338,43 @@ fn get_file_completions(
         let file_path = project_path.join(file);
         let exists = file_path.exists();
 
-        // First: Check .state/handoffs/processed/ directory (primary source of truth)
-        let handoff_completion = if let Some(cfg) = config {
-            if let Some(agent) = get_file_producer(cfg, file) {
-                if let Some((timestamp, _id)) = processed_handoffs.get(&agent) {
-                    Some((timestamp.clone(), agent))
+        // 1. Primary: Check for .md.status file (e.g., plan.md.status)
+        let status_file_path = project_path.join(format!("{}.status", file));
+        let status_completion = if status_file_path.exists() {
+            match fs::read_to_string(&status_file_path) {
+                Ok(content) => {
+                    if let Ok(status) = serde_yaml::from_str::<WorkflowPhaseStatus>(&content) {
+                        if status.status.to_uppercase() == "APPROVED" {
+                            // Extract agent from reason if available, otherwise use "system"
+                            let agent = status.reason
+                                .as_ref()
+                                .map(|r| r.to_string())
+                                .unwrap_or_else(|| "system".to_string());
+                            let timestamp = status.timestamp
+                                .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+                            Some((timestamp, agent))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                Err(_) => None,
+            }
+        } else {
+            None
+        };
+
+        // 2. Secondary: Check .state/handoffs/processed/ directory
+        let handoff_completion = if status_completion.is_none() {
+            if let Some(cfg) = config {
+                if let Some(agent) = get_file_producer(cfg, file) {
+                    if let Some((timestamp, _id)) = processed_handoffs.get(&agent) {
+                        Some((timestamp.clone(), agent))
+                    } else {
+                        None
+                    }
                 } else {
                     None
                 }
@@ -342,11 +385,14 @@ fn get_file_completions(
             None
         };
 
-        let (completed, completed_by, completed_at) = if let Some((ts, ag)) = handoff_completion {
+        let (completed, completed_by, completed_at) = if let Some((ts, ag)) = status_completion {
+            // Completion found in .md.status file
+            (true, Some(ag), Some(ts))
+        } else if let Some((ts, ag)) = handoff_completion {
             // Completion found in .state/handoffs/processed/
             (true, Some(ag), Some(ts))
         } else if exists {
-            // Fallback: Check for HANDOFF marker in file (legacy compatibility)
+            // 3. Fallback: Check for HANDOFF marker in file (legacy compatibility)
             match fs::read_to_string(&file_path) {
                 Ok(content) => {
                     if let Some((timestamp, agent)) = parse_handoff_marker(&content) {
@@ -370,12 +416,33 @@ fn get_file_completions(
         });
     }
 
-    // Check prompt.md separately (special file - always uses file marker)
+    // Check prompt.md separately (special file)
     let prompt_path = project_path.join("prompt.md");
     let prompt_exists = prompt_path.exists();
 
-    let (prompt_completed, prompt_completed_by, prompt_completed_at) = if prompt_exists {
-        // prompt.md always uses file marker (it's user-generated, not agent handoff)
+    // Check for prompt.md.status first
+    let prompt_status_path = project_path.join("prompt.md.status");
+    let (prompt_completed, prompt_completed_by, prompt_completed_at) = if prompt_status_path.exists() {
+        match fs::read_to_string(&prompt_status_path) {
+            Ok(content) => {
+                if let Ok(status) = serde_yaml::from_str::<WorkflowPhaseStatus>(&content) {
+                    if status.status.to_uppercase() == "APPROVED" {
+                        let agent = status.reason
+                            .unwrap_or_else(|| "system".to_string());
+                        let timestamp = status.timestamp
+                            .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+                        (true, Some(agent), Some(timestamp))
+                    } else {
+                        (false, None, None)
+                    }
+                } else {
+                    (false, None, None)
+                }
+            }
+            Err(_) => (false, None, None),
+        }
+    } else if prompt_exists {
+        // Fallback: Check for HANDOFF marker in file (legacy compatibility)
         match fs::read_to_string(&prompt_path) {
             Ok(content) => {
                 if let Some((timestamp, agent)) = parse_handoff_marker(&content) {
@@ -680,7 +747,7 @@ fn collect_md_files(
         let path = entry.path();
 
         if path.is_file() {
-            // Check if it's a markdown file
+            // Only include .md files (extension check filters out .md.status files)
             if path.extension().and_then(|s| s.to_str()) == Some("md") {
                 let name = path
                     .file_name()

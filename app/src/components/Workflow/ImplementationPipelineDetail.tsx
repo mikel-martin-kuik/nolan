@@ -95,7 +95,7 @@ export function ImplementationPipelineDetail() {
   const handleResume = async (runId: string, prompt?: string) => {
     setActionLoading(true);
     try {
-      await invoke('relaunch_cron_session', { run_id: runId, prompt: prompt || '' });
+      await invoke('relaunch_cron_session', { run_id: runId, follow_up_prompt: prompt || '' });
       showSuccess('Resumed session');
       await fetchPipelines();
     } catch (error) {

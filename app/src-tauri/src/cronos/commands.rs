@@ -1125,16 +1125,23 @@ async fn relaunch_cron_session_impl(
         new_run_id, original.agent_name, run_id, nolan_root.to_string_lossy(), nolan_data_root.to_string_lossy()
     );
 
-    // Determine working directory - prioritize worktree_path since that's where Claude session was created
-    let work_dir = original.worktree_path
-        .as_ref()
-        .filter(|d| std::path::Path::new(d).exists())
-        .map(std::path::PathBuf::from)
-        .or_else(|| original.run_dir.as_ref()
+    // Determine working directory - use worktree_path only if agent has worktree enabled,
+    // otherwise use agent's configured working_directory or nolan_root (where the session was created)
+    let work_dir = if config.worktree.as_ref().map(|wt| wt.enabled).unwrap_or(false) {
+        // Agent uses worktree, prefer worktree_path from original run
+        original.worktree_path
+            .as_ref()
             .filter(|d| std::path::Path::new(d).exists())
-            .map(std::path::PathBuf::from))
-        .or_else(|| config.context.working_directory.as_ref().map(std::path::PathBuf::from))
-        .unwrap_or_else(|| nolan_root.clone());
+            .map(std::path::PathBuf::from)
+            .or_else(|| config.context.working_directory.as_ref().map(std::path::PathBuf::from))
+            .unwrap_or_else(|| nolan_root.clone())
+    } else {
+        // Agent doesn't use worktree, use agent's working_directory or nolan_root
+        config.context.working_directory
+            .as_ref()
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| nolan_root.clone())
+    };
 
     // Build claude command with --resume flag
     let claude_cmd = format!(

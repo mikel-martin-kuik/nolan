@@ -154,7 +154,7 @@ export const useWorkflowVisualizerStore = create<WorkflowVisualizerStore>()(
 
       retryStage: async (runId: string, prompt?: string) => {
         try {
-          await invoke('relaunch_cron_session', { run_id: runId, prompt });
+          await invoke('relaunch_cron_session', { run_id: runId, follow_up_prompt: prompt || '' });
           // Refresh pipelines after action
           await get().fetchPipelines();
         } catch (err) {

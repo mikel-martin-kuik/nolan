@@ -215,6 +215,11 @@ pub async fn browse_directory(path: String, show_hidden: Option<bool>) -> Result
             continue;
         }
 
+        // Skip .md.status files (workflow phase status files are internal)
+        if name.ends_with(".md.status") {
+            continue;
+        }
+
         let metadata = entry_path.metadata().ok();
         let is_directory = entry_path.is_dir();
 
@@ -402,6 +407,11 @@ pub async fn search_files(
 
             // Skip hidden directories in search
             if name.starts_with('.') {
+                continue;
+            }
+
+            // Skip .md.status files (workflow phase status files are internal)
+            if name.ends_with(".md.status") {
                 continue;
             }
 

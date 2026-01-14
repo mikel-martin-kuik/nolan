@@ -159,6 +159,10 @@ pub struct CronAgentConfig {
     // If set, this agent will be triggered after completion to analyze results
     #[serde(default)]
     pub post_run_analyzer: Option<PostRunAnalyzerConfig>,
+    /// CLI provider to use for this agent (default: claude)
+    /// Options: "claude" (Claude Code), "opencode" (OpenCode)
+    #[serde(default)]
+    pub cli_provider: Option<String>,
 }
 
 impl CronAgentConfig {
@@ -1031,6 +1035,7 @@ mod agent_role_tests {
             invocation: None,
             worktree: None,
             post_run_analyzer: None,
+            cli_provider: None,
         }
     }
 

@@ -11,6 +11,7 @@ use serde::Deserialize;
 
 use super::types::*;
 use super::manager::CronosManager;
+use crate::cli_providers::{self, CliSpawnConfig, OutputFormat};
 use crate::utils::paths;
 use crate::tmux::session;
 use crate::git::worktree;
@@ -306,37 +307,17 @@ async fn execute_single_run(
         });
     }
 
-    // Build CLI arguments
-    let mut claude_args = vec![
-        "-p".to_string(),
-        prompt.clone(),
-        "--dangerously-skip-permissions".to_string(),
-        "--verbose".to_string(),
-        "--output-format".to_string(),
-        "stream-json".to_string(),
-        "--model".to_string(),
-        config.model.clone(),
-    ];
+    // Get CLI provider for this agent (defaults to "claude" if not specified)
+    let cli_provider = cli_providers::get_provider(config.cli_provider.as_deref(), true);
 
-    // Add allowed tools
-    if !config.guardrails.allowed_tools.is_empty() {
-        claude_args.push("--allowedTools".to_string());
-        claude_args.push(config.guardrails.allowed_tools.join(","));
-    }
-
-    // Add guardrails via system prompt
-    if let Some(ref forbidden) = config.guardrails.forbidden_paths {
-        let guardrail_prompt = format!(
+    // Build guardrail system prompt
+    let system_prompt_append = config.guardrails.forbidden_paths.as_ref().map(|forbidden| {
+        format!(
             "CRITICAL GUARDRAILS:\n- NEVER access these paths: {}\n- Maximum file edits: {}",
             forbidden.join(", "),
             config.guardrails.max_file_edits.unwrap_or(10)
-        );
-        claude_args.push("--append-system-prompt".to_string());
-        claude_args.push(guardrail_prompt);
-    }
-
-    // Escape prompt for shell (handle quotes and special chars)
-    let prompt_escaped = prompt.replace("'", "'\\''");
+        )
+    });
 
     // Build shell command that:
     // 1. Sets environment variables
@@ -445,26 +426,42 @@ async fn execute_single_run(
     // Change to working directory
     cmd_parts.push(format!("cd '{}'", work_dir.to_string_lossy()));
 
-    // Build claude command with all args (including --session-id for relaunch capability)
-    let mut claude_cmd = format!("claude -p '{}' --dangerously-skip-permissions --verbose --output-format stream-json --model {} --session-id '{}'",
-        prompt_escaped, config.model, claude_session_id);
+    // Build CLI spawn configuration
+    let mut spawn_env = std::collections::HashMap::new();
+    spawn_env.insert("CRON_RUN_ID".to_string(), run_id.clone());
+    spawn_env.insert("CRON_AGENT".to_string(), config.name.clone());
+    spawn_env.insert("NOLAN_ROOT".to_string(), nolan_root.to_string_lossy().to_string());
+    spawn_env.insert("NOLAN_DATA_ROOT".to_string(), nolan_data_root.to_string_lossy().to_string());
+    spawn_env.insert("AGENT_WORK_ROOT".to_string(), agent_work_root.clone());
+    spawn_env.insert("AGENT_DIR".to_string(), agent_dir.to_string_lossy().to_string());
 
-    if !config.guardrails.allowed_tools.is_empty() {
-        claude_cmd.push_str(&format!(" --allowedTools '{}'", config.guardrails.allowed_tools.join(",")));
+    // Add extra env vars
+    if let Some(ref extra) = extra_env {
+        for (key, value) in extra {
+            spawn_env.insert(key.clone(), value.clone());
+        }
     }
 
-    if let Some(ref forbidden) = config.guardrails.forbidden_paths {
-        let guardrail_prompt = format!(
-            "CRITICAL GUARDRAILS:\\n- NEVER access these paths: {}\\n- Maximum file edits: {}",
-            forbidden.join(", "),
-            config.guardrails.max_file_edits.unwrap_or(10)
-        );
-        claude_cmd.push_str(&format!(" --append-system-prompt '{}'", guardrail_prompt.replace("'", "'\\''")));
-    }
+    let spawn_config = CliSpawnConfig {
+        prompt: prompt.clone(),
+        model: config.model.clone(),
+        working_dir: work_dir.clone(),
+        session_id: Some(claude_session_id.clone()),
+        resume: false,
+        output_format: OutputFormat::StreamJson,
+        allowed_tools: config.guardrails.allowed_tools.clone(),
+        system_prompt_append: system_prompt_append.clone(),
+        skip_permissions: true,
+        verbose: true,
+        env_vars: spawn_env,
+    };
 
-    // Run claude with output to both terminal (for live streaming) and file
+    // Build CLI command using the provider
+    let cli_cmd = cli_provider.build_command(&spawn_config);
+
+    // Run CLI with output to both terminal (for live streaming) and file
     // Use tee so tmux pipe-pane can capture the live output
-    cmd_parts.push(format!("{} 2>&1 | tee '{}'", claude_cmd, log_file.to_string_lossy()));
+    cmd_parts.push(format!("{} 2>&1 | tee '{}'", cli_cmd, log_file.to_string_lossy()));
 
     // Capture claude's exit code using PIPESTATUS (requires bash)
     // PIPESTATUS[0] is the exit code of the command before the pipe
@@ -612,8 +609,9 @@ async fn execute_single_run(
     let completed_at = Utc::now();
     let duration = (completed_at - started_at).num_seconds() as u32;
 
-    // Extract cost from output log
-    let total_cost_usd = extract_cost_from_log(&log_file);
+    // Extract cost from output log using the CLI provider's parser
+    let cli_result = cli_provider.parse_output(&log_file.to_string_lossy());
+    let total_cost_usd = cli_result.total_cost_usd.or_else(|| extract_cost_from_log(&log_file));
 
     let run_log = CronRunLog {
         run_id: run_id.clone(),
@@ -823,38 +821,49 @@ pub async fn execute_cron_agent_simple(
         });
     }
 
-    // Build CLI command (simple mode uses direct process, not tmux)
-    let mut cmd = Command::new("claude");
-    cmd.arg("-p").arg(&prompt);
-    cmd.arg("--dangerously-skip-permissions");
-    cmd.arg("--verbose");
-    cmd.arg("--output-format").arg("stream-json");
+    // Get CLI provider for this agent
+    let cli_provider = cli_providers::get_provider(config.cli_provider.as_deref(), true);
 
-    if !config.guardrails.allowed_tools.is_empty() {
-        cmd.arg("--allowedTools")
-           .arg(config.guardrails.allowed_tools.join(","));
-    }
-
-    if let Some(ref forbidden) = config.guardrails.forbidden_paths {
-        let guardrail_prompt = format!(
-            "CRITICAL GUARDRAILS:\n- NEVER access these paths: {}\n- Maximum file edits: {}",
-            forbidden.join(", "),
-            config.guardrails.max_file_edits.unwrap_or(10)
-        );
-        cmd.arg("--append-system-prompt").arg(&guardrail_prompt);
-    }
-
+    // Build CLI spawn configuration for simple mode
     let work_dir = config.context.working_directory
         .as_ref()
         .map(PathBuf::from)
         .unwrap_or_else(|| nolan_root.clone());
+
+    let system_prompt_append = config.guardrails.forbidden_paths.as_ref().map(|forbidden| {
+        format!(
+            "CRITICAL GUARDRAILS:\n- NEVER access these paths: {}\n- Maximum file edits: {}",
+            forbidden.join(", "),
+            config.guardrails.max_file_edits.unwrap_or(10)
+        )
+    });
+
+    let spawn_config = CliSpawnConfig {
+        prompt: prompt.clone(),
+        model: config.model.clone(),
+        working_dir: work_dir.clone(),
+        session_id: None,
+        resume: false,
+        output_format: OutputFormat::StreamJson,
+        allowed_tools: config.guardrails.allowed_tools.clone(),
+        system_prompt_append,
+        skip_permissions: true,
+        verbose: true,
+        env_vars: std::collections::HashMap::new(),
+    };
+
+    // Build CLI command (simple mode uses direct process, not tmux)
+    let args = cli_provider.build_args(&spawn_config);
+    let mut cmd = Command::new(cli_provider.executable());
+    for arg in args {
+        cmd.arg(arg);
+    }
     cmd.current_dir(&work_dir);
-    cmd.arg("--model").arg(&config.model);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
     let mut child = cmd.spawn()
-        .map_err(|e| format!("Failed to spawn claude: {}", e))?;
+        .map_err(|e| format!("Failed to spawn {}: {}", cli_provider.name(), e))?;
 
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
@@ -917,8 +926,9 @@ pub async fn execute_cron_agent_simple(
     let completed_at = Utc::now();
     let duration = (completed_at - started_at).num_seconds() as u32;
 
-    // Extract cost from output log
-    let total_cost_usd = extract_cost_from_log(&log_file);
+    // Extract cost from output log using the CLI provider's parser
+    let cli_result = cli_provider.parse_output(&log_file.to_string_lossy());
+    let total_cost_usd = cli_result.total_cost_usd.or_else(|| extract_cost_from_log(&log_file));
 
     let run_log = CronRunLog {
         run_id,

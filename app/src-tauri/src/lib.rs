@@ -1,5 +1,6 @@
 // Module declarations
 pub mod api;
+pub mod cli_providers;
 pub mod commands;
 pub mod config;
 pub mod constants;

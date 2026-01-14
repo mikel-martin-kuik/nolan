@@ -8,8 +8,12 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu';
 import { invoke } from '@/lib/api';
-import { Idea, IdeaReview } from '@/types';
+import { Idea, IdeaReview, TAG_COLORS, DEFAULT_TAG_COLOR } from '@/types';
 import type { ProjectInfo } from '@/types/projects';
+
+function getTagColor(tag: string): string {
+  return TAG_COLORS[tag] || DEFAULT_TAG_COLOR;
+}
 import { cn } from '@/lib/utils';
 import { IdeaEditDialog } from './IdeaEditDialog';
 import { TeamLaunchModal } from '@/components/shared/TeamLaunchModal';
@@ -213,6 +217,27 @@ export function IdeaCard({ idea, review, onClick, isDragging, isDragOverlay }: I
                 {createdAt}
               </span>
             </div>
+            {/* Tags */}
+            {idea.tags && idea.tags.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1">
+                {idea.tags.slice(0, 3).map((tag) => (
+                  <span
+                    key={tag}
+                    className={cn(
+                      'inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium border',
+                      getTagColor(tag)
+                    )}
+                  >
+                    {tag}
+                  </span>
+                ))}
+                {idea.tags.length > 3 && (
+                  <span className="text-[9px] text-muted-foreground">
+                    +{idea.tags.length - 3}
+                  </span>
+                )}
+              </div>
+            )}
             {/* Subtle status indicator */}
             {needsInput && gapsCount > 0 && (
               <div className="text-[10px] text-muted-foreground mt-0.5">

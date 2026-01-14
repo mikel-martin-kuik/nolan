@@ -121,6 +121,8 @@ pub struct Idea {
     pub updated_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tags: Vec<String>,
 }
 
 // ============================================================================
@@ -486,6 +488,7 @@ pub fn create_idea(
         created_at: Utc::now().to_rfc3339(),
         updated_at: None,
         created_by,
+        tags: Vec::new(),
     };
 
     let path = get_ideas_file()?;
@@ -543,6 +546,70 @@ pub fn delete_idea(id: String) -> Result<(), String> {
     write_jsonl(&path, &filtered)?;
 
     Ok(())
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn add_idea_tag(id: String, tag: String) -> Result<Idea, String> {
+    let tag = tag.trim().to_lowercase();
+    if tag.is_empty() {
+        return Err("Tag cannot be empty".to_string());
+    }
+
+    let path = get_ideas_file()?;
+    let mut ideas: Vec<Idea> = read_jsonl(&path)?;
+
+    let idea = ideas
+        .iter_mut()
+        .find(|i| i.id == id)
+        .ok_or_else(|| format!("Idea not found: {}", id))?;
+
+    if !idea.tags.contains(&tag) {
+        idea.tags.push(tag);
+        idea.tags.sort();
+        idea.updated_at = Some(Utc::now().to_rfc3339());
+    }
+
+    let updated = idea.clone();
+    write_jsonl(&path, &ideas)?;
+
+    Ok(updated)
+}
+
+#[tauri::command(rename_all = "snake_case")]
+pub fn remove_idea_tag(id: String, tag: String) -> Result<Idea, String> {
+    let tag = tag.trim().to_lowercase();
+
+    let path = get_ideas_file()?;
+    let mut ideas: Vec<Idea> = read_jsonl(&path)?;
+
+    let idea = ideas
+        .iter_mut()
+        .find(|i| i.id == id)
+        .ok_or_else(|| format!("Idea not found: {}", id))?;
+
+    idea.tags.retain(|t| t != &tag);
+    idea.updated_at = Some(Utc::now().to_rfc3339());
+
+    let updated = idea.clone();
+    write_jsonl(&path, &ideas)?;
+
+    Ok(updated)
+}
+
+#[command]
+pub fn list_all_idea_tags() -> Result<Vec<String>, String> {
+    let path = get_ideas_file()?;
+    let ideas: Vec<Idea> = read_jsonl(&path)?;
+
+    let mut tags: Vec<String> = ideas
+        .into_iter()
+        .flat_map(|i| i.tags)
+        .collect();
+
+    tags.sort();
+    tags.dedup();
+
+    Ok(tags)
 }
 
 // ============================================================================

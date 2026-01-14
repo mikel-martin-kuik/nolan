@@ -231,6 +231,62 @@ pub fn get_default_model_for_team(agent: &str, team: Option<&str>) -> String {
     "opus".to_string()
 }
 
+/// Get the CLI provider for an agent from agent.json (similar to get_default_model_for_team)
+/// Returns the provider name ("claude" or "opencode") or None to use system default
+pub fn get_agent_cli_provider(agent: &str, team: Option<&str>) -> Option<String> {
+    use std::fs;
+
+    // Helper to try reading cli_provider from agent.json
+    fn try_read_provider(agent_json_path: &std::path::Path) -> Option<String> {
+        if let Ok(content) = fs::read_to_string(agent_json_path) {
+            if let Ok(metadata) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(provider) = metadata.get("cli_provider").and_then(|p| p.as_str()) {
+                    return Some(provider.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    // If team specified, check team-specific agent first
+    if let Some(team_name) = team {
+        if let Ok(team_agents_dir) = crate::utils::paths::get_team_agents_dir(team_name) {
+            let agent_json_path = team_agents_dir.join(agent).join("agent.json");
+            if let Some(provider) = try_read_provider(&agent_json_path) {
+                return Some(provider);
+            }
+        }
+    }
+
+    // Check shared agents directory
+    if let Ok(agents_dir) = crate::utils::paths::get_agents_dir() {
+        let agent_json_path = agents_dir.join(agent).join("agent.json");
+        if let Some(provider) = try_read_provider(&agent_json_path) {
+            return Some(provider);
+        }
+    }
+
+    // Search all team directories if not found yet
+    if team.is_none() {
+        if let Ok(teams_dir) = crate::utils::paths::get_teams_dir() {
+            if let Ok(entries) = fs::read_dir(&teams_dir) {
+                for entry in entries.filter_map(|e| e.ok()) {
+                    let team_path = entry.path();
+                    if team_path.is_dir() {
+                        let agent_json_path = team_path.join("agents").join(agent).join("agent.json");
+                        if let Some(provider) = try_read_provider(&agent_json_path) {
+                            return Some(provider);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Return None to use system default (claude)
+    None
+}
+
 /// Detect which phase to resume from by checking completed output files.
 /// Returns the index of the first incomplete phase, or None if all complete.
 fn detect_current_phase(docs_path: &std::path::Path, team: &TeamConfig) -> Option<usize> {

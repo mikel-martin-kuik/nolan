@@ -25,4 +25,9 @@ role: AgentRole | null,
 /**
  * Unified trigger config (optional for backwards compat)
  */
-triggers: TriggerConfig | null, schedule: CronSchedule | null, guardrails: CronGuardrails, context: CronContext, group: string | null, concurrency: ConcurrencyPolicy, retry: RetryPolicy, catch_up: CatchUpPolicy, event_trigger: EventTrigger | null, invocation: InvocationConfig | null, worktree: WorktreeConfig | null, post_run_analyzer: PostRunAnalyzerConfig | null, };
+triggers: TriggerConfig | null, schedule: CronSchedule | null, guardrails: CronGuardrails, context: CronContext, group: string | null, concurrency: ConcurrencyPolicy, retry: RetryPolicy, catch_up: CatchUpPolicy, event_trigger: EventTrigger | null, invocation: InvocationConfig | null, worktree: WorktreeConfig | null, post_run_analyzer: PostRunAnalyzerConfig | null, 
+/**
+ * CLI provider to use for this agent (default: claude)
+ * Options: "claude" (Claude Code), "opencode" (OpenCode)
+ */
+cli_provider: string | null, };

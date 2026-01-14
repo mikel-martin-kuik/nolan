@@ -169,11 +169,16 @@ pub async fn start_agent_core(team_name: &str, agent: &str) -> Result<String, St
     // Get model for agent
     let model = crate::commands::lifecycle::get_default_model(agent);
 
-    // Build Claude command
+    // Get CLI provider for agent (defaults to "claude" if not specified)
+    let cli_provider_name = crate::commands::lifecycle::get_agent_cli_provider(agent, Some(team_name));
+    let cli_provider = crate::cli_providers::get_provider(cli_provider_name.as_deref(), true);
+
+    // Build CLI command using the provider
     // AGENT_WORK_ROOT defaults to agent_dir for normal team agents (can be overridden for external repo deployments)
     // AGENT_DIR always points to the agent's configuration directory
+    let mapped_model = cli_provider.map_model(&model);
     let cmd = format!(
-        "export AGENT_NAME={} TEAM_NAME={} NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\"; claude --dangerously-skip-permissions --model {}; sleep 0.5; tmux kill-session",
+        "export AGENT_NAME={} TEAM_NAME={} NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\"; {} --dangerously-skip-permissions --model {}; sleep 0.5; tmux kill-session",
         agent,
         team_name,
         nolan_root.to_string_lossy(),
@@ -181,7 +186,8 @@ pub async fn start_agent_core(team_name: &str, agent: &str) -> Result<String, St
         projects_dir.to_string_lossy(),
         agent_dir.to_string_lossy(),
         agent_dir.to_string_lossy(),
-        model
+        cli_provider.executable(),
+        mapped_model
     );
 
     // Create tmux session
@@ -358,14 +364,21 @@ pub async fn spawn_ralph_core(model: Option<String>, force: bool, worktree_path:
     } else {
         agent_dir.to_string_lossy().to_string()
     };
+
+    // Get CLI provider for Ralph (defaults to "claude" if not specified)
+    let cli_provider_name = crate::commands::lifecycle::get_agent_cli_provider("ralph", None);
+    let cli_provider = crate::cli_providers::get_provider(cli_provider_name.as_deref(), true);
+    let mapped_model = cli_provider.map_model(&model_str);
+
     let cmd = format!(
-        "export AGENT_NAME=ralph TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\"{worktree_env}; claude --dangerously-skip-permissions --model {}; sleep 0.5; tmux kill-session",
+        "export AGENT_NAME=ralph TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\"{worktree_env}; {} --dangerously-skip-permissions --model {}; sleep 0.5; tmux kill-session",
         nolan_root.to_string_lossy(),
         nolan_data_root.to_string_lossy(),
         projects_dir.to_string_lossy(),
         agent_work_root,
         agents_dir_for_env.to_string_lossy(),
-        model_str
+        cli_provider.executable(),
+        mapped_model
     );
 
     // Create session
@@ -491,14 +504,23 @@ pub async fn recover_ralph_instance(instance: &OrphanedRalphInstance, model: Opt
     // Build command with --continue flag to resume the previous Claude session
     let model_str = model.unwrap_or_else(|| crate::commands::lifecycle::get_default_model("ralph"));
     let agents_dir_for_env = crate::utils::paths::get_agents_dir()?.join("ralph");
+
+    // Get CLI provider for Ralph (defaults to "claude" if not specified)
+    let cli_provider_name = crate::commands::lifecycle::get_agent_cli_provider("ralph", None);
+    let cli_provider = crate::cli_providers::get_provider(cli_provider_name.as_deref(), true);
+    let mapped_model = cli_provider.map_model(&model_str);
+    let resume_flag = cli_provider.resume_flag();
+
     let cmd = format!(
-        "export AGENT_NAME=ralph TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\"; claude --dangerously-skip-permissions --model {} --continue; sleep 0.5; tmux kill-session",
+        "export AGENT_NAME=ralph TEAM_NAME=\"\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\"; {} --dangerously-skip-permissions --model {} {}; sleep 0.5; tmux kill-session",
         nolan_root.to_string_lossy(),
         nolan_data_root.to_string_lossy(),
         projects_dir.to_string_lossy(),
         instance.agent_dir.to_string_lossy(),
         agents_dir_for_env.to_string_lossy(),
-        model_str
+        cli_provider.executable(),
+        mapped_model,
+        resume_flag
     );
 
     // Create session
@@ -769,10 +791,16 @@ pub async fn recover_team_session(orphan: &OrphanedTeamSession) -> Result<String
     // Get model for agent
     let model = crate::commands::lifecycle::get_default_model(&orphan.agent);
 
+    // Get CLI provider for agent (defaults to "claude" if not specified)
+    let cli_provider_name = crate::commands::lifecycle::get_agent_cli_provider(&orphan.agent, Some(&orphan.team));
+    let cli_provider = crate::cli_providers::get_provider(cli_provider_name.as_deref(), true);
+    let mapped_model = cli_provider.map_model(&model);
+    let resume_flag = cli_provider.resume_flag();
+
     // Build command with --continue flag to resume the previous Claude session
     // AGENT_WORK_ROOT defaults to agent_dir for recovery (same as agent_dir for team agents)
     let cmd = format!(
-        "export AGENT_NAME={} TEAM_NAME=\"{}\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\" DOCS_PATH=\"{}\" OUTPUT_FILE=\"{}\"; claude --dangerously-skip-permissions --model {} --continue; sleep 0.5; tmux kill-session",
+        "export AGENT_NAME={} TEAM_NAME=\"{}\" NOLAN_ROOT=\"{}\" NOLAN_DATA_ROOT=\"{}\" PROJECTS_DIR=\"{}\" AGENT_WORK_ROOT=\"{}\" AGENT_DIR=\"{}\" DOCS_PATH=\"{}\" OUTPUT_FILE=\"{}\"; {} --dangerously-skip-permissions --model {} {}; sleep 0.5; tmux kill-session",
         orphan.agent,
         orphan.team,
         nolan_root.to_string_lossy(),
@@ -782,7 +810,9 @@ pub async fn recover_team_session(orphan: &OrphanedTeamSession) -> Result<String
         orphan.agent_dir.to_string_lossy(),
         docs_path,
         output_file,
-        model
+        cli_provider.executable(),
+        mapped_model,
+        resume_flag
     );
 
     // Create session

@@ -149,6 +149,7 @@ pub fn run() {
             update_project_status,
             update_file_marker,
             sync_project_idea_status,
+            get_project_info_by_path,
             // Teams commands
             commands::teams::get_team_config,
             commands::teams::save_team_config,

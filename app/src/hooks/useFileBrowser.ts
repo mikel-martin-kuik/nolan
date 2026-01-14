@@ -8,6 +8,7 @@ import type {
   SearchResult,
   FileSystemEntry,
 } from '@/types/filesystem';
+import type { ProjectPathInfo } from '@/types/projects';
 
 export interface UseFileBrowserResult {
   // Current directory state
@@ -31,6 +32,11 @@ export interface UseFileBrowserResult {
 
   // Breadcrumb navigation
   breadcrumbs: { name: string; path: string }[];
+
+  // Project context (for project-aware file browsing)
+  projectContext: ProjectPathInfo | null;
+  isLoadingProjectContext: boolean;
+  updateProjectStatus: (status: string) => Promise<void>;
 
   // Actions
   navigateTo: (path: string) => void;
@@ -95,6 +101,56 @@ export function useFileBrowser(initialPath?: string): UseFileBrowserResult {
     },
     enabled: !!selectedFile && !selectedFile.isDirectory,
   });
+
+  // Fetch project context for current path
+  const {
+    data: projectContext,
+    isLoading: isLoadingProjectContext,
+  } = useQuery({
+    queryKey: ['project-context', currentPath],
+    queryFn: async () => {
+      return invoke<ProjectPathInfo>('get_project_info_by_path', {
+        path: currentPath,
+      });
+    },
+    // Only fetch when we have a valid path
+    enabled: !!currentPath,
+  });
+
+  // Update project status mutation
+  const updateProjectStatusMutation = useMutation({
+    mutationFn: async ({ projectName, status }: { projectName: string; status: string }) => {
+      await invoke<void>('update_project_status', {
+        project_name: projectName,
+        status: status.toUpperCase(),
+      });
+    },
+    onSuccess: () => {
+      showSuccess('Project status updated');
+      // Invalidate project context to refresh status
+      queryClient.invalidateQueries({
+        queryKey: ['project-context', currentPath],
+      });
+      // Also invalidate the projects list
+      queryClient.invalidateQueries({
+        queryKey: ['projects'],
+      });
+    },
+    onError: (err) => {
+      showError(err instanceof Error ? err.message : 'Failed to update status');
+    },
+  });
+
+  // Update project status helper function
+  const updateProjectStatus = useCallback(async (status: string) => {
+    if (!projectContext?.project?.name) {
+      throw new Error('No project context available');
+    }
+    await updateProjectStatusMutation.mutateAsync({
+      projectName: projectContext.project.name,
+      status,
+    });
+  }, [projectContext?.project?.name, updateProjectStatusMutation]);
 
   // Save file mutation
   const saveMutation = useMutation({
@@ -232,6 +288,9 @@ export function useFileBrowser(initialPath?: string): UseFileBrowserResult {
     isSearching,
     showHidden,
     breadcrumbs,
+    projectContext: projectContext ?? null,
+    isLoadingProjectContext,
+    updateProjectStatus,
     navigateTo,
     navigateUp,
     selectFile,

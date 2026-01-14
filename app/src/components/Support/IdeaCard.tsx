@@ -9,6 +9,7 @@ import {
 } from '@/components/ui/context-menu';
 import { invoke } from '@/lib/api';
 import { Idea, IdeaReview } from '@/types';
+import type { ProjectInfo } from '@/types/projects';
 import { cn } from '@/lib/utils';
 import { IdeaEditDialog } from './IdeaEditDialog';
 import { TeamLaunchModal } from '@/components/shared/TeamLaunchModal';
@@ -86,8 +87,12 @@ export function IdeaCard({ idea, review, onClick, isDragging, isDragOverlay }: I
       await launchTeam(teamName, pendingProjectName);
       toast.success(`Launched ${teamName} team for project: ${pendingProjectName}`);
       setTeamLaunchOpen(false);
-      // Navigate to the project
-      navigateTo('projects', { projectName: pendingProjectName });
+      // Navigate to the project via files tab (get project path from list_projects)
+      const projects = await invoke<ProjectInfo[]>('list_projects');
+      const project = projects.find(p => p.name === pendingProjectName);
+      if (project) {
+        navigateTo('files', { filePath: project.path });
+      }
     } catch (error) {
       toast.error(`Failed to launch team: ${error}`);
     } finally {
@@ -160,9 +165,17 @@ export function IdeaCard({ idea, review, onClick, isDragging, isDragOverlay }: I
   };
 
   // Navigate to project if route is 'project'
-  const handleGoToProject = () => {
+  const handleGoToProject = async () => {
     if (review?.route === 'project' && review?.route_detail) {
-      navigateTo('projects', { projectName: review.route_detail });
+      try {
+        const projects = await invoke<ProjectInfo[]>('list_projects');
+        const project = projects.find(p => p.name === review.route_detail);
+        if (project) {
+          navigateTo('files', { filePath: project.path });
+        }
+      } catch (error) {
+        console.error('Failed to navigate to project:', error);
+      }
     }
   };
 

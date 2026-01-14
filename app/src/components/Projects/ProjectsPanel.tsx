@@ -1,12 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ProjectList } from './ProjectList';
 import { ProjectFileViewer } from './ProjectFileViewer';
 import { useProjects } from '@/hooks';
-import { useNavigationStore } from '@/store/navigationStore';
 import { Plus, ChevronLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
+// Note: This panel is deprecated. Project browsing now happens in the Files tab.
 export function ProjectsPanel() {
   const {
     stats,
@@ -16,15 +16,11 @@ export function ProjectsPanel() {
     selectedFile,
     activeTab,
     currentProjects,
-    groupedProjects,
     selectedFileCompletion,
     isWorkflowFile,
     setActiveTab,
-    setSelectedProject,
     handleFileSelect,
   } = useProjects();
-
-  const { context, clearContext } = useNavigationStore();
 
   // Mobile: track whether to show file viewer (vs project list)
   const [showMobileViewer, setShowMobileViewer] = useState(false);
@@ -37,26 +33,8 @@ export function ProjectsPanel() {
     }
   };
 
-  // Handle deep-linking from navigation context
-  useEffect(() => {
-    if (context.projectName) {
-      // Find which tab contains the project
-      const projectName = context.projectName;
-
-      // Check in each tab group
-      if (groupedProjects.inprogress.some(p => p.name === projectName)) {
-        setActiveTab('inprogress');
-      } else if (groupedProjects.pending.some(p => p.name === projectName)) {
-        setActiveTab('pending');
-      } else if (groupedProjects.complete.some(p => p.name === projectName)) {
-        setActiveTab('complete');
-      }
-
-      // Select the project
-      setSelectedProject(projectName);
-      clearContext();
-    }
-  }, [context.projectName, groupedProjects, setActiveTab, setSelectedProject, clearContext]);
+  // Deep-linking was removed when Projects tab was deprecated
+  // Project navigation now goes through the Files tab instead
 
   return (
     <div className="h-full flex flex-col gap-2 sm:gap-4">

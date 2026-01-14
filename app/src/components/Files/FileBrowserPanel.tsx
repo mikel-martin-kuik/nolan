@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { FileList } from './FileList';
 import { FileViewer } from './FileViewer';
 import { BreadcrumbNav } from './BreadcrumbNav';
@@ -7,7 +7,7 @@ import { useFileBrowserStore } from '@/store/fileBrowserStore';
 import { useNavigationStore } from '@/store/navigationStore';
 import { useToastStore } from '@/store/toastStore';
 import { invoke } from '@/lib/api';
-import { RefreshCw, Search, Eye, EyeOff, Home, Star, ChevronLeft } from 'lucide-react';
+import { RefreshCw, Search, Eye, EyeOff, Home, Star, ChevronLeft, FolderOpen, Check, MoreHorizontal, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip } from '@/components/ui/tooltip';
@@ -29,8 +29,17 @@ import {
   AlertDialogCancel,
   AlertDialogAction,
 } from '@/components/ui/alert-dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import type { FileSystemEntry, SearchResult } from '@/types/filesystem';
+import { PROJECT_STATUS_META, PROJECT_STATUS_OPTIONS, type ProjectStatus } from '@/types/projects';
+import { getWorkflowSteps } from '@/types';
+import { useTeamStore } from '@/store/teamStore';
 
 export function FileBrowserPanel() {
   // Track the default home path (fetched from backend)
@@ -49,6 +58,8 @@ export function FileBrowserPanel() {
     isSearching,
     showHidden,
     breadcrumbs,
+    projectContext,
+    updateProjectStatus,
     navigateTo,
     navigateUp,
     selectFile,
@@ -59,6 +70,73 @@ export function FileBrowserPanel() {
     clearSearch,
     saveFile,
   } = useFileBrowser(defaultHomePath || undefined);
+
+  // Track status update loading state
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+
+  // Get team configs for workflow progress display
+  const teamConfigs = useTeamStore(state => state.teamConfigs);
+  const loadTeam = useTeamStore(state => state.loadTeam);
+
+  // Load team config for current project if needed
+  useEffect(() => {
+    if (projectContext?.project?.team) {
+      const teamName = projectContext.project.team;
+      if (!teamConfigs.has(teamName)) {
+        loadTeam(teamName).catch(console.error);
+      }
+    }
+  }, [projectContext?.project?.team, teamConfigs, loadTeam]);
+
+  // Get workflow steps for current project
+  const workflowSteps = useMemo(() => {
+    if (!projectContext?.project?.team) return [];
+    const teamConfig = teamConfigs.get(projectContext.project.team);
+    return getWorkflowSteps(teamConfig ?? null);
+  }, [projectContext?.project?.team, teamConfigs]);
+
+  // Calculate workflow step completion for project progress dots
+  const stepCompletion = useMemo(() => {
+    if (!projectContext?.project || workflowSteps.length === 0) return [];
+
+    const project = projectContext.project;
+    return workflowSteps.map(step => {
+      // Special handling for "close" step - check project status
+      if (step.key === 'close') {
+        return { ...step, complete: project.status === 'complete' };
+      }
+
+      const fileKey = `${step.key}.md`;
+      const completion = project.file_completions.find(f =>
+        f.file === fileKey || f.file === step.key
+      );
+
+      if (completion) {
+        return { ...step, complete: completion.exists && completion.completed };
+      }
+
+      // Fallback: check existing_files
+      const exactMatch = project.existing_files.some(f =>
+        f === fileKey || f === `${step.key}.md`
+      );
+
+      return { ...step, complete: exactMatch };
+    });
+  }, [workflowSteps, projectContext?.project]);
+
+  const completedCount = stepCompletion.filter(s => s.complete).length;
+
+  // Handle status change
+  const handleStatusChange = async (newStatus: ProjectStatus) => {
+    if (!projectContext?.project || newStatus === projectContext.project.status || isUpdatingStatus) return;
+
+    setIsUpdatingStatus(true);
+    try {
+      await updateProjectStatus(newStatus);
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  };
 
   const { lastPath, addRecentPath, favorites, addFavorite, removeFavorite, isFavorite } = useFileBrowserStore();
   const { context, clearContext } = useNavigationStore();
@@ -309,6 +387,99 @@ export function FileBrowserPanel() {
           />
         </div>
       </div>
+
+      {/* Project Context Bar - shown when browsing inside a project */}
+      {projectContext?.project && (
+        <div className={cn(
+          "glass-card p-2 sm:p-3 rounded-lg flex items-center gap-3 flex-wrap",
+          showMobileViewer && "hidden md:flex"
+        )}>
+          {/* Project icon and name */}
+          <div className="flex items-center gap-2">
+            <FolderOpen className="w-4 h-4 text-blue-500" />
+            <span className="font-medium text-sm">{projectContext.project.name}</span>
+            <span className="text-xs text-muted-foreground">({projectContext.project.team})</span>
+          </div>
+
+          {/* Workflow progress dots */}
+          {stepCompletion.length > 0 && (
+            <>
+              <div className="w-px h-4 bg-border" />
+              <div className="flex items-center gap-1">
+                {stepCompletion.map((step) => (
+                  <Tooltip key={step.key} content={step.label ?? step.key}>
+                    <div
+                      className={cn(
+                        "w-2.5 h-2.5 rounded-full transition-colors",
+                        step.complete ? "bg-primary" : "bg-muted-foreground/20"
+                      )}
+                    />
+                  </Tooltip>
+                ))}
+                <span className="text-[11px] text-muted-foreground ml-1.5">
+                  {completedCount}/{workflowSteps.length}
+                </span>
+              </div>
+            </>
+          )}
+
+          {/* Status badge and dropdown */}
+          <div className="flex items-center gap-2 ml-auto">
+            <span className={cn(
+              "text-xs font-medium px-2 py-0.5 rounded",
+              PROJECT_STATUS_META[projectContext.project.status].color,
+              "bg-foreground/5"
+            )}>
+              {PROJECT_STATUS_META[projectContext.project.status].label}
+            </span>
+
+            {/* Status dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7"
+                  disabled={isUpdatingStatus}
+                >
+                  {isUpdatingStatus ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <MoreHorizontal className="w-3.5 h-3.5" />
+                  )}
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-[140px]">
+                {PROJECT_STATUS_OPTIONS.map((status) => {
+                  const statusMeta = PROJECT_STATUS_META[status];
+                  return (
+                    <DropdownMenuItem
+                      key={status}
+                      onClick={() => handleStatusChange(status)}
+                      className={cn("flex items-center justify-between cursor-pointer", statusMeta.color)}
+                    >
+                      {statusMeta.label}
+                      {status === projectContext.project?.status && <Check className="w-3.5 h-3.5" />}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        </div>
+      )}
+
+      {/* Projects directory quick nav - shown when at projects root */}
+      {projectContext?.is_projects_root && (
+        <div className={cn(
+          "glass-card p-2 sm:p-3 rounded-lg flex items-center gap-2",
+          showMobileViewer && "hidden md:flex"
+        )}>
+          <FolderOpen className="w-4 h-4 text-blue-500" />
+          <span className="text-sm font-medium">Projects Directory</span>
+          <span className="text-xs text-muted-foreground">- Select a project folder to see its status</span>
+        </div>
+      )}
 
       {/* Main Content - File List and Viewer side by side */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden gap-2 sm:gap-3 min-h-0">

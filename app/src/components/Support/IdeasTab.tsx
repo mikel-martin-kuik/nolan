@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { invoke } from '@/lib/api';
 import { Idea, IdeaReview, IdeaComplexity } from '@/types';
+import type { ProjectInfo } from '@/types/projects';
 import { IdeaCard } from './IdeaCard';
 import { IdeaDetailPage } from './IdeaDetailPage';
 import { IdeaEditDialog } from './IdeaEditDialog';
@@ -243,7 +244,12 @@ export function IdeasTab() {
       await launchTeam(teamName, pendingProjectName);
       toast.success(`Launched ${teamName} team for project: ${pendingProjectName}`);
       setTeamLaunchOpen(false);
-      navigateTo('projects', { projectName: pendingProjectName });
+      // Navigate to the project via files tab
+      const projects = await invoke<ProjectInfo[]>('list_projects');
+      const project = projects.find(p => p.name === pendingProjectName);
+      if (project) {
+        navigateTo('files', { filePath: project.path });
+      }
     } catch (error) {
       toast.error(`Failed to launch team: ${error}`);
     } finally {

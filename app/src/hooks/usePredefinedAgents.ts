@@ -4,10 +4,10 @@ import { useFetchData } from './useFetchData';
 import { usePollingEffect } from './usePollingEffect';
 import { useToastStore } from '../store/toastStore';
 import { useCronOutputStore } from '../store/cronOutputStore';
-import type { CronAgentInfo } from '@/types';
+import type { ScheduledAgentInfo } from '@/types';
 
 export interface UsePredefinedAgentsResult {
-  agents: CronAgentInfo[];
+  agents: ScheduledAgentInfo[];
   loading: boolean;
   hasRunningAgents: boolean;
   refreshAgents: () => Promise<void>;
@@ -28,15 +28,15 @@ export function usePredefinedAgents(): UsePredefinedAgentsResult {
     loading,
     refresh: refreshAgents,
   } = useFetchData({
-    fetcher: () => invoke<CronAgentInfo[]>('list_cron_agents'),
+    fetcher: () => invoke<ScheduledAgentInfo[]>('list_scheduled_agents'),
     defaultValue: [],
     errorMessage: 'Failed to load agents',
-    init: () => invoke('init_cronos'),
+    init: () => invoke('init_scheduler'),
   });
 
-  // Filter to only predefined agents
+  // Filter to agents with invocation config (predefined/on-demand)
   const agents = useMemo(
-    () => allAgents.filter(a => a.agent_type === 'predefined'),
+    () => allAgents.filter(a => a.invocation != null),
     [allAgents]
   );
 
@@ -55,7 +55,7 @@ export function usePredefinedAgents(): UsePredefinedAgentsResult {
   const triggerAgent = useCallback(async (name: string): Promise<boolean> => {
     try {
       await invoke('trigger_predefined_agent', { name });
-      showSuccess(`Triggered ${name.replace('pred-', '')}`);
+      showSuccess(`Triggered ${name}`);
       openOutput(name);
       setTimeout(refreshAgents, 500);
       return true;

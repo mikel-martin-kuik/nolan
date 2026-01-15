@@ -151,7 +151,7 @@ export function RoadmapViewer({ onBack }: RoadmapViewerProps) {
   const handleUpdateRoadmap = useCallback(async () => {
     setUpdating(true);
     try {
-      await invoke('trigger_cron_agent', { name: 'cron-roadmap' });
+      await invoke('trigger_scheduled_agent', { name: 'roadmap' });
       showSuccess('Roadmap update started');
     } catch (err) {
       showError(`Failed to trigger roadmap update: ${err}`);

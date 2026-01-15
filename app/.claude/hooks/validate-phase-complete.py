@@ -467,22 +467,18 @@ def generate_handoff_id(agent: str = "") -> str:
 def get_next_agent_from_phases(team_config: dict, current_agent: str) -> Optional[str]:
     """Get the next agent in the workflow based on phases.
 
-    Uses workflow.phases[].next to determine agent-to-agent handoff target.
+    Derives next phase from array position (sequential workflow).
     Returns None if workflow is complete or agent not in phases.
     """
     phases = team_config.get('team', {}).get('workflow', {}).get('phases', [])
 
-    # Find current agent's phase
-    for phase in phases:
+    # Find current agent's phase index
+    for i, phase in enumerate(phases):
         if phase.get('owner') == current_agent:
-            next_phase_name = phase.get('next')
-            if not next_phase_name:
-                return None  # Workflow complete
-            # Find owner of next phase
-            for next_phase in phases:
-                if next_phase.get('name') == next_phase_name:
-                    return next_phase.get('owner')
-            break
+            if i >= len(phases) - 1:
+                return None  # Last phase - workflow complete
+            # Next phase is the next item in array
+            return phases[i + 1].get('owner')
     return None
 
 

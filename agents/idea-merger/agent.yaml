@@ -1,0 +1,28 @@
+name: idea-merger
+description: Detects and auto-merges semantically similar ideas in the inbox
+model: opus
+timeout: 600
+enabled: true
+group: feedback
+guardrails:
+  allowed_tools:
+  - Read
+  - Write
+  - Glob
+  - Grep
+  forbidden_paths:
+  - '**/.env'
+  - '**/secrets/**'
+  - '**/*.key'
+  max_file_edits: 10
+context:
+  working_directory: null
+concurrency:
+  allow_parallel: false
+  queue_if_running: false
+retry:
+  enabled: false
+  max_retries: 1
+  delay_secs: 60
+  exponential_backoff: false
+catch_up: skip

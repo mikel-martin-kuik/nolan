@@ -1,0 +1,31 @@
+name: phase-validator
+description: Validates phase output quality (document structure and content)
+model: haiku
+timeout: 120
+enabled: true
+schedule:
+  cron: 0 0 1 1 *
+  timezone: null
+guardrails:
+  allowed_tools:
+  - Read
+  - Glob
+  - Grep
+  forbidden_paths:
+  - '**/.env'
+  - '**/secrets/**'
+  - '**/*.key'
+  max_file_edits: 0
+context:
+  working_directory: null
+concurrency:
+  allow_parallel: true
+  queue_if_running: false
+retry:
+  enabled: true
+  max_retries: 1
+  delay_secs: 30
+  exponential_backoff: false
+catch_up: skip
+agent_type: predefined
+role: analyzer

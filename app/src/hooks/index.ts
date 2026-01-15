@@ -1,6 +1,6 @@
 // Custom hooks barrel export
 export { useAuth } from './useAuth';
-export { useCronosAgents, type UseCronosAgentsResult, type GroupedCronAgents } from './useCronosAgents';
+export { useScheduledAgents, type UseScheduledAgentsResult, type GroupedScheduledAgents } from './useScheduledAgents';
 export { usePredefinedAgents, type UsePredefinedAgentsResult } from './usePredefinedAgents';
 export { useAgentTemplates, type UseAgentTemplatesResult } from './useAgentTemplates';
 export { useEventAgents, type UseEventAgentsResult } from './useEventAgents';

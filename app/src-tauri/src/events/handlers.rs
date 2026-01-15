@@ -4,7 +4,7 @@ use tokio::sync::RwLock;
 
 use super::bus::get_event_bus;
 use super::types::*;
-use crate::cronos::types::{AgentType, EventTrigger};
+use crate::scheduler::types::EventTrigger;
 
 /// Debounce tracker for event agents
 struct DebounceTracker {
@@ -55,15 +55,21 @@ pub async fn start_event_listener() {
 
 /// Handle an incoming system event
 async fn handle_event(event: SystemEvent) -> Result<(), String> {
-    println!("[Events] Received event: {:?} from {}", event.event_type, event.source);
+    println!(
+        "[Events] Received event: {:?} from {}",
+        event.event_type, event.source
+    );
 
     // Load all agents and find matching event agents
-    let guard = crate::cronos::commands::CRONOS.read().await;
-    let manager = guard.as_ref().ok_or("Cronos not initialized")?;
+    let guard = crate::scheduler::commands::SCHEDULER.read().await;
+    let manager = guard.as_ref().ok_or("Scheduler not initialized")?;
 
     let agents = manager.load_agents().await?;
 
-    for agent in agents.iter().filter(|a| a.agent_type == AgentType::Event && a.enabled) {
+    for agent in agents
+        .iter()
+        .filter(|a| a.has_event_triggers() && a.enabled)
+    {
         if let Some(ref trigger) = agent.event_trigger {
             if matches_event(&event, trigger) {
                 // Check debounce
@@ -79,7 +85,9 @@ async fn handle_event(event: SystemEvent) -> Result<(), String> {
                 let agent_name = agent.name.clone();
 
                 tokio::spawn(async move {
-                    if let Err(e) = crate::cronos::commands::trigger_cron_agent_api(agent_name.clone()).await {
+                    if let Err(e) =
+                        crate::scheduler::commands::trigger_scheduled_agent_api(agent_name.clone()).await
+                    {
                         eprintln!("[Events] Failed to trigger {}: {}", agent_name, e);
                     }
                 });

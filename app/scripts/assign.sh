@@ -371,7 +371,7 @@ else:
 
 INSTRUCTIONS=$(get_phase_instructions "$PHASE" "$PROJECT_DIR")
 
-# Get predecessor files from phase config
+# Get required files from phase config (uses 'requires' field)
 get_predecessor_files() {
     local phase="$1"
     local project_path="$2"
@@ -398,16 +398,17 @@ nolan_data_root = Path(os.environ.get('NOLAN_DATA_ROOT', os.path.expanduser('~/.
 
 config_path = nolan_data_root / 'teams' / team_name / 'team.yaml'
 if not config_path.exists():
-    # Silent exit - predecessor files are optional
+    # Silent exit - required files are optional
     sys.exit(0)
 
 config = yaml.safe_load(config_path.read_text())
 
 for phase_config in config['team']['workflow']['phases']:
     if phase_config['name'] == '$phase':
-        predecessor_files = phase_config.get('predecessor_files', [])
-        for pf in predecessor_files:
-            print(f\"- {pf['file']} - {pf['description']}\")
+        # Use 'requires' field from phase config
+        required_files = phase_config.get('requires', [])
+        for rf in required_files:
+            print(f'- {rf}')
         break
 " 2>/dev/null
 }
@@ -429,13 +430,8 @@ $INSTRUCTIONS
 
 ### Files to Review
 
-- context.md - Project overview and objectives
+$PREDECESSOR_FILES
 EOF
-
-# Add predecessor files from config
-if [[ -n "$PREDECESSOR_FILES" ]]; then
-    ASSIGNMENT_SECTION+=$'\n'"$PREDECESSOR_FILES"
-fi
 
 # Add focus areas (read from args or use defaults)
 ASSIGNMENT_SECTION+=$'\n'
@@ -461,7 +457,7 @@ ASSIGNMENT_SECTION+=$'\n'"---"
 # 3. Update Current Status section
 # 4. Add Handoff Log entry
 
-python3 - "$NOTES_PATH" "$PHASE" "$AGENT" "$TASK" "$OUTPUT_FILE" "$MSG_ID" "$TIMESTAMP_FULL" "$NOTE_TAKER" "$PROJECT_NAME" <<'PYTHON_SCRIPT'
+python3 - "$NOTES_PATH" "$PHASE" "$AGENT" "$TASK" "$OUTPUT_FILE" "$MSG_ID" "$TIMESTAMP_FULL" "$NOTE_TAKER" "$PROJECT_NAME" "$PREDECESSOR_FILES" <<'PYTHON_SCRIPT'
 import sys
 import re
 from pathlib import Path
@@ -475,6 +471,7 @@ msg_id = sys.argv[6]
 timestamp_full = sys.argv[7]
 note_taker = sys.argv[8]
 project_name = sys.argv[9]
+predecessor_files = sys.argv[10] if len(sys.argv) > 10 else ""
 
 content = notes_path.read_text()
 
@@ -482,6 +479,9 @@ content = notes_path.read_text()
 content = re.sub(r'## Current Assignment.*?^---\n', '', content, flags=re.MULTILINE | re.DOTALL)
 
 # 2. Build new assignment section (includes MSG_ID for traceability)
+# Format predecessor files for display
+files_to_review = predecessor_files if predecessor_files else "- (see phase requirements)"
+
 assignment_section = f'''## Current Assignment
 
 **Agent**: {agent.capitalize()}
@@ -496,8 +496,7 @@ Complete assigned work following project requirements.
 
 ### Files to Review
 
-- context.md - Project overview and objectives
-- research.md - Research findings (if applicable)
+{files_to_review}
 
 ### Focus Areas
 
@@ -609,9 +608,8 @@ msg_id: $MSG_ID
 note_taker: $NOTE_TAKER
 output_file: $OUTPUT_FILE
 
-# Files to Review
+# Files to Review (from phase config)
 predecessor_files:
-  - context.md
 $(echo "$PREDECESSOR_FILES" | sed 's/^- /  - /g' | grep -v '^$' || true)
 
 # Phase Instructions

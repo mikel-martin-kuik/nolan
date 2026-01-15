@@ -1,30 +1,29 @@
+use crate::config::{get_pipeline_entrypoint_file, get_prompt_file, load_project_team, TeamConfig};
+use crate::utils::paths::{get_handoffs_dir, get_projects_dir, get_roadmaps_dir};
+use once_cell::sync::Lazy;
+use regex::Regex;
+use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
-use serde::Serialize;
-use regex::Regex;
-use once_cell::sync::Lazy;
-use crate::config::{TeamConfig, load_project_team};
-use crate::utils::paths::{get_projects_dir, get_handoffs_dir, get_roadmaps_dir};
 
 // Cached regex pattern for HANDOFF markers (compiled once at startup)
 // Supports both formats:
 //   Old: <!-- HANDOFF:YYYY-MM-DD HH:MM:agent:COMPLETE -->
 //   New: <!-- HANDOFF:YYYY-MM-DD HH:MM:agent:COMPLETE:handoff_id -->
 static RE_HANDOFF: Lazy<Option<Regex>> = Lazy::new(|| {
-    Regex::new(r"<!-- HANDOFF:(\d{4}-\d{2}-\d{2} \d{2}:\d{2}):(\w+):COMPLETE(?::[a-f0-9]+)? -->").ok()
+    Regex::new(r"<!-- HANDOFF:(\d{4}-\d{2}-\d{2} \d{2}:\d{2}):(\w+):COMPLETE(?::[a-f0-9]+)? -->")
+        .ok()
 });
 
 // Cached regex pattern for PROJECT:STATUS markers
 // Matches both old format (no date) and new format (with date)
-static RE_PROJECT_STATUS: Lazy<Option<Regex>> = Lazy::new(|| {
-    Regex::new(r"<!-- PROJECT:STATUS:[A-Z]+(?::\d{4}-\d{2}-\d{2})? -->").ok()
-});
+static RE_PROJECT_STATUS: Lazy<Option<Regex>> =
+    Lazy::new(|| Regex::new(r"<!-- PROJECT:STATUS:[A-Z]+(?::\d{4}-\d{2}-\d{2})? -->").ok());
 
-// Regex to extract idea_id from SPEC.md footer
+// Regex to extract idea_id from pipeline entrypoint file footer
 // Matches: *Generated from accepted idea: UUID*
-static RE_IDEA_SOURCE: Lazy<Option<Regex>> = Lazy::new(|| {
-    Regex::new(r"\*Generated from accepted idea: ([a-f0-9-]+)\*").ok()
-});
+static RE_IDEA_SOURCE: Lazy<Option<Regex>> =
+    Lazy::new(|| Regex::new(r"\*Generated from accepted idea: ([a-f0-9-]+)\*").ok());
 
 /// Project status derived from NOTES.md
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -57,8 +56,9 @@ fn get_expected_files_from_config(config: &TeamConfig) -> (Vec<String>, Vec<Stri
     let mut expected = Vec::new();
     let mut workflow = Vec::new();
 
-    // Always include prompt.md (user input)
-    expected.push("prompt.md".to_string());
+    // Always include prompt file (user input) - from config
+    let prompt_file = get_prompt_file();
+    expected.push(prompt_file);
 
     // Add phase outputs from workflow (team defines its own files)
     for phase in &config.team.workflow.phases {
@@ -73,8 +73,8 @@ fn get_expected_files_from_config(config: &TeamConfig) -> (Vec<String>, Vec<Stri
         }
     }
 
-    // Add note-taker's output file (NOTES.md)
-    let notes_file = "NOTES.md".to_string();
+    // Add note-taker's output file from config
+    let notes_file = config.note_taker_output_file();
     if !expected.contains(&notes_file) {
         expected.push(notes_file);
     }
@@ -103,8 +103,8 @@ pub struct ProjectInfo {
     pub existing_files: Vec<String>,
     pub missing_files: Vec<String>,
     pub file_completions: Vec<FileCompletion>,
-    pub team: String,  // Team that owns this project (from .team file)
-    pub workflow_files: Vec<String>,  // Workflow phase outputs stored at project creation
+    pub team: String,                // Team that owns this project (from .team file)
+    pub workflow_files: Vec<String>, // Workflow phase outputs stored at project creation
 }
 
 /// Project team file structure (stored in .team as YAML)
@@ -140,8 +140,7 @@ impl ProjectTeamFile {
         let team_file = project_path.join(".team");
         let content = serde_yaml::to_string(self)
             .map_err(|e| format!("Failed to serialize .team file: {}", e))?;
-        fs::write(&team_file, content)
-            .map_err(|e| format!("Failed to write .team file: {}", e))?;
+        fs::write(&team_file, content).map_err(|e| format!("Failed to write .team file: {}", e))?;
         Ok(())
     }
 }
@@ -210,7 +209,9 @@ fn parse_project_status(notes_content: &str) -> (ProjectStatus, Option<String>) 
 /// Check .state/handoffs/processed/ directory for completed handoffs
 /// Returns map of agent_name -> (timestamp, handoff_id) for a specific project
 /// This is the primary source of truth for completion status
-fn get_processed_handoffs(project_name: &str) -> std::collections::HashMap<String, (String, String)> {
+fn get_processed_handoffs(
+    project_name: &str,
+) -> std::collections::HashMap<String, (String, String)> {
     let mut handoffs = std::collections::HashMap::new();
     let processed_dir = match get_handoffs_dir() {
         Ok(dir) => dir.join("processed"),
@@ -237,7 +238,9 @@ fn get_processed_handoffs(project_name: &str) -> std::collections::HashMap<Strin
                     for line in content.lines() {
                         let line = line.trim();
                         if line.starts_with("from_agent:") {
-                            agent = line.strip_prefix("from_agent:").map(|s| s.trim().to_string());
+                            agent = line
+                                .strip_prefix("from_agent:")
+                                .map(|s| s.trim().to_string());
                         } else if line.starts_with("project:") {
                             project = line.strip_prefix("project:").map(|s| s.trim().to_string());
                         } else if line.starts_with("timestamp:") {
@@ -317,7 +320,7 @@ fn parse_handoff_marker(content: &str) -> Option<(String, String)> {
     last_match
 }
 
-/// Get completion status for workflow files (and prompt.md)
+/// Get completion status for workflow files (and prompt file)
 /// Priority order for completion detection:
 /// 1. Status files (.md.status) - APPROVED status indicates completion
 /// 2. .state/handoffs/processed/ directory
@@ -346,11 +349,13 @@ fn get_file_completions(
                     if let Ok(status) = serde_yaml::from_str::<WorkflowPhaseStatus>(&content) {
                         if status.status.to_uppercase() == "APPROVED" {
                             // Extract agent from reason if available, otherwise use "system"
-                            let agent = status.reason
+                            let agent = status
+                                .reason
                                 .as_ref()
                                 .map(|r| r.to_string())
                                 .unwrap_or_else(|| "system".to_string());
-                            let timestamp = status.timestamp
+                            let timestamp = status
+                                .timestamp
                                 .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
                             Some((timestamp, agent))
                         } else {
@@ -416,49 +421,51 @@ fn get_file_completions(
         });
     }
 
-    // Check prompt.md separately (special file)
-    let prompt_path = project_path.join("prompt.md");
+    // Check prompt file separately (special file - raw user input)
+    let prompt_filename = get_prompt_file();
+    let prompt_path = project_path.join(&prompt_filename);
     let prompt_exists = prompt_path.exists();
 
-    // Check for prompt.md.status first
-    let prompt_status_path = project_path.join("prompt.md.status");
-    let (prompt_completed, prompt_completed_by, prompt_completed_at) = if prompt_status_path.exists() {
-        match fs::read_to_string(&prompt_status_path) {
-            Ok(content) => {
-                if let Ok(status) = serde_yaml::from_str::<WorkflowPhaseStatus>(&content) {
-                    if status.status.to_uppercase() == "APPROVED" {
-                        let agent = status.reason
-                            .unwrap_or_else(|| "system".to_string());
-                        let timestamp = status.timestamp
-                            .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+    // Check for prompt file status (e.g., prompt.md.status)
+    let prompt_status_path = project_path.join(format!("{}.status", &prompt_filename));
+    let (prompt_completed, prompt_completed_by, prompt_completed_at) =
+        if prompt_status_path.exists() {
+            match fs::read_to_string(&prompt_status_path) {
+                Ok(content) => {
+                    if let Ok(status) = serde_yaml::from_str::<WorkflowPhaseStatus>(&content) {
+                        if status.status.to_uppercase() == "APPROVED" {
+                            let agent = status.reason.unwrap_or_else(|| "system".to_string());
+                            let timestamp = status
+                                .timestamp
+                                .unwrap_or_else(|| chrono::Utc::now().to_rfc3339());
+                            (true, Some(agent), Some(timestamp))
+                        } else {
+                            (false, None, None)
+                        }
+                    } else {
+                        (false, None, None)
+                    }
+                }
+                Err(_) => (false, None, None),
+            }
+        } else if prompt_exists {
+            // Fallback: Check for HANDOFF marker in file (legacy compatibility)
+            match fs::read_to_string(&prompt_path) {
+                Ok(content) => {
+                    if let Some((timestamp, agent)) = parse_handoff_marker(&content) {
                         (true, Some(agent), Some(timestamp))
                     } else {
                         (false, None, None)
                     }
-                } else {
-                    (false, None, None)
                 }
+                Err(_) => (false, None, None),
             }
-            Err(_) => (false, None, None),
-        }
-    } else if prompt_exists {
-        // Fallback: Check for HANDOFF marker in file (legacy compatibility)
-        match fs::read_to_string(&prompt_path) {
-            Ok(content) => {
-                if let Some((timestamp, agent)) = parse_handoff_marker(&content) {
-                    (true, Some(agent), Some(timestamp))
-                } else {
-                    (false, None, None)
-                }
-            }
-            Err(_) => (false, None, None),
-        }
-    } else {
-        (false, None, None)
-    };
+        } else {
+            (false, None, None)
+        };
 
     completions.push(FileCompletion {
-        file: "prompt.md".to_string(),
+        file: prompt_filename,
         exists: prompt_exists,
         completed: prompt_completed,
         completed_by: prompt_completed_by,
@@ -470,7 +477,10 @@ fn get_file_completions(
 
 /// Determine which expected files exist and which are missing
 /// expected_files: List of expected files from team config
-fn get_file_scaffolding(project_path: &PathBuf, expected_files: &[String]) -> (Vec<String>, Vec<String>) {
+fn get_file_scaffolding(
+    project_path: &PathBuf,
+    expected_files: &[String],
+) -> (Vec<String>, Vec<String>) {
     let mut existing = Vec::new();
     let mut missing = Vec::new();
 
@@ -524,20 +534,18 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
         let file_count = count_md_files(&path);
 
         // Get last modified time
-        let metadata = fs::metadata(&path)
-            .map_err(|e| format!("Failed to read metadata: {}", e))?;
+        let metadata =
+            fs::metadata(&path).map_err(|e| format!("Failed to read metadata: {}", e))?;
         let last_modified = metadata
             .modified()
             .ok()
             .and_then(|time| {
-                time.duration_since(std::time::UNIX_EPOCH)
-                    .ok()
-                    .map(|d| {
-                        let secs = d.as_secs();
-                        chrono::DateTime::from_timestamp(secs as i64, 0)
-                            .map(|dt| dt.to_rfc3339())
-                            .unwrap_or_default()
-                    })
+                time.duration_since(std::time::UNIX_EPOCH).ok().map(|d| {
+                    let secs = d.as_secs();
+                    chrono::DateTime::from_timestamp(secs as i64, 0)
+                        .map(|dt| dt.to_rfc3339())
+                        .unwrap_or_default()
+                })
             })
             .unwrap_or_default();
 
@@ -560,8 +568,8 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
             }
         };
 
-        // Parse status from NOTES.md
-        let notes_path = path.join("NOTES.md");
+        // Parse status from note-taker's output file
+        let notes_path = path.join(team_config.note_taker_output_file());
         let (status, status_detail) = if notes_path.exists() {
             match fs::read_to_string(&notes_path) {
                 Ok(content) => parse_project_status(&content),
@@ -588,12 +596,8 @@ pub async fn list_projects() -> Result<Vec<ProjectInfo>, String> {
         // Get workflow file completion status using stored or team-config workflow files
         // Primary source: .state/handoffs/processed/ directory
         // Fallback: HANDOFF markers in files (legacy compatibility)
-        let file_completions = get_file_completions(
-            &path,
-            &workflow_files,
-            &name,
-            Some(&team_config),
-        );
+        let file_completions =
+            get_file_completions(&path, &workflow_files, &name, Some(&team_config));
 
         projects.push(ProjectInfo {
             name,
@@ -686,12 +690,17 @@ pub async fn list_project_files(project_name: String) -> Result<Vec<ProjectFile>
     let team_config = load_project_team(&canonical_path)
         .map_err(|e| format!("Failed to load team config: {}", e))?;
     let (expected_files, _) = get_expected_files_from_config(&team_config);
-    let notes_file = "NOTES.md".to_string();
+    let notes_file = team_config.note_taker_output_file();
 
     let mut files = Vec::new();
     let mut existing_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
-    collect_md_files(&canonical_path, &canonical_path, &mut files, &mut existing_names)?;
+    collect_md_files(
+        &canonical_path,
+        &canonical_path,
+        &mut files,
+        &mut existing_names,
+    )?;
 
     // Add placeholder files for missing expected files (from team config)
     for expected in &expected_files {
@@ -739,8 +748,8 @@ fn collect_md_files(
     files: &mut Vec<ProjectFile>,
     existing_names: &mut std::collections::HashSet<String>,
 ) -> Result<(), String> {
-    let entries = fs::read_dir(current_path)
-        .map_err(|e| format!("Failed to read directory: {}", e))?;
+    let entries =
+        fs::read_dir(current_path).map_err(|e| format!("Failed to read directory: {}", e))?;
 
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
@@ -768,10 +777,7 @@ fn collect_md_files(
                     .to_string();
 
                 // Extract file type from name (e.g., "plan.md" -> "plan")
-                let file_type = name
-                    .strip_suffix(".md")
-                    .unwrap_or(&name)
-                    .to_string();
+                let file_type = name.strip_suffix(".md").unwrap_or(&name).to_string();
 
                 // Get file metadata
                 let metadata = fs::metadata(&path)
@@ -782,14 +788,12 @@ fn collect_md_files(
 
                 let last_modified = modified_time
                     .and_then(|time| {
-                        time.duration_since(std::time::UNIX_EPOCH)
-                            .ok()
-                            .map(|d| {
-                                let secs = d.as_secs();
-                                chrono::DateTime::from_timestamp(secs as i64, 0)
-                                    .map(|dt| dt.to_rfc3339())
-                                    .unwrap_or_default()
-                            })
+                        time.duration_since(std::time::UNIX_EPOCH).ok().map(|d| {
+                            let secs = d.as_secs();
+                            chrono::DateTime::from_timestamp(secs as i64, 0)
+                                .map(|dt| dt.to_rfc3339())
+                                .unwrap_or_default()
+                        })
                     })
                     .unwrap_or_default();
 
@@ -820,10 +824,7 @@ fn collect_md_files(
 
 /// Read the content of a specific project file
 #[tauri::command(rename_all = "snake_case")]
-pub async fn read_project_file(
-    project_name: String,
-    file_path: String,
-) -> Result<String, String> {
+pub async fn read_project_file(project_name: String, file_path: String) -> Result<String, String> {
     // CRITICAL SECURITY: Validate inputs
 
     // Validate project_name - no path traversal
@@ -871,8 +872,8 @@ pub async fn read_project_file(
     }
 
     // Read file content
-    let content = fs::read_to_string(&canonical_path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let content =
+        fs::read_to_string(&canonical_path).map_err(|e| format!("Failed to read file: {}", e))?;
 
     Ok(content)
 }
@@ -888,19 +889,25 @@ pub async fn read_roadmap(filename: Option<String>) -> Result<String, String> {
     let file = filename.unwrap_or_else(|| "roadmap.md".to_string());
 
     if !valid_files.contains(&file.as_str()) {
-        return Err(format!("Invalid roadmap file. Valid options: {:?}", valid_files));
+        return Err(format!(
+            "Invalid roadmap file. Valid options: {:?}",
+            valid_files
+        ));
     }
 
     let roadmap_path = roadmaps_dir.join(&file);
 
     // Check if roadmap exists
     if !roadmap_path.exists() {
-        return Err(format!("Roadmap file '{}' not found in docs/roadmaps directory.", file));
+        return Err(format!(
+            "Roadmap file '{}' not found in docs/roadmaps directory.",
+            file
+        ));
     }
 
     // Read roadmap content
-    let content = fs::read_to_string(&roadmap_path)
-        .map_err(|e| format!("Failed to read roadmap: {}", e))?;
+    let content =
+        fs::read_to_string(&roadmap_path).map_err(|e| format!("Failed to read roadmap: {}", e))?;
 
     Ok(content)
 }
@@ -972,29 +979,35 @@ pub async fn write_project_file(
     // Ensure parent directories exist for nested files
     if let Some(parent) = full_path.parent() {
         if !parent.exists() {
-            fs::create_dir_all(parent)
-                .map_err(|e| format!("Failed to create directory: {}", e))?;
+            fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
         }
     }
 
     // Write file content
-    fs::write(&full_path, &content)
-        .map_err(|e| format!("Failed to write file: {}", e))?;
+    fs::write(&full_path, &content).map_err(|e| format!("Failed to write file: {}", e))?;
 
     Ok(())
 }
 
 /// Create a new project directory with initial NOTES.md file and .team file
 #[tauri::command(rename_all = "snake_case")]
-pub async fn create_project(project_name: String, team_name: Option<String>) -> Result<String, String> {
+pub async fn create_project(
+    project_name: String,
+    team_name: Option<String>,
+) -> Result<String, String> {
     // Validate project name: only lowercase letters, numbers, and hyphens
     if project_name.is_empty() {
         return Err("Project name cannot be empty".to_string());
     }
 
     // Check for invalid characters
-    if !project_name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
-        return Err("Project name can only contain lowercase letters, numbers, and hyphens".to_string());
+    if !project_name
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+    {
+        return Err(
+            "Project name can only contain lowercase letters, numbers, and hyphens".to_string(),
+        );
     }
 
     // No leading/trailing hyphens
@@ -1012,16 +1025,13 @@ pub async fn create_project(project_name: String, team_name: Option<String>) -> 
     let team_config = TeamConfig::load(&team)
         .map_err(|e| format!("Failed to load team config '{}': {}", team, e))?;
 
-    // Get note-taker name
-    let note_taker_name = team_config.note_taker()
-        .unwrap_or("dan");
+    // Get note-taker name (required by team config validation)
+    let note_taker_name = team_config
+        .note_taker()
+        .ok_or_else(|| "Team has no note_taker configured".to_string())?;
 
-    // Get note-taker's output file (defaults to NOTES.md)
-    let note_taker_file = team_config.team.agents.iter()
-        .find(|a| a.name == note_taker_name)
-        .and_then(|a| a.output_file.as_ref())
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| "NOTES.md".to_string());
+    // Get note-taker's output file from team config
+    let note_taker_file = team_config.note_taker_output_file();
 
     // Get workflow files from team config to store in .team
     let (_, workflow_files) = get_expected_files_from_config(&team_config);
@@ -1097,12 +1107,16 @@ pub async fn update_project_status(project_name: String, status: String) -> Resu
         return Err(format!("Project '{}' not found", project_name));
     }
 
-    let notes_path = project_path.join("NOTES.md");
+    // Load team config for this project to get note-taker's output file
+    let team_config = load_project_team(&project_path)
+        .map_err(|e| format!("Failed to load team config: {}", e))?;
+    let notes_file = team_config.note_taker_output_file();
+    let notes_path = project_path.join(&notes_file);
 
     // Read existing content or create new
     let content = if notes_path.exists() {
         fs::read_to_string(&notes_path)
-            .map_err(|e| format!("Failed to read NOTES.md: {}", e))?
+            .map_err(|e| format!("Failed to read {}: {}", notes_file, e))?
     } else {
         String::new()
     };
@@ -1116,10 +1130,7 @@ pub async fn update_project_status(project_name: String, status: String) -> Resu
         // Remove all existing status markers
         let without_markers = re.replace_all(&content, "").to_string();
         // Clean up extra blank lines and append new marker
-        let cleaned = without_markers
-            .lines()
-            .collect::<Vec<_>>()
-            .join("\n");
+        let cleaned = without_markers.lines().collect::<Vec<_>>().join("\n");
         format!("{}\n\n{}\n", cleaned.trim_end(), new_marker)
     } else {
         // Regex failed to compile, just append
@@ -1127,7 +1138,7 @@ pub async fn update_project_status(project_name: String, status: String) -> Resu
     };
 
     fs::write(&notes_path, new_content)
-        .map_err(|e| format!("Failed to write NOTES.md: {}", e))?;
+        .map_err(|e| format!("Failed to write {}: {}", notes_file, e))?;
 
     // When project is COMPLETE or ARCHIVED, archive the source idea if one exists
     if status_upper == "COMPLETE" || status_upper == "ARCHIVED" {
@@ -1141,23 +1152,23 @@ pub async fn update_project_status(project_name: String, status: String) -> Resu
 }
 
 /// Archive the source idea that generated this project (if any)
-/// Looks for idea_id in SPEC.md footer and archives the corresponding idea
+/// Looks for idea_id in pipeline entrypoint file footer and archives the corresponding idea
 fn archive_source_idea(project_path: &std::path::Path) -> Result<(), String> {
-    let spec_path = project_path.join("SPEC.md");
+    let entrypoint_file = get_pipeline_entrypoint_file();
+    let spec_path = project_path.join(&entrypoint_file);
     if !spec_path.exists() {
-        return Ok(()); // No SPEC.md, nothing to do
+        return Ok(()); // No entrypoint file, nothing to do
     }
 
     let spec_content = fs::read_to_string(&spec_path)
-        .map_err(|e| format!("Failed to read SPEC.md: {}", e))?;
+        .map_err(|e| format!("Failed to read {}: {}", entrypoint_file, e))?;
 
     // Extract idea_id from footer
     let idea_id = match RE_IDEA_SOURCE.as_ref() {
-        Some(re) => {
-            re.captures(&spec_content)
-                .and_then(|caps| caps.get(1))
-                .map(|m| m.as_str().to_string())
-        }
+        Some(re) => re
+            .captures(&spec_content)
+            .and_then(|caps| caps.get(1))
+            .map(|m| m.as_str().to_string()),
         None => None,
     };
 
@@ -1193,8 +1204,14 @@ pub async fn sync_project_idea_status() -> Result<SyncResult, String> {
             continue;
         }
 
+        // Load team config to get note-taker's output file
+        let team_config = match load_project_team(&path) {
+            Ok(config) => config,
+            Err(_) => continue,
+        };
+
         // Check if project is complete or archived
-        let notes_path = path.join("NOTES.md");
+        let notes_path = path.join(team_config.note_taker_output_file());
         if !notes_path.exists() {
             continue;
         }
@@ -1270,8 +1287,8 @@ pub async fn update_file_marker(
         return Err(format!("File '{}' not found", file_path));
     }
 
-    let content = fs::read_to_string(&full_path)
-        .map_err(|e| format!("Failed to read file: {}", e))?;
+    let content =
+        fs::read_to_string(&full_path).map_err(|e| format!("Failed to read file: {}", e))?;
 
     let agent = agent_name.unwrap_or_else(|| "user".to_string());
 
@@ -1297,18 +1314,14 @@ pub async fn update_file_marker(
         if let Some(re) = RE_HANDOFF.as_ref() {
             let without_marker = re.replace_all(&content, "").to_string();
             // Clean up extra newlines left behind
-            let cleaned = without_marker
-                .lines()
-                .collect::<Vec<_>>()
-                .join("\n");
+            let cleaned = without_marker.lines().collect::<Vec<_>>().join("\n");
             format!("{}\n", cleaned.trim_end())
         } else {
             content
         }
     };
 
-    fs::write(&full_path, new_content)
-        .map_err(|e| format!("Failed to write file: {}", e))?;
+    fs::write(&full_path, new_content).map_err(|e| format!("Failed to write file: {}", e))?;
 
     Ok(())
 }
@@ -1336,11 +1349,13 @@ pub async fn get_project_info_by_path(path: String) -> Result<ProjectPathInfo, S
 
     // Normalize paths for comparison
     let query_path = PathBuf::from(&path);
-    let canonical_projects = projects_dir.canonicalize()
+    let canonical_projects = projects_dir
+        .canonicalize()
         .unwrap_or_else(|_| projects_dir.clone());
 
     // Try to canonicalize the query path, fallback to the path itself
-    let canonical_query = query_path.canonicalize()
+    let canonical_query = query_path
+        .canonicalize()
         .unwrap_or_else(|_| query_path.clone());
 
     // Check if path is within projects directory
@@ -1364,21 +1379,26 @@ pub async fn get_project_info_by_path(path: String) -> Result<ProjectPathInfo, S
     }
 
     // Extract project name from path (first component after projects dir)
-    let relative = canonical_query.strip_prefix(&canonical_projects)
+    let relative = canonical_query
+        .strip_prefix(&canonical_projects)
         .map_err(|_| "Failed to get relative path")?;
 
-    let project_name = relative.iter().next()
+    let project_name = relative
+        .iter()
+        .next()
         .and_then(|s| s.to_str())
         .map(|s| s.to_string());
 
     let project_name = match project_name {
         Some(name) => name,
-        None => return Ok(ProjectPathInfo {
-            is_in_projects: true,
-            is_projects_root: true,
-            project: None,
-            projects_root,
-        }),
+        None => {
+            return Ok(ProjectPathInfo {
+                is_in_projects: true,
+                is_projects_root: true,
+                project: None,
+                projects_root,
+            })
+        }
     };
 
     // Skip hidden/template directories
@@ -1406,48 +1426,50 @@ pub async fn get_project_info_by_path(path: String) -> Result<ProjectPathInfo, S
     // Read project team file
     let project_team_file = match ProjectTeamFile::read(&project_path) {
         Ok(ptf) => ptf,
-        Err(_) => return Ok(ProjectPathInfo {
-            is_in_projects: true,
-            is_projects_root: false,
-            project: None,
-            projects_root,
-        }),
+        Err(_) => {
+            return Ok(ProjectPathInfo {
+                is_in_projects: true,
+                is_projects_root: false,
+                project: None,
+                projects_root,
+            })
+        }
     };
     let team = project_team_file.team.clone();
 
     // Load team config
     let team_config = match load_project_team(&project_path) {
         Ok(config) => config,
-        Err(_) => return Ok(ProjectPathInfo {
-            is_in_projects: true,
-            is_projects_root: false,
-            project: None,
-            projects_root,
-        }),
+        Err(_) => {
+            return Ok(ProjectPathInfo {
+                is_in_projects: true,
+                is_projects_root: false,
+                project: None,
+                projects_root,
+            })
+        }
     };
 
     // Get project metadata
     let file_count = count_md_files(&project_path);
 
-    let metadata = fs::metadata(&project_path)
-        .map_err(|e| format!("Failed to read metadata: {}", e))?;
+    let metadata =
+        fs::metadata(&project_path).map_err(|e| format!("Failed to read metadata: {}", e))?;
     let last_modified = metadata
         .modified()
         .ok()
         .and_then(|time| {
-            time.duration_since(std::time::UNIX_EPOCH)
-                .ok()
-                .map(|d| {
-                    let secs = d.as_secs();
-                    chrono::DateTime::from_timestamp(secs as i64, 0)
-                        .map(|dt| dt.to_rfc3339())
-                        .unwrap_or_default()
-                })
+            time.duration_since(std::time::UNIX_EPOCH).ok().map(|d| {
+                let secs = d.as_secs();
+                chrono::DateTime::from_timestamp(secs as i64, 0)
+                    .map(|dt| dt.to_rfc3339())
+                    .unwrap_or_default()
+            })
         })
         .unwrap_or_default();
 
-    // Parse status from NOTES.md
-    let notes_path = project_path.join("NOTES.md");
+    // Parse status from note-taker's output file
+    let notes_path = project_path.join(team_config.note_taker_output_file());
     let (status, status_detail) = if notes_path.exists() {
         match fs::read_to_string(&notes_path) {
             Ok(content) => parse_project_status(&content),

@@ -158,15 +158,25 @@ fn calculate_cost(model: &str, usage: &UsageData) -> f64 {
     let cache_creation_tokens = usage.cache_creation_input_tokens.unwrap_or(0) as f64;
     let cache_read_tokens = usage.cache_read_input_tokens.unwrap_or(0) as f64;
 
-    let (input_price, output_price, cache_write_price, cache_read_price) =
-        if model.contains("opus") {
-            (OPUS_INPUT, OPUS_OUTPUT, OPUS_CACHE_WRITE, OPUS_CACHE_READ)
-        } else if model.contains("haiku") {
-            (HAIKU_INPUT, HAIKU_OUTPUT, HAIKU_CACHE_WRITE, HAIKU_CACHE_READ)
-        } else {
-            // Default to Sonnet pricing
-            (SONNET_INPUT, SONNET_OUTPUT, SONNET_CACHE_WRITE, SONNET_CACHE_READ)
-        };
+    let (input_price, output_price, cache_write_price, cache_read_price) = if model.contains("opus")
+    {
+        (OPUS_INPUT, OPUS_OUTPUT, OPUS_CACHE_WRITE, OPUS_CACHE_READ)
+    } else if model.contains("haiku") {
+        (
+            HAIKU_INPUT,
+            HAIKU_OUTPUT,
+            HAIKU_CACHE_WRITE,
+            HAIKU_CACHE_READ,
+        )
+    } else {
+        // Default to Sonnet pricing
+        (
+            SONNET_INPUT,
+            SONNET_OUTPUT,
+            SONNET_CACHE_WRITE,
+            SONNET_CACHE_READ,
+        )
+    };
 
     (input_tokens * input_price / 1_000_000.0)
         + (output_tokens * output_price / 1_000_000.0)
@@ -299,7 +309,11 @@ fn get_recent_jsonl_files(claude_path: &PathBuf, max_files: usize) -> Vec<(PathB
                     if entry.path().extension().and_then(|s| s.to_str()) == Some("jsonl") {
                         if let Ok(metadata) = entry.metadata() {
                             if let Ok(modified) = metadata.modified() {
-                                files.push((entry.path().to_path_buf(), project_name.clone(), modified));
+                                files.push((
+                                    entry.path().to_path_buf(),
+                                    project_name.clone(),
+                                    modified,
+                                ));
                             }
                         }
                     }
@@ -477,9 +491,8 @@ pub fn get_usage_stats(days: Option<u32>) -> Result<UsageStats, String> {
         .join(".claude");
 
     // Calculate cutoff date if days specified
-    let cutoff_date = days.map(|d| {
-        Local::now().naive_local().date() - chrono::Duration::days(d as i64)
-    });
+    let cutoff_date =
+        days.map(|d| Local::now().naive_local().date() - chrono::Duration::days(d as i64));
 
     // Limit to 500 most recent files for performance
     // With date filtering, we'll get accurate recent data
@@ -661,9 +674,8 @@ pub fn get_agent_usage_stats(agent_name: String, days: Option<u32>) -> Result<Ag
         .ok_or("Failed to get home directory")?
         .join(".claude");
 
-    let cutoff_date = days.map(|d| {
-        Local::now().naive_local().date() - chrono::Duration::days(d as i64)
-    });
+    let cutoff_date =
+        days.map(|d| Local::now().naive_local().date() - chrono::Duration::days(d as i64));
 
     let max_files = match days {
         Some(d) if d <= 7 => 500,
@@ -678,7 +690,9 @@ pub fn get_agent_usage_stats(agent_name: String, days: Option<u32>) -> Result<Ag
         .into_iter()
         .filter(|e| {
             e.project_path.to_lowercase().contains(&agent_pattern)
-                || e.project_path.to_lowercase().contains(&format!("agents/{}", agent_name.to_lowercase()))
+                || e.project_path
+                    .to_lowercase()
+                    .contains(&format!("agents/{}", agent_name.to_lowercase()))
         })
         .collect();
 
@@ -701,7 +715,10 @@ pub fn get_agent_usage_stats(agent_name: String, days: Option<u32>) -> Result<Ag
 
     let mut session_map: HashMap<String, Vec<&UsageEntry>> = HashMap::new();
     for entry in &agent_entries {
-        session_map.entry(entry.session_id.clone()).or_default().push(entry);
+        session_map
+            .entry(entry.session_id.clone())
+            .or_default()
+            .push(entry);
     }
 
     let mut sessions: Vec<AgentSessionStats> = Vec::new();
@@ -709,7 +726,9 @@ pub fn get_agent_usage_stats(agent_name: String, days: Option<u32>) -> Result<Ag
     let mut daily_stats: HashMap<String, DailyUsage> = HashMap::new();
 
     for (session_id, entries) in &session_map {
-        if entries.is_empty() { continue; }
+        if entries.is_empty() {
+            continue;
+        }
 
         let mut sorted_entries: Vec<_> = entries.iter().collect();
         sorted_entries.sort_by(|a, b| a.timestamp.cmp(&b.timestamp));
@@ -724,7 +743,9 @@ pub fn get_agent_usage_stats(agent_name: String, days: Option<u32>) -> Result<Ag
             DateTime::parse_from_rfc3339(end_time),
         ) {
             (end_dt - start_dt).num_seconds().max(0) as u64
-        } else { 0 };
+        } else {
+            0
+        };
 
         let mut total_input = 0u64;
         let mut total_output = 0u64;
@@ -739,11 +760,21 @@ pub fn get_agent_usage_stats(agent_name: String, days: Option<u32>) -> Result<Ag
             total_cache_read += entry.cache_read_tokens;
             total_cache_write += entry.cache_creation_tokens;
             total_cost += entry.cost;
-            if entry.model != "unknown" { model = entry.model.clone(); }
+            if entry.model != "unknown" {
+                model = entry.model.clone();
+            }
         }
 
-        let tmux_session = first.project_path.split('/').last().unwrap_or("unknown").to_string();
-        let original_prompt = prompts.get(session_id).cloned().unwrap_or_else(|| "No prompt recorded".to_string());
+        let tmux_session = first
+            .project_path
+            .split('/')
+            .last()
+            .unwrap_or("unknown")
+            .to_string();
+        let original_prompt = prompts
+            .get(session_id)
+            .cloned()
+            .unwrap_or_else(|| "No prompt recorded".to_string());
 
         sessions.push(AgentSessionStats {
             session_id: session_id.clone(),
@@ -762,24 +793,41 @@ pub fn get_agent_usage_stats(agent_name: String, days: Option<u32>) -> Result<Ag
         });
 
         let model_stat = model_stats.entry(model.clone()).or_insert(ModelUsage {
-            model: model.clone(), total_cost: 0.0, total_tokens: 0, input_tokens: 0,
-            output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, session_count: 0,
+            model: model.clone(),
+            total_cost: 0.0,
+            total_tokens: 0,
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_creation_tokens: 0,
+            cache_read_tokens: 0,
+            session_count: 0,
         });
         model_stat.total_cost += total_cost;
         model_stat.input_tokens += total_input;
         model_stat.output_tokens += total_output;
         model_stat.cache_creation_tokens += total_cache_write;
         model_stat.cache_read_tokens += total_cache_read;
-        model_stat.total_tokens += total_input + total_output + total_cache_read + total_cache_write;
+        model_stat.total_tokens +=
+            total_input + total_output + total_cache_read + total_cache_write;
         model_stat.session_count += 1;
 
-        let date = start_time.split('T').next().unwrap_or(start_time).to_string();
+        let date = start_time
+            .split('T')
+            .next()
+            .unwrap_or(start_time)
+            .to_string();
         let daily_stat = daily_stats.entry(date.clone()).or_insert(DailyUsage {
-            date, total_cost: 0.0, total_tokens: 0, models_used: vec![],
+            date,
+            total_cost: 0.0,
+            total_tokens: 0,
+            models_used: vec![],
         });
         daily_stat.total_cost += total_cost;
-        daily_stat.total_tokens += total_input + total_output + total_cache_read + total_cache_write;
-        if !daily_stat.models_used.contains(&model) { daily_stat.models_used.push(model); }
+        daily_stat.total_tokens +=
+            total_input + total_output + total_cache_read + total_cache_write;
+        if !daily_stat.models_used.contains(&model) {
+            daily_stat.models_used.push(model);
+        }
     }
 
     sessions.sort_by(|a, b| b.start_time.cmp(&a.start_time));
@@ -789,8 +837,16 @@ pub fn get_agent_usage_stats(agent_name: String, days: Option<u32>) -> Result<Ag
     let total_tokens: u64 = sessions.iter().map(|s| s.total_tokens).sum();
     let total_duration_secs: u64 = sessions.iter().map(|s| s.duration_secs).sum();
 
-    let avg_cost_per_session = if total_sessions > 0 { total_cost / total_sessions as f64 } else { 0.0 };
-    let avg_duration_secs = if total_sessions > 0 { total_duration_secs / total_sessions } else { 0 };
+    let avg_cost_per_session = if total_sessions > 0 {
+        total_cost / total_sessions as f64
+    } else {
+        0.0
+    };
+    let avg_duration_secs = if total_sessions > 0 {
+        total_duration_secs / total_sessions
+    } else {
+        0
+    };
 
     let mut by_model: Vec<ModelUsage> = model_stats.into_values().collect();
     by_model.sort_by(|a, b| b.session_count.cmp(&a.session_count));
@@ -799,7 +855,15 @@ pub fn get_agent_usage_stats(agent_name: String, days: Option<u32>) -> Result<Ag
     by_date.sort_by(|a, b| b.date.cmp(&a.date));
 
     Ok(AgentStats {
-        agent_name, total_sessions, total_cost, total_tokens, total_duration_secs,
-        avg_cost_per_session, avg_duration_secs, by_model, by_date, sessions,
+        agent_name,
+        total_sessions,
+        total_cost,
+        total_tokens,
+        total_duration_secs,
+        avg_cost_per_session,
+        avg_duration_secs,
+        by_model,
+        by_date,
+        sessions,
     })
 }

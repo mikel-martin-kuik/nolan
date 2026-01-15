@@ -83,22 +83,22 @@ One team executes all projects using a phase-gate workflow:
 
 **Workflow**: Ana → Bill → Enzo → Carl → Frank
 
-### Cronos Agents (Background Tasks)
+### Scheduled Agents (Background Tasks)
 
 | Agent | Purpose | Status |
 |-------|---------|--------|
-| cron-idea-processor | Analyzes ideas, creates proposals | Active |
-| cron-idea-merger | Consolidates related ideas | Active |
-| cron-idea-implementer | Creates projects from approved ideas | Active |
-| cron-roadmap | Updates roadmaps from activity | Active |
-| cron-roadmap-alignment | Validates roadmap alignment | Active |
-| cron-git-commit | Automated commits | Active |
-| cron-workflow-monitor | Tracks workflow health | Active |
-| cron-dependency-check | Validates dependencies | Active |
-| cron-security-audit | Security scanning | Active |
-| cron-bug-finder | Identifies bugs in codebase | Active |
-| cron-ui-audit | UI/UX audit and improvements | Active |
-| cron-code-indexer | Indexes codebase for context | Active |
+| idea-processor | Analyzes ideas, creates proposals | Active |
+| idea-merger | Consolidates related ideas | Active |
+| idea-implementer | Creates projects from approved ideas | Active |
+| roadmap | Updates roadmaps from activity | Active |
+| roadmap-alignment | Validates roadmap alignment | Active |
+| git-commit | Automated commits | Active |
+| workflow-monitor | Tracks workflow health | Active |
+| dependency-check | Validates dependencies | Active |
+| security-audit | Security scanning | Active |
+| bug-finder | Identifies bugs in codebase | Active |
+| ui-audit | UI/UX audit and improvements | Active |
+| code-indexer | Indexes codebase for context | Active |
 
 ---
 
@@ -111,7 +111,7 @@ One team executes all projects using a phase-gate workflow:
 | **GitHub Issues** | Support/Ideas | Natural language, AI-triaged |
 | **GitHub PRs** | Workflow phases | AI review, not human review |
 | **Confluence** | Spec repository | Living docs that generate code |
-| **CI/CD** | Cronos + Agents | Continuous development, not just delivery |
+| **CI/CD** | Scheduler + Agents | Continuous development, not just delivery |
 
 ---
 

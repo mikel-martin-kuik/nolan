@@ -115,11 +115,11 @@ export const EVENT_SESSION_LABEL_CHANGED = 'session-label-changed';
 /** Prefix for team agent sessions (e.g., agent-default-ana) */
 export const SESSION_PREFIX_TEAM = 'agent-';
 
-/** Prefix for cron agent sessions (e.g., cron-daily-backup) */
-export const SESSION_PREFIX_CRON = 'cron-';
+/** Prefix for scheduled agent sessions (no longer used - agents are identified by config, not prefix) */
+export const SESSION_PREFIX_SCHEDULED = '';
 
-/** Prefix for predefined agent sessions (e.g., pred-analyzer) */
-export const SESSION_PREFIX_PREDEFINED = 'pred-';
+/** Prefix for predefined agent sessions (no longer used - agents are identified by config, not prefix) */
+export const SESSION_PREFIX_PREDEFINED = '';
 
 // =============================================================================
 // WebSocket Endpoints

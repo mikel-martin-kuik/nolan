@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card } from '../ui/card';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import {
   Calendar,
   Filter,
@@ -13,8 +14,7 @@ import {
   Zap,
   Hash,
   BarChart3,
-  Info,
-  X
+  Info
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useUsageStats, type DateRange } from '@/hooks';
@@ -517,77 +517,65 @@ export const UsagePanel: React.FC = () => {
       </div>
 
       {/* Pricing Modal */}
-      {showPricingModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setShowPricingModal(false)}
-          />
-          <div className="relative bg-background border border-border rounded-lg shadow-lg p-6 max-w-md w-full mx-4">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold">Pricing ($/MTok)</h3>
-              <button
-                onClick={() => setShowPricingModal(false)}
-                className="p-1 rounded hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-muted-foreground">
-                  <th className="text-left font-medium py-1">Model</th>
-                  <th className="text-right font-medium py-1">Input</th>
-                  <th className="text-right font-medium py-1">5m Cache</th>
-                  <th className="text-right font-medium py-1">1h Cache</th>
-                  <th className="text-right font-medium py-1 text-emerald-500">Cache Hit</th>
-                  <th className="text-right font-medium py-1">Output</th>
-                </tr>
-              </thead>
-              <tbody className="text-foreground">
-                <tr>
-                  <td className="py-1">Opus 4.5</td>
-                  <td className="text-right py-1">$5</td>
-                  <td className="text-right py-1">$6.25</td>
-                  <td className="text-right py-1">$10</td>
-                  <td className="text-right py-1 text-emerald-500">$0.50</td>
-                  <td className="text-right py-1">$25</td>
-                </tr>
-                <tr>
-                  <td className="py-1">Sonnet 4.5</td>
-                  <td className="text-right py-1">$3</td>
-                  <td className="text-right py-1">$3.75</td>
-                  <td className="text-right py-1">$6</td>
-                  <td className="text-right py-1 text-emerald-500">$0.30</td>
-                  <td className="text-right py-1">$15</td>
-                </tr>
-                <tr>
-                  <td className="py-1">Haiku 4.5</td>
-                  <td className="text-right py-1">$1</td>
-                  <td className="text-right py-1">$1.25</td>
-                  <td className="text-right py-1">$2</td>
-                  <td className="text-right py-1 text-emerald-500">$0.10</td>
-                  <td className="text-right py-1">$5</td>
-                </tr>
-              </tbody>
-            </table>
-            <p className="text-[10px] text-muted-foreground mt-4">
-              Cache writes are 1.25x (5m) or 2x (1h) base input. Cache hits are 0.1x base input.
-            </p>
-            <p className="text-[10px] text-muted-foreground mt-2">
-              Prices as of January 2026. For current pricing, visit{' '}
-              <a
-                href="https://platform.claude.com/docs/en/about-claude/pricing"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-primary hover:underline"
-              >
-                platform.claude.com
-              </a>
-            </p>
-          </div>
-        </div>
-      )}
+      <Dialog open={showPricingModal} onOpenChange={setShowPricingModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-sm">Pricing ($/MTok)</DialogTitle>
+          </DialogHeader>
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-muted-foreground">
+                <th className="text-left font-medium py-1">Model</th>
+                <th className="text-right font-medium py-1">Input</th>
+                <th className="text-right font-medium py-1">5m Cache</th>
+                <th className="text-right font-medium py-1">1h Cache</th>
+                <th className="text-right font-medium py-1 text-emerald-500">Cache Hit</th>
+                <th className="text-right font-medium py-1">Output</th>
+              </tr>
+            </thead>
+            <tbody className="text-foreground">
+              <tr>
+                <td className="py-1">Opus 4.5</td>
+                <td className="text-right py-1">$5</td>
+                <td className="text-right py-1">$6.25</td>
+                <td className="text-right py-1">$10</td>
+                <td className="text-right py-1 text-emerald-500">$0.50</td>
+                <td className="text-right py-1">$25</td>
+              </tr>
+              <tr>
+                <td className="py-1">Sonnet 4.5</td>
+                <td className="text-right py-1">$3</td>
+                <td className="text-right py-1">$3.75</td>
+                <td className="text-right py-1">$6</td>
+                <td className="text-right py-1 text-emerald-500">$0.30</td>
+                <td className="text-right py-1">$15</td>
+              </tr>
+              <tr>
+                <td className="py-1">Haiku 4.5</td>
+                <td className="text-right py-1">$1</td>
+                <td className="text-right py-1">$1.25</td>
+                <td className="text-right py-1">$2</td>
+                <td className="text-right py-1 text-emerald-500">$0.10</td>
+                <td className="text-right py-1">$5</td>
+              </tr>
+            </tbody>
+          </table>
+          <p className="text-[10px] text-muted-foreground mt-2">
+            Cache writes are 1.25x (5m) or 2x (1h) base input. Cache hits are 0.1x base input.
+          </p>
+          <p className="text-[10px] text-muted-foreground mt-2">
+            Prices as of January 2026. For current pricing, visit{' '}
+            <a
+              href="https://platform.claude.com/docs/en/about-claude/pricing"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              platform.claude.com
+            </a>
+          </p>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

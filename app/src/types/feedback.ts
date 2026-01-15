@@ -37,7 +37,7 @@ export const TAG_COLORS: Record<string, string> = {
   infrastructure: 'bg-orange-500/20 text-orange-400 border-orange-500/30',
   // Sources
   'user-feedback': 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-  'cron-agent': 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+  'scheduled-agent': 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
   'security-audit': 'bg-red-500/20 text-red-400 border-red-500/30',
   // Feature types
   feature: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
@@ -113,7 +113,7 @@ export const IDEA_STATUS_LABELS: Record<IdeaStatus, string> = {
   archived: 'Archived',
 };
 
-// Idea review types (from cron-inbox-digest agent)
+// Idea review types (from scheduled-inbox-digest agent)
 export type IdeaReviewStatus = 'draft' | 'needs_input' | 'ready' | 'rejected';
 export type IdeaComplexity = 'low' | 'medium' | 'high';
 

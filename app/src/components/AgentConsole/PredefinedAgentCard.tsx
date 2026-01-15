@@ -23,10 +23,10 @@ import {
   CheckCircle,
   GitMerge,
 } from 'lucide-react';
-import type { CronAgentInfo } from '@/types';
+import type { ScheduledAgentInfo } from '@/types';
 
 interface PredefinedAgentCardProps {
-  agent: CronAgentInfo;
+  agent: ScheduledAgentInfo;
   onTrigger: (name: string) => void;
   onUninstall?: (name: string) => void;
   isUninstalling?: boolean;
@@ -74,7 +74,7 @@ export const PredefinedAgentCard: React.FC<PredefinedAgentCardProps> = ({
             </div>
             <div>
               <CardTitle className="text-sm font-medium">
-                {agent.name.replace('pred-', '')}
+                {agent.name}
               </CardTitle>
               {slashCommand && (
                 <code className="text-xs text-muted-foreground">

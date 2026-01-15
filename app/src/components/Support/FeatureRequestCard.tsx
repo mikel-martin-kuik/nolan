@@ -19,6 +19,7 @@ import {
 } from '@/types';
 import { MoreVertical } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 
 function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -45,6 +46,7 @@ const ALL_STATUSES: FeatureRequestStatus[] = ['new', 'reviewed', 'designed', 'do
 export function FeatureRequestCard({ request, userVote }: FeatureRequestCardProps) {
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const voteMutation = useMutation({
     mutationFn: (voteType: 'up' | 'down') =>
@@ -159,11 +161,7 @@ export function FeatureRequestCard({ request, userVote }: FeatureRequestCardProp
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     className="text-xs text-destructive"
-                    onClick={() => {
-                      if (confirm('Delete this request?')) {
-                        deleteMutation.mutate();
-                      }
-                    }}
+                    onClick={() => setDeleteConfirmOpen(true)}
                   >
                     Delete
                   </DropdownMenuItem>
@@ -177,6 +175,16 @@ export function FeatureRequestCard({ request, userVote }: FeatureRequestCardProp
           </div>
         </div>
       </CardContent>
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title="Delete Feature Request"
+        description="Are you sure you want to delete this feature request? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={() => deleteMutation.mutate()}
+      />
     </Card>
   );
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@/lib/api';
-import { X, Save, RotateCcw, Sparkles, Loader2 } from 'lucide-react';
+import { Save, RotateCcw, Sparkles, Loader2 } from 'lucide-react';
 import { useToastStore } from '../../store/toastStore';
 import { useOllamaStore } from '../../store/ollamaStore';
 import { Tooltip } from '@/components/ui/tooltip';
@@ -11,6 +11,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -37,6 +39,7 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({
   const [saving, setSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [discardConfirmOpen, setDiscardConfirmOpen] = useState(false);
   const { error: showError, success: showSuccess } = useToastStore();
   const { status: ollamaStatus, checkConnection, generate: ollamaGenerate } = useOllamaStore();
 
@@ -158,9 +161,7 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({
   // Handle cancel with unsaved changes warning
   const handleCancel = useCallback(() => {
     if (hasChanges) {
-      if (confirm('You have unsaved changes. Are you sure you want to close?')) {
-        onCancel();
-      }
+      setDiscardConfirmOpen(true);
     } else {
       onCancel();
     }
@@ -188,113 +189,127 @@ export const AgentEditor: React.FC<AgentEditorProps> = ({
   }, [hasChanges, saving, handleSave, handleCancel]);
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-card rounded-xl border border-border w-full max-w-4xl h-[80vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border flex-shrink-0">
-          <div className="flex-1 mr-4">
-            <div className="flex items-center gap-3 mb-1">
-              <h2 className="text-xl font-semibold text-foreground">
-                {agentName}
-              </h2>
-              <Input
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                placeholder="Role (e.g., Research, Planning)"
-                className="flex-1 max-w-xs h-8 text-sm"
-              />
-              <Select value={model} onValueChange={setModel}>
-                <SelectTrigger className="w-28 h-8 text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="opus">Opus</SelectItem>
-                  <SelectItem value="sonnet">Sonnet</SelectItem>
-                  <SelectItem value="haiku">Haiku</SelectItem>
-                </SelectContent>
-              </Select>
+    <>
+      <Dialog open={true} onOpenChange={(open) => !open && handleCancel()}>
+        <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0 gap-0">
+          {/* Header */}
+          <div className="flex items-center justify-between p-4 border-b border-border flex-shrink-0">
+            <div className="flex-1 mr-4">
+              <div className="flex items-center gap-3 mb-1">
+                <h2 className="text-xl font-semibold text-foreground">
+                  {agentName}
+                </h2>
+                <Input
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  placeholder="Role (e.g., Research, Planning)"
+                  className="flex-1 max-w-xs h-8 text-sm"
+                />
+                <Select value={model} onValueChange={setModel}>
+                  <SelectTrigger className="w-28 h-8 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="opus">Opus</SelectItem>
+                    <SelectItem value="sonnet">Sonnet</SelectItem>
+                    <SelectItem value="haiku">Haiku</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                CLAUDE.md
+                {hasChanges && <span className="ml-2 text-yellow-500">• Unsaved changes</span>}
+              </p>
             </div>
-            <p className="text-sm text-muted-foreground">
-              CLAUDE.md
-              {hasChanges && <span className="ml-2 text-yellow-500">• Unsaved changes</span>}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {hasChanges && (
-              <Button variant="secondary" size="sm" onClick={handleRevert} disabled={saving}>
-                <RotateCcw />
-                Revert
-              </Button>
-            )}
-            <Button onClick={handleSave} disabled={!hasChanges || saving}>
-              <Save />
-              {saving ? 'Saving...' : 'Save'}
-            </Button>
-            <Button variant="ghost" size="icon" onClick={handleCancel}>
-              <X className="w-5 h-5 text-muted-foreground" />
-            </Button>
-          </div>
-        </div>
-
-        {/* Editor */}
-        <div className="flex-1 overflow-hidden p-4 flex flex-col">
-          {loading ? (
-            <div className="h-full flex items-center justify-center">
-              <p className="text-sm text-muted-foreground">Loading...</p>
-            </div>
-          ) : (
-            <>
-              {ollamaStatus === 'connected' && (
-                <div className="flex justify-end mb-2">
-                  <Tooltip content="Generate/improve content using local AI" side="left">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleGenerateContent}
-                      disabled={generating || saving}
-                      className="gap-2"
-                    >
-                      {generating ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <Sparkles className="h-4 w-4" />
-                      )}
-                      {generating ? 'Generating...' : 'Generate with AI'}
-                    </Button>
-                  </Tooltip>
-                </div>
+            <div className="flex items-center gap-2 mr-6">
+              {hasChanges && (
+                <Button variant="secondary" size="sm" onClick={handleRevert} disabled={saving}>
+                  <RotateCcw />
+                  Revert
+                </Button>
               )}
-              <Textarea
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                className="w-full flex-1 font-mono"
-                placeholder="Enter CLAUDE.md content..."
-                spellCheck={false}
-                disabled={generating}
-              />
-            </>
-          )}
-        </div>
+              <Button onClick={handleSave} disabled={!hasChanges || saving}>
+                <Save />
+                {saving ? 'Saving...' : 'Save'}
+              </Button>
+            </div>
+          </div>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-3 border-t border-border flex-shrink-0 bg-muted/30">
-          <div className="text-xs text-muted-foreground">
-            <span>Press </span>
-            <kbd className="px-2 py-1 bg-background border border-border rounded text-foreground font-mono">
-              Ctrl+S
-            </kbd>
-            <span> to save • </span>
-            <kbd className="px-2 py-1 bg-background border border-border rounded text-foreground font-mono">
-              Esc
-            </kbd>
-            <span> to close</span>
+          {/* Editor */}
+          <div className="flex-1 overflow-hidden p-4 flex flex-col">
+            {loading ? (
+              <div className="h-full flex items-center justify-center">
+                <p className="text-sm text-muted-foreground">Loading...</p>
+              </div>
+            ) : (
+              <>
+                {ollamaStatus === 'connected' && (
+                  <div className="flex justify-end mb-2">
+                    <Tooltip content="Generate/improve content using local AI" side="left">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleGenerateContent}
+                        disabled={generating || saving}
+                        className="gap-2"
+                      >
+                        {generating ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-4 w-4" />
+                        )}
+                        {generating ? 'Generating...' : 'Generate with AI'}
+                      </Button>
+                    </Tooltip>
+                  </div>
+                )}
+                <Textarea
+                  value={content}
+                  onChange={(e) => setContent(e.target.value)}
+                  className="w-full flex-1 font-mono"
+                  placeholder="Enter CLAUDE.md content..."
+                  spellCheck={false}
+                  disabled={generating}
+                />
+              </>
+            )}
           </div>
-          <div className="text-xs text-muted-foreground">
-            {(content || '').split('\n').length} lines • {(content || '').length} characters
+
+          {/* Footer */}
+          <div className="flex items-center justify-between px-4 py-3 border-t border-border flex-shrink-0 bg-muted/30">
+            <div className="text-xs text-muted-foreground">
+              <span>Press </span>
+              <kbd className="px-2 py-1 bg-background border border-border rounded text-foreground font-mono">
+                Ctrl+S
+              </kbd>
+              <span> to save • </span>
+              <kbd className="px-2 py-1 bg-background border border-border rounded text-foreground font-mono">
+                Esc
+              </kbd>
+              <span> to close</span>
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {(content || '').split('\n').length} lines • {(content || '').length} characters
+            </div>
           </div>
-        </div>
-      </div>
-    </div>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={discardConfirmOpen} onOpenChange={setDiscardConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard Changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes. Are you sure you want to close without saving?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={onCancel}>Discard</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 };

@@ -5,8 +5,8 @@
 //! Security: Session names are validated and escaped before being interpolated into
 //! shell commands to prevent command injection.
 
-use std::process::Command;
 use crate::constants::{RE_CORE_AGENT, RE_RALPH_SESSION};
+use std::process::Command;
 
 /// Terminal emulator types supported by the platform
 #[derive(Debug, Clone, Copy)]
@@ -185,11 +185,11 @@ mod tests {
     fn test_escape_applescript_string() {
         assert_eq!(escape_applescript_string("normal"), "normal");
         assert_eq!(escape_applescript_string("with\"quote"), "with\\\"quote");
-        assert_eq!(escape_applescript_string("with\\backslash"), "with\\\\backslash");
         assert_eq!(
-            escape_applescript_string("both\"and\\"),
-            "both\\\"and\\\\"
+            escape_applescript_string("with\\backslash"),
+            "with\\\\backslash"
         );
+        assert_eq!(escape_applescript_string("both\"and\\"), "both\\\"and\\\\");
     }
 
     #[test]
@@ -213,8 +213,14 @@ mod tests {
 
     #[test]
     fn test_terminal_type_name() {
-        assert_eq!(terminal_type_name(TerminalType::GnomeTerminal), "GNOME Terminal");
-        assert_eq!(terminal_type_name(TerminalType::MacOSTerminal), "Terminal.app");
+        assert_eq!(
+            terminal_type_name(TerminalType::GnomeTerminal),
+            "GNOME Terminal"
+        );
+        assert_eq!(
+            terminal_type_name(TerminalType::MacOSTerminal),
+            "Terminal.app"
+        );
         assert_eq!(terminal_type_name(TerminalType::ITerm2), "iTerm2");
     }
 }

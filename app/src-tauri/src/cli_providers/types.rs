@@ -78,7 +78,9 @@ pub trait CliProvider: Send + Sync {
     fn name(&self) -> &'static str;
 
     /// Check if this provider is available on the system
-    fn is_available() -> bool where Self: Sized;
+    fn is_available() -> bool
+    where
+        Self: Sized;
 
     /// Get the CLI executable command
     fn executable(&self) -> &str;

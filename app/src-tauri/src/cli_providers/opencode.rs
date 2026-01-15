@@ -64,7 +64,9 @@ impl CliProvider for OpenCodeProvider {
         // Map Claude model names to anthropic/claude format
         match model.to_lowercase().as_str() {
             "opus" | "claude-opus" | "claude-4-opus" => "anthropic/claude-4-opus".to_string(),
-            "sonnet" | "claude-sonnet" | "claude-4-sonnet" => "anthropic/claude-4-sonnet".to_string(),
+            "sonnet" | "claude-sonnet" | "claude-4-sonnet" => {
+                "anthropic/claude-4-sonnet".to_string()
+            }
             "haiku" | "claude-haiku" | "claude-4-haiku" => "anthropic/claude-4-haiku".to_string(),
             // If already in provider/model format, pass through
             other if other.contains('/') => other.to_string(),
@@ -78,7 +80,9 @@ impl CliProvider for OpenCodeProvider {
 
         // Build environment exports
         if !config.env_vars.is_empty() {
-            let exports: Vec<String> = config.env_vars.iter()
+            let exports: Vec<String> = config
+                .env_vars
+                .iter()
                 .map(|(k, v)| format!("{}='{}'", k, v.replace("'", "'\\''")))
                 .collect();
             parts.push(format!("export {}", exports.join(" ")));

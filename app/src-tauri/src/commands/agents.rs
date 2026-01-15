@@ -1,8 +1,9 @@
+use crate::config::get_prompt_file;
+use chrono::Local;
+use serde::{Deserialize, Serialize};
+use serde_json;
 use std::fs;
 use std::path::PathBuf;
-use serde::{Serialize, Deserialize};
-use serde_json;
-use chrono::Local;
 
 /// Agent directory information
 #[derive(Serialize, Deserialize)]
@@ -15,7 +16,6 @@ pub struct AgentDirectoryInfo {
     pub path: String,
     pub role: Option<String>,
     pub model: Option<String>,
-    pub agent_type: Option<String>,
     /// Team this agent belongs to (None for shared/ralph agents)
     pub team: Option<String>,
 }
@@ -37,8 +37,6 @@ struct AgentYamlMetadata {
     pub description: Option<String>,
     #[serde(default)]
     pub model: Option<String>,
-    #[serde(default)]
-    pub agent_type: Option<String>,
 }
 
 /// Validate agent name format (lowercase, alphanumeric, underscores only)
@@ -48,12 +46,22 @@ fn validate_agent_name(name: &str) -> Result<(), String> {
         return Err("Agent name cannot be empty".to_string());
     }
 
-    if !name.chars().next().map(|c| c.is_ascii_lowercase()).unwrap_or(false) {
+    if !name
+        .chars()
+        .next()
+        .map(|c| c.is_ascii_lowercase())
+        .unwrap_or(false)
+    {
         return Err("Agent name must start with a lowercase letter".to_string());
     }
 
-    if !name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
-        return Err("Agent name must contain only lowercase letters, digits, and underscores".to_string());
+    if !name
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+    {
+        return Err(
+            "Agent name must contain only lowercase letters, digits, and underscores".to_string(),
+        );
     }
 
     // Check for path traversal
@@ -69,13 +77,38 @@ fn get_agents_dir() -> Result<PathBuf, String> {
     crate::utils::paths::get_agents_dir()
 }
 
+/// Role-based subdirectories for agent organization
+const ROLE_SUBDIRS: &[&str] = &[
+    "implementers",
+    "analyzers",
+    "testers",
+    "mergers",
+    "builders",
+    "scanners",
+    "indexers",
+    "monitors",
+    "researchers",
+    "planners",
+    "free",
+];
+
 /// Find an agent by name, searching all team directories and shared agents
 /// Returns (agent_dir, team_name) where team_name is None for shared agents
 fn find_agent(agent_name: &str) -> Result<(PathBuf, Option<String>), String> {
-    // First check shared agents directory
-    let shared_agent_dir = get_agents_dir()?.join(agent_name);
+    let agents_dir = get_agents_dir()?;
+
+    // First check shared agents directory (flat structure - legacy)
+    let shared_agent_dir = agents_dir.join(agent_name);
     if shared_agent_dir.exists() {
         return Ok((shared_agent_dir, None));
+    }
+
+    // Search role-based subdirectories (new structure)
+    for role_subdir in ROLE_SUBDIRS {
+        let role_agent_dir = agents_dir.join(role_subdir).join(agent_name);
+        if role_agent_dir.exists() {
+            return Ok((role_agent_dir, None));
+        }
     }
 
     // Search all team directories
@@ -89,9 +122,7 @@ fn find_agent(agent_name: &str) -> Result<(PathBuf, Option<String>), String> {
                 continue;
             }
 
-            let team_name = team_path.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
+            let team_name = team_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
             let team_agent_dir = team_path.join("agents").join(agent_name);
             if team_agent_dir.exists() {
@@ -130,7 +161,10 @@ fn read_agent_yaml_metadata(agent_dir: &PathBuf) -> Option<AgentYamlMetadata> {
 }
 
 /// Helper to create AgentDirectoryInfo from a path
-fn agent_info_from_path(path: &std::path::Path, team: Option<String>) -> Option<AgentDirectoryInfo> {
+fn agent_info_from_path(
+    path: &std::path::Path,
+    team: Option<String>,
+) -> Option<AgentDirectoryInfo> {
     let name = path.file_name().and_then(|n| n.to_str())?;
 
     // Skip hidden directories
@@ -153,13 +187,13 @@ fn agent_info_from_path(path: &std::path::Path, team: Option<String>) -> Option<
     let yaml_metadata = read_agent_yaml_metadata(&path_buf);
 
     // Use JSON metadata if available, otherwise fall back to YAML
-    let (role, model, agent_type) = if let Some(ref m) = json_metadata {
-        (Some(m.role.clone()), Some(m.model.clone()), None)
+    let (role, model) = if let Some(ref m) = json_metadata {
+        (Some(m.role.clone()), Some(m.model.clone()))
     } else if let Some(ref m) = yaml_metadata {
         // For YAML agents (cron/predefined), use description as role
-        (m.description.clone(), m.model.clone(), m.agent_type.clone())
+        (m.description.clone(), m.model.clone())
     } else {
-        (None, None, None)
+        (None, None)
     };
 
     Some(AgentDirectoryInfo {
@@ -171,7 +205,6 @@ fn agent_info_from_path(path: &std::path::Path, team: Option<String>) -> Option<
         path: path.to_string_lossy().to_string(),
         role,
         model,
-        agent_type,
         team,
     })
 }
@@ -194,9 +227,7 @@ pub async fn list_agent_directories() -> Result<Vec<AgentDirectoryInfo>, String>
                 continue;
             }
 
-            let team_name = team_path.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
+            let team_name = team_path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
             // Skip hidden directories
             if team_name.starts_with('.') {
@@ -213,11 +244,14 @@ pub async fn list_agent_directories() -> Result<Vec<AgentDirectoryInfo>, String>
             for agent_entry in fs::read_dir(&team_agents_dir)
                 .map_err(|e| format!("Failed to read team agents directory: {}", e))?
             {
-                let agent_entry = agent_entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+                let agent_entry =
+                    agent_entry.map_err(|e| format!("Failed to read entry: {}", e))?;
                 let agent_path = agent_entry.path();
 
                 if agent_path.is_dir() {
-                    if let Some(info) = agent_info_from_path(&agent_path, Some(team_name.to_string())) {
+                    if let Some(info) =
+                        agent_info_from_path(&agent_path, Some(team_name.to_string()))
+                    {
                         agent_infos.push(info);
                     }
                 }
@@ -235,20 +269,36 @@ pub async fn list_agent_directories() -> Result<Vec<AgentDirectoryInfo>, String>
             let path = entry.path();
 
             if path.is_dir() {
-                if let Some(info) = agent_info_from_path(&path, None) {
-                    agent_infos.push(info);
+                let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
+                // Check if this is a role-based subdirectory
+                if ROLE_SUBDIRS.contains(&dir_name) {
+                    // Scan agents within this role subdirectory
+                    if let Ok(role_entries) = fs::read_dir(&path) {
+                        for role_entry in role_entries.flatten() {
+                            let role_agent_path = role_entry.path();
+                            if role_agent_path.is_dir() {
+                                if let Some(info) = agent_info_from_path(&role_agent_path, None) {
+                                    agent_infos.push(info);
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    // Legacy flat structure - direct agent directory
+                    if let Some(info) = agent_info_from_path(&path, None) {
+                        agent_infos.push(info);
+                    }
                 }
             }
         }
     }
 
     // Sort by team (None first), then by name
-    agent_infos.sort_by(|a, b| {
-        match (&a.team, &b.team) {
-            (None, Some(_)) => std::cmp::Ordering::Less,
-            (Some(_), None) => std::cmp::Ordering::Greater,
-            _ => a.name.cmp(&b.name),
-        }
+    agent_infos.sort_by(|a, b| match (&a.team, &b.team) {
+        (None, Some(_)) => std::cmp::Ordering::Less,
+        (Some(_), None) => std::cmp::Ordering::Greater,
+        _ => a.name.cmp(&b.name),
     });
 
     Ok(agent_infos)
@@ -258,7 +308,10 @@ pub async fn list_agent_directories() -> Result<Vec<AgentDirectoryInfo>, String>
 /// If team_name is provided, creates in teams/{team}/agents/{agent}/
 /// Otherwise creates in agents/{agent}/ (for shared agents like ralph)
 #[tauri::command(rename_all = "snake_case")]
-pub async fn create_agent_directory(agent_name: String, team_name: Option<String>) -> Result<String, String> {
+pub async fn create_agent_directory(
+    agent_name: String,
+    team_name: Option<String>,
+) -> Result<String, String> {
     // Validate agent name
     validate_agent_name(&agent_name)?;
 
@@ -332,8 +385,7 @@ pub async fn get_agent_role_file(agent_name: String) -> Result<String, String> {
         return Err(format!("CLAUDE.md not found for agent '{}'", agent_name));
     }
 
-    fs::read_to_string(&claude_md_path)
-        .map_err(|e| format!("Failed to read CLAUDE.md: {}", e))
+    fs::read_to_string(&claude_md_path).map_err(|e| format!("Failed to read CLAUDE.md: {}", e))
 }
 
 /// Save CLAUDE.md content for an agent
@@ -362,8 +414,7 @@ pub async fn save_agent_role_file(agent_name: String, content: String) -> Result
     }
 
     // Write the file
-    fs::write(&claude_md_path, content)
-        .map_err(|e| format!("Failed to write CLAUDE.md: {}", e))?;
+    fs::write(&claude_md_path, content).map_err(|e| format!("Failed to write CLAUDE.md: {}", e))?;
 
     Ok(())
 }
@@ -403,7 +454,11 @@ pub async fn delete_agent_directory(agent_name: String, force: bool) -> Result<(
 /// Save agent metadata to agent.json
 /// Searches both team-specific and shared agent directories
 #[tauri::command(rename_all = "snake_case")]
-pub async fn save_agent_metadata(agent_name: String, role: String, model: String) -> Result<(), String> {
+pub async fn save_agent_metadata(
+    agent_name: String,
+    role: String,
+    model: String,
+) -> Result<(), String> {
     // Validate agent name
     validate_agent_name(&agent_name)?;
 
@@ -416,8 +471,7 @@ pub async fn save_agent_metadata(agent_name: String, role: String, model: String
     let content = serde_json::to_string_pretty(&metadata)
         .map_err(|e| format!("Failed to serialize metadata: {}", e))?;
 
-    fs::write(&metadata_path, content)
-        .map_err(|e| format!("Failed to write agent.json: {}", e))?;
+    fs::write(&metadata_path, content).map_err(|e| format!("Failed to write agent.json: {}", e))?;
 
     Ok(())
 }
@@ -444,8 +498,10 @@ pub async fn get_agent_template(agent_name: String, role: String) -> Result<Stri
 
     let role_lower = role.to_lowercase();
     let skill_name = agent_name.replace("-", "_");
+    let prompt_filename = get_prompt_file();
 
-    let template = format!(r#"# {agent_name} - {role}
+    let template = format!(
+        r#"# {agent_name} - {role}
 
 You are {agent_name}, the {role_lower} agent.
 
@@ -458,7 +514,7 @@ You are {agent_name}, the {role_lower} agent.
 ## Input
 
 **ALWAYS** read these files first:
-- `$DOCS_PATH/prompt.md` - Original requirements
+- `$DOCS_PATH/{prompt_file}` - Original requirements (raw user input)
 - Predecessor output files as specified in your assignment
 
 ## Output
@@ -488,7 +544,8 @@ Use for:
         agent_name = agent_name,
         role = role,
         role_lower = role_lower,
-        skill_name = skill_name
+        skill_name = skill_name,
+        prompt_file = prompt_filename
     );
 
     Ok(template)

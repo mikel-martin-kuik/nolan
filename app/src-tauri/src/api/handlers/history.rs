@@ -3,11 +3,7 @@
 //! Note: Real-time history streaming requires WebSocket.
 //! These endpoints handle loading historical entries.
 
-use axum::{
-    extract::Query,
-    http::StatusCode,
-    Json,
-};
+use axum::{extract::Query, http::StatusCode, Json};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -48,8 +44,12 @@ pub struct LoadActiveSessionsQuery {
 pub async fn load_entries(
     Query(query): Query<LoadEntriesQuery>,
 ) -> Result<Json<Vec<HistoryEntry>>, (StatusCode, Json<ErrorResponse>)> {
-    let projects_dir = get_projects_dir()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e })))?;
+    let projects_dir = get_projects_dir().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: e }),
+        )
+    })?;
 
     let hours = query.hours.unwrap_or(1);
     let cutoff_time = std::time::SystemTime::now() - Duration::from_secs(hours * 60 * 60);
@@ -66,7 +66,9 @@ pub async fn load_entries(
             if let Ok(metadata) = tokio::fs::metadata(&path).await {
                 if let Ok(modified) = metadata.modified() {
                     if modified >= cutoff_time {
-                        if let Ok(file_entries) = read_history_file(&path.to_path_buf(), &empty_sessions).await {
+                        if let Ok(file_entries) =
+                            read_history_file(&path.to_path_buf(), &empty_sessions).await
+                        {
                             entries.extend(file_entries);
                         }
                     }
@@ -85,14 +87,19 @@ pub async fn load_entries(
 pub async fn load_active_sessions(
     Query(query): Query<LoadActiveSessionsQuery>,
 ) -> Result<Json<Vec<HistoryEntry>>, (StatusCode, Json<ErrorResponse>)> {
-    let projects_dir = get_projects_dir()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, Json(ErrorResponse { error: e })))?;
+    let projects_dir = get_projects_dir().map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: e }),
+        )
+    })?;
 
     let hours = query.hours.unwrap_or(1);
     let cutoff_time = std::time::SystemTime::now() - Duration::from_secs(hours * 60 * 60);
 
     // Parse active sessions from comma-separated string
-    let active_sessions: Vec<String> = query.active_sessions
+    let active_sessions: Vec<String> = query
+        .active_sessions
         .map(|s| s.split(',').map(|s| s.trim().to_string()).collect())
         .unwrap_or_default();
 
@@ -108,13 +115,16 @@ pub async fn load_active_sessions(
                 if let Ok(modified) = metadata.modified() {
                     if modified >= cutoff_time {
                         // Pass active_sessions to read_history_file so it can infer tmux_session
-                        if let Ok(file_entries) = read_history_file(&path.to_path_buf(), &active_sessions).await {
+                        if let Ok(file_entries) =
+                            read_history_file(&path.to_path_buf(), &active_sessions).await
+                        {
                             // Filter by active sessions if specified
                             if active_sessions.is_empty() {
                                 entries.extend(file_entries);
                             } else {
                                 entries.extend(file_entries.into_iter().filter(|e| {
-                                    e.tmux_session.as_ref()
+                                    e.tmux_session
+                                        .as_ref()
                                         .map(|s| active_sessions.contains(s))
                                         .unwrap_or(false)
                                 }));
@@ -133,8 +143,12 @@ pub async fn load_active_sessions(
 }
 
 /// Read history entries from a JSONL file
-async fn read_history_file(path: &PathBuf, active_sessions: &[String]) -> Result<Vec<HistoryEntry>, String> {
-    let file = AsyncFile::open(path).await
+async fn read_history_file(
+    path: &PathBuf,
+    active_sessions: &[String],
+) -> Result<Vec<HistoryEntry>, String> {
+    let file = AsyncFile::open(path)
+        .await
         .map_err(|e| format!("Failed to open file: {}", e))?;
 
     let reader = AsyncBufReader::new(file);
@@ -152,15 +166,23 @@ async fn read_history_file(path: &PathBuf, active_sessions: &[String]) -> Result
 
 /// Parse a JSONL line into a HistoryEntry (simplified version)
 /// active_sessions is used to infer tmux_session from agent name
-fn parse_history_line(line: &str, path: &PathBuf, active_sessions: &[String]) -> Result<HistoryEntry, String> {
-    let json: serde_json::Value = serde_json::from_str(line.trim())
-        .map_err(|e| format!("JSON parse error: {}", e))?;
+fn parse_history_line(
+    line: &str,
+    path: &PathBuf,
+    active_sessions: &[String],
+) -> Result<HistoryEntry, String> {
+    let json: serde_json::Value =
+        serde_json::from_str(line.trim()).map_err(|e| format!("JSON parse error: {}", e))?;
 
     // Extract UUID
-    let uuid = json.get("uuid").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let uuid = json
+        .get("uuid")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     // Extract timestamp
-    let timestamp_str = json.get("timestamp")
+    let timestamp_str = json
+        .get("timestamp")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
 
@@ -171,13 +193,21 @@ fn parse_history_line(line: &str, path: &PathBuf, active_sessions: &[String]) ->
     };
 
     // Extract session ID
-    let session_id = json.get("sessionId").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let session_id = json
+        .get("sessionId")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     // Extract entry type
-    let entry_type = json.get("type").and_then(|v| v.as_str()).unwrap_or("unknown").to_string();
+    let entry_type = json
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
 
     // Extract project from path
-    let project = path.parent()
+    let project = path
+        .parent()
         .and_then(|p| p.file_name())
         .and_then(|n| n.to_str())
         .map(|s| s.to_string());
@@ -189,23 +219,26 @@ fn parse_history_line(line: &str, path: &PathBuf, active_sessions: &[String]) ->
     // Session names are like "agent-default-dan", "agent-sprint-carl", "agent-ralph-echo"
     // Agent names can be "dan", "carl", or "agent-ralph-echo" (for free agents)
     let tmux_session = agent.as_ref().and_then(|agent_name| {
-        active_sessions.iter().find(|session| {
-            // Direct match (for agent-ralph-* sessions)
-            if *session == agent_name {
-                return true;
-            }
-            // Match agent name at the end of session name
-            // e.g., "agent-default-dan" ends with "-dan"
-            if session.ends_with(&format!("-{}", agent_name)) {
-                return true;
-            }
-            // Match session name ending with agent name (for free agents)
-            // e.g., session "agent-ralph-echo" contains agent name "agent-ralph-echo"
-            if session.contains(agent_name) {
-                return true;
-            }
-            false
-        }).cloned()
+        active_sessions
+            .iter()
+            .find(|session| {
+                // Direct match (for agent-ralph-* sessions)
+                if *session == agent_name {
+                    return true;
+                }
+                // Match agent name at the end of session name
+                // e.g., "agent-default-dan" ends with "-dan"
+                if session.ends_with(&format!("-{}", agent_name)) {
+                    return true;
+                }
+                // Match session name ending with agent name (for free agents)
+                // e.g., session "agent-ralph-echo" contains agent name "agent-ralph-echo"
+                if session.contains(agent_name) {
+                    return true;
+                }
+                false
+            })
+            .cloned()
     });
 
     // Extract message content (simplified)
@@ -213,7 +246,8 @@ fn parse_history_line(line: &str, path: &PathBuf, active_sessions: &[String]) ->
     let preview = truncate_smart(&message, 200);
 
     // Extract tool name
-    let tool_name = json.get("message")
+    let tool_name = json
+        .get("message")
         .and_then(|m| m.get("content"))
         .and_then(|c| c.as_array())
         .and_then(|arr| {
@@ -224,13 +258,18 @@ fn parse_history_line(line: &str, path: &PathBuf, active_sessions: &[String]) ->
         });
 
     // Extract token usage
-    let tokens = json.get("message")
+    let tokens = json
+        .get("message")
         .and_then(|m| m.get("usage"))
-        .map(|usage| {
-            crate::commands::history::TokenInfo {
-                input: usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-                output: usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0),
-            }
+        .map(|usage| crate::commands::history::TokenInfo {
+            input: usage
+                .get("input_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0),
+            output: usage
+                .get("output_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0),
         })
         .filter(|t| t.input > 0 || t.output > 0);
 
@@ -309,9 +348,7 @@ fn extract_message_content(json: &serde_json::Value) -> String {
 /// Smart truncation
 fn truncate_smart(text: &str, max_len: usize) -> String {
     let text = text.trim();
-    let first_line = text.lines()
-        .find(|l| !l.trim().is_empty())
-        .unwrap_or(text);
+    let first_line = text.lines().find(|l| !l.trim().is_empty()).unwrap_or(text);
 
     if first_line.len() <= max_len {
         return first_line.to_string();

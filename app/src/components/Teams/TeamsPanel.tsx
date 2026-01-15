@@ -72,6 +72,8 @@ export const TeamsPanel: React.FC = () => {
   const [editedNoteTaker, setEditedNoteTaker] = useState('');
   const [editedExceptionHandler, setEditedExceptionHandler] = useState('');
   const [newAgentName, setNewAgentName] = useState('');
+  const [newAgentRole, setNewAgentRole] = useState('');
+  const [newAgentModel, setNewAgentModel] = useState('sonnet');
   const [newPhase, setNewPhase] = useState<PhaseConfig>({ name: '', owner: '', output: '', requires: [], template: '' });
   const [editedTeamName, setEditedTeamName] = useState('');
   const [editedTeamDescription, setEditedTeamDescription] = useState('');
@@ -107,22 +109,6 @@ export const TeamsPanel: React.FC = () => {
   const getAgentInfo = (name: string) => agentInfos.find(a => a.name === name);
 
   // Get available agents (not already in team)
-  // Excludes: ephemeral agents (agent-*), automation agents (cron-*, pred-*)
-  // Includes: team-* agents (designed for traditional team workflows)
-  const isTeamEligibleAgent = (a: AgentDirectoryInfo) => {
-    // Must have role and model configured
-    if (!a.role || !a.model) return false;
-    // Exclude ephemeral and automation agents (but NOT team-* agents)
-    const excludedPrefixes = ['agent-', 'cron-', 'pred-'];
-    return !excludedPrefixes.some(prefix => a.name.startsWith(prefix));
-  };
-
-  const getAvailableAgentsForAdd = () => {
-    if (!teamConfig) return agentInfos.filter(isTeamEligibleAgent);
-    const usedNames = teamConfig.team.agents.map(a => a.name);
-    return agentInfos.filter(a => !usedNames.includes(a.name) && isTeamEligibleAgent(a));
-  };
-
   useEffect(() => {
     loadAvailableTeams();
     fetchAgentInfos();
@@ -181,6 +167,8 @@ export const TeamsPanel: React.FC = () => {
     try {
       const firstAgent: AgentConfig = {
         name: newTeamFirstAgent,
+        role: 'General',
+        model: 'sonnet',
         output_file: null,
         required_sections: [],
         file_permissions: 'restricted',
@@ -338,14 +326,18 @@ export const TeamsPanel: React.FC = () => {
   // Add agent handlers
   const openAddAgentModal = () => {
     setNewAgentName('');
+    setNewAgentRole('');
+    setNewAgentModel('sonnet');
     setAddAgentModal(true);
   };
 
   const addAgentToTeam = async () => {
-    if (!teamConfig || !newAgentName) return;
+    if (!teamConfig || !newAgentName || !newAgentRole) return;
 
     const newAgent: AgentConfig = {
       name: newAgentName,
+      role: newAgentRole,
+      model: newAgentModel,
       output_file: null,
       required_sections: [],
       file_permissions: 'restricted',
@@ -1154,36 +1146,54 @@ export const TeamsPanel: React.FC = () => {
       {/* Add Agent Modal */}
       {addAgentModal && createPortal(
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center" onClick={() => setAddAgentModal(false)}>
-          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+          <div className="bg-card border border-border rounded-xl shadow-xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-foreground">Add Agent to Team</h3>
+              <h3 className="text-lg font-semibold text-foreground">Create Team Agent</h3>
               <Button variant="ghost" size="icon" onClick={() => setAddAgentModal(false)}>
                 <X className="w-4 h-4" />
               </Button>
             </div>
 
-            <Select value={newAgentName} onValueChange={setNewAgentName}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select agent..." />
-              </SelectTrigger>
-              <SelectContent>
-                {getAvailableAgentsForAdd().map((agent) => (
-                  <SelectItem key={agent.name} value={agent.name}>
-                    {agent.name} ({agent.role})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Name</label>
+                <Input
+                  value={newAgentName}
+                  onChange={(e) => setNewAgentName(e.target.value.toLowerCase())}
+                  placeholder="agent_name"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Lowercase letters, numbers, and underscores only</p>
+              </div>
 
-            {getAvailableAgentsForAdd().length === 0 && (
-              <p className="text-sm text-muted-foreground mt-2">No available agents. Create agents in the Agents page first.</p>
-            )}
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Role</label>
+                <Input
+                  value={newAgentRole}
+                  onChange={(e) => setNewAgentRole(e.target.value)}
+                  placeholder="Research, Planning, etc."
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-foreground mb-1">Model</label>
+                <Select value={newAgentModel} onValueChange={setNewAgentModel}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="opus">Opus</SelectItem>
+                    <SelectItem value="sonnet">Sonnet</SelectItem>
+                    <SelectItem value="haiku">Haiku</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
 
             <div className="flex justify-end gap-2 mt-6">
               <Button variant="secondary" onClick={() => setAddAgentModal(false)}>Cancel</Button>
-              <Button onClick={addAgentToTeam} disabled={saving || !newAgentName}>
+              <Button onClick={addAgentToTeam} disabled={saving || !newAgentName || !newAgentRole}>
                 <Plus className="w-4 h-4 mr-1" />
-                {saving ? 'Adding...' : 'Add'}
+                {saving ? 'Creating...' : 'Create'}
               </Button>
             </div>
           </div>

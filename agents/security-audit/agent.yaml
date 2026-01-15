@@ -1,0 +1,28 @@
+name: security-audit
+description: Scan codebase for security vulnerabilities and patterns
+model: haiku
+timeout: 600
+enabled: true
+group: maintenance
+guardrails:
+  allowed_tools:
+  - Read
+  - Glob
+  - Grep
+  - Bash
+  forbidden_paths:
+  - '**/.env'
+  - '**/secrets/**'
+  - '**/*.key'
+  max_file_edits: 1
+context:
+  working_directory: null
+concurrency:
+  allow_parallel: false
+  queue_if_running: false
+retry:
+  enabled: false
+  max_retries: 3
+  delay_secs: 60
+  exponential_backoff: false
+catch_up: skip

@@ -37,7 +37,7 @@ export function useAgentTemplates(): UseAgentTemplatesResult {
     try {
       setInstalling(name);
       await invoke('install_agent_template', { name });
-      showSuccess(`Installed ${name.replace('pred-', '')}`);
+      showSuccess(`Installed ${name}`);
       await refreshTemplates();
       return true;
     } catch (err) {
@@ -52,7 +52,7 @@ export function useAgentTemplates(): UseAgentTemplatesResult {
     try {
       setInstalling(name);
       await invoke('uninstall_agent_template', { name });
-      showSuccess(`Uninstalled ${name.replace('pred-', '')}`);
+      showSuccess(`Uninstalled ${name}`);
       await refreshTemplates();
       return true;
     } catch (err) {

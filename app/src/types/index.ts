@@ -1,8 +1,8 @@
 // Agent and session types matching Rust backend structures
 import { RE_RALPH_SESSION, RE_TEAM_SESSION } from '../lib/agentIdentity';
 
-// Re-export cronos types
-export * from './cronos';
+// Re-export scheduler types
+export * from './scheduler';
 
 // Template types (for predefined agent templates embedded in binary)
 export interface TemplateInfo {
@@ -10,6 +10,7 @@ export interface TemplateInfo {
   description: string;
   model: string;
   command: string | null;
+  role: string;
   installed: boolean;
 }
 
@@ -57,9 +58,10 @@ export interface TeamConfig {
   };
 }
 
-// Note: role and model are no longer in team config - they come from agent.json
 export interface AgentConfig {
   name: string;
+  role: string;
+  model: string;
   output_file: string | null;
   required_sections: string[];
   file_permissions: 'restricted' | 'permissive' | 'no_projects';
@@ -153,7 +155,7 @@ export interface AgentDirectoryInfo {
   path: string;
   role: string | null;
   model: string | null;
-  agent_type: string | null;
+  team: string | null;
 }
 
 // Agent metadata stored in agent.json
@@ -423,7 +425,7 @@ export function getFileOrder(team: TeamConfig | null): Record<string, number> {
 
   const order: Record<string, number> = {};
 
-  // prompt.md is always first (user input)
+  // prompt file is always first (raw user input)
   order['prompt'] = 0;
 
   // NOTES.md second (created early by note-taker)

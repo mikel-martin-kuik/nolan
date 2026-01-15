@@ -69,7 +69,8 @@ pub fn get_scripts_dir() -> Result<PathBuf, String> {
     }
 
     // Return canonical path (resolves symlinks, prevents traversal)
-    scripts.canonicalize()
+    scripts
+        .canonicalize()
         .map_err(|e| format!("Failed to resolve scripts path: {}", e))
 }
 
@@ -189,10 +190,10 @@ pub fn get_team_config_path(team_name: &str) -> Result<PathBuf, String> {
     Ok(get_team_dir(team_name)?.join("team.yaml"))
 }
 
-/// Get cronos runs directory (user data - execution logs)
-/// Returns: <nolan_data_root>/cronos/runs
-pub fn get_cronos_runs_dir() -> Result<PathBuf, String> {
-    Ok(get_nolan_data_root()?.join("cronos").join("runs"))
+/// Get scheduler runs directory (user data - execution logs)
+/// Returns: <nolan_data_root>/scheduler/runs
+pub fn get_scheduler_runs_dir() -> Result<PathBuf, String> {
+    Ok(get_nolan_data_root()?.join("scheduler").join("runs"))
 }
 
 /// Get the agent's working directory (target repository)

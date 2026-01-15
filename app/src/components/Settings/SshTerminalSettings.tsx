@@ -191,7 +191,7 @@ export const SshTerminalSettings: React.FC = () => {
             <p className="font-medium">To set up ttyd locally:</p>
             <ol className="list-decimal list-inside space-y-1 text-xs">
               <li>Install: <code className="bg-muted px-1.5 py-0.5 rounded">sudo apt install ttyd</code></li>
-              <li>Create attach script (see setup.sh for template)</li>
+              <li>Create attach script (see scripts/setup.sh for template)</li>
               <li>Run: <code className="bg-muted px-1.5 py-0.5 rounded">ttyd -p 7681 -W -a ./ttyd-attach.sh</code></li>
             </ol>
             <p className="text-xs mt-2">

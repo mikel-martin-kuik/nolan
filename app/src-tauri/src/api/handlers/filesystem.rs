@@ -1,11 +1,6 @@
 //! File system HTTP handlers
 
-use axum::{
-    extract::Query,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::Query, http::StatusCode, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 
 use crate::commands::filesystem::{

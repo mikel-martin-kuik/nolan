@@ -1,11 +1,6 @@
 //! Feedback and feature request HTTP handlers
 
-use axum::{
-    extract::Path,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::Path, http::StatusCode, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -188,9 +183,7 @@ pub async fn update_idea(
 }
 
 /// Accept a review proposal and route based on complexity
-pub async fn accept_review(
-    Path(item_id): Path<String>,
-) -> impl IntoResponse {
+pub async fn accept_review(Path(item_id): Path<String>) -> impl IntoResponse {
     // First accept the review
     let review = match feedback::accept_review(item_id.clone()) {
         Ok(r) => r,
@@ -198,7 +191,7 @@ pub async fn accept_review(
     };
 
     // Then route based on complexity
-    let route_result = match crate::cronos::commands::route_accepted_idea(item_id).await {
+    let route_result = match crate::scheduler::commands::route_accepted_idea(item_id).await {
         Ok(r) => r,
         Err(e) => return error_response(StatusCode::INTERNAL_SERVER_ERROR, e).into_response(),
     };
@@ -207,7 +200,8 @@ pub async fn accept_review(
         review,
         route: route_result.route,
         route_detail: route_result.detail,
-    }).into_response()
+    })
+    .into_response()
 }
 
 #[derive(serde::Serialize)]

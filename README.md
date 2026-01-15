@@ -5,8 +5,8 @@ The natural language software development platform of the future.
 ## Quick Start
 
 ```bash
-./setup.sh   # First time only
-./start.sh   # Launch Nolan
+./scripts/setup.sh   # First time only
+./scripts/start.sh   # Launch Nolan
 ```
 
 That's it. The app auto-builds on first run.
@@ -21,7 +21,7 @@ That's it. The app auto-builds on first run.
 ## Development
 
 ```bash
-./start.sh --dev   # Dev mode with hot reload
+./scripts/start.sh --dev   # Dev mode with hot reload
 ```
 
 ## Terminal Access
@@ -97,10 +97,8 @@ nolan/
     src/             (frontend)
     src-tauri/       (backend)
     scripts/         (app scripts)
-  cronos/agents/     (cron agent definitions)
+  agents/              (agent definitions)
   deploy/            (docker deployment)
   docs/              (documentation)
-  scripts/           (user utilities)
-  setup.sh           (first-time setup)
-  start.sh           (launch app)
+  scripts/           (user utilities, setup.sh, start.sh)
 ```

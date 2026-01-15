@@ -1,9 +1,12 @@
 //! UI Configuration HTTP handlers
 
+use crate::cli_providers;
+use crate::config::{
+    get_default_cli_provider, load_ui_config, update_default_cli_provider,
+    update_ssh_terminal_config, SshTerminalConfig, UIConfig,
+};
 use axum::Json;
 use serde::{Deserialize, Serialize};
-use crate::config::{load_ui_config, update_ssh_terminal_config, update_default_cli_provider, get_default_cli_provider, UIConfig, SshTerminalConfig};
-use crate::cli_providers;
 
 /// Get UI configuration
 pub async fn get_config() -> Result<Json<UIConfig>, (axum::http::StatusCode, String)> {
@@ -26,9 +29,10 @@ pub struct SshTerminalResponse {
 }
 
 /// Get SSH terminal configuration
-pub async fn get_ssh_terminal_config() -> Result<Json<SshTerminalResponse>, (axum::http::StatusCode, String)> {
-    let config = load_ui_config()
-        .map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e))?;
+pub async fn get_ssh_terminal_config(
+) -> Result<Json<SshTerminalResponse>, (axum::http::StatusCode, String)> {
+    let config =
+        load_ui_config().map_err(|e| (axum::http::StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     Ok(Json(SshTerminalResponse {
         ssh_terminal: config.ssh_terminal,

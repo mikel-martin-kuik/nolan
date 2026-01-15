@@ -1,20 +1,28 @@
+pub mod agents;
+pub mod communicator;
+pub mod deployment;
+pub mod feedback;
+pub mod filesystem;
+pub mod history;
 pub mod lifecycle;
 pub mod lifecycle_core;
-pub mod communicator;
-pub mod history;
+pub mod ollama;
+pub mod organization;
+pub mod policies;
 pub mod projects;
+pub mod roles;
+pub mod session_labels;
 pub mod teams;
-pub mod agents;
 pub mod templates;
 pub mod usage;
-pub mod organization;
-pub mod roles;
-pub mod policies;
-pub mod feedback;
-pub mod ollama;
-pub mod session_labels;
-pub mod filesystem;
-pub mod deployment;
+
+// === Lifecycle Submodules (split from lifecycle.rs for AI-friendly file sizes) ===
+// See docs/AI_ARCHITECTURE.md for guidelines
+pub mod lifecycle_helpers;
+pub mod lifecycle_ralph;
+pub mod lifecycle_status;
+pub mod lifecycle_team;
+pub mod lifecycle_terminal;
 
 // Whitelist of allowed scripts that Tauri can execute
 // Note: kill-core.sh and spawn-agent.sh have been migrated to native Rust and can be deleted
@@ -121,6 +129,36 @@ pub fn get_providers_status() -> ProvidersStatusResponse {
 
     ProvidersStatusResponse {
         providers,
-        default_provider: crate::cli_providers::default_provider().to_string(),
+        default_provider: crate::config::get_default_cli_provider(),
     }
+}
+
+/// Response for setting default provider
+#[derive(serde::Serialize)]
+pub struct DefaultProviderResponse {
+    pub default_provider: String,
+}
+
+/// Set the default CLI provider for all agents
+#[tauri::command]
+pub fn set_default_cli_provider(
+    provider: Option<String>,
+) -> Result<DefaultProviderResponse, String> {
+    crate::config::update_default_cli_provider(provider)?;
+
+    Ok(DefaultProviderResponse {
+        default_provider: crate::config::get_default_cli_provider(),
+    })
+}
+
+/// Get trigger configuration (which agents handle which triggers)
+#[tauri::command]
+pub fn get_trigger_config() -> crate::config::TriggerConfig {
+    crate::config::get_trigger_config()
+}
+
+/// Update trigger configuration
+#[tauri::command]
+pub fn set_trigger_config(config: crate::config::TriggerConfig) -> Result<(), String> {
+    crate::config::update_trigger_config(config)
 }

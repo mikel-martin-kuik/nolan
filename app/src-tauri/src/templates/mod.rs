@@ -3,8 +3,8 @@
 //! Templates are bundled in the binary and can be installed by users
 //! to create actual agents in ~/.nolan/agents/
 
-use std::path::Path;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 /// Embedded template for an agent
 pub struct AgentTemplate {
@@ -20,65 +20,73 @@ pub struct TemplateInfo {
     pub description: String,
     pub model: String,
     pub command: Option<String>,
+    pub role: String,
     pub installed: bool,
 }
 
-/// All predefined agent templates embedded in the binary
+/// All agent templates embedded in the binary
+/// Templates are stored in src-tauri/templates/{name}/ with agent.yaml and CLAUDE.md
 pub static PREDEFINED_TEMPLATES: &[AgentTemplate] = &[
     AgentTemplate {
-        name: "pred-build-nolan",
-        agent_yaml: include_str!("../../predefined/agents/pred-build-nolan/agent.yaml"),
-        claude_md: include_str!("../../predefined/agents/pred-build-nolan/CLAUDE.md"),
+        name: "build-nolan",
+        agent_yaml: include_str!("../../templates/build-nolan/agent.yaml"),
+        claude_md: include_str!("../../templates/build-nolan/CLAUDE.md"),
     },
     AgentTemplate {
-        name: "pred-deploy-nolan",
-        agent_yaml: include_str!("../../predefined/agents/pred-deploy-nolan/agent.yaml"),
-        claude_md: include_str!("../../predefined/agents/pred-deploy-nolan/CLAUDE.md"),
+        name: "deploy-nolan",
+        agent_yaml: include_str!("../../templates/deploy-nolan/agent.yaml"),
+        claude_md: include_str!("../../templates/deploy-nolan/CLAUDE.md"),
     },
     AgentTemplate {
-        name: "pred-git-commit",
-        agent_yaml: include_str!("../../predefined/agents/pred-git-commit/agent.yaml"),
-        claude_md: include_str!("../../predefined/agents/pred-git-commit/CLAUDE.md"),
+        name: "git-commit",
+        agent_yaml: include_str!("../../templates/git-commit/agent.yaml"),
+        claude_md: include_str!("../../templates/git-commit/CLAUDE.md"),
     },
     AgentTemplate {
-        name: "pred-idea-analyzer",
-        agent_yaml: include_str!("../../predefined/agents/pred-idea-analyzer/agent.yaml"),
-        claude_md: include_str!("../../predefined/agents/pred-idea-analyzer/CLAUDE.md"),
+        name: "idea-analyzer",
+        agent_yaml: include_str!("../../templates/idea-analyzer/agent.yaml"),
+        claude_md: include_str!("../../templates/idea-analyzer/CLAUDE.md"),
     },
     AgentTemplate {
-        name: "pred-merge-changes",
-        agent_yaml: include_str!("../../predefined/agents/pred-merge-changes/agent.yaml"),
-        claude_md: include_str!("../../predefined/agents/pred-merge-changes/CLAUDE.md"),
+        name: "merge-changes",
+        agent_yaml: include_str!("../../templates/merge-changes/agent.yaml"),
+        claude_md: include_str!("../../templates/merge-changes/CLAUDE.md"),
     },
     AgentTemplate {
-        name: "pred-qa-validation",
-        agent_yaml: include_str!("../../predefined/agents/pred-qa-validation/agent.yaml"),
-        claude_md: include_str!("../../predefined/agents/pred-qa-validation/CLAUDE.md"),
+        name: "phase-validator",
+        agent_yaml: include_str!("../../templates/phase-validator/agent.yaml"),
+        claude_md: include_str!("../../templates/phase-validator/CLAUDE.md"),
     },
     AgentTemplate {
-        name: "pred-quick-fix",
-        agent_yaml: include_str!("../../predefined/agents/pred-quick-fix/agent.yaml"),
-        claude_md: include_str!("../../predefined/agents/pred-quick-fix/CLAUDE.md"),
+        name: "qa-validation",
+        agent_yaml: include_str!("../../templates/qa-validation/agent.yaml"),
+        claude_md: include_str!("../../templates/qa-validation/CLAUDE.md"),
     },
     AgentTemplate {
-        name: "pred-research",
-        agent_yaml: include_str!("../../predefined/agents/pred-research/agent.yaml"),
-        claude_md: include_str!("../../predefined/agents/pred-research/CLAUDE.md"),
+        name: "quick-fix",
+        agent_yaml: include_str!("../../templates/quick-fix/agent.yaml"),
+        claude_md: include_str!("../../templates/quick-fix/CLAUDE.md"),
     },
     AgentTemplate {
-        name: "pred-security-scan",
-        agent_yaml: include_str!("../../predefined/agents/pred-security-scan/agent.yaml"),
-        claude_md: include_str!("../../predefined/agents/pred-security-scan/CLAUDE.md"),
+        name: "research",
+        agent_yaml: include_str!("../../templates/research/agent.yaml"),
+        claude_md: include_str!("../../templates/research/CLAUDE.md"),
+    },
+    AgentTemplate {
+        name: "security-scan",
+        agent_yaml: include_str!("../../templates/security-scan/agent.yaml"),
+        claude_md: include_str!("../../templates/security-scan/CLAUDE.md"),
     },
 ];
 
-/// Helper to parse description and model from agent.yaml
-fn parse_agent_yaml(yaml: &str) -> (String, String, Option<String>) {
+/// Helper to parse description, model, command, and role from agent.yaml
+fn parse_agent_yaml(yaml: &str) -> (String, String, Option<String>, String) {
     #[derive(Deserialize)]
     struct AgentYaml {
         description: Option<String>,
         model: Option<String>,
         invocation: Option<Invocation>,
+        role: Option<String>,
     }
     #[derive(Deserialize)]
     struct Invocation {
@@ -90,8 +98,32 @@ fn parse_agent_yaml(yaml: &str) -> (String, String, Option<String>) {
             parsed.description.unwrap_or_default(),
             parsed.model.unwrap_or_else(|| "sonnet".to_string()),
             parsed.invocation.and_then(|i| i.command),
+            parsed.role.unwrap_or_else(|| "free".to_string()),
         ),
-        Err(_) => (String::new(), "sonnet".to_string(), None),
+        Err(_) => (
+            String::new(),
+            "sonnet".to_string(),
+            None,
+            "free".to_string(),
+        ),
+    }
+}
+
+/// Convert role string to directory name (pluralized)
+fn role_to_dir(role: &str) -> &str {
+    match role {
+        "implementer" => "implementers",
+        "analyzer" => "analyzers",
+        "tester" => "testers",
+        "merger" => "mergers",
+        "builder" => "builders",
+        "scanner" => "scanners",
+        "indexer" => "indexers",
+        "monitor" => "monitors",
+        "researcher" => "researchers",
+        "planner" => "planners",
+        "free" => "free",
+        _ => "free",
     }
 }
 
@@ -100,13 +132,21 @@ pub fn list_templates(agents_dir: &Path) -> Vec<TemplateInfo> {
     PREDEFINED_TEMPLATES
         .iter()
         .map(|t| {
-            let (description, model, command) = parse_agent_yaml(t.agent_yaml);
-            let installed = agents_dir.join(t.name).exists();
+            let (description, model, command, role) = parse_agent_yaml(t.agent_yaml);
+            let role_dir = role_to_dir(&role);
+
+            // Check if installed in the role subdirectory (new structure)
+            let role_path = agents_dir.join(role_dir).join(t.name);
+            // Also check legacy flat structure (for backwards compatibility)
+            let legacy_path = agents_dir.join(t.name);
+            let installed = role_path.exists() || legacy_path.exists();
+
             TemplateInfo {
                 name: t.name.to_string(),
                 description,
                 model,
                 command,
+                role,
                 installed,
             }
         })
@@ -114,6 +154,7 @@ pub fn list_templates(agents_dir: &Path) -> Vec<TemplateInfo> {
 }
 
 /// Install a template to the agents directory
+/// Installs to the correct role subdirectory (e.g., scanners/security-scan/)
 /// Returns error if already installed (use uninstall first)
 pub fn install_template(name: &str, agents_dir: &Path) -> Result<(), String> {
     let template = PREDEFINED_TEMPLATES
@@ -121,10 +162,18 @@ pub fn install_template(name: &str, agents_dir: &Path) -> Result<(), String> {
         .find(|t| t.name == name)
         .ok_or_else(|| format!("Template '{}' not found", name))?;
 
-    let agent_dir = agents_dir.join(name);
+    // Parse role from agent.yaml
+    let (_, _, _, role) = parse_agent_yaml(template.agent_yaml);
+    let role_dir = role_to_dir(&role);
+
+    // Install to role subdirectory
+    let agent_dir = agents_dir.join(role_dir).join(name);
 
     if agent_dir.exists() {
-        return Err(format!("Agent '{}' already installed. Uninstall first to reinstall.", name));
+        return Err(format!(
+            "Agent '{}' already installed. Uninstall first to reinstall.",
+            name
+        ));
     }
 
     std::fs::create_dir_all(&agent_dir)
@@ -140,8 +189,17 @@ pub fn install_template(name: &str, agents_dir: &Path) -> Result<(), String> {
 }
 
 /// Uninstall an agent (remove from agents directory)
+/// Checks role subdirectory based on template's role
 pub fn uninstall_template(name: &str, agents_dir: &Path) -> Result<(), String> {
-    let agent_dir = agents_dir.join(name);
+    // Find the template to get its role
+    let template = PREDEFINED_TEMPLATES
+        .iter()
+        .find(|t| t.name == name)
+        .ok_or_else(|| format!("Template '{}' not found", name))?;
+
+    let (_, _, _, role) = parse_agent_yaml(template.agent_yaml);
+    let role_dir = role_to_dir(&role);
+    let agent_dir = agents_dir.join(role_dir).join(name);
 
     if !agent_dir.exists() {
         return Err(format!("Agent '{}' is not installed", name));

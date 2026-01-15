@@ -5,7 +5,7 @@
 set -e
 
 # Configuration
-PI5_HOST="pi5"
+PI5_HOST="pi5-wifi"
 LOCAL_SRC="$(dirname "$(dirname "$(realpath "$0")")")"  # nolan repo root
 REMOTE_SRC="/root/nolan-build"
 REMOTE_DEPLOY="$REMOTE_SRC/deploy"
@@ -73,7 +73,7 @@ cmd_deploy() {
 
     echo ""
     echo "=== Restarting containers ==="
-    ssh "$PI5_HOST" "cd $REMOTE_DEPLOY && docker compose -f docker-compose.pi5.yml up -d"
+    ssh "$PI5_HOST" "cd $REMOTE_DEPLOY && docker compose -f docker-compose.pi5.yml up -d --force-recreate"
 
     echo ""
     cmd_status

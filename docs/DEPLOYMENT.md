@@ -7,7 +7,7 @@ Guide for deploying Nolan backend to headless servers (e.g., Raspberry Pi 5).
 The Nolan backend runs as a headless HTTP API server (Axum on port 3030) without the Tauri GUI. It provides:
 - REST API for all operations
 - WebSocket support for real-time streaming
-- Cronos scheduler for automated agents
+- Scheduler scheduler for automated agents
 - Tmux session management for agent execution
 
 ## Build Times
@@ -283,7 +283,7 @@ Missing GTK runtime libraries. Ensure runtime image includes:
 RUN apt-get install -y libgtk-3-0 libwebkit2gtk-4.1-0 libayatana-appindicator3-1
 ```
 
-### Cronos "Invalid root path" Warning
+### Scheduler "Invalid root path" Warning
 Expected when no data directory is mounted. Mount a volume to `/root/.nolan`:
 ```yaml
 volumes:

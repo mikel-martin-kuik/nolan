@@ -1,17 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { invoke } from '@/lib/api';
 import { useWorkflowVisualizerStore } from '../../store/workflowVisualizerStore';
 import { useToastStore } from '../../store/toastStore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Tooltip } from '@/components/ui/tooltip';
 import {
   GitBranch,
   FolderGit,
   Play,
   RefreshCw,
   Link2,
+  Trash2,
 } from 'lucide-react';
 import type { WorktreeListEntry } from '../../types';
 
@@ -28,6 +28,45 @@ export function WorktreeStatusEnhanced({
   const setSelectedPipelineId = useWorkflowVisualizerStore((state) => state.setSelectedPipelineId);
   const setViewMode = useWorkflowVisualizerStore((state) => state.setViewMode);
   const { success: showSuccess, error: showError } = useToastStore();
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; worktree: WorktreeListEntry; agentName: string | undefined } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+  const menuId = useRef('worktree-status-card-menu');
+
+  // Handle right-click context menu
+  const handleContextMenu = (e: React.MouseEvent, worktree: WorktreeListEntry, agentName: string | undefined) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.dispatchEvent(new CustomEvent('worktree-status-card-menu-open', { detail: menuId.current }));
+    setContextMenu({ x: e.clientX, y: e.clientY, worktree, agentName });
+  };
+
+  // Handle click outside to close context menu
+  const handleClickOutside = useCallback((e: MouseEvent) => {
+    if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+      setContextMenu(null);
+    }
+  }, []);
+
+  // Handle other menu opening (close this one)
+  const handleOtherMenuOpen = useCallback((e: Event) => {
+    const customEvent = e as CustomEvent<string>;
+    if (customEvent.detail !== menuId.current) {
+      setContextMenu(null);
+    }
+  }, []);
+
+  // Close context menu when clicking outside
+  useEffect(() => {
+    if (!contextMenu) return;
+    document.addEventListener('click', handleClickOutside);
+    window.addEventListener('worktree-status-card-menu-open', handleOtherMenuOpen);
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+      window.removeEventListener('worktree-status-card-menu-open', handleOtherMenuOpen);
+    };
+  }, [contextMenu, handleClickOutside, handleOtherMenuOpen]);
 
   const fetchWorktrees = useCallback(async () => {
     try {
@@ -47,11 +86,23 @@ export function WorktreeStatusEnhanced({
   }, [fetchWorktrees, refreshInterval]);
 
   const handleTriggerAgent = async (agentName: string) => {
+    setContextMenu(null);
     try {
-      await invoke('trigger_cron_agent', { name: agentName });
+      await invoke('trigger_scheduled_agent', { name: agentName });
       showSuccess(`Triggered ${agentName}`);
     } catch (error) {
       showError(`Failed to trigger ${agentName}: ${error}`);
+    }
+  };
+
+  const handleRemoveWorktree = async (path: string) => {
+    setContextMenu(null);
+    try {
+      await invoke('remove_worktree', { path });
+      showSuccess('Worktree removed');
+      fetchWorktrees();
+    } catch (error) {
+      showError(`Failed to remove worktree: ${error}`);
     }
   };
 
@@ -60,6 +111,7 @@ export function WorktreeStatusEnhanced({
   };
 
   const handlePipelineLink = (pipelineId: string) => {
+    setContextMenu(null);
     setSelectedPipelineId(pipelineId);
     setViewMode('pipelines');
   };
@@ -116,7 +168,8 @@ export function WorktreeStatusEnhanced({
           return (
             <div
               key={worktree.path}
-              className="p-3 border rounded-lg hover:border-primary/50 transition-colors"
+              className="p-3 border rounded-lg hover:border-primary/50 transition-colors cursor-context-menu"
+              onContextMenu={(e) => handleContextMenu(e, worktree, agentName)}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
@@ -127,35 +180,6 @@ export function WorktreeStatusEnhanced({
                   <p className="text-xs text-muted-foreground mt-1 truncate">
                     {worktree.path}
                   </p>
-                </div>
-
-                <div className="flex items-center gap-1">
-                  {linkedPipeline && (
-                    <Tooltip content="View linked pipeline" side="top">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        onClick={() => handlePipelineLink(linkedPipeline.id)}
-                      >
-                        <Link2 className="h-3 w-3" />
-                      </Button>
-                    </Tooltip>
-                  )}
-
-                  {agentName && (
-                    <Tooltip content={`Trigger ${agentName}`} side="top">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7"
-                        onClick={() => handleTriggerAgent(agentName)}
-                      >
-                        <Play className="h-3 w-3 mr-1" />
-                        Trigger
-                      </Button>
-                    </Tooltip>
-                  )}
                 </div>
               </div>
 
@@ -180,6 +204,45 @@ export function WorktreeStatusEnhanced({
           );
         })}
       </CardContent>
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-50 bg-secondary border border-border rounded-md shadow-lg py-1 min-w-[160px]"
+          style={{
+            left: `${contextMenu.x}px`,
+            top: `${contextMenu.y}px`,
+          }}
+        >
+          {contextMenu.agentName && (
+            <button
+              onClick={() => handleTriggerAgent(contextMenu.agentName!)}
+              className="w-full px-3 py-2 text-sm flex items-center gap-2 hover:bg-accent transition-colors text-left"
+            >
+              <Play className="w-4 h-4" />
+              Trigger {contextMenu.agentName}
+            </button>
+          )}
+          {findLinkedPipeline(contextMenu.worktree.branch) && (
+            <button
+              onClick={() => handlePipelineLink(findLinkedPipeline(contextMenu.worktree.branch)!.id)}
+              className="w-full px-3 py-2 text-sm flex items-center gap-2 hover:bg-accent transition-colors text-left"
+            >
+              <Link2 className="w-4 h-4" />
+              View Pipeline
+            </button>
+          )}
+          <div className="border-t border-border my-1" />
+          <button
+            onClick={() => handleRemoveWorktree(contextMenu.worktree.path)}
+            className="w-full px-3 py-2 text-sm flex items-center gap-2 text-red-500 hover:bg-accent transition-colors text-left"
+          >
+            <Trash2 className="w-4 h-4" />
+            Remove Worktree
+          </button>
+        </div>
+      )}
     </Card>
   );
 }

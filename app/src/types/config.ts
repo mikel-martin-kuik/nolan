@@ -48,6 +48,14 @@ export interface SshTerminalConfig {
   enabled: boolean;
 }
 
+/** Pipeline configuration for workflow files */
+export interface PipelineConfig {
+  /** Raw user input file - only fed to starter (Layer 1) agents (default: "prompt.md") */
+  prompt_file: string;
+  /** Structured specification file - fed to structured (Layer 2) agents (default: "SPEC.md") */
+  entrypoint_file: string;
+}
+
 /** Root UI configuration from backend */
 export interface UIConfig {
   project_statuses: StatusConfig[];
@@ -63,6 +71,8 @@ export interface UIConfig {
   /** Runtime configuration from environment variables */
   runtime: RuntimeConfig;
   ssh_terminal?: SshTerminalConfig;
+  /** Pipeline configuration for workflow entrypoint */
+  pipeline?: PipelineConfig;
 }
 
 /** Helper type for creating lookup maps from status arrays */

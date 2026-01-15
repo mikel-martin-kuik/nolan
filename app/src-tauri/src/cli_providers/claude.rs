@@ -56,7 +56,9 @@ impl CliProvider for ClaudeCodeProvider {
 
         // Build environment exports
         if !config.env_vars.is_empty() {
-            let exports: Vec<String> = config.env_vars.iter()
+            let exports: Vec<String> = config
+                .env_vars
+                .iter()
                 .map(|(k, v)| format!("{}='{}'", k, v.replace("'", "'\\''")))
                 .collect();
             parts.push(format!("export {}", exports.join(" ")));
@@ -98,7 +100,10 @@ impl CliProvider for ClaudeCodeProvider {
 
         // Allowed tools
         if !config.allowed_tools.is_empty() {
-            cmd.push_str(&format!(" --allowedTools '{}'", config.allowed_tools.join(",")));
+            cmd.push_str(&format!(
+                " --allowedTools '{}'",
+                config.allowed_tools.join(",")
+            ));
         }
 
         // System prompt append (for guardrails)
@@ -190,7 +195,9 @@ impl CliProvider for ClaudeCodeProvider {
 
     fn output_format_flag(&self, format: &OutputFormat) -> Vec<String> {
         match format {
-            OutputFormat::StreamJson => vec!["--output-format".to_string(), "stream-json".to_string()],
+            OutputFormat::StreamJson => {
+                vec!["--output-format".to_string(), "stream-json".to_string()]
+            }
             OutputFormat::Json => vec!["--output-format".to_string(), "json".to_string()],
             OutputFormat::Text => vec!["--output-format".to_string(), "text".to_string()],
         }

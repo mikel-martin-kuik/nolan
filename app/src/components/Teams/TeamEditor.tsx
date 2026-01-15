@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { invoke } from '@/lib/api';
 import { useToastStore } from '../../store/toastStore';
 import { Save, X, Plus, Trash2, GripVertical, Sparkles, Loader2 } from 'lucide-react';
@@ -13,7 +13,7 @@ import { Tooltip } from '@/components/ui/tooltip';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
-import type { TeamConfig, AgentConfig, PhaseConfig, AgentDirectoryInfo } from '@/types';
+import type { TeamConfig, AgentConfig, PhaseConfig } from '@/types';
 import { useOllamaStore } from '../../store/ollamaStore';
 
 interface TeamEditorProps {
@@ -24,6 +24,8 @@ interface TeamEditorProps {
 
 const DEFAULT_AGENT: AgentConfig = {
   name: '',
+  role: '',
+  model: 'sonnet',
   output_file: null,
   required_sections: [],
   file_permissions: 'restricted',
@@ -57,31 +59,6 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
   const [exceptionHandler, setExceptionHandler] = useState('');
   const [phases, setPhases] = useState<PhaseConfig[]>([]);
 
-  // Available agents from Agents page
-  const [availableAgents, setAvailableAgents] = useState<AgentDirectoryInfo[]>([]);
-
-  // Fetch available agents
-  const fetchAvailableAgents = useCallback(async () => {
-    try {
-      const dirs = await invoke<AgentDirectoryInfo[]>('list_agent_directories');
-      // Filter out ephemeral agents (agent-*), automation agents (cron-*, pred-*),
-      // and incomplete agents (missing metadata)
-      // Note: team-* agents ARE included (designed for traditional team workflows)
-      const excludedPrefixes = ['agent-', 'cron-', 'pred-'];
-      const filtered = dirs.filter(d =>
-        d.role && d.model && !excludedPrefixes.some(prefix => d.name.startsWith(prefix))
-      );
-      setAvailableAgents(filtered);
-    } catch (err) {
-      console.error('Failed to load agents:', err);
-    }
-  }, []);
-
-  // Fetch agents on mount
-  useEffect(() => {
-    fetchAvailableAgents();
-  }, [fetchAvailableAgents]);
-
   // Check Ollama connection
   useEffect(() => {
     checkConnection();
@@ -96,8 +73,7 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
     setGenerating(true);
     try {
       const agentList = agents.filter(a => a.name).map(a => {
-        const info = getAgentInfo(a.name);
-        return `${a.name} (${info?.role || 'unknown role'})`;
+        return `${a.name} (${a.role || 'unknown role'})`;
       }).join(', ');
 
       const systemPrompt = `You are an organizational designer. Generate a concise team description that explains the team's purpose, composition, and how members collaborate to achieve goals. Keep it to 1-2 sentences.`;
@@ -140,30 +116,6 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
     ]);
   };
 
-  // Handle agent selection from dropdown
-  const handleAgentSelect = (index: number, agentName: string) => {
-    const selectedAgent = availableAgents.find(a => a.name === agentName);
-    const newAgents = [...agents];
-    newAgents[index] = {
-      ...newAgents[index],
-      name: selectedAgent?.name || '',
-    };
-    setAgents(newAgents);
-  };
-
-  // Get agent info from availableAgents for display (role/model come from agent.json)
-  const getAgentInfo = (agentName: string) => {
-    return availableAgents.find(a => a.name === agentName);
-  };
-
-  // Get agents not yet added to the team
-  const getAvailableAgentsForSelection = (currentIndex: number) => {
-    const usedNames = agents
-      .filter((_, i) => i !== currentIndex)
-      .map(a => a.name);
-    return availableAgents.filter(a => !usedNames.includes(a.name));
-  };
-
   const handleRemoveAgent = (index: number) => {
     setAgents(agents.filter((_, i) => i !== index));
   };
@@ -200,7 +152,8 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
       if (!/^[a-z][a-z0-9_]*$/.test(agent.name)) {
         return `Agent name '${agent.name}' is invalid. Use lowercase letters, numbers, and underscores only.`;
       }
-      // Role and model come from agent.json, validated in getAvailableAgentsForSelection
+      if (!agent.role.trim()) return `Agent '${agent.name}' must have a role`;
+      if (!agent.model.trim()) return `Agent '${agent.name}' must have a model`;
     }
 
     const agentNames = agents.map((a) => a.name);
@@ -358,40 +311,52 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
                 <div className="flex items-start gap-3">
                   <GripVertical className="w-4 h-4 text-muted-foreground mt-2" />
                   <div className="flex-1 grid grid-cols-2 md:grid-cols-4 gap-3">
-                    <div className="col-span-2">
-                      <Tooltip content="Select from agents created on the Agents page" side="top">
-                        <label className="block text-xs text-muted-foreground mb-1 w-fit cursor-help">Agent</label>
+                    <div>
+                      <Tooltip content="Unique identifier for this agent" side="top">
+                        <label className="block text-xs text-muted-foreground mb-1 w-fit cursor-help">Name</label>
+                      </Tooltip>
+                      <Input
+                        value={agent.name}
+                        onChange={(e) =>
+                          handleAgentChange(index, 'name', e.target.value.toLowerCase())
+                        }
+                        placeholder="agent_name"
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <Tooltip content="Agent's role or specialty" side="top">
+                        <label className="block text-xs text-muted-foreground mb-1 w-fit cursor-help">Role</label>
+                      </Tooltip>
+                      <Input
+                        value={agent.role}
+                        onChange={(e) =>
+                          handleAgentChange(index, 'role', e.target.value)
+                        }
+                        placeholder="Research"
+                        className="h-8 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <Tooltip content="Claude model to use" side="top">
+                        <label className="block text-xs text-muted-foreground mb-1 w-fit cursor-help">Model</label>
                       </Tooltip>
                       <Select
-                        value={agent.name || undefined}
-                        onValueChange={(value) => handleAgentSelect(index, value)}
+                        value={agent.model}
+                        onValueChange={(value) =>
+                          handleAgentChange(index, 'model', value)
+                        }
                       >
                         <SelectTrigger className="w-full h-8 text-sm">
-                          <SelectValue placeholder="Select agent..." />
+                          <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {getAvailableAgentsForSelection(index).map((availAgent) => (
-                            <SelectItem key={availAgent.name} value={availAgent.name}>
-                              {availAgent.name} ({availAgent.role})
-                            </SelectItem>
-                          ))}
-                          {/* Include currently selected agent if it's not in available list */}
-                          {agent.name && !getAvailableAgentsForSelection(index).find(a => a.name === agent.name) && (
-                            <SelectItem value={agent.name}>
-                              {agent.name}
-                            </SelectItem>
-                          )}
+                          <SelectItem value="opus">Opus</SelectItem>
+                          <SelectItem value="sonnet">Sonnet</SelectItem>
+                          <SelectItem value="haiku">Haiku</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
-                    {agent.name && getAgentInfo(agent.name) && (
-                      <div className="col-span-2 flex items-center gap-4 text-sm">
-                        <span className="text-muted-foreground">Role:</span>
-                        <span className="text-foreground">{getAgentInfo(agent.name)?.role}</span>
-                        <span className="text-muted-foreground ml-4">Model:</span>
-                        <span className="text-foreground capitalize">{getAgentInfo(agent.name)?.model}</span>
-                      </div>
-                    )}
                     <div>
                       <Tooltip content="File this agent writes output to in the project directory" side="top">
                         <label className="block text-xs text-muted-foreground mb-1 w-fit cursor-help">Output File</label>
@@ -494,7 +459,7 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
                   <SelectItem value="__none__">None</SelectItem>
                   {agents.filter(a => a.name).map((agent) => (
                     <SelectItem key={agent.name} value={agent.name}>
-                      {agent.name} {getAgentInfo(agent.name)?.role ? `(${getAgentInfo(agent.name)?.role})` : ''}
+                      {agent.name} {agent.role ? `(${agent.role})` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -519,7 +484,7 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
                   <SelectItem value="__none__">None</SelectItem>
                   {agents.filter(a => a.name).map((agent) => (
                     <SelectItem key={agent.name} value={agent.name}>
-                      {agent.name} {getAgentInfo(agent.name)?.role ? `(${getAgentInfo(agent.name)?.role})` : ''}
+                      {agent.name} {agent.role ? `(${agent.role})` : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -607,7 +572,7 @@ export const TeamEditor: React.FC<TeamEditorProps> = ({
                               .filter(Boolean)
                           )
                         }
-                        placeholder="context.md, research.md"
+                        placeholder="SPEC.md, research.md"
                         className="h-8 text-sm"
                       />
                     </div>

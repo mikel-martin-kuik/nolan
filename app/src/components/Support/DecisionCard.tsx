@@ -19,6 +19,7 @@ import {
 } from '@/types';
 import { MoreVertical, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 
 function formatRelativeTime(dateStr: string): string {
   const date = new Date(dateStr);
@@ -44,6 +45,7 @@ const ALL_STATUSES: DecisionStatus[] = ['proposed', 'in_review', 'approved', 'de
 export function DecisionCard({ decision }: DecisionCardProps) {
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const statusMutation = useMutation({
     mutationFn: (status: string) =>
@@ -201,11 +203,7 @@ export function DecisionCard({ decision }: DecisionCardProps) {
                     )}
                     <DropdownMenuItem
                       className="text-xs text-destructive"
-                      onClick={() => {
-                        if (confirm('Delete this decision?')) {
-                          deleteMutation.mutate();
-                        }
-                      }}
+                      onClick={() => setDeleteConfirmOpen(true)}
                     >
                       Delete
                     </DropdownMenuItem>
@@ -223,6 +221,16 @@ export function DecisionCard({ decision }: DecisionCardProps) {
           </div>
         </div>
       </CardContent>
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title="Delete Decision"
+        description="Are you sure you want to delete this decision? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={() => deleteMutation.mutate()}
+      />
     </Card>
   );
 }

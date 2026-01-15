@@ -28,9 +28,9 @@ The product roadmap defines **what we build in Nolan** to support the business v
 - [x] Default team with core workflow agents (Dan, Ana, Bill, Enzo, Carl, Frank, Guardian)
 - [x] Phase-gate workflow with automatic handoffs and QA gates
 - [x] Document-based outputs (research.md, plan.md, progress.md, implementation-audit.md)
-- [x] Tauri-based dashboard with 8 main tabs (Status, Chat, Ideas, Teams, Agents, Cronos, Usage, Settings)
+- [x] Tauri-based dashboard with 8 main tabs (Status, Chat, Files, Agents, Workflows, Builder, Usage, Settings)
 - [x] Stop hook automation for handoffs with coordinator ACK protocol
-- [x] Cronos scheduler integration for automated task execution
+- [x] Scheduler integration for automated task execution
 - [x] Full REST API with authentication and WebSocket streaming
 - [x] Password-based authentication with Argon2 hashing
 - [x] Support/Ideas system with Kanban workflow (New → Analysis → Ready → Done)
@@ -44,8 +44,8 @@ The product roadmap defines **what we build in Nolan** to support the business v
 - [x] Ideas Kanban with centralized workflow (Projects panel deprecated)
 - [x] Team Chat interface with per-team message views
 - [x] Department grouping for team organization
-- [x] Cronos agent detail pages with output panels
-- [x] Cron group editor for managing cron agent collections
+- [x] Agent detail pages with output panels
+- [x] Agent group editor for managing agent collections
 - [x] Quick launch modal for rapid agent/team spawning
 - [x] TeamAgentDetailPage for detailed team agent views
 - [x] File browser manager for project exploration
@@ -149,19 +149,19 @@ The product roadmap defines **what we build in Nolan** to support the business v
 ## Phase 4: Autonomy & Scale (75% In Progress)
 
 ### 4.1 Agent Autonomy
-- [x] Cronos automated task execution (idea processing, git commits, workflow monitoring)
-- [x] cron-idea-processor: AI analysis of ideas with proposal generation
-- [x] cron-idea-merger: Consolidation of related ideas
-- [x] cron-idea-implementer: Creates projects from approved ideas
-- [x] cron-workflow-monitor: Workflow health tracking
-- [x] cron-git-commit: Automated git commits with summaries
-- [x] cron-dependency-check: Validates project dependencies
-- [x] cron-security-audit: Security scanning and vulnerability detection
-- [x] cron-bug-finder: Identifies bugs in codebase
-- [x] cron-ui-audit: UI/UX audit and improvements
-- [x] cron-code-indexer: Indexes codebase for context
-- [x] cron-roadmap: Updates roadmaps from activity
-- [x] cron-roadmap-alignment: Validates roadmap alignment
+- [x] Scheduled agent task execution (idea processing, git commits, workflow monitoring)
+- [x] idea-processor: AI analysis of ideas with proposal generation
+- [x] idea-merger: Consolidation of related ideas
+- [x] idea-implementer: Creates projects from approved ideas
+- [x] workflow-monitor: Workflow health tracking
+- [x] git-commit: Automated git commits with summaries
+- [x] dependency-check: Validates project dependencies
+- [x] security-audit: Security scanning and vulnerability detection
+- [x] bug-finder: Identifies bugs in codebase
+- [x] ui-audit: UI/UX audit and improvements
+- [x] code-indexer: Indexes codebase for context
+- [x] roadmap: Updates roadmaps from activity
+- [x] roadmap-alignment: Validates roadmap alignment
 - [ ] Decision framework
 - [ ] Long-term memory
 - [ ] Automated quality gates
@@ -208,9 +208,9 @@ The product roadmap defines **what we build in Nolan** to support the business v
 **Team Assignment**: Default team (core workflow agents: Ana, Bill, Enzo, Carl, Frank, Dan)
 
 **New Agents Required**:
-- `cron-spec-generator`: Converts accepted proposals to formal specs
+- `spec-generator`: Converts accepted proposals to formal specs
 - `spec-reviewer` (or extend Enzo's role): Reviews specs before project creation
-- `cron-idea-implementer`: Auto-creates projects from approved ideas (IMPLEMENTED)
+- `idea-implementer`: Auto-creates projects from approved ideas (IMPLEMENTED)
 
 **Priority**: NEAR-TERM (enables Transition Phase 2: Spec Foundation)
 
@@ -220,20 +220,20 @@ The Ideas/Support system provides the foundation for spec-driven development:
 
 **What exists today (Jan 14, 2026):**
 - [x] `ideas.jsonl`: User-submitted ideas with title, description, status
-- [x] `cron-idea-processor`: AI agent that analyzes ideas and creates proposals
+- [x] `idea-processor`: AI agent that analyzes ideas and creates proposals
 - [x] `inbox-reviews.jsonl`: AI-generated proposals with gaps identified
-- [x] `cron-idea-merger`: Consolidates related ideas
+- [x] `idea-merger`: Consolidates related ideas
 - [x] Full Kanban UI: New → Analysis → Ready → Done
 - [x] Idea detail pages with proposal viewing
 - [x] Idea editing and status management
-- [x] `cron-idea-implementer`: Auto-creates projects from accepted ideas
+- [x] `idea-implementer`: Auto-creates projects from accepted ideas
 - [x] Implementation pipeline: Implementer → Analyzer → QA → Merge
 - [x] Git worktree isolation for parallel implementations
 - [x] Hotfixes system for quick fixes bypassing full pipeline
 
 **Current Flow (operational):**
 ```
-Idea → cron-idea-processor → Proposal → User accepts → cron-idea-implementer → Worktree → Code
+Idea → idea-processor → Proposal → User accepts → idea-implementer → Worktree → Code
                                               ↓                    ↓
                                      inbox-reviews.jsonl     Analyzer → QA → Merge
 ```
@@ -263,7 +263,7 @@ Add formal specifications as first-class entities between ideas and projects.
 
 **New Artifacts:**
 - `spec.md` in project template
-- `cron-spec-generator` agent
+- `spec-generator` agent
 - Spec review workflow phase
 
 **Spec Format:**
@@ -296,7 +296,7 @@ Add formal specifications as first-class entities between ideas and projects.
 
 **Implementation:**
 - [ ] Add `spec.md` to project template
-- [ ] Create `cron-spec-generator` agent (converts accepted proposals to specs)
+- [ ] Create `spec-generator` agent (converts accepted proposals to specs)
 - [ ] Add spec review phase to default team workflow
 - [ ] Link idea acceptance → spec creation in frontend
 - [ ] Update Bill's planner to read from spec, not just research
@@ -477,35 +477,35 @@ NolanServer
 - Dependency management restructuring and workflow phase tracking improvements
 - Docker containerization improvements for deployment
 
-### Cronos Agent Expansion (Jan 12-13)
-- File browser manager implementation for cron-idea-implementer
-- TeamAgentDetailPage component for detailed cron agent views
-- New cron agents added:
-  - cron-bug-finder: Identifies bugs in codebase
-  - cron-security-audit: Security scanning and vulnerability detection
-  - cron-ui-audit: UI/UX audit and improvements
-  - cron-code-indexer: Indexes codebase for context
-  - cron-roadmap-alignment: Validates roadmap alignment
-  - cron-dependency-check: Validates project dependencies
-- Cron-git integration with automated commit summaries
+### Scheduled Agent Expansion (Jan 12-13)
+- File browser manager implementation for idea-implementer
+- TeamAgentDetailPage component for detailed agent views
+- New scheduled agents added:
+  - bug-finder: Identifies bugs in codebase
+  - security-audit: Security scanning and vulnerability detection
+  - ui-audit: UI/UX audit and improvements
+  - code-indexer: Indexes codebase for context
+  - roadmap-alignment: Validates roadmap alignment
+  - dependency-check: Validates project dependencies
+- Git integration with automated commit summaries
 - Agent console implementation with enhanced output panels
 - Usage stats panel enhancements
-- Total of 12 active cron agents now operational
+- Total of 12 active scheduled agents now operational
 
 ### Repository & State Consolidation (Jan 11)
 - State directory consolidation (`.state/scheduler/`, `.state/handoffs/`, `.state/feedback/`)
-- Log rotation script for cronos runs
+- Log rotation script for scheduled agent runs
 - Obsolete directory cleanup (mailbox, experimental agents)
 - Roadmap files moved to `docs/roadmaps/`
 - Stale projects archived to `.legacy/`
 
-### Cronos System Enhancements (Jan 11)
-- Cron agent detail pages with full configuration editing
-- Cron output panels with real-time streaming
-- Cron group editor for managing agent collections
-- cron-idea-processor: Analyzes ideas and generates proposals
-- cron-idea-merger: Consolidates related ideas
-- cron-workflow-monitor: Tracks workflow health
+### Scheduler System Enhancements (Jan 11)
+- Agent detail pages with full configuration editing
+- Agent output panels with real-time streaming
+- Agent group editor for managing agent collections
+- idea-processor: Analyzes ideas and generates proposals
+- idea-merger: Consolidates related ideas
+- workflow-monitor: Tracks workflow health
 
 ### Ollama/Lana AI Integration (Jan 11)
 - Ollama connection status monitoring in settings

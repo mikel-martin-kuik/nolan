@@ -69,7 +69,7 @@ function generateMockMetrics(days: number | undefined): MetricsDashboard {
   }
 
   // Generate project summaries
-  const projects = ['nolan', 'cronos', 'agent-console', 'feedback-system'];
+  const projects = ['nolan', 'scheduler', 'agent-console', 'feedback-system'];
   const projectMetrics: ProjectMetricsSummary[] = projects.map(name => {
     const execCount = Math.floor(Math.random() * 50) + 10;
     const totalTokens = (Math.floor(Math.random() * 500000) + 100000);

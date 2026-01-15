@@ -11,10 +11,10 @@ import {
   User,
   Settings,
 } from 'lucide-react';
-import type { CronAgentInfo } from '@/types';
+import type { ScheduledAgentInfo } from '@/types';
 
 interface EventAgentCardProps {
-  agent: CronAgentInfo;
+  agent: ScheduledAgentInfo;
 }
 
 // Map event types to icons

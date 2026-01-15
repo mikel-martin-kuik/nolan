@@ -4,6 +4,19 @@
 
 # Development Guide
 
+## AI-Friendly Architecture
+
+**CRITICAL: This codebase is maintained by AI agents. Follow these rules:**
+
+1. **Max file size: 400 lines** - If a file exceeds this, split it before adding more code
+2. **Single responsibility** - Each file should have ONE purpose describable in ~10 words
+3. **Predictable naming** - Use patterns in `docs/AI_ARCHITECTURE.md`
+4. **Flat hierarchies** - Max 2 directory levels for easy navigation
+
+**See `docs/AI_ARCHITECTURE.md` for complete guidelines.**
+
+---
+
 ## Project Overview
 
 **Nolan** is a Tauri-based desktop application that serves as an AI agent control panel and management system. It provides a GUI for monitoring, launching, and coordinating AI agents, with live output streaming, project management, session history, and usage tracking.

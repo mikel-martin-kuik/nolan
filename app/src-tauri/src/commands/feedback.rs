@@ -601,10 +601,7 @@ pub fn list_all_idea_tags() -> Result<Vec<String>, String> {
     let path = get_ideas_file()?;
     let ideas: Vec<Idea> = read_jsonl(&path)?;
 
-    let mut tags: Vec<String> = ideas
-        .into_iter()
-        .flat_map(|i| i.tags)
-        .collect();
+    let mut tags: Vec<String> = ideas.into_iter().flat_map(|i| i.tags).collect();
 
     tags.sort();
     tags.dedup();
@@ -761,7 +758,7 @@ pub fn get_user_votes() -> Result<HashMap<String, String>, String> {
 }
 
 // ============================================================================
-// Idea Reviews (from cron-inbox-digest agent)
+// Idea Reviews (from scheduled-inbox-digest agent)
 // ============================================================================
 
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
@@ -928,7 +925,10 @@ pub fn list_idea_reviews() -> Result<Vec<IdeaReview>, String> {
 pub fn delete_idea_review(item_id: String) -> Result<(), String> {
     let path = get_inbox_reviews_file()?;
     let reviews: Vec<IdeaReview> = read_jsonl(&path)?;
-    let filtered: Vec<_> = reviews.into_iter().filter(|r| r.item_id != item_id).collect();
+    let filtered: Vec<_> = reviews
+        .into_iter()
+        .filter(|r| r.item_id != item_id)
+        .collect();
     write_jsonl(&path, &filtered)?;
     Ok(())
 }
@@ -959,7 +959,10 @@ pub fn update_review_gaps(item_id: String, gaps: Vec<IdeaGap>) -> Result<IdeaRev
 }
 
 #[tauri::command(rename_all = "snake_case")]
-pub fn update_review_proposal(item_id: String, proposal: IdeaProposal) -> Result<IdeaReview, String> {
+pub fn update_review_proposal(
+    item_id: String,
+    proposal: IdeaProposal,
+) -> Result<IdeaReview, String> {
     let path = get_inbox_reviews_file()?;
     let mut reviews: Vec<IdeaReview> = read_jsonl(&path)?;
 
@@ -1039,14 +1042,14 @@ pub struct AcceptAndRouteResult {
 
 /// Accept a review and route it based on complexity (async version for Tauri)
 /// - High complexity → Create project
-/// - Low/Medium complexity → Trigger cron-idea-implementer
+/// - Low/Medium complexity → Trigger idea-implementer
 #[tauri::command(rename_all = "snake_case")]
 pub async fn accept_and_route_review(item_id: String) -> Result<AcceptAndRouteResult, String> {
     // First accept the review
     let _review = accept_review(item_id.clone())?;
 
     // Then route based on complexity
-    let route_result = crate::cronos::commands::route_accepted_idea(item_id.clone()).await?;
+    let route_result = crate::scheduler::commands::route_accepted_idea(item_id.clone()).await?;
 
     // Update the review with route info
     let path = get_inbox_reviews_file()?;

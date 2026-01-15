@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::commands::projects::{self, ProjectInfo, ProjectFile, ProjectPathInfo};
+use crate::commands::projects::{self, ProjectFile, ProjectInfo, ProjectPathInfo};
 use crate::commands::teams;
 
 /// Error response

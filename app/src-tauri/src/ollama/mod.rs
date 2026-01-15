@@ -25,9 +25,8 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Global Ollama configuration
-static OLLAMA_CONFIG: Lazy<RwLock<OllamaConfig>> = Lazy::new(|| {
-    RwLock::new(OllamaConfig::from_env())
-});
+static OLLAMA_CONFIG: Lazy<RwLock<OllamaConfig>> =
+    Lazy::new(|| RwLock::new(OllamaConfig::from_env()));
 
 /// Ollama client configuration
 #[derive(Debug, Clone)]
@@ -39,10 +38,8 @@ pub struct OllamaConfig {
 impl OllamaConfig {
     /// Create config from environment variables with fallbacks
     pub fn from_env() -> Self {
-        let url = std::env::var("OLLAMA_URL")
-            .unwrap_or_else(|_| DEFAULT_OLLAMA_URL.to_string());
-        let model = std::env::var("OLLAMA_MODEL")
-            .unwrap_or_else(|_| DEFAULT_MODEL.to_string());
+        let url = std::env::var("OLLAMA_URL").unwrap_or_else(|_| DEFAULT_OLLAMA_URL.to_string());
+        let model = std::env::var("OLLAMA_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
         Self { url, model }
     }
 }
@@ -95,11 +92,13 @@ pub async fn check_connection() -> OllamaStatus {
     let url = get_url();
     let client = match create_client() {
         Ok(c) => c,
-        Err(_) => return OllamaStatus {
-            connected: false,
-            version: None,
-            url,
-        },
+        Err(_) => {
+            return OllamaStatus {
+                connected: false,
+                version: None,
+                url,
+            }
+        }
     };
 
     let version_url = format!("{}/api/version", url);

@@ -2,6 +2,9 @@ import React, { useCallback, useMemo, memo, useState } from 'react';
 import { invoke, isTauri } from '@/lib/api';
 import { MessageSquareX, Eraser, Clock, Terminal, MessageCircle, Pencil, ExternalLink } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { AgentStatus, AGENT_DESCRIPTIONS, AgentWorkflowState, getWorkflowSteps } from '../../types';
 import { useTeamStore } from '../../store/teamStore';
 import { getAgentVisualName } from '../../lib/agentIdentity';
@@ -473,52 +476,44 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
     )}
 
     {/* Rename input overlay */}
-    {showRenameInput && (
-      <div
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-        onClick={() => {
-          setShowRenameInput(false);
-          setRenameValue('');
-        }}
-      >
-        <div
-          className="bg-secondary border border-border rounded-lg p-4 shadow-xl min-w-[300px]"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="text-sm font-medium mb-2">Set Custom Label</div>
-          <div className="text-xs text-muted-foreground mb-3">
+    <Dialog open={showRenameInput} onOpenChange={(open) => {
+      if (!open) {
+        setShowRenameInput(false);
+        setRenameValue('');
+      }
+    }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Set Custom Label</DialogTitle>
+          <DialogDescription>
             Give this Ralph session a project name for easy identification
-          </div>
-          <input
-            ref={renameInputRef}
-            type="text"
-            value={renameValue}
-            onChange={(e) => setRenameValue(e.target.value)}
-            onKeyDown={handleRenameKeyDown}
-            placeholder="e.g., nolan, royme, my-project"
-            className="w-full px-3 py-2 bg-background border border-border rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-            maxLength={30}
-          />
-          <div className="flex gap-2 mt-3 justify-end">
-            <button
-              onClick={() => {
-                setShowRenameInput(false);
-                setRenameValue('');
-              }}
-              className="px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleRenameSubmit}
-              className="px-3 py-1.5 text-sm bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors"
-            >
-              {renameValue.trim() ? 'Save' : 'Clear Label'}
-            </button>
-          </div>
+          </DialogDescription>
+        </DialogHeader>
+        <Input
+          ref={renameInputRef}
+          type="text"
+          value={renameValue}
+          onChange={(e) => setRenameValue(e.target.value)}
+          onKeyDown={handleRenameKeyDown}
+          placeholder="e.g., nolan, royme, my-project"
+          maxLength={30}
+        />
+        <div className="flex gap-2 justify-end">
+          <Button
+            variant="outline"
+            onClick={() => {
+              setShowRenameInput(false);
+              setRenameValue('');
+            }}
+          >
+            Cancel
+          </Button>
+          <Button onClick={handleRenameSubmit}>
+            {renameValue.trim() ? 'Save' : 'Clear Label'}
+          </Button>
         </div>
-      </div>
-    )}
+      </DialogContent>
+    </Dialog>
     </>
   );
 });

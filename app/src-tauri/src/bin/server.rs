@@ -12,7 +12,7 @@
 //!   - OLLAMA_URL: Ollama server URL (default: http://localhost:11434)
 //!   - OLLAMA_MODEL: Ollama model name (default: qwen2.5:1.5b)
 
-use nolan_lib::{api, commands, cronos, events};
+use nolan_lib::{api, commands, scheduler, events};
 
 #[tokio::main]
 async fn main() {
@@ -36,16 +36,16 @@ async fn main() {
         }
     }
 
-    // Initialize Cronos scheduler
-    if let Err(e) = cronos::commands::init_cronos().await {
-        eprintln!("Warning: Failed to initialize Cronos scheduler: {}", e);
+    // Initialize Scheduler
+    if let Err(e) = scheduler::commands::init_scheduler().await {
+        eprintln!("Warning: Failed to initialize Scheduler: {}", e);
     }
 
-    // Recover orphaned cron sessions
-    match cronos::commands::recover_orphaned_cron_sessions().await {
+    // Recover orphaned scheduled sessions
+    match scheduler::commands::recover_orphaned_scheduled_sessions().await {
         Ok(result) => {
             if !result.is_empty() {
-                eprintln!("Cron recovery: {}", result.summary());
+                eprintln!("Scheduler recovery: {}", result.summary());
                 for msg in &result.recovered {
                     eprintln!("  {}", msg);
                 }

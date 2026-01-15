@@ -1,0 +1,32 @@
+name: merge-changes
+description: Merges validated worktree changes back to main branch
+model: sonnet
+timeout: 180
+enabled: true
+schedule:
+  cron: 0 0 1 1 *
+  timezone: null
+guardrails:
+  allowed_tools:
+  - Read
+  - Glob
+  - Grep
+  - Bash
+  forbidden_paths:
+  - '**/.env'
+  - '**/secrets/**'
+  - '**/*.key'
+  max_file_edits: 0
+context:
+  working_directory: null
+concurrency:
+  allow_parallel: false
+  queue_if_running: true
+retry:
+  enabled: true
+  max_retries: 2
+  delay_secs: 60
+  exponential_backoff: false
+catch_up: skip
+agent_type: predefined
+role: merger

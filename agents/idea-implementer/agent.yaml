@@ -1,0 +1,30 @@
+name: idea-implementer
+description: Implements low and medium-complexity accepted ideas directly (triggered on idea acceptance)
+model: opus
+timeout: 600
+enabled: true
+guardrails:
+  allowed_tools:
+  - Read
+  - Write
+  - Edit
+  - Glob
+  - Grep
+  - Bash
+  forbidden_paths:
+  - '**/.env'
+  - '**/secrets/**'
+  - '**/*.key'
+  max_file_edits: 20
+context:
+  working_directory: null
+group: feedback
+concurrency:
+  allow_parallel: true
+  queue_if_running: false
+retry:
+  enabled: true
+  max_retries: 2
+  delay_secs: 60
+  exponential_backoff: false
+catch_up: skip

@@ -17,6 +17,7 @@ function getTagColor(tag: string): string {
 import { cn } from '@/lib/utils';
 import { IdeaEditDialog } from './IdeaEditDialog';
 import { TeamLaunchModal } from '@/components/shared/TeamLaunchModal';
+import { ConfirmDialog } from '@/components/shared/ConfirmDialog';
 import { useToastStore } from '@/store/toastStore';
 import { useNavigationStore } from '@/store/navigationStore';
 import { useAgentStore } from '@/store/agentStore';
@@ -55,6 +56,7 @@ export function IdeaCard({ idea, review, onClick, isDragging, isDragOverlay }: I
   const [teamLaunchOpen, setTeamLaunchOpen] = useState(false);
   const [pendingProjectName, setPendingProjectName] = useState<string>('');
   const [isLaunching, setIsLaunching] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: idea.id,
@@ -148,9 +150,7 @@ export function IdeaCard({ idea, review, onClick, isDragging, isDragOverlay }: I
   };
 
   const handleDelete = () => {
-    if (confirm('Delete this idea?')) {
-      deleteMutation.mutate();
-    }
+    setDeleteConfirmOpen(true);
   };
 
   const handleArchive = () => {
@@ -186,7 +186,7 @@ export function IdeaCard({ idea, review, onClick, isDragging, isDragOverlay }: I
   // Navigate to implementer log if route is 'implementer'
   const handleGoToImplementerLog = () => {
     if (review?.route === 'implementer') {
-      navigateTo('cronos', { cronAgentName: 'cron-idea-implementer' });
+      navigateTo('agents', { agentName: 'idea-implementer' });
     }
   };
 
@@ -310,6 +310,16 @@ export function IdeaCard({ idea, review, onClick, isDragging, isDragOverlay }: I
         onLaunch={handleTeamLaunch}
         projectName={pendingProjectName}
         isLaunching={isLaunching}
+      />
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onOpenChange={setDeleteConfirmOpen}
+        title="Delete Idea"
+        description="Are you sure you want to delete this idea? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="destructive"
+        onConfirm={() => deleteMutation.mutate()}
       />
     </>
   );

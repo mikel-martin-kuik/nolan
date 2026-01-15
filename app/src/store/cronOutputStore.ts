@@ -8,7 +8,7 @@ interface CronOutputState {
 }
 
 /**
- * Cron agent output panel state store
+ * Scheduled agent output panel state store
  *
  * Manages the state for the cron agent output panel displayed on the cron detail page
  */

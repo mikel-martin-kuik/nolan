@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Home, DollarSign, MessageCircle, FileUser, Settings, Lightbulb, GitBranch, Files, Menu, X } from 'lucide-react';
+import { Home, DollarSign, MessageCircle, FileUser, Settings, Lightbulb, GitBranch, Files, Menu, X, Wrench, Calendar } from 'lucide-react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { listen } from '@/lib/events';
 import { invoke, isBrowserMode } from '@/lib/api';
@@ -13,10 +13,12 @@ import { StatusPanel } from './components/Status/StatusPanel';
 import { UsageAndMetricsPanel } from './components/Usage';
 // TeamsPanel removed - functionality moved to WorkflowVisualizerPanel
 import { ChatView } from './components/Chat';
-import { CronosPanel } from './components/Cronos';
+import { AgentsPanel } from './components/ScheduledAgents';
+import { SchedulingPanel } from './components/Scheduling/SchedulingPanel';
 import { WorkflowVisualizerPanel } from './components/Workflow';
 import { SupportPanel } from './components/Support';
 import { FileBrowserPanel } from './components/Files';
+import { BuilderPanel } from './components/Builder';
 import { ToastContainer } from './components/shared/Toast';
 import { BrandHeader } from './components/shared/BrandHeader';
 import { ThemeToggle } from './components/shared/ThemeToggle';
@@ -37,7 +39,7 @@ import { cn } from './lib/utils';
 import { HistoryEntry } from './types';
 import './App.css';
 
-type Tab = 'status' | 'chat' | 'files' | 'cronos' | 'workflows' | 'usage' | 'support' | 'settings';
+type Tab = 'status' | 'chat' | 'files' | 'agents' | 'schedules' | 'workflows' | 'usage' | 'support' | 'settings' | 'builder';
 
 function App() {
   const [activeTab, setActiveTabLocal] = useState<Tab>('status');
@@ -214,8 +216,10 @@ function App() {
     { id: 'status' as Tab, label: 'Dashboard', tooltip: 'Dashboard', icon: Home },
     { id: 'chat' as Tab, label: 'Chat', tooltip: 'Chat', icon: MessageCircle },
     { id: 'files' as Tab, label: 'Files', tooltip: 'File Browser', icon: Files },
-    { id: 'cronos' as Tab, label: 'Agents', tooltip: 'Agents', icon: FileUser },
+    { id: 'agents' as Tab, label: 'Agents', tooltip: 'Agents', icon: FileUser },
+    { id: 'schedules' as Tab, label: 'Schedules', tooltip: 'Schedules', icon: Calendar },
     { id: 'workflows' as Tab, label: 'Workflows', tooltip: 'Workflows', icon: GitBranch },
+    { id: 'builder' as Tab, label: 'Builder', tooltip: 'Builder', icon: Wrench },
     { id: 'usage' as Tab, label: 'Usage', tooltip: 'Usage', icon: DollarSign },
   ];
 
@@ -345,9 +349,11 @@ function App() {
                 {activeTab === 'status' && <StatusPanel />}
                 {activeTab === 'chat' && <ChatView />}
                 {activeTab === 'files' && <FileBrowserPanel />}
-                {activeTab === 'cronos' && <CronosPanel />}
+                {activeTab === 'agents' && <AgentsPanel />}
+                {activeTab === 'schedules' && <SchedulingPanel />}
                 {activeTab === 'workflows' && <WorkflowVisualizerPanel />}
                 {activeTab === 'usage' && <UsageAndMetricsPanel />}
+                {activeTab === 'builder' && <BuilderPanel />}
                 {activeTab === 'support' && <SupportPanel />}
                 {activeTab === 'settings' && (
                   <div className="max-w-2xl space-y-4 sm:space-y-6 pb-8">

@@ -6,8 +6,8 @@ import { usePollingEffect } from './usePollingEffect';
 import { useWorkflowVisualizerStore } from '../store/workflowVisualizerStore';
 import { useTeamStore } from '../store/teamStore';
 import type {
-  CronRunLog,
-  CronOutputEvent,
+  ScheduledRunLog,
+  ScheduledOutputEvent,
   WorktreeListEntry,
   TeamConfig,
   PhaseConfig
@@ -18,7 +18,7 @@ import type {
   PhaseNodeData,
   SupportAgentData
 } from '../types/workflow';
-import type { Pipeline } from '../types/generated/cronos/Pipeline';
+import type { Pipeline } from '../types/generated/scheduler/Pipeline';
 import dagre from 'dagre';
 
 const POLLING_INTERVAL = 10000; // 10 seconds
@@ -54,7 +54,7 @@ export function useWorkflowData(): UseWorkflowDataResult {
 
   // Fetch run history (used for DAG visualization and fallback pipeline correlation)
   const fetchRunHistory = useCallback(async () => {
-    return invoke<CronRunLog[]>('get_cron_run_history', { limit: 100 });
+    return invoke<ScheduledRunLog[]>('get_scheduled_run_history', { limit: 100 });
   }, []);
 
   // Fetch worktrees
@@ -110,6 +110,13 @@ export function useWorkflowData(): UseWorkflowDataResult {
     errorMessage: 'Failed to load team config',
   });
 
+  // Refetch team config when team changes
+  useEffect(() => {
+    if (currentTeamName) {
+      refetchTeam();
+    }
+  }, [currentTeamName, refetchTeam]);
+
   // Use pipelines from API directly
   const pipelines = pipelinesFromApi;
 
@@ -130,11 +137,11 @@ export function useWorkflowData(): UseWorkflowDataResult {
     setPipelines(pipelines);
   }, [pipelines, setPipelines]);
 
-  // Subscribe to cronos:output events for real-time updates
+  // Subscribe to scheduler:output events for real-time updates
   useEffect(() => {
     let cleanup: (() => void) | null = null;
 
-    listen<CronOutputEvent>('cronos:output', (event) => {
+    listen<ScheduledOutputEvent>('scheduler:output', (event) => {
       const { agent_name, event_type, content } = event.payload;
 
       if (event_type === 'status' && content === 'started') {
@@ -216,7 +223,7 @@ export function useWorkflowData(): UseWorkflowDataResult {
 // Helper: Build DAG from team workflow config
 function buildDagFromPhases(
   workflow: { phases: PhaseConfig[]; note_taker?: string; exception_handler?: string },
-  runHistory?: CronRunLog[] | null
+  runHistory?: ScheduledRunLog[] | null
 ): { nodes: WorkflowNode[]; edges: WorkflowEdge[] } {
   const { phases, note_taker, exception_handler } = workflow;
   const g = new dagre.graphlib.Graph();

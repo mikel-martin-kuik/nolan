@@ -1,15 +1,10 @@
 //! Team management HTTP handlers
 
-use axum::{
-    extract::Path,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::Path, http::StatusCode, response::IntoResponse, Json};
 use serde::Serialize;
 
 use crate::commands::teams;
-use crate::config::{TeamConfig, DepartmentsConfig};
+use crate::config::{DepartmentsConfig, TeamConfig};
 
 /// Error response
 #[derive(Serialize)]
@@ -30,9 +25,7 @@ pub async fn list_teams() -> Result<Json<Vec<String>>, impl IntoResponse> {
 }
 
 /// Get team configuration
-pub async fn get_team(
-    Path(name): Path<String>,
-) -> Result<Json<TeamConfig>, impl IntoResponse> {
+pub async fn get_team(Path(name): Path<String>) -> Result<Json<TeamConfig>, impl IntoResponse> {
     match teams::get_team_config(name).await {
         Ok(config) => Ok(Json(config)),
         Err(e) => Err(error_response(StatusCode::NOT_FOUND, e)),

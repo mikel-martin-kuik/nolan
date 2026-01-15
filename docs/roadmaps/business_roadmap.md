@@ -147,22 +147,22 @@ One team currently handles all projects:
 
 **Workflow**: Ana → Bill → Enzo → Carl → Frank (with Dan coordinating)
 
-### Cronos Agents (Background Tasks)
+### Scheduled Agents (Background Tasks)
 
 | Agent | Purpose |
 |-------|---------|
-| cron-idea-processor | Analyzes ideas, creates proposals |
-| cron-idea-merger | Consolidates related ideas |
-| cron-idea-implementer | Creates projects from approved ideas |
-| cron-roadmap | Updates roadmaps from activity |
-| cron-roadmap-alignment | Validates roadmap alignment |
-| cron-git-commit | Automated commits |
-| cron-workflow-monitor | Tracks workflow health |
-| cron-dependency-check | Validates dependencies |
-| cron-security-audit | Security scanning |
-| cron-bug-finder | Identifies bugs in codebase |
-| cron-ui-audit | UI/UX audit and improvements |
-| cron-code-indexer | Indexes codebase for context |
+| idea-processor | Analyzes ideas, creates proposals |
+| idea-merger | Consolidates related ideas |
+| idea-implementer | Creates projects from approved ideas |
+| roadmap | Updates roadmaps from activity |
+| roadmap-alignment | Validates roadmap alignment |
+| git-commit | Automated commits |
+| workflow-monitor | Tracks workflow health |
+| dependency-check | Validates dependencies |
+| security-audit | Security scanning |
+| bug-finder | Identifies bugs in codebase |
+| ui-audit | UI/UX audit and improvements |
+| code-indexer | Indexes codebase for context |
 
 ### Future: Organizational Structure
 

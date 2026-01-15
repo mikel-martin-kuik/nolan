@@ -26,6 +26,20 @@ import type {
 } from '@/types';
 
 // =============================================================================
+// Schedule Config Type
+// =============================================================================
+
+export interface ScheduleConfig {
+  id: string;
+  name: string;
+  agent_name: string;
+  cron: string;
+  enabled: boolean;
+  timezone?: string;
+  next_run?: string;
+}
+
+// =============================================================================
 // Command Parameter Types (snake_case required!)
 // =============================================================================
 
@@ -119,6 +133,26 @@ export interface CommandParams {
   list_worktrees: void;
   cleanup_worktrees: void;
   remove_worktree: { path: string };
+
+  // === Schedules ===
+  list_schedules: void;
+  create_schedule: {
+    name: string;
+    agent_name: string;
+    cron: string;
+    enabled: boolean;
+    timezone?: string;
+  };
+  update_schedule: {
+    id: string;
+    name: string;
+    agent_name: string;
+    cron: string;
+    enabled: boolean;
+    timezone?: string;
+  };
+  delete_schedule: { id: string };
+  toggle_schedule: { id: string; enabled: boolean };
 }
 
 // =============================================================================
@@ -193,6 +227,13 @@ export interface CommandReturns {
   list_worktrees: unknown[];
   cleanup_worktrees: unknown;
   remove_worktree: void;
+
+  // Schedules
+  list_schedules: ScheduleConfig[];
+  create_schedule: ScheduleConfig;
+  update_schedule: ScheduleConfig;
+  delete_schedule: void;
+  toggle_schedule: ScheduleConfig;
 }
 
 // =============================================================================

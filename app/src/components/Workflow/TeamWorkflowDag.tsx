@@ -43,9 +43,10 @@ interface TeamWorkflowDagProps {
   onEditPhase?: (phaseId: string) => void;
   onDeletePhase?: (phaseId: string) => void;
   onAddPhase?: () => void;
+  readOnly?: boolean;
 }
 
-export function TeamWorkflowDag({ onPhaseClick, onEditPhase, onDeletePhase, onAddPhase }: TeamWorkflowDagProps) {
+export function TeamWorkflowDag({ onPhaseClick, onEditPhase, onDeletePhase, onAddPhase, readOnly = false }: TeamWorkflowDagProps) {
   const dagNodes = useWorkflowVisualizerStore((state) => state.dagNodes);
   const dagEdges = useWorkflowVisualizerStore((state) => state.dagEdges);
   const isLoading = useWorkflowVisualizerStore((state) => state.isLoading);
@@ -66,6 +67,15 @@ export function TeamWorkflowDag({ onPhaseClick, onEditPhase, onDeletePhase, onAd
   // Wrap onNodesChange to persist position changes to the store
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
+      // In readOnly mode, only allow select changes (not drag)
+      if (readOnly) {
+        const selectChanges = changes.filter(c => c.type === 'select');
+        if (selectChanges.length > 0) {
+          onNodesChangeInternal(selectChanges);
+        }
+        return;
+      }
+
       onNodesChangeInternal(changes);
       // Persist position changes when drag ends
       for (const change of changes) {
@@ -74,7 +84,7 @@ export function TeamWorkflowDag({ onPhaseClick, onEditPhase, onDeletePhase, onAd
         }
       }
     },
-    [onNodesChangeInternal, setNodePosition]
+    [onNodesChangeInternal, setNodePosition, readOnly]
   );
 
   // Sync with store updates
@@ -91,9 +101,10 @@ export function TeamWorkflowDag({ onPhaseClick, onEditPhase, onDeletePhase, onAd
     [setSelectedPhaseId, onPhaseClick]
   );
 
-  // Context menu handlers
+  // Context menu handlers (disabled in readOnly mode)
   const onNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node) => {
+      if (readOnly) return;
       event.preventDefault();
       event.stopPropagation();
 
@@ -110,11 +121,12 @@ export function TeamWorkflowDag({ onPhaseClick, onEditPhase, onDeletePhase, onAd
         phaseId: node.id,
       });
     },
-    []
+    [readOnly]
   );
 
   const onPaneContextMenu = useCallback(
     (event: MouseEvent | React.MouseEvent) => {
+      if (readOnly) return;
       event.preventDefault();
       event.stopPropagation();
 
@@ -124,7 +136,7 @@ export function TeamWorkflowDag({ onPhaseClick, onEditPhase, onDeletePhase, onAd
         type: 'pane',
       });
     },
-    []
+    [readOnly]
   );
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
@@ -180,7 +192,7 @@ export function TeamWorkflowDag({ onPhaseClick, onEditPhase, onDeletePhase, onAd
       <Card className="h-full flex items-center justify-center">
         <div className="text-center text-muted-foreground">
           <p>No workflow phases configured</p>
-          <p className="text-sm">Configure team workflow in Team settings</p>
+          <p className="text-sm">Configure phases in the Builder tab</p>
         </div>
       </Card>
     );

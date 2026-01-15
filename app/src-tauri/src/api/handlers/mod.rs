@@ -2,20 +2,20 @@
 
 pub mod agents;
 pub mod communicate;
-pub mod cronos;
+pub mod config;
+pub mod scheduler;
 pub mod feedback;
 pub mod filesystem;
 pub mod history;
 pub mod lifecycle;
 pub mod ollama;
+pub mod organization;
+pub mod policies;
 pub mod projects;
+pub mod roles;
 pub mod teams;
 pub mod templates;
 pub mod usage;
-pub mod organization;
-pub mod roles;
-pub mod policies;
-pub mod config;
 
 use axum::Json;
 use serde::Serialize;
@@ -38,5 +38,7 @@ pub async fn health() -> Json<HealthResponse> {
 /// No-op endpoint for commands that don't work in browser mode
 /// Returns success without doing anything
 pub async fn noop() -> Json<serde_json::Value> {
-    Json(serde_json::json!({ "status": "noop", "message": "This operation is not available in browser mode" }))
+    Json(
+        serde_json::json!({ "status": "noop", "message": "This operation is not available in browser mode" }),
+    )
 }

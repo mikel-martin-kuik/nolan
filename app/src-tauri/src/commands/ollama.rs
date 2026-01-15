@@ -41,10 +41,7 @@ pub async fn ollama_get_config() -> (String, String) {
 
 /// Update config
 #[tauri::command]
-pub async fn ollama_set_config(
-    url: Option<String>,
-    model: Option<String>,
-) -> (String, String) {
+pub async fn ollama_set_config(url: Option<String>, model: Option<String>) -> (String, String) {
     if let Some(u) = url {
         ollama::set_url(u);
     }

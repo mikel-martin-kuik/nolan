@@ -9,6 +9,7 @@ export const ProviderSettings: React.FC = () => {
     status,
     providers,
     defaultProvider,
+    error,
     fetchProviders,
     setDefaultProvider,
   } = useProviderStore();
@@ -28,6 +29,8 @@ export const ProviderSettings: React.FC = () => {
     setPendingDefault(providerName);
     try {
       await setDefaultProvider(providerName);
+    } catch (e) {
+      console.error('Failed to set default provider:', e);
     } finally {
       setPendingDefault(null);
     }
@@ -129,6 +132,13 @@ export const ProviderSettings: React.FC = () => {
             ))
           )}
         </div>
+
+        {/* Error display */}
+        {error && (
+          <div className="text-sm text-red-500 bg-red-500/10 border border-red-500/20 rounded p-3">
+            Error: {error}
+          </div>
+        )}
 
         {/* Help text */}
         <div className="text-sm text-muted-foreground border-t pt-4 space-y-2">

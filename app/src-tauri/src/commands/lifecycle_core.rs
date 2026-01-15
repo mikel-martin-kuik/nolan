@@ -3,18 +3,18 @@
 //! These functions contain the business logic without event emission,
 //! allowing them to be used from both Tauri commands and HTTP handlers.
 
-use std::process::Command;
-use std::path::PathBuf;
 use crate::config::TeamConfig;
-use crate::tmux::session;
 use crate::constants::RALPH_NAMES;
+use crate::tmux::session;
+use std::path::PathBuf;
+use std::process::Command;
 
 /// Kill a tmux session and clean up ephemeral directory for Ralph instances
 /// Also cleans up any associated deployment (worktree, branch, .claude traces)
 pub fn kill_session(session_name: &str) -> Result<String, String> {
-    use std::fs;
-    use crate::constants::parse_ralph_session;
     use crate::commands::deployment::{find_deployment_by_session, full_deployment_cleanup};
+    use crate::constants::parse_ralph_session;
+    use std::fs;
 
     // Track whether session existed for response message
     let session_existed = session::session_exists(session_name)?;
@@ -57,7 +57,10 @@ pub fn kill_session(session_name: &str) -> Result<String, String> {
     // Check if this session has an associated deployment and clean it up
     if let Ok(Some(deployment)) = find_deployment_by_session(session_name) {
         if let Err(e) = full_deployment_cleanup(&deployment.id) {
-            eprintln!("Warning: Deployment cleanup failed for {}: {}", deployment.id, e);
+            eprintln!(
+                "Warning: Deployment cleanup failed for {}: {}",
+                deployment.id, e
+            );
             // Don't fail the kill - session termination is more important
         }
     }
@@ -70,7 +73,10 @@ pub fn kill_session(session_name: &str) -> Result<String, String> {
     if session_existed {
         Ok(format!("Killed session: {}", session_name))
     } else {
-        Ok(format!("Cleaned up orphaned directory for: {}", session_name))
+        Ok(format!(
+            "Cleaned up orphaned directory for: {}",
+            session_name
+        ))
     }
 }
 
@@ -113,7 +119,10 @@ pub fn kill_team_sessions(team_name: &str) -> Result<String, String> {
 
     // Clear active project to prevent stale recovery
     if let Err(e) = clear_team_active_project(team_name) {
-        eprintln!("Warning: Failed to clear active project for team '{}': {}", team_name, e);
+        eprintln!(
+            "Warning: Failed to clear active project for team '{}': {}",
+            team_name, e
+        );
         // Non-fatal - sessions are still killed
     }
 
@@ -159,8 +168,7 @@ pub async fn start_agent_core(team_name: &str, agent: &str) -> Result<String, St
     let projects_dir = crate::utils::paths::get_projects_dir()?;
 
     // Team agents are in teams/{team}/agents/{agent}/
-    let agent_dir = crate::utils::paths::get_team_agents_dir(team_name)?
-        .join(agent);
+    let agent_dir = crate::utils::paths::get_team_agents_dir(team_name)?.join(agent);
 
     if !agent_dir.exists() {
         return Err(format!("Agent directory not found: {:?}", agent_dir));
@@ -170,7 +178,8 @@ pub async fn start_agent_core(team_name: &str, agent: &str) -> Result<String, St
     let model = crate::commands::lifecycle::get_default_model(agent);
 
     // Get CLI provider for agent (defaults to "claude" if not specified)
-    let cli_provider_name = crate::commands::lifecycle::get_agent_cli_provider(agent, Some(team_name));
+    let cli_provider_name =
+        crate::commands::lifecycle::get_agent_cli_provider(agent, Some(team_name));
     let cli_provider = crate::cli_providers::get_provider(cli_provider_name.as_deref(), true);
 
     // Build CLI command using the provider
@@ -193,9 +202,13 @@ pub async fn start_agent_core(team_name: &str, agent: &str) -> Result<String, St
     // Create tmux session
     let output = Command::new("tmux")
         .args(&[
-            "new-session", "-d", "-s", &session,
-            "-c", &agent_dir.to_string_lossy(),
-            &cmd
+            "new-session",
+            "-d",
+            "-s",
+            &session,
+            "-c",
+            &agent_dir.to_string_lossy(),
+            &cmd,
         ])
         .output()
         .map_err(|e| format!("Failed to create tmux session: {}", e))?;
@@ -225,7 +238,11 @@ pub async fn start_agent_core(team_name: &str, agent: &str) -> Result<String, St
 /// # Arguments
 /// * `worktree_path` - Optional path to an existing worktree to work in.
 ///   Ralph will work on pre-existing worktrees, not create new ones.
-pub async fn spawn_ralph_core(model: Option<String>, force: bool, worktree_path: Option<String>) -> Result<String, String> {
+pub async fn spawn_ralph_core(
+    model: Option<String>,
+    force: bool,
+    worktree_path: Option<String>,
+) -> Result<String, String> {
     use std::fs;
     #[cfg(unix)]
     use std::os::unix::fs::symlink;
@@ -338,14 +355,21 @@ pub async fn spawn_ralph_core(model: Option<String>, force: bool, worktree_path:
                 let claude_dest = worktree_dir.join(".claude");
                 if !claude_dest.exists() {
                     let _ = Command::new("cp")
-                        .args(["-r", &ralph_claude.to_string_lossy(), &claude_dest.to_string_lossy()])
+                        .args([
+                            "-r",
+                            &ralph_claude.to_string_lossy(),
+                            &claude_dest.to_string_lossy(),
+                        ])
                         .output();
                 }
             }
         }
 
         let env = if let Some(ref branch) = branch_name {
-            format!(" WORKTREE_PATH=\"{}\" WORKTREE_BRANCH=\"{}\"", wt_path, branch)
+            format!(
+                " WORKTREE_PATH=\"{}\" WORKTREE_BRANCH=\"{}\"",
+                wt_path, branch
+            )
         } else {
             format!(" WORKTREE_PATH=\"{}\"", wt_path)
         };
@@ -384,9 +408,13 @@ pub async fn spawn_ralph_core(model: Option<String>, force: bool, worktree_path:
     // Create session
     let output = Command::new("tmux")
         .args(&[
-            "new-session", "-d", "-s", &session,
-            "-c", &working_dir.to_string_lossy(),
-            &cmd
+            "new-session",
+            "-d",
+            "-s",
+            &session,
+            "-c",
+            &working_dir.to_string_lossy(),
+            &cmd,
         ])
         .output()
         .map_err(|e| format!("Failed to create tmux session: {}", e))?;
@@ -490,7 +518,10 @@ pub fn find_orphaned_ralph_instances() -> Result<Vec<OrphanedRalphInstance>, Str
 
 /// Recover a Ralph instance by restarting its tmux session with --continue
 /// This resumes the Claude conversation from where it left off
-pub async fn recover_ralph_instance(instance: &OrphanedRalphInstance, model: Option<String>) -> Result<String, String> {
+pub async fn recover_ralph_instance(
+    instance: &OrphanedRalphInstance,
+    model: Option<String>,
+) -> Result<String, String> {
     // Check if session already exists (safety check)
     if session::session_exists(&instance.session)? {
         return Err(format!("Session '{}' already exists", instance.session));
@@ -526,9 +557,13 @@ pub async fn recover_ralph_instance(instance: &OrphanedRalphInstance, model: Opt
     // Create session
     let output = Command::new("tmux")
         .args(&[
-            "new-session", "-d", "-s", &instance.session,
-            "-c", &instance.agent_dir.to_string_lossy(),
-            &cmd
+            "new-session",
+            "-d",
+            "-s",
+            &instance.session,
+            "-c",
+            &instance.agent_dir.to_string_lossy(),
+            &cmd,
         ])
         .output()
         .map_err(|e| format!("Failed to create tmux session: {}", e))?;
@@ -550,7 +585,10 @@ pub async fn recover_ralph_instance(instance: &OrphanedRalphInstance, model: Opt
         eprintln!("Warning: Failed to register recovered session: {}", e);
     }
 
-    Ok(format!("Recovered: {} (resumed Claude session)", instance.session))
+    Ok(format!(
+        "Recovered: {} (resumed Claude session)",
+        instance.session
+    ))
 }
 
 /// Recover all orphaned Ralph instances
@@ -638,9 +676,7 @@ fn team_has_active_project(team_name: &str) -> bool {
         Err(_) => return false,
     };
 
-    let state_file = state_dir
-        .join(team_name)
-        .join("active-project.txt");
+    let state_file = state_dir.join(team_name).join("active-project.txt");
 
     if state_file.exists() {
         fs::read_to_string(&state_file)
@@ -656,9 +692,9 @@ fn team_has_active_project(team_name: &str) -> bool {
 /// Only returns sessions for teams that have an active project file
 /// (teams killed via kill_team_sessions have their active project cleared)
 pub fn find_orphaned_team_sessions() -> Result<Vec<OrphanedTeamSession>, String> {
+    use std::collections::HashMap;
     use std::fs::File;
     use std::io::{BufRead, BufReader};
-    use std::collections::HashMap;
 
     let home = std::env::var("HOME").map_err(|_| "HOME not set")?;
     let registry_path = PathBuf::from(&home).join(".nolan/session-registry.jsonl");
@@ -709,7 +745,8 @@ pub fn find_orphaned_team_sessions() -> Result<Vec<OrphanedTeamSession>, String>
         }
 
         // Verify it's a valid team session format: agent-{team}-{name}
-        let parts: Vec<&str> = session_name.strip_prefix("agent-")
+        let parts: Vec<&str> = session_name
+            .strip_prefix("agent-")
             .unwrap_or("")
             .splitn(2, '-')
             .collect();
@@ -745,12 +782,11 @@ fn get_team_docs_path(team_name: &str) -> Option<String> {
     use std::fs;
 
     let state_dir = crate::utils::paths::get_state_dir().ok()?;
-    let state_file = state_dir
-        .join(team_name)
-        .join("active-project.txt");
+    let state_file = state_dir.join(team_name).join("active-project.txt");
 
     if state_file.exists() {
-        fs::read_to_string(&state_file).ok()
+        fs::read_to_string(&state_file)
+            .ok()
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
     } else {
@@ -792,7 +828,8 @@ pub async fn recover_team_session(orphan: &OrphanedTeamSession) -> Result<String
     let model = crate::commands::lifecycle::get_default_model(&orphan.agent);
 
     // Get CLI provider for agent (defaults to "claude" if not specified)
-    let cli_provider_name = crate::commands::lifecycle::get_agent_cli_provider(&orphan.agent, Some(&orphan.team));
+    let cli_provider_name =
+        crate::commands::lifecycle::get_agent_cli_provider(&orphan.agent, Some(&orphan.team));
     let cli_provider = crate::cli_providers::get_provider(cli_provider_name.as_deref(), true);
     let mapped_model = cli_provider.map_model(&model);
     let resume_flag = cli_provider.resume_flag();
@@ -818,9 +855,13 @@ pub async fn recover_team_session(orphan: &OrphanedTeamSession) -> Result<String
     // Create session
     let output = Command::new("tmux")
         .args(&[
-            "new-session", "-d", "-s", &orphan.session,
-            "-c", &orphan.agent_dir.to_string_lossy(),
-            &cmd
+            "new-session",
+            "-d",
+            "-s",
+            &orphan.session,
+            "-c",
+            &orphan.agent_dir.to_string_lossy(),
+            &cmd,
         ])
         .output()
         .map_err(|e| format!("Failed to create tmux session: {}", e))?;
@@ -842,7 +883,10 @@ pub async fn recover_team_session(orphan: &OrphanedTeamSession) -> Result<String
         eprintln!("Warning: Failed to register recovered session: {}", e);
     }
 
-    Ok(format!("Recovered: {} (resumed Claude session)", orphan.session))
+    Ok(format!(
+        "Recovered: {} (resumed Claude session)",
+        orphan.session
+    ))
 }
 
 /// Recover all orphaned team sessions

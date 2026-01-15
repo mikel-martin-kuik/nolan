@@ -161,51 +161,54 @@ def main():
     if not phases:
         output_error("No phases defined in team config")
 
-    # Find current phase
-    current_phase = get_phase_by_name(phases, current_phase_name)
+    # Find current phase and its index
+    current_phase = None
+    current_index = -1
+    for i, phase in enumerate(phases):
+        if phase.get('name', '').lower() == current_phase_name.lower():
+            current_phase = phase
+            current_index = i
+            break
+
     if not current_phase:
         available = [p.get('name', '') for p in phases]
         output_error(f"Phase '{current_phase_name}' not found. Available: {available}")
 
     # Route based on decision
     if decision == "rejected":
-        # Check for on_reject route
-        on_reject = current_phase.get('on_reject')
-        if on_reject:
-            next_agent = get_agent_for_phase(team_config, on_reject)
-            if not next_agent:
-                output_error(f"on_reject phase '{on_reject}' has no owner defined")
-            output_result(
-                action="assign",
-                next_phase=on_reject,
-                next_agent=next_agent,
-                reason=f"Rejected from {current_phase_name}, routing to {on_reject}"
-            )
-        else:
-            # No on_reject defined - escalate
+        # Rejection goes to previous phase in sequence
+        if current_index <= 0:
+            # First phase - nowhere to go back to
             output_result(
                 action="escalate",
-                reason=f"Phase '{current_phase_name}' rejected but no on_reject route defined"
+                reason=f"Phase '{current_phase_name}' rejected but it's the first phase"
+            )
+        else:
+            prev_phase = phases[current_index - 1]
+            prev_phase_name = prev_phase.get('name')
+            prev_agent = prev_phase.get('owner')
+            if not prev_agent:
+                output_error(f"Previous phase '{prev_phase_name}' has no owner defined")
+            output_result(
+                action="assign",
+                next_phase=prev_phase_name,
+                next_agent=prev_agent,
+                reason=f"Rejected from {current_phase_name}, routing back to {prev_phase_name}"
             )
 
     else:  # approved
-        # Check for next route
-        next_phase_name = current_phase.get('next')
-        if next_phase_name is None:
+        # Derive next phase from array position (last phase is terminal)
+        if current_index >= len(phases) - 1:
             # Terminal phase - workflow complete
             output_result(
                 action="complete",
-                reason=f"Phase '{current_phase_name}' is terminal (next is null)"
-            )
-        elif next_phase_name == "":
-            # Empty string also means terminal
-            output_result(
-                action="complete",
-                reason=f"Phase '{current_phase_name}' is terminal (next is empty)"
+                reason=f"Phase '{current_phase_name}' is terminal (last in sequence)"
             )
         else:
-            # Route to next phase
-            next_agent = get_agent_for_phase(team_config, next_phase_name)
+            # Route to next phase in sequence
+            next_phase = phases[current_index + 1]
+            next_phase_name = next_phase.get('name')
+            next_agent = next_phase.get('owner')
             if not next_agent:
                 output_error(f"Next phase '{next_phase_name}' has no owner defined")
             output_result(

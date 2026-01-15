@@ -1,40 +1,40 @@
-use tokio::fs::File as AsyncFile;
-use tokio::io::{AsyncBufReadExt, AsyncSeekExt, BufReader as AsyncBufReader};
-use std::time::Duration;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::collections::{HashMap, VecDeque};
-use std::path::PathBuf;
-use tauri::{AppHandle, Emitter};
-use tokio::time::sleep;
-use serde::{Deserialize, Serialize};
-use notify::{Watcher, RecursiveMode, Event, EventKind};
-use std::sync::mpsc;
-use dashmap::DashMap;
-use std::sync::Mutex as StdMutex;
 use crate::api::broadcast_history_entry;
 use crate::config::TeamConfig;
+use dashmap::DashMap;
+use notify::{Event, EventKind, RecursiveMode, Watcher};
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, VecDeque};
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc;
+use std::sync::Mutex as StdMutex;
+use std::time::Duration;
+use tauri::{AppHandle, Emitter};
+use tokio::fs::File as AsyncFile;
+use tokio::io::{AsyncBufReadExt, AsyncSeekExt, BufReader as AsyncBufReader};
+use tokio::time::sleep;
 
 // Global flag to prevent multiple streaming tasks
 static STREAMING: AtomicBool = AtomicBool::new(false);
 
 // Backpressure and debouncing constants
-const MAX_PENDING_EVENTS: usize = 100;  // Max queued file updates
-const DEBOUNCE_MS: u64 = 25;  // Debounce delay for file processing (reduced for faster streaming)
+const MAX_PENDING_EVENTS: usize = 100; // Max queued file updates
+const DEBOUNCE_MS: u64 = 25; // Debounce delay for file processing (reduced for faster streaming)
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HistoryEntry {
     pub uuid: Option<String>,
     pub timestamp: String,
     pub agent: Option<String>,
-    pub tmux_session: Option<String>,  // Tmux session name (e.g., "agent-bill-3")
+    pub tmux_session: Option<String>, // Tmux session name (e.g., "agent-bill-3")
     pub message: String,
-    pub preview: String,  // Truncated message for list display
-    pub entry_type: String,  // "user", "assistant", "tool_use", "tool_result", "system"
+    pub preview: String,    // Truncated message for list display
+    pub entry_type: String, // "user", "assistant", "tool_use", "tool_result", "system"
     pub session_id: Option<String>,
     pub project: Option<String>,
     pub tool_name: Option<String>,
     pub tokens: Option<TokenInfo>,
-    pub is_streaming: bool,  // true for real-time entries, false for bulk historical load
+    pub is_streaming: bool, // true for real-time entries, false for bulk historical load
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,7 +47,7 @@ pub struct TokenInfo {
 struct SessionRegistryEntry {
     tmux_session: String,
     #[allow(dead_code)]
-    agent: String,  // Stored for debugging, not currently used in lookup
+    agent: String, // Stored for debugging, not currently used in lookup
     agent_dir: String,
     start_time: String,
 }
@@ -55,11 +55,13 @@ struct SessionRegistryEntry {
 // Track file positions for incremental reading
 use once_cell::sync::Lazy;
 
-static FILE_POSITIONS: Lazy<StdMutex<HashMap<PathBuf, u64>>> = Lazy::new(|| StdMutex::new(HashMap::new()));
+static FILE_POSITIONS: Lazy<StdMutex<HashMap<PathBuf, u64>>> =
+    Lazy::new(|| StdMutex::new(HashMap::new()));
 
 // Session registry index for O(1) session lookups
 // Maps agent_dir -> Vec<SessionRegistryEntry> sorted by start_time (newest first)
-static SESSION_INDEX: Lazy<DashMap<String, Vec<SessionRegistryEntry>>> = Lazy::new(|| DashMap::new());
+static SESSION_INDEX: Lazy<DashMap<String, Vec<SessionRegistryEntry>>> =
+    Lazy::new(|| DashMap::new());
 static INDEX_LOADED: AtomicBool = AtomicBool::new(false);
 
 #[tauri::command]
@@ -118,10 +120,12 @@ async fn watch_transcript_files(app_handle: AppHandle) -> Result<(), String> {
         if let Ok(event) = res {
             let _ = tx.send(event);
         }
-    }).map_err(|e| format!("Failed to create watcher: {}", e))?;
+    })
+    .map_err(|e| format!("Failed to create watcher: {}", e))?;
 
     // Watch the projects directory recursively
-    watcher.watch(&projects_dir, RecursiveMode::Recursive)
+    watcher
+        .watch(&projects_dir, RecursiveMode::Recursive)
         .map_err(|e| format!("Failed to watch directory: {}", e))?;
 
     // Process file change events with backpressure and debouncing
@@ -142,10 +146,15 @@ async fn watch_transcript_files(app_handle: AppHandle) -> Result<(), String> {
                     for path in event.paths {
                         if path.extension().map_or(false, |e| e == "jsonl") {
                             // Add to queue only if not already pending and under limit (backpressure)
-                            if !pending_files.contains(&path) && pending_files.len() < MAX_PENDING_EVENTS {
+                            if !pending_files.contains(&path)
+                                && pending_files.len() < MAX_PENDING_EVENTS
+                            {
                                 pending_files.push_back(path);
                             } else if pending_files.len() >= MAX_PENDING_EVENTS {
-                                eprintln!("File watcher backpressure: dropping event for {:?}", path);
+                                eprintln!(
+                                    "File watcher backpressure: dropping event for {:?}",
+                                    path
+                                );
                             }
                         }
                     }
@@ -229,15 +238,23 @@ async fn process_file_update(app_handle: &AppHandle, path: &PathBuf) {
 }
 
 /// Parse a transcript JSONL line into a HistoryEntry
-fn parse_transcript_line(line: &str, path: &std::path::Path, is_streaming: bool) -> Result<(HistoryEntry, i64), String> {
-    let json: serde_json::Value = serde_json::from_str(line.trim())
-        .map_err(|e| format!("JSON parse error: {}", e))?;
+fn parse_transcript_line(
+    line: &str,
+    path: &std::path::Path,
+    is_streaming: bool,
+) -> Result<(HistoryEntry, i64), String> {
+    let json: serde_json::Value =
+        serde_json::from_str(line.trim()).map_err(|e| format!("JSON parse error: {}", e))?;
 
     // Extract UUID
-    let uuid = json.get("uuid").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let uuid = json
+        .get("uuid")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     // Extract timestamp (ISO 8601 format)
-    let timestamp_str = json.get("timestamp")
+    let timestamp_str = json
+        .get("timestamp")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown");
 
@@ -254,14 +271,21 @@ fn parse_transcript_line(line: &str, path: &std::path::Path, is_streaming: bool)
     };
 
     // Extract session ID
-    let session_id = json.get("sessionId").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let session_id = json
+        .get("sessionId")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     // Extract entry type - refine based on content
-    let base_type = json.get("type").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let base_type = json
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
     let entry_type = refine_entry_type(base_type, &json);
 
     // Extract agent from project path
-    let project_str = path.parent()
+    let project_str = path
+        .parent()
         .and_then(|p| p.file_name())
         .and_then(|n| n.to_str())
         .map(|s| s.to_string());
@@ -310,7 +334,11 @@ fn parse_transcript_line(line: &str, path: &std::path::Path, is_streaming: bool)
 
 /// Refine entry type based on actual content
 fn refine_entry_type(base_type: &str, json: &serde_json::Value) -> String {
-    if let Some(content) = json.get("message").and_then(|m| m.get("content")).and_then(|c| c.as_array()) {
+    if let Some(content) = json
+        .get("message")
+        .and_then(|m| m.get("content"))
+        .and_then(|c| c.as_array())
+    {
         for item in content {
             let item_type = item.get("type").and_then(|t| t.as_str()).unwrap_or("");
             match item_type {
@@ -353,8 +381,7 @@ async fn load_session_index() -> Result<(), String> {
         return Ok(());
     }
 
-    let registry_path = std::env::var("HOME")
-        .map_err(|_| "HOME not set".to_string())?;
+    let registry_path = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
     let registry_path = PathBuf::from(registry_path).join(".nolan/session-registry.jsonl");
 
     if !registry_path.exists() {
@@ -362,7 +389,8 @@ async fn load_session_index() -> Result<(), String> {
         return Ok(());
     }
 
-    let file = AsyncFile::open(&registry_path).await
+    let file = AsyncFile::open(&registry_path)
+        .await
         .map_err(|e| format!("Failed to open registry: {}", e))?;
 
     let reader = AsyncBufReader::new(file);
@@ -409,9 +437,9 @@ pub fn update_session_index(tmux_session: &str, agent: &str, agent_dir: &str) {
 
 /// Find session by agent name directly (for fallback when cwd lookup fails)
 fn find_session_by_agent_name(agent_name: &str) -> Option<String> {
-    use crate::tmux::session::session_exists;
     use crate::config::TeamConfig;
     use crate::constants::team_agent_session;
+    use crate::tmux::session::session_exists;
 
     // Load team config to get valid agent names
     let agent_names: Vec<String> = TeamConfig::load("default")
@@ -510,24 +538,27 @@ fn extract_message_content(json: &serde_json::Value, entry_type: &str) -> String
                         "tool_use" => {
                             let name = item.get("name").and_then(|n| n.as_str()).unwrap_or("tool");
                             // Get the full input for the popup
-                            let input_str = item.get("input")
-                                .map(|i| {
-                                    // For AskUserQuestion, always serialize full JSON for proper rendering
-                                    if name == "AskUserQuestion" {
-                                        return serde_json::to_string_pretty(i).unwrap_or_default();
-                                    }
-                                    // For common tools, extract key info
-                                    if let Some(cmd) = i.get("command").and_then(|c| c.as_str()) {
-                                        cmd.to_string()
-                                    } else if let Some(path) = i.get("file_path").and_then(|p| p.as_str()) {
-                                        path.to_string()
-                                    } else if let Some(pattern) = i.get("pattern").and_then(|p| p.as_str()) {
-                                        pattern.to_string()
-                                    } else {
-                                        // Serialize the whole input as JSON
-                                        serde_json::to_string_pretty(i).unwrap_or_default()
-                                    }
-                                });
+                            let input_str = item.get("input").map(|i| {
+                                // For AskUserQuestion, always serialize full JSON for proper rendering
+                                if name == "AskUserQuestion" {
+                                    return serde_json::to_string_pretty(i).unwrap_or_default();
+                                }
+                                // For common tools, extract key info
+                                if let Some(cmd) = i.get("command").and_then(|c| c.as_str()) {
+                                    cmd.to_string()
+                                } else if let Some(path) =
+                                    i.get("file_path").and_then(|p| p.as_str())
+                                {
+                                    path.to_string()
+                                } else if let Some(pattern) =
+                                    i.get("pattern").and_then(|p| p.as_str())
+                                {
+                                    pattern.to_string()
+                                } else {
+                                    // Serialize the whole input as JSON
+                                    serde_json::to_string_pretty(i).unwrap_or_default()
+                                }
+                            });
 
                             if let Some(input) = input_str {
                                 tool_uses.push(format!("{}: {}", name, input));
@@ -588,9 +619,7 @@ fn truncate_smart(text: &str, max_len: usize) -> String {
     let text = text.trim();
 
     // Get first meaningful line
-    let first_line = text.lines()
-        .find(|l| !l.trim().is_empty())
-        .unwrap_or(text);
+    let first_line = text.lines().find(|l| !l.trim().is_empty()).unwrap_or(text);
 
     if first_line.len() <= max_len {
         return first_line.to_string();
@@ -626,7 +655,10 @@ fn extract_tool_name(json: &serde_json::Value, entry_type: &str) -> Option<Strin
     if let Some(content) = json.get("message")?.get("content")?.as_array() {
         for item in content {
             if item.get("type").and_then(|t| t.as_str()) == Some("tool_use") {
-                return item.get("name").and_then(|n| n.as_str()).map(|s| s.to_string());
+                return item
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .map(|s| s.to_string());
             }
         }
     }
@@ -638,8 +670,14 @@ fn extract_tool_name(json: &serde_json::Value, entry_type: &str) -> Option<Strin
 fn extract_token_usage(json: &serde_json::Value) -> Option<TokenInfo> {
     let usage = json.get("message")?.get("usage")?;
 
-    let input = usage.get("input_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
-    let output = usage.get("output_tokens").and_then(|v| v.as_u64()).unwrap_or(0);
+    let input = usage
+        .get("input_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    let output = usage
+        .get("output_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
 
     if input > 0 || output > 0 {
         Some(TokenInfo { input, output })
@@ -656,7 +694,10 @@ pub async fn stop_history_stream() -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn load_history_entries(app_handle: AppHandle, hours: Option<u64>) -> Result<String, String> {
+pub async fn load_history_entries(
+    app_handle: AppHandle,
+    hours: Option<u64>,
+) -> Result<String, String> {
     let projects_dir = get_projects_dir()?;
     let hours = hours.unwrap_or(1); // Default to last 1 hour
     let cutoff_time = std::time::SystemTime::now() - Duration::from_secs(hours * 60 * 60);
@@ -684,8 +725,10 @@ pub async fn load_history_entries(app_handle: AppHandle, hours: Option<u64>) -> 
         }
     }
 
-    let message = format!("Loaded {} sessions, skipped {} (older than {} hour(s))",
-                          loaded_count, skipped_count, hours);
+    let message = format!(
+        "Loaded {} sessions, skipped {} (older than {} hour(s))",
+        loaded_count, skipped_count, hours
+    );
     Ok(message)
 }
 

@@ -27,7 +27,7 @@ import {
   Ban,
   FileText
 } from 'lucide-react';
-import type { PipelineStageStatus } from '../../types/generated/cronos/PipelineStageStatus';
+import type { PipelineStageStatus } from '../../types/generated/scheduler/PipelineStageStatus';
 import { cn } from '@/lib/utils';
 
 const stageConfig = {
@@ -72,7 +72,7 @@ export function ImplementationPipelineDetail() {
   const handleTriggerAgent = async (agentName: string) => {
     setActionLoading(true);
     try {
-      await invoke('trigger_cron_agent', { name: agentName });
+      await invoke('trigger_scheduled_agent', { name: agentName });
       showSuccess(`Triggered ${agentName}`);
       await fetchPipelines();
     } catch (error) {
@@ -97,7 +97,7 @@ export function ImplementationPipelineDetail() {
   const handleResume = async (runId: string, prompt?: string) => {
     setActionLoading(true);
     try {
-      await invoke('relaunch_cron_session', { run_id: runId, follow_up_prompt: prompt || '' });
+      await invoke('relaunch_scheduled_session', { run_id: runId, follow_up_prompt: prompt || '' });
       showSuccess('Resumed session');
       await fetchPipelines();
     } catch (error) {
@@ -123,7 +123,7 @@ export function ImplementationPipelineDetail() {
   const handleAbortStage = async (agentName: string) => {
     setActionLoading(true);
     try {
-      await invoke('cancel_cron_agent', { name: agentName });
+      await invoke('cancel_scheduled_agent', { name: agentName });
       showSuccess('Stage aborted');
       setAbortStageDialog(null);
       await fetchPipelines();

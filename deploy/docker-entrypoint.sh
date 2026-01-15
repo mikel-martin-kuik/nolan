@@ -16,18 +16,18 @@ export NOLAN_DATA_ROOT
 NOLAN_APP_ROOT="${NOLAN_APP_ROOT:-/nolan/app}"
 export NOLAN_APP_ROOT
 
-# Derive nolan_root (parent of app root) for cronos
+# Derive nolan_root (parent of app root) for scheduler
 NOLAN_ROOT="$(dirname "$NOLAN_APP_ROOT")"
 
 echo "Data root: $NOLAN_DATA_ROOT"
 echo "App root:  $NOLAN_APP_ROOT"
 echo "Nolan root: $NOLAN_ROOT"
 
-# Create app directory structure (for cronos source definitions)
+# Create app directory structure (for scheduler source definitions)
 echo "Initializing app directories..."
 mkdir -p "$NOLAN_APP_ROOT"
-mkdir -p "$NOLAN_ROOT/cronos/agents"
-echo "  Created: $NOLAN_ROOT/cronos/agents"
+mkdir -p "$NOLAN_ROOT/agents"
+echo "  Created: $NOLAN_ROOT/agents"
 
 # Create required data directories
 echo "Initializing data directories..."
@@ -41,8 +41,8 @@ directories=(
     "$NOLAN_DATA_ROOT/.state/scheduler"
     "$NOLAN_DATA_ROOT/.state/handoffs"
     "$NOLAN_DATA_ROOT/.state/feedback"
-    "$NOLAN_DATA_ROOT/cronos"
-    "$NOLAN_DATA_ROOT/cronos/runs"
+    "$NOLAN_DATA_ROOT/scheduler"
+    "$NOLAN_DATA_ROOT/scheduler/runs"
 )
 
 for dir in "${directories[@]}"; do
@@ -215,8 +215,8 @@ agent_display_names:
 
 session_prefixes:
   team: "agent-"
-  cron: "cron-"
-  predefined: "pred-"
+  scheduled: ""  # No longer using prefixes for scheduled agents
+  predefined: ""  # No longer using prefixes for predefined agents
 
 ollama_defaults:
   url: "http://localhost:11434"

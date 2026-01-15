@@ -163,19 +163,64 @@ if not config_path.exists():
 config = yaml.safe_load(config_path.read_text())
 phases = config.get("team", {}).get("workflow", {}).get("phases", [])
 
-# Find current agent phase and get next
-for phase in phases:
+# Find current agent phase index and get next from array position
+for i, phase in enumerate(phases):
     if phase.get("owner") == current_agent:
-        next_phase_name = phase.get("next")
-        if not next_phase_name:
-            # Workflow complete
+        if i >= len(phases) - 1:
+            # Last phase - workflow complete
             exit(0)
-        # Find owner of next phase
-        for next_phase in phases:
-            if next_phase.get("name") == next_phase_name:
-                print(next_phase.get("owner", ""))
-                exit(0)
-        break
+        # Next phase is the next item in array
+        next_phase = phases[i + 1]
+        print(next_phase.get("owner", ""))
+        exit(0)
+'
+}
+
+# Get workflow output files from team config
+# Usage: output_files=$(get_workflow_output_files "/path/to/project")
+# Returns: space-separated list of output files (e.g., "research.md plan.md progress.md")
+get_workflow_output_files() {
+    local project_path="$1"
+    local team_name
+
+    # NOLAN_ROOT is required
+    if [[ -z "${NOLAN_ROOT:-}" ]]; then
+        echo "Error: NOLAN_ROOT environment variable is not set" >&2
+        return 1
+    fi
+
+    # Use NOLAN_DATA_ROOT for teams (with fallback to NOLAN_ROOT)
+    local data_root="${NOLAN_DATA_ROOT:-$HOME/.nolan}"
+
+    # Get team name using YAML-aware parser
+    team_name=$(get_team_name "$project_path") || return 1
+
+    # Query team config for workflow phase output files
+    HOOK_DATA_ROOT="$data_root" HOOK_TEAM_NAME="$team_name" python3 -c '
+import yaml, os
+from pathlib import Path
+
+data_root = os.environ["HOOK_DATA_ROOT"]
+team_name = os.environ["HOOK_TEAM_NAME"]
+
+config_path = Path(data_root) / "teams" / team_name / "team.yaml"
+if not config_path.exists():
+    exit(0)  # Return empty on error
+
+config = yaml.safe_load(config_path.read_text())
+phases = config.get("team", {}).get("workflow", {}).get("phases", [])
+
+# Collect output files from all phases
+output_files = []
+for phase in phases:
+    output = phase.get("output", "")
+    if output:
+        if not output.endswith(".md"):
+            output = f"{output}.md"
+        if output not in output_files:
+            output_files.append(output)
+
+print(" ".join(output_files))
 '
 }
 

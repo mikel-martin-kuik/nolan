@@ -3,12 +3,7 @@
 //! Note: Status change events are not emitted in HTTP mode.
 //! Frontend should poll get_status for updates.
 
-use axum::{
-    extract::Path,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::Path, http::StatusCode, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 
 use crate::commands::lifecycle::{self, AgentStatusList};
@@ -69,7 +64,10 @@ pub async fn launch_team(
     }
 
     if !errors.is_empty() && started.is_empty() {
-        Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, errors.join("; ")))
+        Err(error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            errors.join("; "),
+        ))
     } else {
         Ok(Json(serde_json::json!({
             "started": started,
@@ -163,13 +161,91 @@ pub struct KillAllRequest {
     agent: String,
 }
 
-/// Kill all instances for a team
-pub async fn kill_all(
-    Json(req): Json<KillAllRequest>,
-) -> Result<Json<serde_json::Value>, impl IntoResponse> {
-    match lifecycle_core::kill_team_sessions(&req.team_name) {
-        Ok(result) => Ok(Json(serde_json::json!({ "result": result }))),
-        Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+/// Kill all instances - handles both Ralph instances and team sessions
+pub async fn kill_all(Json(req): Json<KillAllRequest>) -> Result<Json<String>, impl IntoResponse> {
+    // For Ralph, use special kill-all-ralph logic
+    if req.agent == "ralph" {
+        match kill_all_ralph_instances() {
+            Ok(result) => Ok(Json(result)),
+            Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+        }
+    } else {
+        // For team agents, use kill_team_sessions
+        match lifecycle_core::kill_team_sessions(&req.team_name) {
+            Ok(result) => Ok(Json(result)),
+            Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),
+        }
+    }
+}
+
+/// Kill all Ralph instances (HTTP version - no event emission)
+fn kill_all_ralph_instances() -> Result<String, String> {
+    use crate::constants::parse_ralph_session;
+    use std::fs;
+
+    let sessions = crate::tmux::session::list_sessions()?;
+    let mut killed: Vec<String> = Vec::new();
+    let mut cleaned: Vec<String> = Vec::new();
+
+    let agents_dir =
+        crate::utils::paths::get_agents_dir().unwrap_or_else(|_| std::path::PathBuf::new());
+
+    // Kill all Ralph sessions
+    for session in &sessions {
+        if let Some(instance_id) = parse_ralph_session(session) {
+            if crate::tmux::session::kill_session(session).is_ok() {
+                // Only delete ephemeral directories (where .claude is a symlink)
+                let agent_path = agents_dir.join(format!("agent-ralph-{}", instance_id));
+                let claude_path = agent_path.join(".claude");
+                if agent_path.exists() && claude_path.is_symlink() {
+                    let _ = fs::remove_dir_all(&agent_path);
+                }
+                killed.push(session.to_string());
+            }
+        }
+    }
+
+    // Clean up session labels
+    crate::commands::session_labels::clear_all_ralph_labels();
+
+    // Clean up orphaned ephemeral directories
+    if agents_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&agents_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.starts_with("agent-ralph-") && !sessions.contains(&name) {
+                    let claude_path = entry.path().join(".claude");
+                    if claude_path.is_symlink() {
+                        if fs::remove_dir_all(entry.path()).is_ok() {
+                            cleaned.push(name);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Build response
+    let mut messages: Vec<String> = Vec::new();
+    if !killed.is_empty() {
+        messages.push(format!(
+            "Killed {} ralph instances: {}",
+            killed.len(),
+            killed.join(", ")
+        ));
+    }
+    if !cleaned.is_empty() {
+        messages.push(format!(
+            "Cleaned {} orphaned directories: {}",
+            cleaned.len(),
+            cleaned.join(", ")
+        ));
+    }
+
+    if messages.is_empty() {
+        Ok("No ralph instances or orphaned directories found".to_string())
+    } else {
+        Ok(messages.join(". "))
     }
 }
 
@@ -200,7 +276,8 @@ pub async fn list_sessions() -> Result<Json<Vec<String>>, impl IntoResponse> {
 }
 
 /// List session labels - returns all custom session labels
-pub async fn list_session_labels() -> Result<Json<crate::commands::session_labels::SessionLabelsListResponse>, impl IntoResponse> {
+pub async fn list_session_labels(
+) -> Result<Json<crate::commands::session_labels::SessionLabelsListResponse>, impl IntoResponse> {
     match crate::commands::session_labels::list_session_labels().await {
         Ok(labels) => Ok(Json(labels)),
         Err(e) => Err(error_response(StatusCode::INTERNAL_SERVER_ERROR, e)),

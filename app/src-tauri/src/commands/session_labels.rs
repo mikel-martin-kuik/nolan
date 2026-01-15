@@ -4,20 +4,19 @@
 //! for easier identification. Labels are stored in memory and persist until the agent
 //! is killed. The tmux window title is updated to reflect the custom label.
 
+use once_cell::sync::Lazy;
+use serde::Serialize;
 use std::collections::HashMap;
 use std::process::Command;
 use std::sync::RwLock;
-use once_cell::sync::Lazy;
-use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 use crate::constants::RE_RALPH_SESSION;
 
 /// In-memory storage for session labels
 /// Labels persist until the agent is killed (as per user requirement)
-static SESSION_LABELS: Lazy<RwLock<HashMap<String, String>>> = Lazy::new(|| {
-    RwLock::new(HashMap::new())
-});
+static SESSION_LABELS: Lazy<RwLock<HashMap<String, String>>> =
+    Lazy::new(|| RwLock::new(HashMap::new()));
 
 /// Response for get_session_label command
 #[derive(Serialize)]
@@ -62,13 +61,19 @@ pub async fn set_session_label(
         return Err("Label must be 30 characters or less".to_string());
     }
     // Allow alphanumeric, spaces, hyphens, and underscores only
-    if !label.chars().all(|c| c.is_alphanumeric() || c == ' ' || c == '-' || c == '_') {
-        return Err("Label can only contain letters, numbers, spaces, hyphens, and underscores".to_string());
+    if !label
+        .chars()
+        .all(|c| c.is_alphanumeric() || c == ' ' || c == '-' || c == '_')
+    {
+        return Err(
+            "Label can only contain letters, numbers, spaces, hyphens, and underscores".to_string(),
+        );
     }
 
     // Store label in memory
     {
-        let mut labels = SESSION_LABELS.write()
+        let mut labels = SESSION_LABELS
+            .write()
             .map_err(|_| "Failed to acquire write lock for session labels")?;
         labels.insert(session.clone(), label.clone());
     }
@@ -91,10 +96,13 @@ pub async fn set_session_label(
     }
 
     // Emit event so UI updates
-    let _ = app_handle.emit("session-label-changed", serde_json::json!({
-        "session": session,
-        "label": label,
-    }));
+    let _ = app_handle.emit(
+        "session-label-changed",
+        serde_json::json!({
+            "session": session,
+            "label": label,
+        }),
+    );
 
     Ok(format!("Set label '{}' for session '{}'", label, session))
 }
@@ -103,7 +111,8 @@ pub async fn set_session_label(
 #[tauri::command]
 pub async fn get_session_label(session: String) -> Result<SessionLabelResponse, String> {
     let label = {
-        let labels = SESSION_LABELS.read()
+        let labels = SESSION_LABELS
+            .read()
             .map_err(|_| "Failed to acquire read lock for session labels")?;
         labels.get(&session).cloned()
     };
@@ -115,7 +124,8 @@ pub async fn get_session_label(session: String) -> Result<SessionLabelResponse, 
 #[tauri::command]
 pub async fn list_session_labels() -> Result<SessionLabelsListResponse, String> {
     let labels = {
-        let labels = SESSION_LABELS.read()
+        let labels = SESSION_LABELS
+            .read()
             .map_err(|_| "Failed to acquire read lock for session labels")?;
         labels.clone()
     };
@@ -125,13 +135,11 @@ pub async fn list_session_labels() -> Result<SessionLabelsListResponse, String> 
 
 /// Remove a session's custom label (restores default tmux title)
 #[tauri::command]
-pub async fn clear_session_label(
-    app_handle: AppHandle,
-    session: String,
-) -> Result<String, String> {
+pub async fn clear_session_label(app_handle: AppHandle, session: String) -> Result<String, String> {
     // Remove from memory
     let had_label = {
-        let mut labels = SESSION_LABELS.write()
+        let mut labels = SESSION_LABELS
+            .write()
             .map_err(|_| "Failed to acquire write lock for session labels")?;
         labels.remove(&session).is_some()
     };
@@ -149,10 +157,13 @@ pub async fn clear_session_label(
     }
 
     // Emit event so UI updates
-    let _ = app_handle.emit("session-label-changed", serde_json::json!({
-        "session": session,
-        "label": serde_json::Value::Null,
-    }));
+    let _ = app_handle.emit(
+        "session-label-changed",
+        serde_json::json!({
+            "session": session,
+            "label": serde_json::Value::Null,
+        }),
+    );
 
     Ok(format!("Cleared label for session '{}'", session))
 }

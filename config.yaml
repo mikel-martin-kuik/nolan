@@ -133,8 +133,8 @@ agent_display_names:
 - name: Warp
 session_prefixes:
   team: agent-
-  cron: cron-
-  predefined: pred-
+  scheduled: ""  # No longer using prefixes for scheduled agents
+  predefined: ""  # No longer using prefixes for predefined agents
 ollama_defaults:
   url: http://localhost:11434
   model: qwen2.5:1.5b
@@ -143,6 +143,14 @@ runtime:
   nolan_root: ''
   role_filename: CLAUDE.md
   team_filename: team.yaml
+pipeline:
+  # Raw user input file - only fed to starter (Layer 1) agents
+  prompt_file: prompt.md
+  # Structured specification file - fed to structured (Layer 2) agents
+  entrypoint_file: SPEC.md
 ssh_terminal:
   base_url: http://localhost:7681
   enabled: true
+# Default CLI provider for all agents (claude or opencode)
+# Can be changed in Settings > CLI Providers
+default_cli_provider: claude

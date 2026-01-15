@@ -3,11 +3,7 @@
 //! Provides endpoints for checking Ollama status, listing models,
 //! and generating text. All endpoints gracefully handle Ollama being unavailable.
 
-use axum::{
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 
 use crate::ollama;
@@ -110,9 +106,7 @@ pub async fn get_config() -> Json<ConfigResponse> {
 }
 
 /// Update Ollama config
-pub async fn update_config(
-    Json(req): Json<ConfigRequest>,
-) -> Json<ConfigResponse> {
+pub async fn update_config(Json(req): Json<ConfigRequest>) -> Json<ConfigResponse> {
     if let Some(url) = req.url {
         ollama::set_url(url);
     }

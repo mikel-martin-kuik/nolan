@@ -15,7 +15,7 @@ export const TemplateCard: React.FC<TemplateCardProps> = ({
   onInstall,
   isInstalling,
 }) => {
-  const displayName = template.name.replace('pred-', '');
+  const displayName = template.name;
 
   const handleClick = () => {
     if (!isInstalling) {

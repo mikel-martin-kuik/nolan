@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
-// Re-export EventType from cronos
-pub use crate::cronos::types::EventType;
+// Re-export EventType from scheduler
+pub use crate::scheduler::types::EventType;
 
 /// System event for the event bus
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]

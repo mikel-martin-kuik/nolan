@@ -20,9 +20,9 @@ import {
   AlertCircle,
   Ban
 } from 'lucide-react';
-import type { Pipeline } from '../../types/generated/cronos/Pipeline';
-import type { PipelineDefinition } from '../../types/generated/cronos/PipelineDefinition';
-import type { PipelineStageStatus } from '../../types/generated/cronos/PipelineStageStatus';
+import type { Pipeline } from '../../types/generated/scheduler/Pipeline';
+import type { PipelineDefinition } from '../../types/generated/scheduler/PipelineDefinition';
+import type { PipelineStageStatus } from '../../types/generated/scheduler/PipelineStageStatus';
 import { invoke } from '@/lib/api';
 import { cn } from '@/lib/utils';
 

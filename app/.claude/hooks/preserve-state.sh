@@ -71,21 +71,17 @@ if [[ -n "$latest_coordinator" ]]; then
     head -30 "$latest_coordinator"
     echo ""
 
-    # Preserve key sections from context.md
-    if [[ -f "$docs_path/context.md" ]]; then
-        echo "#### Project Context"
-        head -20 "$docs_path/context.md"
-        echo ""
-    fi
-
-    # List output files and their status
+    # List output files and their status (from team config)
     echo "#### Output Files"
-    for doc in research.md plan.md progress.md; do
-        if [[ -f "$docs_path/$doc" ]]; then
-            lines=$(wc -l < "$docs_path/$doc")
-            echo "- $doc: $lines lines"
-        fi
-    done
+    output_files=$(get_workflow_output_files "$docs_path" 2>/dev/null)
+    if [[ -n "$output_files" ]]; then
+        for doc in $output_files; do
+            if [[ -f "$docs_path/$doc" ]]; then
+                lines=$(wc -l < "$docs_path/$doc")
+                echo "- $doc: $lines lines"
+            fi
+        done
+    fi
 fi
 
 exit 0

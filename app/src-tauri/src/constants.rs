@@ -1,5 +1,5 @@
-use regex::Regex;
 use once_cell::sync::Lazy;
+use regex::Regex;
 
 // Agent names are now loaded from team configuration (teams/*.yaml)
 // Use TeamConfig::agent_names() for team agents
@@ -10,10 +10,9 @@ pub const PROTECTED_SESSIONS: &[&str] = &["communicator", "history-log", "lifecy
 
 /// Fun names for Ralph spawned instances (used instead of numbers)
 pub const RALPH_NAMES: &[&str] = &[
-    "ziggy", "nova", "echo", "pixel", "cosmo", "blitz", "dash", "flux",
-    "spark", "byte", "glitch", "neon", "pulse", "turbo", "zephyr", "volt",
-    "axel", "chip", "droid", "frost", "gizmo", "helix", "jade", "karma",
-    "luna", "mojo", "nitro", "onyx", "prism", "quark", "rogue", "sonic",
+    "ziggy", "nova", "echo", "pixel", "cosmo", "blitz", "dash", "flux", "spark", "byte", "glitch",
+    "neon", "pulse", "turbo", "zephyr", "volt", "axel", "chip", "droid", "frost", "gizmo", "helix",
+    "jade", "karma", "luna", "mojo", "nitro", "onyx", "prism", "quark", "rogue", "sonic",
 ];
 
 /// Pre-compiled regular expressions for agent session matching
@@ -49,8 +48,7 @@ pub static RE_AGENT_SESSION: Lazy<Regex> = Lazy::new(|| {
 /// Ralph is a free agent not bound to any team
 /// Examples: agent-ralph-ziggy, agent-ralph-nova
 pub static RE_RALPH_SESSION: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^agent-ralph-([a-z0-9]+)$")
-        .expect("Invalid regex pattern for ralph session")
+    Regex::new(r"^agent-ralph-([a-z0-9]+)$").expect("Invalid regex pattern for ralph session")
 });
 
 /// Matches team-scoped core agent target names: {team}:{name}
@@ -73,16 +71,14 @@ pub static RE_MESSAGE_ID: Lazy<Regex> = Lazy::new(|| {
 /// Matches agent name in delivery confirmation
 /// Format: "✓ Delivered to {agent}: MSG_SENDER_12345678"
 pub static RE_DELIVERY_AGENT: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"✓ Delivered to ([a-z0-9_-]+):")
-        .expect("Invalid regex pattern for delivery agent")
+    Regex::new(r"✓ Delivered to ([a-z0-9_-]+):").expect("Invalid regex pattern for delivery agent")
 });
 
 /// Matches message ID with sender identity
 /// Format: MSG_<SENDER>_<8-hex-chars>
 /// - Captures sender name (group 1) and hex ID (group 2)
 pub static RE_MESSAGE_ID_PARTS: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"MSG_([A-Z]+)_([a-f0-9]{8})")
-        .expect("Invalid regex pattern for message ID parts")
+    Regex::new(r"MSG_([A-Z]+)_([a-f0-9]{8})").expect("Invalid regex pattern for message ID parts")
 });
 
 /// Get NOLAN_ROOT environment variable with proper error handling
@@ -123,14 +119,19 @@ pub fn ralph_directory(name: &str) -> String {
 /// Returns the ralph name if it matches, None otherwise
 /// Note: Only accepts lowercase letters and digits to match RE_RALPH_SESSION regex pattern
 pub fn parse_ralph_session(session: &str) -> Option<&str> {
-    session.strip_prefix("agent-ralph-")
-        .filter(|name| !name.is_empty() && name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit()))
+    session.strip_prefix("agent-ralph-").filter(|name| {
+        !name.is_empty()
+            && name
+                .chars()
+                .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+    })
 }
 
 /// Check if a session name is a team agent session
 /// Returns (team, agent_name) if it matches, None otherwise
 pub fn parse_team_session(session: &str) -> Option<(String, String)> {
-    RE_CORE_AGENT.captures(session)
+    RE_CORE_AGENT
+        .captures(session)
         .map(|caps| (caps[1].to_string(), caps[2].to_string()))
 }
 

@@ -1,21 +1,32 @@
 import { create } from 'zustand';
 
-export type Tab = 'status' | 'chat' | 'files' | 'cronos' | 'workflows' | 'usage' | 'support' | 'settings';
+export type Tab = 'status' | 'chat' | 'files' | 'agents' | 'schedules' | 'workflows' | 'usage' | 'support' | 'settings' | 'builder';
+export type BuilderSubTab = 'triggers' | 'teams' | 'phases' | 'pipelines' | 'agent-roles';
 
 export interface NavigationContext {
-  // For cronos tab: agent name to select
-  cronAgentName?: string;
+  // For agents tab: agent name to select
+  agentName?: string;
   // For files tab: path to navigate to
   filePath?: string;
+  // For builder tab: team to edit
+  teamId?: string;
+  // For builder tab: phase to edit
+  phaseId?: string;
 }
 
 interface NavigationStore {
   // Current tab (managed by App.tsx, but can be read by other components)
   activeTab: Tab;
+  // Builder sub-tab for deep-linking
+  builderSubTab: BuilderSubTab;
   // Context for deep-linking
   context: NavigationContext;
   // Navigate to a tab with optional context
   navigateTo: (tab: Tab, context?: NavigationContext) => void;
+  // Navigate to builder with specific sub-tab
+  navigateToBuilder: (subTab: BuilderSubTab, context?: NavigationContext) => void;
+  // Set builder sub-tab
+  setBuilderSubTab: (subTab: BuilderSubTab) => void;
   // Clear context after it's been consumed
   clearContext: () => void;
   // Set active tab (called by App.tsx to sync state)
@@ -24,10 +35,19 @@ interface NavigationStore {
 
 export const useNavigationStore = create<NavigationStore>((set) => ({
   activeTab: 'status',
+  builderSubTab: 'triggers',
   context: {},
 
   navigateTo: (tab, context = {}) => {
     set({ activeTab: tab, context });
+  },
+
+  navigateToBuilder: (subTab, context = {}) => {
+    set({ activeTab: 'builder', builderSubTab: subTab, context });
+  },
+
+  setBuilderSubTab: (subTab) => {
+    set({ builderSubTab: subTab });
   },
 
   clearContext: () => {

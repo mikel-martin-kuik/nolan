@@ -2,10 +2,10 @@ import { useMemo } from 'react';
 import { invoke } from '@/lib/api';
 import { useFetchData } from './useFetchData';
 import { usePollingEffect } from './usePollingEffect';
-import type { CronAgentInfo } from '@/types';
+import type { ScheduledAgentInfo } from '@/types';
 
 export interface UseEventAgentsResult {
-  agents: CronAgentInfo[];
+  agents: ScheduledAgentInfo[];
   loading: boolean;
   hasRunningAgents: boolean;
   refreshAgents: () => Promise<void>;
@@ -23,15 +23,15 @@ export function useEventAgents(): UseEventAgentsResult {
     loading,
     refresh: refreshAgents,
   } = useFetchData({
-    fetcher: () => invoke<CronAgentInfo[]>('list_cron_agents'),
+    fetcher: () => invoke<ScheduledAgentInfo[]>('list_scheduled_agents'),
     defaultValue: [],
     errorMessage: 'Failed to load agents',
-    init: () => invoke('init_cronos'),
+    init: () => invoke('init_scheduler'),
   });
 
-  // Filter to only event agents
+  // Filter to agents with event triggers
   const agents = useMemo(
-    () => allAgents.filter(a => a.agent_type === 'event'),
+    () => allAgents.filter(a => a.event_trigger != null),
     [allAgents]
   );
 

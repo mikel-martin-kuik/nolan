@@ -2,10 +2,10 @@
 //! Provides directory listing, file reading, and file search capabilities
 //! for the File Browser panel.
 
+use crate::utils::paths::{get_nolan_data_root, get_projects_dir};
+use serde::Serialize;
 use std::fs;
 use std::path::PathBuf;
-use serde::Serialize;
-use crate::utils::paths::{get_nolan_data_root, get_projects_dir};
 
 /// A single entry in a directory listing (file or subdirectory)
 #[derive(Debug, Clone, Serialize)]
@@ -116,14 +116,17 @@ fn get_mime_type(extension: &str) -> String {
         "svg" => "image/svg+xml",
         "webp" => "image/webp",
         _ => "application/octet-stream",
-    }.to_string()
+    }
+    .to_string()
 }
 
 /// Check if a file is editable (text-based)
 fn is_editable(extension: &str, mime_type: &str) -> bool {
     // .md, .txt, and .yaml/.yml are editable
-    matches!(extension.to_lowercase().as_str(), "md" | "txt" | "yaml" | "yml")
-        || mime_type.starts_with("text/markdown")
+    matches!(
+        extension.to_lowercase().as_str(),
+        "md" | "txt" | "yaml" | "yml"
+    ) || mime_type.starts_with("text/markdown")
         || mime_type == "text/plain"
         || mime_type == "text/yaml"
 }
@@ -156,15 +159,9 @@ fn validate_path(path: &str) -> Result<PathBuf, String> {
 
     let nolan_root = get_nolan_data_root()?;
 
-    let allowed_roots = vec![
-        home_dir.clone(),
-        nolan_root,
-        PathBuf::from("/tmp"),
-    ];
+    let allowed_roots = vec![home_dir.clone(), nolan_root, PathBuf::from("/tmp")];
 
-    let is_allowed = allowed_roots.iter().any(|root| {
-        canonical.starts_with(root)
-    });
+    let is_allowed = allowed_roots.iter().any(|root| canonical.starts_with(root));
 
     if !is_allowed {
         return Err("Access denied: path outside allowed directories".to_string());
@@ -187,7 +184,10 @@ fn validate_path(path: &str) -> Result<PathBuf, String> {
 
 /// List contents of a directory
 #[tauri::command(rename_all = "snake_case")]
-pub async fn browse_directory(path: String, show_hidden: Option<bool>) -> Result<DirectoryContents, String> {
+pub async fn browse_directory(
+    path: String,
+    show_hidden: Option<bool>,
+) -> Result<DirectoryContents, String> {
     let canonical = validate_path(&path)?;
     let show_hidden = show_hidden.unwrap_or(false);
 
@@ -195,8 +195,8 @@ pub async fn browse_directory(path: String, show_hidden: Option<bool>) -> Result
         return Err("Path is not a directory".to_string());
     }
 
-    let entries_iter = fs::read_dir(&canonical)
-        .map_err(|e| format!("Failed to read directory: {}", e))?;
+    let entries_iter =
+        fs::read_dir(&canonical).map_err(|e| format!("Failed to read directory: {}", e))?;
 
     let mut entries: Vec<FileSystemEntry> = Vec::new();
 
@@ -228,13 +228,11 @@ pub async fn browse_directory(path: String, show_hidden: Option<bool>) -> Result
         let modified_time = metadata.as_ref().and_then(|m| m.modified().ok());
         let last_modified = modified_time
             .and_then(|time| {
-                time.duration_since(std::time::UNIX_EPOCH)
-                    .ok()
-                    .map(|d| {
-                        chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
-                            .map(|dt| dt.to_rfc3339())
-                            .unwrap_or_default()
-                    })
+                time.duration_since(std::time::UNIX_EPOCH).ok().map(|d| {
+                    chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
+                        .map(|dt| dt.to_rfc3339())
+                        .unwrap_or_default()
+                })
             })
             .unwrap_or_default();
 
@@ -262,12 +260,10 @@ pub async fn browse_directory(path: String, show_hidden: Option<bool>) -> Result
     }
 
     // Sort: directories first, then alphabetically (case-insensitive)
-    entries.sort_by(|a, b| {
-        match (a.is_directory, b.is_directory) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
-        }
+    entries.sort_by(|a, b| match (a.is_directory, b.is_directory) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
     });
 
     let total_count = entries.len();
@@ -295,8 +291,8 @@ pub async fn read_file_content(path: String) -> Result<FileContent, String> {
         return Err("Path is not a file".to_string());
     }
 
-    let metadata = fs::metadata(&canonical)
-        .map_err(|e| format!("Failed to read file metadata: {}", e))?;
+    let metadata =
+        fs::metadata(&canonical).map_err(|e| format!("Failed to read file metadata: {}", e))?;
 
     let size = metadata.len();
 
@@ -316,8 +312,7 @@ pub async fn read_file_content(path: String) -> Result<FileContent, String> {
     let is_text = mime_type.starts_with("text/") || mime_type.starts_with("application/json");
 
     let content = if is_text {
-        fs::read_to_string(&canonical)
-            .map_err(|e| format!("Failed to read file: {}", e))?
+        fs::read_to_string(&canonical).map_err(|e| format!("Failed to read file: {}", e))?
     } else {
         // For binary files, just indicate it's not displayable as text
         String::new()
@@ -352,11 +347,12 @@ pub async fn write_file_content(path: String, content: String) -> Result<(), Str
     let mime_type = get_mime_type(&extension);
 
     if !is_editable(&extension, &mime_type) {
-        return Err("File is not editable (only .md, .txt, and .yaml files can be edited)".to_string());
+        return Err(
+            "File is not editable (only .md, .txt, and .yaml files can be edited)".to_string(),
+        );
     }
 
-    fs::write(&canonical, content)
-        .map_err(|e| format!("Failed to write file: {}", e))?;
+    fs::write(&canonical, content).map_err(|e| format!("Failed to write file: {}", e))?;
 
     Ok(())
 }
@@ -391,8 +387,7 @@ pub async fn search_files(
             return Ok(());
         }
 
-        let entries = fs::read_dir(dir)
-            .map_err(|_| "Failed to read directory")?;
+        let entries = fs::read_dir(dir).map_err(|_| "Failed to read directory")?;
 
         for entry in entries.flatten() {
             if results.len() >= max_results {
@@ -439,7 +434,14 @@ pub async fn search_files(
         Ok(())
     }
 
-    search_recursive(&canonical, &canonical, &pattern_lower, &mut results, max_results, 0)?;
+    search_recursive(
+        &canonical,
+        &canonical,
+        &pattern_lower,
+        &mut results,
+        max_results,
+        0,
+    )?;
 
     // Sort by relevance: exact matches first, then by path length
     results.sort_by(|a, b| {
@@ -461,8 +463,8 @@ pub async fn search_files(
 pub async fn get_file_metadata(path: String) -> Result<FileSystemEntry, String> {
     let canonical = validate_path(&path)?;
 
-    let metadata = fs::metadata(&canonical)
-        .map_err(|e| format!("Failed to read metadata: {}", e))?;
+    let metadata =
+        fs::metadata(&canonical).map_err(|e| format!("Failed to read metadata: {}", e))?;
 
     let name = canonical
         .file_name()
@@ -475,13 +477,11 @@ pub async fn get_file_metadata(path: String) -> Result<FileSystemEntry, String> 
     let modified_time = metadata.modified().ok();
     let last_modified = modified_time
         .and_then(|time| {
-            time.duration_since(std::time::UNIX_EPOCH)
-                .ok()
-                .map(|d| {
-                    chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
-                        .map(|dt| dt.to_rfc3339())
-                        .unwrap_or_default()
-                })
+            time.duration_since(std::time::UNIX_EPOCH).ok().map(|d| {
+                chrono::DateTime::from_timestamp(d.as_secs() as i64, 0)
+                    .map(|dt| dt.to_rfc3339())
+                    .unwrap_or_default()
+            })
         })
         .unwrap_or_default();
 
@@ -524,13 +524,13 @@ pub async fn create_file(path: String) -> Result<FileSystemEntry, String> {
         &PathBuf::from(&path)
             .parent()
             .ok_or("Invalid path: no parent directory")?
-            .to_string_lossy()
+            .to_string_lossy(),
     )?;
 
     let file_path = canonical_parent.join(
         PathBuf::from(&path)
             .file_name()
-            .ok_or("Invalid path: no filename")?
+            .ok_or("Invalid path: no filename")?,
     );
 
     // Check if file already exists
@@ -539,8 +539,7 @@ pub async fn create_file(path: String) -> Result<FileSystemEntry, String> {
     }
 
     // Create empty file
-    fs::write(&file_path, "")
-        .map_err(|e| format!("Failed to create file: {}", e))?;
+    fs::write(&file_path, "").map_err(|e| format!("Failed to create file: {}", e))?;
 
     // Return file metadata
     get_file_metadata(file_path.to_string_lossy().to_string()).await
@@ -553,13 +552,13 @@ pub async fn create_directory(path: String) -> Result<FileSystemEntry, String> {
         &PathBuf::from(&path)
             .parent()
             .ok_or("Invalid path: no parent directory")?
-            .to_string_lossy()
+            .to_string_lossy(),
     )?;
 
     let dir_path = canonical_parent.join(
         PathBuf::from(&path)
             .file_name()
-            .ok_or("Invalid path: no directory name")?
+            .ok_or("Invalid path: no directory name")?,
     );
 
     // Check if directory already exists
@@ -568,8 +567,7 @@ pub async fn create_directory(path: String) -> Result<FileSystemEntry, String> {
     }
 
     // Create directory
-    fs::create_dir(&dir_path)
-        .map_err(|e| format!("Failed to create directory: {}", e))?;
+    fs::create_dir(&dir_path).map_err(|e| format!("Failed to create directory: {}", e))?;
 
     // Return directory metadata
     get_file_metadata(dir_path.to_string_lossy().to_string()).await
@@ -584,8 +582,7 @@ pub async fn delete_file(path: String) -> Result<(), String> {
         return Err("Path is not a file".to_string());
     }
 
-    fs::remove_file(&canonical)
-        .map_err(|e| format!("Failed to delete file: {}", e))?;
+    fs::remove_file(&canonical).map_err(|e| format!("Failed to delete file: {}", e))?;
 
     Ok(())
 }
@@ -600,8 +597,7 @@ pub async fn delete_directory(path: String, recursive: Option<bool>) -> Result<(
     }
 
     if recursive.unwrap_or(false) {
-        fs::remove_dir_all(&canonical)
-            .map_err(|e| format!("Failed to delete directory: {}", e))?;
+        fs::remove_dir_all(&canonical).map_err(|e| format!("Failed to delete directory: {}", e))?;
     } else {
         fs::remove_dir(&canonical)
             .map_err(|e| format!("Failed to delete directory (not empty?): {}", e))?;
@@ -627,7 +623,7 @@ pub async fn rename_file(old_path: String, new_path: String) -> Result<FileSyste
     let new_file_path = canonical_parent.join(
         PathBuf::from(&new_path)
             .file_name()
-            .ok_or("Invalid new path: no filename")?
+            .ok_or("Invalid new path: no filename")?,
     );
 
     // Check if new path already exists
@@ -636,8 +632,7 @@ pub async fn rename_file(old_path: String, new_path: String) -> Result<FileSyste
     }
 
     // Rename/move
-    fs::rename(&canonical_old, &new_file_path)
-        .map_err(|e| format!("Failed to rename: {}", e))?;
+    fs::rename(&canonical_old, &new_file_path).map_err(|e| format!("Failed to rename: {}", e))?;
 
     // Return new file metadata
     get_file_metadata(new_file_path.to_string_lossy().to_string()).await

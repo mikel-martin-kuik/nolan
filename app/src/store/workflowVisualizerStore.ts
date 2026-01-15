@@ -8,7 +8,7 @@ import type {
   PhaseNodeData,
   PhaseNodeStatus
 } from '../types/workflow';
-import type { Pipeline } from '../types/generated/cronos/Pipeline';
+import type { Pipeline } from '../types/generated/scheduler/Pipeline';
 
 interface NodePosition {
   x: number;
@@ -166,7 +166,7 @@ export const useWorkflowVisualizerStore = create<WorkflowVisualizerStore>()(
 
       retryStage: async (runId: string, prompt?: string) => {
         try {
-          await invoke('relaunch_cron_session', { run_id: runId, follow_up_prompt: prompt || '' });
+          await invoke('relaunch_scheduled_session', { run_id: runId, follow_up_prompt: prompt || '' });
           // Refresh pipelines after action
           await get().fetchPipelines();
         } catch (err) {

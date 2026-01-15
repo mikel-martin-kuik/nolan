@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { invoke } from '@/lib/api';
+import { useConfig } from '@/contexts/ConfigContext';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -27,7 +28,7 @@ import { FolderOpen, Plus, Rocket, FileText, MessageSquare, FileCheck } from 'lu
 export interface LaunchParams {
   projectName: string;
   isNew: boolean;
-  // For new projects: the initial prompt (written to prompt.md)
+  // For new projects: the initial prompt (written to prompt file)
   initialPrompt?: string;
   // For existing projects: updated original prompt (only if modified)
   updatedOriginalPrompt?: string;
@@ -54,6 +55,11 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
   isLoading = false,
   teamName,
 }) => {
+  // Get pipeline file names from config
+  const config = useConfig();
+  const entrypointFile = config?.pipeline?.entrypoint_file ?? 'SPEC.md';
+  const promptFile = config?.pipeline?.prompt_file ?? 'prompt.md';
+
   // Filter projects to only show those belonging to this team
   // Memoized to prevent unnecessary re-renders and effect triggers
   const teamProjects = useMemo(
@@ -65,37 +71,37 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
   const [newProjectName, setNewProjectName] = useState<string>('');
   // For new projects: the initial prompt
   const [newProjectPrompt, setNewProjectPrompt] = useState<string>('');
-  // For existing projects: original prompt from prompt.md
+  // For existing projects: original prompt from prompt file
   const [originalPrompt, setOriginalPrompt] = useState<string>('');
   const [savedOriginalPrompt, setSavedOriginalPrompt] = useState<string>(''); // Track original for diff
   const [loadingPrompt, setLoadingPrompt] = useState<boolean>(false);
   // For existing projects: followup prompt to send to Dan
   const [followupPrompt, setFollowupPrompt] = useState<string>('');
-  // Track if project has SPEC.md (auto-generated from idea)
+  // Track if project has entrypoint file (auto-generated from idea)
   const [hasSpec, setHasSpec] = useState<boolean>(false);
 
-  // Fetch prompt.md and check for SPEC.md when project is selected
+  // Fetch prompt file and check for entrypoint file when project is selected
   const fetchProjectPrompt = async (projectName: string) => {
     setLoadingPrompt(true);
     try {
       const result = await invoke<string | { content: string }>('read_project_file', {
         project_name: projectName,
-        file_path: 'prompt.md',
+        file_path: promptFile,
       });
       const content = typeof result === 'string' ? result : result?.content ?? '';
       setOriginalPrompt(content);
       setSavedOriginalPrompt(content);
     } catch {
-      // No prompt.md exists yet - that's fine
+      // No prompt file exists yet - that's fine
       setOriginalPrompt('');
       setSavedOriginalPrompt('');
     }
 
-    // Check if SPEC.md exists (from idea-to-project conversion)
+    // Check if entrypoint file exists (from idea-to-project conversion)
     try {
       await invoke<string | { content: string }>('read_project_file', {
         project_name: projectName,
-        file_path: 'SPEC.md',
+        file_path: entrypointFile,
       });
       setHasSpec(true);
     } catch {
@@ -152,7 +158,7 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
   };
 
   // Validation
-  // For existing projects with SPEC.md, no prompt is required - agent will start automatically
+  // For existing projects with entrypoint file, no prompt is required - agent will start automatically
   const isValid = mode === 'existing'
     ? selectedProject !== '' && (hasSpec || followupPrompt.trim() !== '')
     : newProjectName.trim() !== '' && newProjectPrompt.trim() !== '';
@@ -170,7 +176,7 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
     } else {
       // Check if original prompt was modified
       const promptWasModified = originalPrompt.trim() !== savedOriginalPrompt.trim();
-      // For SPEC.md projects without followup, pass undefined to trigger auto-start
+      // For entrypoint file projects without followup, pass undefined to trigger auto-start
       const effectiveFollowup = followupPrompt.trim() || undefined;
       onLaunch({
         projectName: selectedProject,
@@ -296,15 +302,15 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
             </div>
           )}
 
-          {/* Existing Project: Show SPEC.md indicator or prompt fields */}
+          {/* Existing Project: Show entrypoint file indicator or prompt fields */}
           {mode === 'existing' && selectedProject && (
             <>
-              {/* SPEC.md indicator - project is ready to auto-start */}
+              {/* Entrypoint file indicator - project is ready to auto-start */}
               {hasSpec && (
                 <div className="flex items-center gap-3 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
                   <FileCheck className="w-5 h-5 text-emerald-400 shrink-0" />
                   <div className="flex flex-col gap-0.5">
-                    <span className="text-sm text-emerald-400 font-medium">SPEC.md found</span>
+                    <span className="text-sm text-emerald-400 font-medium">{entrypointFile} found</span>
                     <span className="text-xs text-muted-foreground">
                       First phase agent will start automatically with the specification
                     </span>
@@ -312,7 +318,7 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
                 </div>
               )}
 
-              {/* Original Prompt (from prompt.md) - collapsed when SPEC.md exists */}
+              {/* Original Prompt (from prompt file) - collapsed when entrypoint file exists */}
               {!hasSpec && (
                 <div className="flex flex-col gap-2">
                   <label className="text-sm text-muted-foreground flex items-center gap-2">
@@ -339,7 +345,7 @@ export const ProjectSelectModal: React.FC<ProjectSelectModalProps> = ({
                 </div>
               )}
 
-              {/* Followup Prompt - optional when SPEC.md exists */}
+              {/* Followup Prompt - optional when entrypoint file exists */}
               <div className="flex flex-col gap-2">
                 <label className="text-sm text-muted-foreground flex items-center gap-2">
                   <MessageSquare className="w-4 h-4" />

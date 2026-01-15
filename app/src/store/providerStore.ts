@@ -62,18 +62,21 @@ export const useProviderStore = create<ProviderStore>((set) => ({
 
   // Set the default CLI provider for all agents
   setDefaultProvider: async (provider: string | null) => {
+    console.log('[ProviderStore] Setting default provider to:', provider);
     set({ status: 'loading', error: null });
 
     try {
       const result = await invoke<DefaultProviderResponse>('set_default_cli_provider', {
         provider,
       });
+      console.log('[ProviderStore] Result:', result);
 
       set({
         status: 'success',
         defaultProvider: result.default_provider,
       });
     } catch (error) {
+      console.error('[ProviderStore] Error setting default provider:', error);
       const message = error instanceof Error ? error.message : String(error);
       set({ status: 'error', error: message });
       throw error; // Re-throw so UI can handle it

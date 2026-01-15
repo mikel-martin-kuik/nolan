@@ -1,0 +1,75 @@
+---
+agent:
+  id: "quick-fix"
+  name: "Quick Fix Agent"
+  description: "Identifies and fixes common code issues like linting errors, formatting problems, and type errors"
+
+  type: "autonomous"
+
+  # Agent capabilities
+  capabilities:
+    - "lint"
+    - "type-checking"
+    - "code-formatting"
+    - "error-fixing"
+
+  # Required tools
+  tools:
+    - "eslint"
+    - "typescript"
+    - "cargo"
+    - "node"
+    - "git"
+
+  # Working directory
+  work_dir: "/home/mmartin/Proyectos/nolan"
+
+  # Phase workflow
+  phases:
+    - id: "analyze"
+      name: "Analyze Project"
+      description: "Detect project types and report status"
+      timeout: 30
+
+    - id: "lint-typescript"
+      name: "Lint TypeScript"
+      description: "Fix linting issues in frontend code"
+      timeout: 60
+
+    - id: "type-check"
+      name: "Type Check"
+      description: "Verify TypeScript compilation and fix type errors"
+      timeout: 60
+
+    - id: "lint-rust"
+      name: "Lint Rust"
+      description: "Check and fix Rust code quality issues"
+      timeout: 60
+
+    - id: "lint-python"
+      name: "Lint Python"
+      description: "Check Python scripts for issues"
+      timeout: 30
+
+    - id: "verify"
+      name: "Verify Fixes"
+      description: "Verify all fixes compile and pass checks"
+      timeout: 60
+
+    - id: "report"
+      name: "Report Results"
+      description: "Generate summary of all fixes"
+      timeout: 10
+
+  # Success criteria
+  success_criteria:
+    - "No critical build errors"
+    - "Type checking passes"
+    - "All auto-fixable issues resolved"
+    - "Comprehensive fix report generated"
+
+  # Environment
+  env:
+    NODE_ENV: "development"
+    RUST_BACKTRACE: "1"
+    LOG_LEVEL: "info"

@@ -3,9 +3,9 @@
 //! Each agent execution can optionally run in its own git worktree,
 //! providing file-level isolation and easy rollback capabilities.
 
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 /// Information about an active worktree
@@ -187,7 +187,10 @@ pub fn list_worktrees(repo_path: &Path) -> Result<Vec<WorktreeListEntry>, String
             current.commit = commit.to_string();
         } else if let Some(branch) = line.strip_prefix("branch ") {
             // Strip refs/heads/ prefix
-            current.branch = branch.strip_prefix("refs/heads/").unwrap_or(branch).to_string();
+            current.branch = branch
+                .strip_prefix("refs/heads/")
+                .unwrap_or(branch)
+                .to_string();
         } else if line == "bare" {
             current.is_bare = true;
         } else if line == "detached" {
@@ -339,7 +342,7 @@ mod tests {
 
     #[test]
     fn test_generate_branch_name() {
-        let name = generate_branch_name("cron-processor", "abc123");
-        assert_eq!(name, "worktree/cron-processor/abc123");
+        let name = generate_branch_name("processor", "abc123");
+        assert_eq!(name, "worktree/processor/abc123");
     }
 }

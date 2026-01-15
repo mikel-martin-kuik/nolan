@@ -1,7 +1,16 @@
+use crate::config::{DepartmentsConfig, TeamConfig, TeamInfo};
+use serde::{Deserialize, Serialize};
+use serde_json;
 use std::fs;
 use std::path::PathBuf;
 use walkdir::WalkDir;
-use crate::config::{TeamConfig, DepartmentsConfig, TeamInfo};
+
+/// Agent metadata stored in agent.json
+#[derive(Serialize, Deserialize)]
+struct AgentMetadata {
+    role: String,
+    model: String,
+}
 
 /// Get team configuration by name
 #[tauri::command(rename_all = "snake_case")]
@@ -21,12 +30,22 @@ pub async fn save_team_config(team_name: String, config: TeamConfig) -> Result<(
     }
 
     // Validate team name format
-    if !team_name.chars().next().map(|c| c.is_ascii_lowercase()).unwrap_or(false) {
+    if !team_name
+        .chars()
+        .next()
+        .map(|c| c.is_ascii_lowercase())
+        .unwrap_or(false)
+    {
         return Err("Team name must start with a lowercase letter".to_string());
     }
 
-    if !team_name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
-        return Err("Team name must contain only lowercase letters, digits, and underscores".to_string());
+    if !team_name
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+    {
+        return Err(
+            "Team name must contain only lowercase letters, digits, and underscores".to_string(),
+        );
     }
 
     // Create team directory structure: teams/{team_name}/
@@ -47,12 +66,39 @@ pub async fn save_team_config(team_name: String, config: TeamConfig) -> Result<(
     let config_path = crate::utils::paths::get_team_config_path(&team_name)?;
 
     // Serialize to YAML
-    let yaml_content = serde_yaml::to_string(&config)
-        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+    let yaml_content =
+        serde_yaml::to_string(&config).map_err(|e| format!("Failed to serialize config: {}", e))?;
 
     // Write to file
     fs::write(&config_path, yaml_content)
         .map_err(|e| format!("Failed to write config file: {}", e))?;
+
+    // Create agent directories and agent.json for each agent
+    for agent in &config.team.agents {
+        let agent_dir = agents_dir.join(&agent.name);
+        if !agent_dir.exists() {
+            fs::create_dir_all(&agent_dir)
+                .map_err(|e| format!("Failed to create agent directory '{}': {}", agent.name, e))?;
+        }
+
+        // Write agent.json with role and model
+        let agent_json_path = agent_dir.join("agent.json");
+        let metadata = AgentMetadata {
+            role: agent.role.clone(),
+            model: agent.model.clone(),
+        };
+        let json_content = serde_json::to_string_pretty(&metadata)
+            .map_err(|e| format!("Failed to serialize agent metadata: {}", e))?;
+        fs::write(&agent_json_path, json_content)
+            .map_err(|e| format!("Failed to write agent.json for '{}': {}", agent.name, e))?;
+
+        // Create empty CLAUDE.md if it doesn't exist
+        let claude_md_path = agent_dir.join("CLAUDE.md");
+        if !claude_md_path.exists() {
+            fs::write(&claude_md_path, "")
+                .map_err(|e| format!("Failed to create CLAUDE.md for '{}': {}", agent.name, e))?;
+        }
+    }
 
     Ok(())
 }
@@ -60,12 +106,14 @@ pub async fn save_team_config(team_name: String, config: TeamConfig) -> Result<(
 /// Recursively scan a directory for team configurations
 /// Supports both new format (team_name/team.yaml) and old format (team_name.yaml)
 /// Returns tuples of (team_id, group, relative_path)
-fn scan_teams_recursive(teams_dir: &std::path::Path) -> Result<Vec<(String, String, String)>, String> {
+fn scan_teams_recursive(
+    teams_dir: &std::path::Path,
+) -> Result<Vec<(String, String, String)>, String> {
     let mut teams = Vec::new();
     let mut seen_teams = std::collections::HashSet::new();
 
     for entry in WalkDir::new(teams_dir)
-        .max_depth(3)  // Support teams/{team}/team.yaml and pillar/{team}/team.yaml
+        .max_depth(3) // Support teams/{team}/team.yaml and pillar/{team}/team.yaml
         .into_iter()
         .filter_map(|e| e.ok())
     {
@@ -78,15 +126,19 @@ fn scan_teams_recursive(teams_dir: &std::path::Path) -> Result<Vec<(String, Stri
 
         // Skip departments.yaml and template files (starting with _)
         let file_stem = path.file_stem().and_then(|s| s.to_str());
-        if file_stem == Some("departments") || file_stem.map(|s| s.starts_with('_')).unwrap_or(false) {
+        if file_stem == Some("departments")
+            || file_stem.map(|s| s.starts_with('_')).unwrap_or(false)
+        {
             continue;
         }
 
         // Get relative path from teams_dir
-        let relative = path.strip_prefix(teams_dir)
+        let relative = path
+            .strip_prefix(teams_dir)
             .map_err(|_| "Failed to get relative path")?;
 
-        let relative_str = relative.to_str()
+        let relative_str = relative
+            .to_str()
             .ok_or("Invalid path encoding")?
             .to_string();
 
@@ -94,7 +146,8 @@ fn scan_teams_recursive(teams_dir: &std::path::Path) -> Result<Vec<(String, Stri
         let (team_id, group) = if file_stem == Some("team") {
             // New format: teams/{team}/team.yaml or teams/{group}/{team}/team.yaml
             let parent = path.parent().ok_or("No parent directory")?;
-            let team_name = parent.file_name()
+            let team_name = parent
+                .file_name()
                 .and_then(|s| s.to_str())
                 .ok_or("Invalid team directory name")?;
 
@@ -114,7 +167,8 @@ fn scan_teams_recursive(teams_dir: &std::path::Path) -> Result<Vec<(String, Stri
         } else {
             // Old format: teams/{team}.yaml or teams/{group}/{team}.yaml
             let stem = file_stem.ok_or("No file stem")?.to_string();
-            let group = relative.parent()
+            let group = relative
+                .parent()
                 .and_then(|p| p.to_str())
                 .unwrap_or("")
                 .to_string();
@@ -174,7 +228,8 @@ pub async fn list_teams_info() -> Result<Vec<TeamInfo>, String> {
     // Scan recursively
     let team_entries = scan_teams_recursive(&teams_dir)?;
 
-    let mut teams: Vec<TeamInfo> = team_entries.into_iter()
+    let mut teams: Vec<TeamInfo> = team_entries
+        .into_iter()
         .map(|(id, group, path)| {
             // Try to load team name from config, fall back to id
             let name = TeamConfig::load_from_path(&teams_dir.join(&path))
@@ -192,12 +247,10 @@ pub async fn list_teams_info() -> Result<Vec<TeamInfo>, String> {
         .collect();
 
     // Sort: root teams first, then by group, then by id
-    teams.sort_by(|a, b| {
-        match (a.group.is_empty(), b.group.is_empty()) {
-            (true, false) => std::cmp::Ordering::Less,
-            (false, true) => std::cmp::Ordering::Greater,
-            _ => a.group.cmp(&b.group).then(a.id.cmp(&b.id)),
-        }
+    teams.sort_by(|a, b| match (a.group.is_empty(), b.group.is_empty()) {
+        (true, false) => std::cmp::Ordering::Less,
+        (false, true) => std::cmp::Ordering::Greater,
+        _ => a.group.cmp(&b.group).then(a.id.cmp(&b.id)),
     });
 
     Ok(teams)
@@ -206,9 +259,11 @@ pub async fn list_teams_info() -> Result<Vec<TeamInfo>, String> {
 /// Get the team name for a specific project
 #[tauri::command(rename_all = "snake_case")]
 pub async fn get_project_team(project_name: String) -> Result<String, String> {
-    let projects_dir = std::env::var("PROJECTS_DIR")
-        .map_err(|_| "PROJECTS_DIR not set".to_string())?;
-    let team_file = PathBuf::from(projects_dir).join(&project_name).join(".team");
+    let projects_dir =
+        std::env::var("PROJECTS_DIR").map_err(|_| "PROJECTS_DIR not set".to_string())?;
+    let team_file = PathBuf::from(projects_dir)
+        .join(&project_name)
+        .join(".team");
 
     if team_file.exists() {
         Ok(fs::read_to_string(&team_file)
@@ -240,12 +295,22 @@ pub async fn rename_team_config(old_name: String, new_name: String) -> Result<()
     }
 
     // Validate new name format
-    if !new_name.chars().next().map(|c| c.is_ascii_lowercase()).unwrap_or(false) {
+    if !new_name
+        .chars()
+        .next()
+        .map(|c| c.is_ascii_lowercase())
+        .unwrap_or(false)
+    {
         return Err("Team name must start with a lowercase letter".to_string());
     }
 
-    if !new_name.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_') {
-        return Err("Team name must contain only lowercase letters, digits, and underscores".to_string());
+    if !new_name
+        .chars()
+        .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+    {
+        return Err(
+            "Team name must contain only lowercase letters, digits, and underscores".to_string(),
+        );
     }
 
     // If names are the same, nothing to do
@@ -267,16 +332,18 @@ pub async fn rename_team_config(old_name: String, new_name: String) -> Result<()
     config.team.name = new_name.clone();
 
     // Serialize to YAML
-    let yaml_content = serde_yaml::to_string(&config)
-        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+    let yaml_content =
+        serde_yaml::to_string(&config).map_err(|e| format!("Failed to serialize config: {}", e))?;
 
     // Check if this is new format (team.yaml inside a team folder)
     let file_name = old_config_path.file_name().and_then(|s| s.to_str());
     if file_name == Some("team.yaml") {
         // New format: rename the entire team folder
-        let old_team_dir = old_config_path.parent()
+        let old_team_dir = old_config_path
+            .parent()
             .ok_or("Failed to get team directory")?;
-        let parent_dir = old_team_dir.parent()
+        let parent_dir = old_team_dir
+            .parent()
             .ok_or("Failed to get parent directory")?;
         let new_team_dir = parent_dir.join(&new_name);
 
@@ -290,7 +357,8 @@ pub async fn rename_team_config(old_name: String, new_name: String) -> Result<()
             .map_err(|e| format!("Failed to update config file: {}", e))?;
     } else {
         // Old format: just rename the yaml file
-        let parent_dir = old_config_path.parent()
+        let parent_dir = old_config_path
+            .parent()
             .ok_or_else(|| "Failed to get parent directory".to_string())?;
         let new_path = parent_dir.join(format!("{}.yaml", new_name));
 
@@ -317,8 +385,8 @@ pub async fn set_project_team(project_name: String, team_name: String) -> Result
     }
 
     // Verify project exists
-    let projects_dir = std::env::var("PROJECTS_DIR")
-        .map_err(|_| "PROJECTS_DIR not set".to_string())?;
+    let projects_dir =
+        std::env::var("PROJECTS_DIR").map_err(|_| "PROJECTS_DIR not set".to_string())?;
     let project_path = PathBuf::from(&projects_dir).join(&project_name);
 
     if !project_path.exists() || !project_path.is_dir() {
@@ -330,8 +398,7 @@ pub async fn set_project_team(project_name: String, team_name: String) -> Result
 
     // Write team name to .team file
     let team_file = project_path.join(".team");
-    fs::write(&team_file, team_name)
-        .map_err(|e| format!("Failed to write .team file: {}", e))?;
+    fs::write(&team_file, team_name).map_err(|e| format!("Failed to write .team file: {}", e))?;
 
     Ok(())
 }
@@ -362,8 +429,7 @@ pub async fn delete_team(team_name: String) -> Result<(), String> {
     let file_name = config_path.file_name().and_then(|s| s.to_str());
     if file_name == Some("team.yaml") {
         // New format: delete the entire team folder
-        let team_dir = config_path.parent()
-            .ok_or("Failed to get team directory")?;
+        let team_dir = config_path.parent().ok_or("Failed to get team directory")?;
         fs::remove_dir_all(team_dir)
             .map_err(|e| format!("Failed to delete team directory: {}", e))?;
     } else {

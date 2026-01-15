@@ -4,7 +4,7 @@ pub mod cli_providers;
 pub mod commands;
 pub mod config;
 pub mod constants;
-pub mod cronos;
+pub mod scheduler;
 pub mod error;
 pub mod events;
 pub mod git;
@@ -15,15 +15,15 @@ pub mod tmux;
 pub mod utils;
 
 // Re-export commands for easier access
-use commands::lifecycle::*;
 use commands::communicator::*;
-use commands::history::*;
-use commands::projects::*;
-use commands::usage::*;
 use commands::feedback::*;
-use commands::ollama::*;
-use commands::session_labels::*;
 use commands::filesystem::*;
+use commands::history::*;
+use commands::lifecycle::*;
+use commands::ollama::*;
+use commands::projects::*;
+use commands::session_labels::*;
+use commands::usage::*;
 use commands::*;
 use tauri::Manager;
 
@@ -54,17 +54,17 @@ pub fn run() {
         }
     }
 
-    // Initialize Cronos scheduler
-    if let Err(e) = runtime.block_on(cronos::commands::init_cronos()) {
-        eprintln!("Warning: Failed to initialize Cronos scheduler: {}", e);
-        // Non-fatal - cronos features will be unavailable
+    // Initialize scheduler
+    if let Err(e) = runtime.block_on(scheduler::commands::init_scheduler()) {
+        eprintln!("Warning: Failed to initialize scheduler: {}", e);
+        // Non-fatal - scheduler features will be unavailable
     }
 
-    // Recover orphaned cron sessions (runs interrupted by app restart)
-    match runtime.block_on(cronos::commands::recover_orphaned_cron_sessions()) {
+    // Recover orphaned scheduled sessions (runs interrupted by app restart)
+    match runtime.block_on(scheduler::commands::recover_orphaned_scheduled_sessions()) {
         Ok(result) => {
             if !result.is_empty() {
-                eprintln!("Cron recovery: {}", result.summary());
+                eprintln!("Scheduler recovery: {}", result.summary());
                 for msg in &result.recovered {
                     eprintln!("  {}", msg);
                 }
@@ -77,7 +77,7 @@ pub fn run() {
             }
         }
         Err(e) => {
-            eprintln!("Warning: Failed to recover cron sessions: {}", e);
+            eprintln!("Warning: Failed to recover scheduled sessions: {}", e);
             // Non-fatal - continue startup
         }
     }
@@ -156,7 +156,7 @@ pub fn run() {
             commands::teams::save_team_config,
             commands::teams::rename_team_config,
             commands::teams::list_teams,
-            commands::teams::list_teams_info,  // New: hierarchical team listing
+            commands::teams::list_teams_info, // New: hierarchical team listing
             commands::teams::get_project_team,
             commands::teams::set_project_team,
             commands::teams::get_departments_config,
@@ -186,56 +186,61 @@ pub fn run() {
             get_usage_by_date_range,
             get_session_stats,
             get_agent_usage_stats,
-            // Cronos commands
-            cronos::commands::list_cron_agents,
-            cronos::commands::get_cron_agent,
-            cronos::commands::create_cron_agent,
-            cronos::commands::update_cron_agent,
-            cronos::commands::delete_cron_agent,
-            cronos::commands::toggle_cron_agent,
-            cronos::commands::test_cron_agent,
-            cronos::commands::trigger_cron_agent,
-            cronos::commands::get_cron_run_history,
-            cronos::commands::get_cron_run_log,
-            cronos::commands::read_cron_agent_claude_md,
-            cronos::commands::write_cron_agent_claude_md,
-            // New cronos commands
-            cronos::commands::cancel_cron_agent,
-            cronos::commands::get_running_agents,
-            cronos::commands::get_cronos_health,
-            cronos::commands::get_agent_stats,
-            cronos::commands::subscribe_cron_output,
-            cronos::commands::get_cron_next_runs,
-            cronos::commands::describe_cron_expression,
-            // Cronos group commands
-            cronos::commands::list_cron_groups,
-            cronos::commands::get_cron_group,
-            cronos::commands::create_cron_group,
-            cronos::commands::update_cron_group,
-            cronos::commands::delete_cron_group,
-            cronos::commands::set_agent_group,
-            // Idea dispatch commands
-            cronos::commands::dispatch_ideas,
-            cronos::commands::dispatch_single_idea,
-            // Predefined agent commands
-            cronos::commands::trigger_predefined_agent,
-            cronos::commands::list_agent_commands,
-            // Session relaunch and pipeline trigger commands
-            cronos::commands::relaunch_cron_session,
-            cronos::commands::trigger_analyzer_for_run,
-            cronos::commands::trigger_qa_for_run,
-            cronos::commands::trigger_merge_for_run,
-            // Pipeline management commands
-            cronos::commands::list_pipelines,
-            cronos::commands::get_pipeline,
-            cronos::commands::retry_pipeline_stage,
-            cronos::commands::skip_pipeline_stage_cmd,
-            cronos::commands::abort_pipeline_cmd,
-            cronos::commands::complete_pipeline,
-            cronos::commands::complete_pipeline_cmd,
-            cronos::commands::list_pipeline_definitions,
-            cronos::commands::get_pipeline_definition,
-            cronos::commands::get_default_pipeline_definition,
+            // Scheduler commands - agent CRUD
+            scheduler::commands_agent::list_scheduled_agents,
+            scheduler::commands_agent::get_scheduled_agent,
+            scheduler::commands_agent::create_scheduled_agent,
+            scheduler::commands_agent::update_scheduled_agent,
+            scheduler::commands_agent::delete_scheduled_agent,
+            scheduler::commands_agent::toggle_scheduled_agent,
+            scheduler::commands_agent::test_scheduled_agent,
+            scheduler::commands_agent::trigger_scheduled_agent,
+            scheduler::commands_agent::read_scheduled_agent_claude_md,
+            scheduler::commands_agent::write_scheduled_agent_claude_md,
+            scheduler::commands_agent::cancel_scheduled_agent,
+            scheduler::commands_agent::get_running_agents,
+            scheduler::commands_agent::trigger_predefined_agent,
+            scheduler::commands_agent::list_agent_commands,
+            // Scheduler commands - groups
+            scheduler::commands_agent::list_scheduled_groups,
+            scheduler::commands_agent::get_scheduled_group,
+            scheduler::commands_agent::create_scheduled_group,
+            scheduler::commands_agent::update_scheduled_group,
+            scheduler::commands_agent::delete_scheduled_group,
+            scheduler::commands_agent::set_agent_group,
+            // Scheduler commands - history
+            scheduler::commands_history::get_scheduled_run_history,
+            scheduler::commands_history::get_scheduled_run_log,
+            scheduler::commands_history::get_scheduler_health,
+            scheduler::commands_history::get_agent_stats,
+            scheduler::commands_history::subscribe_scheduled_output,
+            scheduler::commands_history::relaunch_scheduled_session,
+            // Scheduler commands - schedules
+            scheduler::commands_schedules::get_schedule_next_runs,
+            scheduler::commands_schedules::describe_schedule_expression,
+            scheduler::commands_schedules::list_schedules,
+            scheduler::commands_schedules::create_schedule,
+            scheduler::commands_schedules::update_schedule,
+            scheduler::commands_schedules::delete_schedule,
+            scheduler::commands_schedules::toggle_schedule,
+            // Scheduler commands - ideas
+            scheduler::commands_ideas::dispatch_ideas,
+            scheduler::commands_ideas::dispatch_single_idea,
+            // Scheduler commands - analyzer
+            scheduler::commands_analyzer::trigger_analyzer_for_run,
+            // Scheduler commands - pipeline
+            scheduler::commands_pipeline::trigger_qa_for_run,
+            scheduler::commands_pipeline::trigger_merge_for_run,
+            scheduler::commands_pipeline::list_pipelines,
+            scheduler::commands_pipeline::get_pipeline,
+            scheduler::commands_pipeline::retry_pipeline_stage,
+            scheduler::commands_pipeline::skip_pipeline_stage_cmd,
+            scheduler::commands_pipeline::abort_pipeline_cmd,
+            scheduler::commands_pipeline::complete_pipeline,
+            scheduler::commands_pipeline::complete_pipeline_cmd,
+            scheduler::commands_pipeline::list_pipeline_definitions,
+            scheduler::commands_pipeline::get_pipeline_definition,
+            scheduler::commands_pipeline::get_default_pipeline_definition,
             // Feedback commands
             list_feature_requests,
             create_feature_request,
@@ -259,6 +264,12 @@ pub fn run() {
             accept_review,
             unaccept_review,
             accept_and_route_review,
+            // Hotfix commands
+            list_hotfixes,
+            create_hotfix,
+            update_hotfix,
+            update_hotfix_status,
+            delete_hotfix,
             // Design decision commands
             list_decisions,
             list_decisions_by_team,
@@ -296,6 +307,10 @@ pub fn run() {
             get_ui_config,
             // CLI Providers
             get_providers_status,
+            set_default_cli_provider,
+            // Trigger Configuration
+            get_trigger_config,
+            set_trigger_config,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -309,37 +324,38 @@ mod tests {
     use ts_rs::TS;
 
     #[test]
-    fn export_cronos_types() {
-        use crate::cronos::types::*;
-        use crate::cronos::commands::AgentCommand;
+    fn export_scheduler_types() {
+        use crate::scheduler::commands::AgentCommand;
+        use crate::scheduler::types::*;
 
-        // Export all cronos types
-        CronAgentConfig::export_all().expect("Failed to export CronAgentConfig");
-        CronAgentGroup::export_all().expect("Failed to export CronAgentGroup");
+        // Export all scheduler types
+        ScheduledAgentConfig::export_all().expect("Failed to export ScheduledAgentConfig");
+        ScheduledAgentGroup::export_all().expect("Failed to export ScheduledAgentGroup");
         GroupsConfig::export_all().expect("Failed to export GroupsConfig");
-        CronSchedule::export_all().expect("Failed to export CronSchedule");
-        CronGuardrails::export_all().expect("Failed to export CronGuardrails");
-        CronContext::export_all().expect("Failed to export CronContext");
+        ScheduleConfig::export_all().expect("Failed to export ScheduleConfig");
+        AgentSchedule::export_all().expect("Failed to export AgentSchedule");
+        ScheduleGuardrails::export_all().expect("Failed to export ScheduleGuardrails");
+        ScheduleContext::export_all().expect("Failed to export ScheduleContext");
         ConcurrencyPolicy::export_all().expect("Failed to export ConcurrencyPolicy");
         RetryPolicy::export_all().expect("Failed to export RetryPolicy");
         CatchUpPolicy::export_all().expect("Failed to export CatchUpPolicy");
-        CronRunLog::export_all().expect("Failed to export CronRunLog");
-        CronRunStatus::export_all().expect("Failed to export CronRunStatus");
+        ScheduledRunLog::export_all().expect("Failed to export ScheduledRunLog");
+        ScheduledRunStatus::export_all().expect("Failed to export ScheduledRunStatus");
         RunTrigger::export_all().expect("Failed to export RunTrigger");
         SchedulerState::export_all().expect("Failed to export SchedulerState");
         AgentState::export_all().expect("Failed to export AgentState");
         ScheduleEntry::export_all().expect("Failed to export ScheduleEntry");
-        CronAgentInfo::export_all().expect("Failed to export CronAgentInfo");
+        TriggerConfig::export_all().expect("Failed to export TriggerConfig");
+        ScheduledAgentInfo::export_all().expect("Failed to export ScheduledAgentInfo");
         AgentHealth::export_all().expect("Failed to export AgentHealth");
         HealthStatus::export_all().expect("Failed to export HealthStatus");
         AgentStats::export_all().expect("Failed to export AgentStats");
         TestRunResult::export_all().expect("Failed to export TestRunResult");
-        CronOutputEvent::export_all().expect("Failed to export CronOutputEvent");
+        ScheduledOutputEvent::export_all().expect("Failed to export ScheduledOutputEvent");
         OutputEventType::export_all().expect("Failed to export OutputEventType");
-        CronosHealthSummary::export_all().expect("Failed to export CronosHealthSummary");
+        SchedulerHealthSummary::export_all().expect("Failed to export SchedulerHealthSummary");
 
-        // Export new agent type system types
-        AgentType::export_all().expect("Failed to export AgentType");
+        // Export agent trigger types
         EventType::export_all().expect("Failed to export EventType");
         EventTrigger::export_all().expect("Failed to export EventTrigger");
         InvocationConfig::export_all().expect("Failed to export InvocationConfig");

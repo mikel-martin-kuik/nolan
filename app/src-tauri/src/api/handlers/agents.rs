@@ -10,9 +10,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::api::AppState;
-use crate::commands::agents::{
-    self, AgentDirectoryInfo, AgentMetadata,
-};
+use crate::commands::agents::{self, AgentDirectoryInfo, AgentMetadata};
 
 /// Get agent template query params
 #[derive(Deserialize)]
@@ -108,9 +106,7 @@ pub async fn delete_agent(
 }
 
 /// Get agent CLAUDE.md (role file)
-pub async fn get_agent_role(
-    Path(name): Path<String>,
-) -> Result<Json<String>, impl IntoResponse> {
+pub async fn get_agent_role(Path(name): Path<String>) -> Result<Json<String>, impl IntoResponse> {
     match agents::get_agent_role_file(name).await {
         Ok(content) => Ok(Json(content)),
         Err(e) => Err(error_response(StatusCode::NOT_FOUND, e)),
@@ -135,9 +131,7 @@ pub async fn update_agent_role(
 }
 
 /// Get agent CLAUDE.md via lifecycle command
-pub async fn get_claude_md(
-    Path(name): Path<String>,
-) -> Result<Json<String>, impl IntoResponse> {
+pub async fn get_claude_md(Path(name): Path<String>) -> Result<Json<String>, impl IntoResponse> {
     match crate::commands::lifecycle::read_agent_claude_md(name).await {
         Ok(content) => Ok(Json(content)),
         Err(e) => Err(error_response(StatusCode::NOT_FOUND, e)),
@@ -150,7 +144,9 @@ pub async fn update_claude_md(
     Json(req): Json<UpdateRoleRequest>,
 ) -> Result<Json<serde_json::Value>, impl IntoResponse> {
     match crate::commands::lifecycle::write_agent_claude_md(name, req.content).await {
-        Ok(result) => Ok(Json(serde_json::json!({ "success": true, "result": result }))),
+        Ok(result) => Ok(Json(
+            serde_json::json!({ "success": true, "result": result }),
+        )),
         Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
     }
 }

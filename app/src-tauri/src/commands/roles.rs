@@ -1,6 +1,6 @@
 //! Role template commands
 
-use crate::config::{load_role_config, list_roles, RoleConfig};
+use crate::config::{list_roles, load_role_config, RoleConfig};
 
 /// Get a specific role template configuration
 #[tauri::command]

@@ -113,7 +113,7 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 USER root
 
 # Create app directories with proper ownership
-RUN mkdir -p /nolan/app /nolan/cronos/agents /projects && \
+RUN mkdir -p /nolan/app /nolan/agents /projects && \
     chown -R nolan:nolan /nolan /projects
 
 WORKDIR /nolan/app
@@ -133,8 +133,8 @@ ENV HOME=/home/nolan
 ENV NOLAN_API_HOST=0.0.0.0
 ENV NOLAN_API_PORT=3030
 ENV NOLAN_DATA_ROOT=/home/nolan/.nolan
-# NOLAN_APP_ROOT must have a parent (nolan_root) for cronos to work
-# nolan_root/cronos/agents is where cron agent definitions live
+# NOLAN_APP_ROOT must have a parent (nolan_root) for scheduler to work
+# nolan_root/agents is where agent definitions live
 ENV NOLAN_APP_ROOT=/nolan/app
 ENV RUST_LOG=info
 ENV NOLAN_TTYD_PORT=7681

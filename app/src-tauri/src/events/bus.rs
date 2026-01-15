@@ -1,5 +1,5 @@
-use tokio::sync::broadcast;
 use super::types::*;
+use tokio::sync::broadcast;
 
 /// Event bus for system-wide event distribution
 pub struct EventBus {
@@ -36,8 +36,7 @@ impl Default for EventBus {
 }
 
 // Global event bus singleton
-static EVENT_BUS: once_cell::sync::Lazy<EventBus> =
-    once_cell::sync::Lazy::new(EventBus::new);
+static EVENT_BUS: once_cell::sync::Lazy<EventBus> = once_cell::sync::Lazy::new(EventBus::new);
 
 /// Get the global event bus instance
 pub fn get_event_bus() -> &'static EventBus {
@@ -56,7 +55,7 @@ mod tests {
         bus.emit_event(
             EventType::IdeaApproved,
             serde_json::json!({"idea_id": "test-123"}),
-            "test"
+            "test",
         );
 
         let event = receiver.recv().await.unwrap();

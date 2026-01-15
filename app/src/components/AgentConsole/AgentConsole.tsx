@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CronosPanel } from '../Cronos/CronosPanel';
+import { AgentsPanel } from '../ScheduledAgents/AgentsPanel';
 import { PredefinedAgentsPanel } from './PredefinedAgentsPanel';
 import { EventAgentsPanel } from './EventAgentsPanel';
 import { Clock, Play, Zap } from 'lucide-react';
@@ -38,7 +38,7 @@ export const AgentConsole: React.FC = () => {
         </div>
 
         <TabsContent value="cron" className="flex-1 mt-0 p-0">
-          <CronosPanel />
+          <AgentsPanel />
         </TabsContent>
 
         <TabsContent value="predefined" className="flex-1 mt-0">

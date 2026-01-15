@@ -32,7 +32,9 @@ pub struct AgentDisplayName {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionPrefixConfig {
     pub team: String,
-    pub cron: String,
+    /// No longer used - agents are identified by config, not prefix
+    #[serde(alias = "cron")]
+    pub scheduled: String,
     pub predefined: String,
 }
 
@@ -40,8 +42,8 @@ impl Default for SessionPrefixConfig {
     fn default() -> Self {
         SessionPrefixConfig {
             team: "agent-".to_string(),
-            cron: "cron-".to_string(),
-            predefined: "pred-".to_string(),
+            scheduled: "".to_string(),
+            predefined: "".to_string(), // No longer using prefixes for predefined agents
         }
     }
 }
@@ -108,13 +110,12 @@ impl RuntimeConfig {
             .and_then(|s| s.parse().ok())
             .unwrap_or(3030);
 
-        let nolan_root = env::var("NOLAN_ROOT")
-            .unwrap_or_else(|_| {
-                // Fallback to ~/.nolan
-                dirs::home_dir()
-                    .map(|h| h.join(".nolan").to_string_lossy().to_string())
-                    .unwrap_or_default()
-            });
+        let nolan_root = env::var("NOLAN_ROOT").unwrap_or_else(|_| {
+            // Fallback to ~/.nolan
+            dirs::home_dir()
+                .map(|h| h.join(".nolan").to_string_lossy().to_string())
+                .unwrap_or_default()
+        });
 
         RuntimeConfig {
             api_port,
@@ -143,6 +144,66 @@ impl Default for SshTerminalConfig {
     }
 }
 
+/// Pipeline configuration for workflow files
+/// Defines the raw input file (prompt) and structured spec file (entrypoint)
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct PipelineConfig {
+    /// Raw user input file - only fed to starter (Layer 1) agents (default: "prompt.md")
+    #[serde(default)]
+    pub prompt_file: String,
+    /// Structured specification file - fed to structured (Layer 2) agents (default: "SPEC.md")
+    #[serde(default)]
+    pub entrypoint_file: String,
+}
+
+/// Trigger configuration for mapping triggers to agents
+/// Allows dynamic configuration of which agents handle specific triggers
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TriggerConfig {
+    /// Agent name for processing ideas (default: "idea-processor")
+    #[serde(default)]
+    pub idea_processor: Option<String>,
+    /// Agent name for implementing ideas (default: "idea-implementer")
+    #[serde(default)]
+    pub idea_implementer: Option<String>,
+    /// Agent name for analyzing implementations (default: "implementer-analyzer")
+    #[serde(default)]
+    pub implementer_analyzer: Option<String>,
+    /// Agent name for merging changes (default: "idea-merger")
+    #[serde(default)]
+    pub idea_merger: Option<String>,
+}
+
+impl TriggerConfig {
+    /// Get idea processor agent name with fallback to default
+    pub fn get_idea_processor(&self) -> String {
+        self.idea_processor
+            .clone()
+            .unwrap_or_else(|| "idea-processor".to_string())
+    }
+
+    /// Get idea implementer agent name with fallback to default
+    pub fn get_idea_implementer(&self) -> String {
+        self.idea_implementer
+            .clone()
+            .unwrap_or_else(|| "idea-implementer".to_string())
+    }
+
+    /// Get implementer analyzer agent name with fallback to default
+    pub fn get_implementer_analyzer(&self) -> String {
+        self.implementer_analyzer
+            .clone()
+            .unwrap_or_else(|| "implementer-analyzer".to_string())
+    }
+
+    /// Get idea merger agent name with fallback to default
+    pub fn get_idea_merger(&self) -> String {
+        self.idea_merger
+            .clone()
+            .unwrap_or_else(|| "idea-merger".to_string())
+    }
+}
+
 /// Root UI configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UIConfig {
@@ -161,79 +222,214 @@ pub struct UIConfig {
     pub runtime: RuntimeConfig,
     #[serde(default)]
     pub ssh_terminal: SshTerminalConfig,
+    /// Pipeline configuration for workflow entrypoint
+    #[serde(default)]
+    pub pipeline: PipelineConfig,
     /// Default CLI provider for all agents (when not specified per-agent)
     /// Options: "claude", "opencode"
     #[serde(default)]
     pub default_cli_provider: Option<String>,
+    /// Trigger configuration for mapping triggers to agents
+    #[serde(default)]
+    pub trigger_configs: TriggerConfig,
 }
 
 impl Default for UIConfig {
     fn default() -> Self {
         UIConfig {
             project_statuses: vec![
-                StatusConfig { value: "inprogress".into(), label: "In Progress".into(), color: "text-blue-500".into() },
-                StatusConfig { value: "pending".into(), label: "Pending".into(), color: "text-yellow-500".into() },
-                StatusConfig { value: "delegated".into(), label: "Delegated".into(), color: "text-purple-500".into() },
-                StatusConfig { value: "complete".into(), label: "Complete".into(), color: "text-green-500".into() },
-                StatusConfig { value: "archived".into(), label: "Archived".into(), color: "text-muted-foreground".into() },
+                StatusConfig {
+                    value: "inprogress".into(),
+                    label: "In Progress".into(),
+                    color: "text-blue-500".into(),
+                },
+                StatusConfig {
+                    value: "pending".into(),
+                    label: "Pending".into(),
+                    color: "text-yellow-500".into(),
+                },
+                StatusConfig {
+                    value: "delegated".into(),
+                    label: "Delegated".into(),
+                    color: "text-purple-500".into(),
+                },
+                StatusConfig {
+                    value: "complete".into(),
+                    label: "Complete".into(),
+                    color: "text-green-500".into(),
+                },
+                StatusConfig {
+                    value: "archived".into(),
+                    label: "Archived".into(),
+                    color: "text-muted-foreground".into(),
+                },
             ],
             workflow_statuses: vec![
-                StatusConfig { value: "offline".into(), label: "Offline".into(), color: "bg-muted-foreground/40".into() },
-                StatusConfig { value: "idle".into(), label: "Idle".into(), color: "bg-zinc-500".into() },
-                StatusConfig { value: "working".into(), label: "Working".into(), color: "bg-green-500".into() },
-                StatusConfig { value: "waiting_input".into(), label: "Needs Input".into(), color: "bg-yellow-500".into() },
-                StatusConfig { value: "blocked".into(), label: "Blocked".into(), color: "bg-red-500".into() },
-                StatusConfig { value: "ready".into(), label: "Ready".into(), color: "bg-blue-500".into() },
-                StatusConfig { value: "complete".into(), label: "Complete".into(), color: "bg-teal-500".into() },
+                StatusConfig {
+                    value: "offline".into(),
+                    label: "Offline".into(),
+                    color: "bg-muted-foreground/40".into(),
+                },
+                StatusConfig {
+                    value: "idle".into(),
+                    label: "Idle".into(),
+                    color: "bg-zinc-500".into(),
+                },
+                StatusConfig {
+                    value: "working".into(),
+                    label: "Working".into(),
+                    color: "bg-green-500".into(),
+                },
+                StatusConfig {
+                    value: "waiting_input".into(),
+                    label: "Needs Input".into(),
+                    color: "bg-yellow-500".into(),
+                },
+                StatusConfig {
+                    value: "blocked".into(),
+                    label: "Blocked".into(),
+                    color: "bg-red-500".into(),
+                },
+                StatusConfig {
+                    value: "ready".into(),
+                    label: "Ready".into(),
+                    color: "bg-blue-500".into(),
+                },
+                StatusConfig {
+                    value: "complete".into(),
+                    label: "Complete".into(),
+                    color: "bg-teal-500".into(),
+                },
             ],
             feature_request_statuses: vec![
-                StatusConfig { value: "new".into(), label: "New".into(), color: "bg-blue-500/10 text-blue-500 border-blue-500/20".into() },
-                StatusConfig { value: "reviewed".into(), label: "Reviewed".into(), color: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20".into() },
-                StatusConfig { value: "designed".into(), label: "Designed".into(), color: "bg-purple-500/10 text-purple-500 border-purple-500/20".into() },
-                StatusConfig { value: "done".into(), label: "Done".into(), color: "bg-green-500/10 text-green-500 border-green-500/20".into() },
-                StatusConfig { value: "rejected".into(), label: "Rejected".into(), color: "bg-red-500/10 text-red-500 border-red-500/20".into() },
+                StatusConfig {
+                    value: "new".into(),
+                    label: "New".into(),
+                    color: "bg-blue-500/10 text-blue-500 border-blue-500/20".into(),
+                },
+                StatusConfig {
+                    value: "reviewed".into(),
+                    label: "Reviewed".into(),
+                    color: "bg-yellow-500/10 text-yellow-500 border-yellow-500/20".into(),
+                },
+                StatusConfig {
+                    value: "designed".into(),
+                    label: "Designed".into(),
+                    color: "bg-purple-500/10 text-purple-500 border-purple-500/20".into(),
+                },
+                StatusConfig {
+                    value: "done".into(),
+                    label: "Done".into(),
+                    color: "bg-green-500/10 text-green-500 border-green-500/20".into(),
+                },
+                StatusConfig {
+                    value: "rejected".into(),
+                    label: "Rejected".into(),
+                    color: "bg-red-500/10 text-red-500 border-red-500/20".into(),
+                },
             ],
             idea_statuses: vec![
-                StatusConfig { value: "active".into(), label: "Active".into(), color: "text-green-500".into() },
-                StatusConfig { value: "archived".into(), label: "Archived".into(), color: "text-muted-foreground".into() },
+                StatusConfig {
+                    value: "active".into(),
+                    label: "Active".into(),
+                    color: "text-green-500".into(),
+                },
+                StatusConfig {
+                    value: "archived".into(),
+                    label: "Archived".into(),
+                    color: "text-muted-foreground".into(),
+                },
             ],
             idea_review_statuses: vec![
-                StatusConfig { value: "draft".into(), label: "Draft Proposal".into(), color: "bg-slate-500/10 text-slate-500 border-slate-500/20".into() },
-                StatusConfig { value: "needs_input".into(), label: "Needs Your Input".into(), color: "bg-amber-500/10 text-amber-500 border-amber-500/20".into() },
-                StatusConfig { value: "ready".into(), label: "Ready".into(), color: "bg-green-500/10 text-green-500 border-green-500/20".into() },
-                StatusConfig { value: "rejected".into(), label: "Not Feasible".into(), color: "bg-red-500/10 text-red-500 border-red-500/20".into() },
+                StatusConfig {
+                    value: "draft".into(),
+                    label: "Draft Proposal".into(),
+                    color: "bg-slate-500/10 text-slate-500 border-slate-500/20".into(),
+                },
+                StatusConfig {
+                    value: "needs_input".into(),
+                    label: "Needs Your Input".into(),
+                    color: "bg-amber-500/10 text-amber-500 border-amber-500/20".into(),
+                },
+                StatusConfig {
+                    value: "ready".into(),
+                    label: "Ready".into(),
+                    color: "bg-green-500/10 text-green-500 border-green-500/20".into(),
+                },
+                StatusConfig {
+                    value: "rejected".into(),
+                    label: "Not Feasible".into(),
+                    color: "bg-red-500/10 text-red-500 border-red-500/20".into(),
+                },
             ],
             idea_complexity_levels: vec![
-                StatusConfig { value: "low".into(), label: "Low".into(), color: "text-green-500".into() },
-                StatusConfig { value: "medium".into(), label: "Medium".into(), color: "text-yellow-500".into() },
-                StatusConfig { value: "high".into(), label: "High".into(), color: "text-red-500".into() },
+                StatusConfig {
+                    value: "low".into(),
+                    label: "Low".into(),
+                    color: "text-green-500".into(),
+                },
+                StatusConfig {
+                    value: "medium".into(),
+                    label: "Medium".into(),
+                    color: "text-yellow-500".into(),
+                },
+                StatusConfig {
+                    value: "high".into(),
+                    label: "High".into(),
+                    color: "text-red-500".into(),
+                },
             ],
             decision_statuses: vec![
-                StatusConfig { value: "proposed".into(), label: "Proposed".into(), color: "bg-blue-500/10 text-blue-500 border-blue-500/20".into() },
-                StatusConfig { value: "in_review".into(), label: "In Review".into(), color: "bg-amber-500/10 text-amber-500 border-amber-500/20".into() },
-                StatusConfig { value: "approved".into(), label: "Approved".into(), color: "bg-green-500/10 text-green-500 border-green-500/20".into() },
-                StatusConfig { value: "deprecated".into(), label: "Deprecated".into(), color: "bg-slate-500/10 text-slate-500 border-slate-500/20".into() },
-                StatusConfig { value: "superseded".into(), label: "Superseded".into(), color: "bg-purple-500/10 text-purple-500 border-purple-500/20".into() },
+                StatusConfig {
+                    value: "proposed".into(),
+                    label: "Proposed".into(),
+                    color: "bg-blue-500/10 text-blue-500 border-blue-500/20".into(),
+                },
+                StatusConfig {
+                    value: "in_review".into(),
+                    label: "In Review".into(),
+                    color: "bg-amber-500/10 text-amber-500 border-amber-500/20".into(),
+                },
+                StatusConfig {
+                    value: "approved".into(),
+                    label: "Approved".into(),
+                    color: "bg-green-500/10 text-green-500 border-green-500/20".into(),
+                },
+                StatusConfig {
+                    value: "deprecated".into(),
+                    label: "Deprecated".into(),
+                    color: "bg-slate-500/10 text-slate-500 border-slate-500/20".into(),
+                },
+                StatusConfig {
+                    value: "superseded".into(),
+                    label: "Superseded".into(),
+                    color: "bg-purple-500/10 text-purple-500 border-purple-500/20".into(),
+                },
             ],
             agent_display_names: vec![
-                "Nova", "Echo", "Pixel", "Flux", "Spark", "Cipher", "Orbit", "Pulse",
-                "Zen", "Neon", "Apex", "Qubit", "Atlas", "Vega", "Cosmo", "Drift",
-                "Glitch", "Helix", "Ion", "Jade", "Kira", "Luna", "Nebula", "Onyx",
-                "Phoenix", "Quantum", "Rune", "Sage", "Terra", "Unity", "Volt", "Warp",
-            ].iter().map(|&n| AgentDisplayName { name: n.into() }).collect(),
+                "Nova", "Echo", "Pixel", "Flux", "Spark", "Cipher", "Orbit", "Pulse", "Zen",
+                "Neon", "Apex", "Qubit", "Atlas", "Vega", "Cosmo", "Drift", "Glitch", "Helix",
+                "Ion", "Jade", "Kira", "Luna", "Nebula", "Onyx", "Phoenix", "Quantum", "Rune",
+                "Sage", "Terra", "Unity", "Volt", "Warp",
+            ]
+            .iter()
+            .map(|&n| AgentDisplayName { name: n.into() })
+            .collect(),
             session_prefixes: SessionPrefixConfig::default(),
             ollama_defaults: OllamaDefaults::default(),
             runtime: RuntimeConfig::default(),
             ssh_terminal: SshTerminalConfig::default(),
+            pipeline: PipelineConfig::default(),
             default_cli_provider: None,
+            trigger_configs: TriggerConfig::default(),
         }
     }
 }
 
-/// Get the config file path (~/.nolan/config.yaml)
+/// Get the config file path (~/.nolan/config.yaml or NOLAN_DATA_ROOT/config.yaml)
 fn get_config_path() -> Result<PathBuf, String> {
-    let nolan_root = crate::constants::get_nolan_root()?;
-    Ok(PathBuf::from(nolan_root).join("config.yaml"))
+    let data_root = crate::utils::paths::get_nolan_data_root()?;
+    Ok(data_root.join("config.yaml"))
 }
 
 /// Update SSH terminal configuration in config file
@@ -243,10 +439,9 @@ pub fn update_ssh_terminal_config(base_url: String, enabled: bool) -> Result<(),
 
     // Load existing config
     let mut config = if path.exists() {
-        let content = fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read config: {}", e))?;
-        serde_yaml::from_str::<UIConfig>(&content)
-            .unwrap_or_else(|_| UIConfig::default())
+        let content =
+            fs::read_to_string(&path).map_err(|e| format!("Failed to read config: {}", e))?;
+        serde_yaml::from_str::<UIConfig>(&content).unwrap_or_else(|_| UIConfig::default())
     } else {
         UIConfig::default()
     };
@@ -255,11 +450,10 @@ pub fn update_ssh_terminal_config(base_url: String, enabled: bool) -> Result<(),
     config.ssh_terminal = SshTerminalConfig { base_url, enabled };
 
     // Write back to file
-    let yaml_content = serde_yaml::to_string(&config)
-        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+    let yaml_content =
+        serde_yaml::to_string(&config).map_err(|e| format!("Failed to serialize config: {}", e))?;
 
-    fs::write(&path, yaml_content)
-        .map_err(|e| format!("Failed to write config: {}", e))?;
+    fs::write(&path, yaml_content).map_err(|e| format!("Failed to write config: {}", e))?;
 
     Ok(())
 }
@@ -283,10 +477,9 @@ pub fn update_default_cli_provider(provider: Option<String>) -> Result<(), Strin
 
     // Load existing config
     let mut config = if path.exists() {
-        let content = fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read config: {}", e))?;
-        serde_yaml::from_str::<UIConfig>(&content)
-            .unwrap_or_else(|_| UIConfig::default())
+        let content =
+            fs::read_to_string(&path).map_err(|e| format!("Failed to read config: {}", e))?;
+        serde_yaml::from_str::<UIConfig>(&content).unwrap_or_else(|_| UIConfig::default())
     } else {
         UIConfig::default()
     };
@@ -295,11 +488,10 @@ pub fn update_default_cli_provider(provider: Option<String>) -> Result<(), Strin
     config.default_cli_provider = provider;
 
     // Write back to file
-    let yaml_content = serde_yaml::to_string(&config)
-        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+    let yaml_content =
+        serde_yaml::to_string(&config).map_err(|e| format!("Failed to serialize config: {}", e))?;
 
-    fs::write(&path, yaml_content)
-        .map_err(|e| format!("Failed to write config: {}", e))?;
+    fs::write(&path, yaml_content).map_err(|e| format!("Failed to write config: {}", e))?;
 
     Ok(())
 }
@@ -308,9 +500,91 @@ pub fn update_default_cli_provider(provider: Option<String>) -> Result<(), Strin
 /// Returns the configured default, or "claude" if not configured
 pub fn get_default_cli_provider() -> String {
     match load_ui_config() {
-        Ok(config) => config.default_cli_provider.unwrap_or_else(|| "claude".to_string()),
-        Err(_) => "claude".to_string(),
+        Ok(config) => {
+            let provider = config
+                .default_cli_provider
+                .unwrap_or_else(|| "claude".to_string());
+            eprintln!("[Config] get_default_cli_provider() -> {}", provider);
+            provider
+        }
+        Err(e) => {
+            eprintln!(
+                "[Config] get_default_cli_provider() error: {}, defaulting to claude",
+                e
+            );
+            "claude".to_string()
+        }
     }
+}
+
+/// Get the pipeline entrypoint filename from config (SPEC.md by default)
+/// This is the structured specification file fed to Layer 2 (structured) agents
+pub fn get_pipeline_entrypoint_file() -> String {
+    load_ui_config()
+        .map(|config| config.pipeline.entrypoint_file)
+        .unwrap_or_else(|_| "SPEC.md".to_string())
+}
+
+/// Get the prompt filename from config (prompt.md by default)
+/// This is the raw user input file fed only to Layer 1 (starter) agents
+pub fn get_prompt_file() -> String {
+    load_ui_config()
+        .map(|config| config.pipeline.prompt_file)
+        .unwrap_or_else(|_| "prompt.md".to_string())
+}
+
+/// Get trigger configuration from config
+/// Returns the trigger configs with defaults applied
+pub fn get_trigger_config() -> TriggerConfig {
+    load_ui_config()
+        .map(|config| config.trigger_configs)
+        .unwrap_or_default()
+}
+
+/// Get the configured idea processor agent name
+pub fn get_idea_processor_agent() -> String {
+    get_trigger_config().get_idea_processor()
+}
+
+/// Get the configured idea implementer agent name
+pub fn get_idea_implementer_agent() -> String {
+    get_trigger_config().get_idea_implementer()
+}
+
+/// Get the configured implementer analyzer agent name
+pub fn get_implementer_analyzer_agent() -> String {
+    get_trigger_config().get_implementer_analyzer()
+}
+
+/// Get the configured idea merger agent name
+pub fn get_idea_merger_agent() -> String {
+    get_trigger_config().get_idea_merger()
+}
+
+/// Update trigger configuration in config file
+/// Preserves other config values, only updates trigger_configs section
+pub fn update_trigger_config(trigger_config: TriggerConfig) -> Result<(), String> {
+    let path = get_config_path()?;
+
+    // Load existing config
+    let mut config = if path.exists() {
+        let content =
+            fs::read_to_string(&path).map_err(|e| format!("Failed to read config: {}", e))?;
+        serde_yaml::from_str::<UIConfig>(&content).unwrap_or_else(|_| UIConfig::default())
+    } else {
+        UIConfig::default()
+    };
+
+    // Update trigger config
+    config.trigger_configs = trigger_config;
+
+    // Write back to file
+    let yaml_content =
+        serde_yaml::to_string(&config).map_err(|e| format!("Failed to serialize config: {}", e))?;
+
+    fs::write(&path, yaml_content).map_err(|e| format!("Failed to write config: {}", e))?;
+
+    Ok(())
 }
 
 /// Load UI configuration from file, returning defaults if file doesn't exist
@@ -326,17 +600,16 @@ pub fn load_ui_config() -> Result<UIConfig, String> {
         UIConfig::default()
     } else {
         // Size limit (DoS protection)
-        let metadata = fs::metadata(&path)
-            .map_err(|e| format!("Failed to read config metadata: {}", e))?;
+        let metadata =
+            fs::metadata(&path).map_err(|e| format!("Failed to read config metadata: {}", e))?;
         if metadata.len() > 1_048_576 {
             return Err("Config file exceeds 1MB limit".into());
         }
 
-        let content = fs::read_to_string(&path)
-            .map_err(|e| format!("Failed to read config: {}", e))?;
+        let content =
+            fs::read_to_string(&path).map_err(|e| format!("Failed to read config: {}", e))?;
 
-        serde_yaml::from_str(&content)
-            .map_err(|e| format!("Failed to parse config YAML: {}", e))?
+        serde_yaml::from_str(&content).map_err(|e| format!("Failed to parse config YAML: {}", e))?
     };
 
     // Apply environment variable overrides
@@ -362,7 +635,25 @@ mod tests {
     fn test_session_prefixes_default() {
         let prefixes = SessionPrefixConfig::default();
         assert_eq!(prefixes.team, "agent-");
-        assert_eq!(prefixes.cron, "cron-");
-        assert_eq!(prefixes.predefined, "pred-");
+        assert_eq!(prefixes.scheduled, ""); // No longer using prefixes for scheduled agents
+        assert_eq!(prefixes.predefined, ""); // No longer using prefixes for predefined agents
+    }
+
+    #[test]
+    fn test_update_default_cli_provider() {
+        // This test requires NOLAN_ROOT to be set
+        if std::env::var("NOLAN_ROOT").is_ok() {
+            // Test setting provider
+            let result = update_default_cli_provider(Some("opencode".to_string()));
+            assert!(result.is_ok(), "Failed to update: {:?}", result);
+
+            // Verify it was set
+            let default = get_default_cli_provider();
+            assert_eq!(default, "opencode");
+
+            // Reset back to claude
+            let result = update_default_cli_provider(Some("claude".to_string()));
+            assert!(result.is_ok());
+        }
     }
 }

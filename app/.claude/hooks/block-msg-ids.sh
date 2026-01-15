@@ -11,7 +11,7 @@
 #
 # Blocked locations:
 #   - All other content in coordinator's output file (log entries, status, blockers, etc.)
-#   - All other project files (context.md, research.md, plan.md, qa-review.md, progress.md)
+#   - All other project files (research.md, plan.md, qa-review.md, progress.md)
 #   - Any files in projects directory
 #
 # Exit codes:

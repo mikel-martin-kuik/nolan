@@ -1,7 +1,7 @@
+use crate::utils::paths;
 use std::env;
 use std::path::Path;
 use std::process::Command;
-use crate::utils::paths;
 
 /// Result of script execution with structured output
 #[derive(Debug, Clone)]
@@ -18,7 +18,11 @@ impl ScriptOutput {
         if self.success {
             self.stdout.trim().to_string()
         } else {
-            format!("Error (exit code {}): {}", self.exit_code, self.stderr.trim())
+            format!(
+                "Error (exit code {}): {}",
+                self.exit_code,
+                self.stderr.trim()
+            )
         }
     }
 
@@ -36,23 +40,22 @@ pub fn execute_script(script_path: &Path, args: &[String]) -> Result<ScriptOutpu
     }
 
     // 2. Get required paths using portable detection
-    let home = env::var("HOME")
-        .map_err(|_| "HOME environment variable not set")?;
-    let nolan_app = paths::get_nolan_app_root()
-        .map_err(|e| format!("Failed to get Nolan app root: {}", e))?;
+    let home = env::var("HOME").map_err(|_| "HOME environment variable not set")?;
+    let nolan_app =
+        paths::get_nolan_app_root().map_err(|e| format!("Failed to get Nolan app root: {}", e))?;
 
     // 3. Build PATH with common locations
-    let path = env::var("PATH").unwrap_or_else(|_|
+    let path = env::var("PATH").unwrap_or_else(|_| {
         "/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin".to_string()
-    );
+    });
 
     // 4. Execute script with full environment
     let output = Command::new(script_path)
         .args(args)
-        .current_dir(&nolan_app)      // CRITICAL: Set working directory to app root
-        .env("HOME", &home)            // Pass HOME
-        .env("PATH", &path)            // Pass PATH
-        .env("SHELL", "/bin/bash")     // Ensure bash shell
+        .current_dir(&nolan_app) // CRITICAL: Set working directory to app root
+        .env("HOME", &home) // Pass HOME
+        .env("PATH", &path) // Pass PATH
+        .env("SHELL", "/bin/bash") // Ensure bash shell
         .env("NOLAN_APP_ROOT", nolan_app.to_string_lossy().as_ref()) // Portable app path
         .output()
         .map_err(|e| format!("Failed to execute script: {}", e))?;
@@ -100,8 +103,11 @@ mod tests {
             // File is dropped here, ensuring it's closed
         }
 
-        std::fs::set_permissions(&script_path,
-            std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(
+            &script_path,
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .unwrap();
 
         // Small delay to avoid "Text file busy" race condition
         std::thread::sleep(std::time::Duration::from_millis(10));
@@ -122,8 +128,11 @@ mod tests {
             // File is dropped here, ensuring it's closed
         }
 
-        std::fs::set_permissions(&script_path,
-            std::os::unix::fs::PermissionsExt::from_mode(0o755)).unwrap();
+        std::fs::set_permissions(
+            &script_path,
+            std::os::unix::fs::PermissionsExt::from_mode(0o755),
+        )
+        .unwrap();
 
         // Small delay to avoid "Text file busy" race condition
         std::thread::sleep(std::time::Duration::from_millis(10));

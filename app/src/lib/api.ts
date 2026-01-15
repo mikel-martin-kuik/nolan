@@ -160,57 +160,63 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
     return `/api/usage/agent?${params.toString()}`;
   }},
 
-  // Cronos (cron agents)
-  list_cron_agents: { method: 'GET', path: '/api/cronos/agents' },
-  get_cron_agent: { method: 'GET', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}` },
-  create_cron_agent: { method: 'POST', path: '/api/cronos/agents' },
-  update_cron_agent: { method: 'PUT', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}` },
-  delete_cron_agent: { method: 'DELETE', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}` },
-  toggle_cron_agent: { method: 'POST', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/toggle` },
-  test_cron_agent: { method: 'POST', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/test` },
-  trigger_cron_agent: { method: 'POST', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/trigger` },
-  get_cron_run_history: { method: 'GET', path: (args) => {
+  // Scheduler (scheduled agents)
+  list_scheduled_agents: { method: 'GET', path: '/api/scheduler/agents' },
+  get_scheduled_agent: { method: 'GET', path: (args) => `/api/scheduler/agents/${getArg(args, 'name')}` },
+  create_scheduled_agent: { method: 'POST', path: '/api/scheduler/agents' },
+  update_scheduled_agent: { method: 'PUT', path: (args) => `/api/scheduler/agents/${getArg(args, 'name')}` },
+  delete_scheduled_agent: { method: 'DELETE', path: (args) => `/api/scheduler/agents/${getArg(args, 'name')}` },
+  toggle_scheduled_agent: { method: 'POST', path: (args) => `/api/scheduler/agents/${getArg(args, 'name')}/toggle` },
+  test_scheduled_agent: { method: 'POST', path: (args) => `/api/scheduler/agents/${getArg(args, 'name')}/test` },
+  trigger_scheduled_agent: { method: 'POST', path: (args) => `/api/scheduler/agents/${getArg(args, 'name')}/trigger` },
+  get_scheduled_run_history: { method: 'GET', path: (args) => {
     const name = getArg(args, 'name') || getArg(args, 'agent_name');
     const limit = args?.limit;
     if (name) {
-      return limit ? `/api/cronos/agents/${name}/history?limit=${limit}` : `/api/cronos/agents/${name}/history`;
+      return limit ? `/api/scheduler/agents/${name}/history?limit=${limit}` : `/api/scheduler/agents/${name}/history`;
     }
-    return limit ? `/api/cronos/history?limit=${limit}` : '/api/cronos/history';
+    return limit ? `/api/scheduler/history?limit=${limit}` : '/api/scheduler/history';
   }},
-  get_cron_run_log: { method: 'GET', path: (args) => `/api/cronos/runs/${getArg(args, 'run_id')}/log` },
-  relaunch_cron_session: { method: 'POST', path: (args) => `/api/cronos/runs/${getArg(args, 'run_id')}/relaunch` },
-  skip_pipeline_stage: { method: 'POST', path: (args) => `/api/cronos/runs/${getArg(args, 'run_id')}/skip` },
-  abort_pipeline: { method: 'POST', path: (args) => `/api/cronos/pipelines/${getArg(args, 'pipeline_id')}/abort` },
-  complete_pipeline: { method: 'POST', path: (args) => `/api/cronos/pipelines/${getArg(args, 'pipeline_id')}/complete` },
-  read_cron_agent_claude_md: { method: 'GET', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/claude-md` },
-  write_cron_agent_claude_md: { method: 'PUT', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/claude-md` },
-  init_cronos: { method: 'POST', path: '/api/cronos/init' },
-  shutdown_cronos: { method: 'POST', path: '/api/cronos/shutdown' },
-  // New cronos commands
-  cancel_cron_agent: { method: 'POST', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/cancel` },
-  get_running_agents: { method: 'GET', path: '/api/cronos/running' },
-  get_cronos_health: { method: 'GET', path: '/api/cronos/health' },
-  get_agent_stats: { method: 'GET', path: (args) => `/api/cronos/agents/${getArg(args, 'name')}/stats` },
-  subscribe_cron_output: { method: 'POST', path: '/api/noop' },  // WebSocket only - no-op in REST
-  get_cron_next_runs: { method: 'GET', path: (args) => `/api/cronos/cron/next?expression=${encodeURIComponent(getArg(args, 'expression') as string)}&count=${args.count || 5}` },
-  describe_cron_expression: { method: 'GET', path: (args) => `/api/cronos/cron/describe?expression=${encodeURIComponent(getArg(args, 'expression') as string)}` },
-  // Cronos groups
-  list_cron_groups: { method: 'GET', path: '/api/cronos/groups' },
-  get_cron_group: { method: 'GET', path: (args) => `/api/cronos/groups/${getArg(args, 'group_id')}` },
-  create_cron_group: { method: 'POST', path: '/api/cronos/groups' },
-  update_cron_group: { method: 'PUT', path: (args) => `/api/cronos/groups/${(args.group as { id: string })?.id}` },
-  delete_cron_group: { method: 'DELETE', path: (args) => `/api/cronos/groups/${getArg(args, 'group_id')}` },
-  set_agent_group: { method: 'PUT', path: (args) => `/api/cronos/agents/${getArg(args, 'agent_name')}/group` },
+  get_scheduled_run_log: { method: 'GET', path: (args) => `/api/scheduler/runs/${getArg(args, 'run_id')}/log` },
+  relaunch_scheduled_session: { method: 'POST', path: (args) => `/api/scheduler/runs/${getArg(args, 'run_id')}/relaunch` },
+  skip_pipeline_stage: { method: 'POST', path: (args) => `/api/scheduler/runs/${getArg(args, 'run_id')}/skip` },
+  abort_pipeline: { method: 'POST', path: (args) => `/api/scheduler/pipelines/${getArg(args, 'pipeline_id')}/abort` },
+  complete_pipeline: { method: 'POST', path: (args) => `/api/scheduler/pipelines/${getArg(args, 'pipeline_id')}/complete` },
+  read_scheduled_agent_claude_md: { method: 'GET', path: (args) => `/api/scheduler/agents/${getArg(args, 'name')}/claude-md` },
+  write_scheduled_agent_claude_md: { method: 'PUT', path: (args) => `/api/scheduler/agents/${getArg(args, 'name')}/claude-md` },
+  init_scheduler: { method: 'POST', path: '/api/scheduler/init' },
+  shutdown_scheduler: { method: 'POST', path: '/api/scheduler/shutdown' },
+  // New scheduler commands
+  cancel_scheduled_agent: { method: 'POST', path: (args) => `/api/scheduler/agents/${getArg(args, 'name')}/cancel` },
+  get_running_agents: { method: 'GET', path: '/api/scheduler/running' },
+  get_scheduler_health: { method: 'GET', path: '/api/scheduler/health' },
+  get_agent_stats: { method: 'GET', path: (args) => `/api/scheduler/agents/${getArg(args, 'name')}/stats` },
+  subscribe_scheduled_output: { method: 'POST', path: '/api/noop' },  // WebSocket only - no-op in REST
+  get_schedule_next_runs: { method: 'GET', path: (args) => `/api/scheduler/cron/next?expression=${encodeURIComponent(getArg(args, 'expression') as string)}&count=${args.count || 5}` },
+  describe_schedule_expression: { method: 'GET', path: (args) => `/api/scheduler/cron/describe?expression=${encodeURIComponent(getArg(args, 'expression') as string)}` },
+  // Scheduler groups
+  list_scheduled_groups: { method: 'GET', path: '/api/scheduler/groups' },
+  get_scheduled_group: { method: 'GET', path: (args) => `/api/scheduler/groups/${getArg(args, 'group_id')}` },
+  create_scheduled_group: { method: 'POST', path: '/api/scheduler/groups' },
+  update_scheduled_group: { method: 'PUT', path: (args) => `/api/scheduler/groups/${(args.group as { id: string })?.id}` },
+  delete_scheduled_group: { method: 'DELETE', path: (args) => `/api/scheduler/groups/${getArg(args, 'group_id')}` },
+  set_agent_group: { method: 'PUT', path: (args) => `/api/scheduler/agents/${getArg(args, 'agent_name')}/group` },
+  // Schedules (schedule configurations - Tauri-only for now)
+  list_schedules: { method: 'GET', path: '/api/noop' },
+  create_schedule: { method: 'POST', path: '/api/noop' },
+  update_schedule: { method: 'PUT', path: '/api/noop' },
+  delete_schedule: { method: 'DELETE', path: '/api/noop' },
+  toggle_schedule: { method: 'POST', path: '/api/noop' },
   // Worktrees
-  list_worktrees: { method: 'GET', path: '/api/cronos/worktrees' },
-  cleanup_worktrees: { method: 'POST', path: '/api/cronos/worktrees/cleanup' },
-  remove_worktree: { method: 'POST', path: '/api/cronos/worktrees/remove' },
+  list_worktrees: { method: 'GET', path: '/api/scheduler/worktrees' },
+  cleanup_worktrees: { method: 'POST', path: '/api/scheduler/worktrees/cleanup' },
+  remove_worktree: { method: 'POST', path: '/api/scheduler/worktrees/remove' },
   // Pipelines
-  list_pipelines: { method: 'GET', path: '/api/cronos/pipelines' },
-  get_pipeline: { method: 'GET', path: (args) => `/api/cronos/pipelines/${getArg(args, 'id')}` },
-  list_pipeline_definitions: { method: 'GET', path: '/api/cronos/pipelines/definitions' },
-  get_pipeline_definition: { method: 'GET', path: (args) => `/api/cronos/pipelines/definitions/${getArg(args, 'name')}` },
-  get_default_pipeline_definition: { method: 'GET', path: '/api/cronos/pipelines/definitions/default' },
+  list_pipelines: { method: 'GET', path: '/api/scheduler/pipelines' },
+  get_pipeline: { method: 'GET', path: (args) => `/api/scheduler/pipelines/${getArg(args, 'id')}` },
+  list_pipeline_definitions: { method: 'GET', path: '/api/scheduler/pipelines/definitions' },
+  get_pipeline_definition: { method: 'GET', path: (args) => `/api/scheduler/pipelines/definitions/${getArg(args, 'name')}` },
+  get_default_pipeline_definition: { method: 'GET', path: '/api/scheduler/pipelines/definitions/default' },
   // Run triggers
   trigger_predefined_agent: { method: 'POST', path: '/api/noop' },  // Tauri-only for now
   trigger_analyzer_for_run: { method: 'POST', path: '/api/noop' },  // Tauri-only for now

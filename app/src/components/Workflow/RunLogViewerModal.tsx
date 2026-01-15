@@ -4,10 +4,10 @@ import { invoke, isBrowserMode } from '@/lib/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
-import { Loader2, CheckCircle, Cpu, Terminal, MessageSquare, X, XCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Loader2, CheckCircle, Cpu, Terminal, MessageSquare, XCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import type { CronRunLog, CronOutputEvent } from '@/types';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import type { ScheduledRunLog, ScheduledOutputEvent } from '@/types';
 
 // Log parsing types
 interface LogEntry {
@@ -178,9 +178,9 @@ export const RunLogViewerModal: React.FC<RunLogViewerModalProps> = ({
   stageName,
   onClose,
 }) => {
-  const [runLog, setRunLog] = useState<CronRunLog | null>(null);
+  const [runLog, setRunLog] = useState<ScheduledRunLog | null>(null);
   const [logContent, setLogContent] = useState<string>('');
-  const [liveOutput, setLiveOutput] = useState<CronOutputEvent[]>([]);
+  const [liveOutput, setLiveOutput] = useState<ScheduledOutputEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -188,12 +188,12 @@ export const RunLogViewerModal: React.FC<RunLogViewerModalProps> = ({
     if (!runId) return;
     try {
       // Fetch run log metadata
-      const history = await invoke<CronRunLog[]>('get_cron_run_history', { limit: 100 });
+      const history = await invoke<ScheduledRunLog[]>('get_scheduled_run_history', { limit: 100 });
       const run = history.find(r => r.run_id === runId);
       setRunLog(run || null);
 
       // Fetch log content
-      const result = await invoke<string | { log: string }>('get_cron_run_log', { run_id: runId });
+      const result = await invoke<string | { log: string }>('get_scheduled_run_log', { run_id: runId });
       const content = typeof result === 'string' ? result : result?.log ?? '';
       setLogContent(content);
       setError(null);
@@ -219,14 +219,14 @@ export const RunLogViewerModal: React.FC<RunLogViewerModalProps> = ({
     (async () => {
       try {
         const { listen } = await import('@tauri-apps/api/event');
-        const unsubscribe = await listen<CronOutputEvent>('cronos:output', (event) => {
+        const unsubscribe = await listen<ScheduledOutputEvent>('scheduler:output', (event) => {
           if (event.payload.run_id === runId) {
             setLiveOutput(prev => [...prev.slice(-500), event.payload]);
           }
         });
         cleanup = unsubscribe;
       } catch (err) {
-        console.error('Failed to subscribe to cronos output:', err);
+        console.error('Failed to subscribe to scheduler output:', err);
       }
     })();
     return () => cleanup?.();
@@ -242,8 +242,6 @@ export const RunLogViewerModal: React.FC<RunLogViewerModalProps> = ({
     return () => clearInterval(poll);
   }, [runId, runLog, fetchLog]);
 
-  if (!runId) return null;
-
   // Combine stored log content with live output
   const combinedContent = liveOutput.length > 0
     ? liveOutput.map(e => e.content).join('\n')
@@ -253,11 +251,10 @@ export const RunLogViewerModal: React.FC<RunLogViewerModalProps> = ({
   const isFailed = runLog?.status === 'failed' || runLog?.exit_code !== 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-background border border-border rounded-xl shadow-2xl w-full max-w-4xl mx-4 max-h-[80vh] flex flex-col">
+    <Dialog open={!!runId} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-4xl max-h-[80vh] flex flex-col p-0 gap-0">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-border">
+        <DialogHeader className="flex flex-row items-center justify-between p-4 border-b border-border space-y-0">
           <div className="flex items-center gap-3">
             {isLoading ? (
               <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
@@ -269,15 +266,15 @@ export const RunLogViewerModal: React.FC<RunLogViewerModalProps> = ({
               <CheckCircle className="w-5 h-5 text-green-500" />
             )}
             <div>
-              <h2 className="text-lg font-semibold">
+              <DialogTitle>
                 {stageName ? `${stageName} Logs` : 'Run Logs'}
-              </h2>
-              <p className="text-xs text-muted-foreground font-mono">
+              </DialogTitle>
+              <DialogDescription className="font-mono">
                 {runLog?.agent_name || runId}
-              </p>
+              </DialogDescription>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mr-8">
             {runLog && (
               <>
                 <Badge variant={isRunning ? 'secondary' : isFailed ? 'destructive' : 'default'}>
@@ -295,11 +292,8 @@ export const RunLogViewerModal: React.FC<RunLogViewerModalProps> = ({
                 )}
               </>
             )}
-            <Button variant="ghost" size="icon" onClick={onClose}>
-              <X className="w-4 h-4" />
-            </Button>
           </div>
-        </div>
+        </DialogHeader>
 
         {/* Output */}
         <div className="flex-1 overflow-hidden min-h-[400px]">
@@ -336,7 +330,7 @@ export const RunLogViewerModal: React.FC<RunLogViewerModalProps> = ({
             )}
           </div>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 };

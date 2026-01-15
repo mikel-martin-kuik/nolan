@@ -29,15 +29,20 @@ impl AppState {
     pub fn new() -> Self {
         let (status_tx, _) = broadcast::channel(64);
         let (history_tx, _) = broadcast::channel(256);
-        Self { status_tx, history_tx }
+        Self {
+            status_tx,
+            history_tx,
+        }
     }
 }
 
 /// Global reference to status broadcast channel (for use from lifecycle commands)
-static STATUS_TX: std::sync::OnceLock<broadcast::Sender<AgentStatusList>> = std::sync::OnceLock::new();
+static STATUS_TX: std::sync::OnceLock<broadcast::Sender<AgentStatusList>> =
+    std::sync::OnceLock::new();
 
 /// Global reference to history broadcast channel (for use from history commands)
-static HISTORY_TX: std::sync::OnceLock<broadcast::Sender<HistoryEntry>> = std::sync::OnceLock::new();
+static HISTORY_TX: std::sync::OnceLock<broadcast::Sender<HistoryEntry>> =
+    std::sync::OnceLock::new();
 
 pub fn set_status_broadcaster(tx: broadcast::Sender<AgentStatusList>) {
     let _ = STATUS_TX.set(tx);
@@ -100,7 +105,5 @@ pub async fn start_server(port: u16) {
         .await
         .expect("Failed to bind HTTP server");
 
-    axum::serve(listener, app)
-        .await
-        .expect("HTTP server error");
+    axum::serve(listener, app).await.expect("HTTP server error");
 }

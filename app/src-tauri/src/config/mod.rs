@@ -4,7 +4,14 @@ use std::path::{Path, PathBuf};
 
 // UI Configuration module
 pub mod ui_config;
-pub use ui_config::{UIConfig, load_ui_config, update_ssh_terminal_config, update_default_cli_provider, get_default_cli_provider, StatusConfig, SessionPrefixConfig, OllamaDefaults, AgentDisplayName, SshTerminalConfig, RuntimeConfig};
+pub use ui_config::{
+    get_default_cli_provider, get_idea_implementer_agent, get_idea_merger_agent,
+    get_idea_processor_agent, get_implementer_analyzer_agent, get_pipeline_entrypoint_file,
+    get_prompt_file, get_trigger_config, load_ui_config, update_default_cli_provider,
+    update_ssh_terminal_config, update_trigger_config, AgentDisplayName, OllamaDefaults,
+    PipelineConfig, RuntimeConfig, SessionPrefixConfig, SshTerminalConfig, StatusConfig,
+    TriggerConfig, UIConfig,
+};
 
 /// Root team configuration structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -40,11 +47,12 @@ impl Default for WorkflowConfig {
     }
 }
 
-/// Agent configuration
-/// Note: role and model are no longer stored in team config - they come from agent.json
+/// Agent configuration for team agents
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
     pub name: String,
+    pub role: String,
+    pub model: String,
     #[serde(default)]
     pub output_file: Option<String>,
     #[serde(default)]
@@ -74,12 +82,12 @@ fn default_true() -> bool {
 /// Use disable_note_taker/disable_exception_handler to opt out if absolutely necessary.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorkflowConfig {
-    /// Agent that documents workflow progress (maintains NOTES.md)
-    /// Defaults to "notary" if not specified and not disabled
+    /// Agent that documents workflow progress (maintains status file)
+    /// Must be configured explicitly unless disable_note_taker is true
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note_taker: Option<String>,
     /// Agent that handles workflow exceptions (escalates to human)
-    /// Defaults to "guardian" if not specified and not disabled
+    /// Must be configured explicitly unless disable_exception_handler is true
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub exception_handler: Option<String>,
     /// Force disable note_taker role (not recommended - breaks audit trail)
@@ -175,40 +183,40 @@ where
 pub struct Department {
     pub name: String,
     #[serde(default)]
-    pub code: Option<String>,             // Short code (e.g., "ADM", "DEV")
+    pub code: Option<String>, // Short code (e.g., "ADM", "DEV")
     #[serde(default)]
-    pub directory: Option<String>,        // Directory name in teams/ folder
+    pub directory: Option<String>, // Directory name in teams/ folder
     #[serde(default)]
     pub teams: Vec<String>,
     // Hierarchical support (V1.1)
     #[serde(default)]
-    pub pillar: Option<String>,           // Parent pillar ID
+    pub pillar: Option<String>, // Parent pillar ID
     #[serde(default)]
-    pub parent: Option<String>,           // Parent department (nested hierarchy)
+    pub parent: Option<String>, // Parent department (nested hierarchy)
     #[serde(default)]
     pub description: Option<String>,
     #[serde(default)]
     pub policies: Option<DepartmentPolicies>,
     #[serde(default)]
-    pub notes: Option<String>,            // Optional notes field
+    pub notes: Option<String>, // Optional notes field
 }
 
 /// Department-level policy overrides
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DepartmentPolicies {
     #[serde(default)]
-    pub budget_limit: Option<i64>,              // Cents, inherits from parent if None
+    pub budget_limit: Option<i64>, // Cents, inherits from parent if None
     #[serde(default)]
     pub model_restriction: Option<Vec<String>>, // Allowed models
     #[serde(default)]
-    pub escalation_timeout: Option<String>,     // Override default
+    pub escalation_timeout: Option<String>, // Override default
 }
 
 /// Root departments configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DepartmentsConfig {
     #[serde(default)]
-    pub version: Option<String>,  // Schema version for migration detection
+    pub version: Option<String>, // Schema version for migration detection
     pub departments: Vec<Department>,
 }
 
@@ -268,7 +276,7 @@ pub struct TeamInfo {
     pub name: String,           // Display name from team config
     pub group: String,          // Directory group (e.g., "pillar_1", "foundation", "")
     pub pillar: Option<String>, // Pillar from org schema if applicable
-    pub path: String,           // Relative path from teams/ (e.g., "pillar_1/structure_engineering.yaml")
+    pub path: String, // Relative path from teams/ (e.g., "pillar_1/structure_engineering.yaml")
 }
 
 // =============================================================================
@@ -304,7 +312,7 @@ pub struct Role {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct RolePermissions {
     #[serde(default)]
-    pub file_access: Option<String>,  // "restricted", "permissive", "no_projects"
+    pub file_access: Option<String>, // "restricted", "permissive", "no_projects"
     #[serde(default)]
     pub can_spawn_agents: bool,
     #[serde(default)]
@@ -363,11 +371,11 @@ pub struct Policy {
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BudgetPolicy {
     #[serde(default)]
-    pub daily_limit: Option<i64>,      // Cents
+    pub daily_limit: Option<i64>, // Cents
     #[serde(default)]
-    pub project_limit: Option<i64>,    // Cents
+    pub project_limit: Option<i64>, // Cents
     #[serde(default)]
-    pub alert_threshold: Option<f64>,  // 0.0 - 1.0
+    pub alert_threshold: Option<f64>, // 0.0 - 1.0
 }
 
 /// Model allocation policy
@@ -519,7 +527,10 @@ impl DepartmentsConfig {
 
         if !config_path.exists() {
             // Return empty config for graceful fallback
-            return Ok(DepartmentsConfig { version: None, departments: vec![] });
+            return Ok(DepartmentsConfig {
+                version: None,
+                departments: vec![],
+            });
         }
 
         // Check file size (1MB max) - DoS protection
@@ -527,14 +538,16 @@ impl DepartmentsConfig {
             .map_err(|e| format!("Failed to read file metadata: {}", e))?;
 
         if metadata.len() > 1_048_576 {
-            return Err(format!("Departments config too large: {} bytes (max 1MB)", metadata.len()));
+            return Err(format!(
+                "Departments config too large: {} bytes (max 1MB)",
+                metadata.len()
+            ));
         }
 
         let contents = fs::read_to_string(&config_path)
             .map_err(|e| format!("Failed to read config: {}", e))?;
 
-        serde_yaml::from_str(&contents)
-            .map_err(|e| format!("Failed to parse YAML: {}", e))
+        serde_yaml::from_str(&contents).map_err(|e| format!("Failed to parse YAML: {}", e))
     }
 
     /// Save departments configuration to YAML file
@@ -552,8 +565,7 @@ impl DepartmentsConfig {
         let yaml_content = serde_yaml::to_string(self)
             .map_err(|e| format!("Failed to serialize config: {}", e))?;
 
-        fs::write(&config_path, yaml_content)
-            .map_err(|e| format!("Failed to write config: {}", e))
+        fs::write(&config_path, yaml_content).map_err(|e| format!("Failed to write config: {}", e))
     }
 }
 
@@ -595,7 +607,10 @@ impl TeamConfig {
         }
 
         // Not found
-        Err(format!("Team config not found: {} (checked new and old formats)", team_name))
+        Err(format!(
+            "Team config not found: {} (checked new and old formats)",
+            team_name
+        ))
     }
 
     /// Load team from resolved path
@@ -608,34 +623,54 @@ impl TeamConfig {
         let metadata = fs::metadata(config_path)
             .map_err(|e| format!("Failed to read file metadata: {}", e))?;
         if metadata.len() > 1_048_576 {
-            return Err(format!("Team config too large: {} bytes (max 1MB)", metadata.len()));
+            return Err(format!(
+                "Team config too large: {} bytes (max 1MB)",
+                metadata.len()
+            ));
         }
 
-        let contents = fs::read_to_string(config_path)
-            .map_err(|e| format!("Failed to read config: {}", e))?;
+        let contents =
+            fs::read_to_string(config_path).map_err(|e| format!("Failed to read config: {}", e))?;
 
-        let mut config: TeamConfig = serde_yaml::from_str(&contents)
-            .map_err(|e| format!("Failed to parse YAML: {}", e))?;
+        let mut config: TeamConfig =
+            serde_yaml::from_str(&contents).map_err(|e| format!("Failed to parse YAML: {}", e))?;
 
-        // Apply defaults for mandatory agents (note_taker and exception_handler)
+        // Apply defaults (no hardcoded values - teams must configure explicitly)
         config.apply_defaults();
+
+        // Resolve pipeline variables in phase requirements ($SPEC_FILE, $PROMPT_FILE)
+        config.resolve_pipeline_variables();
 
         config.validate()?;
         Ok(config)
     }
 
-    /// Apply default values for mandatory agents.
-    /// Sets note_taker to "notary" and exception_handler to "guardian" unless explicitly disabled.
-    pub fn apply_defaults(&mut self) {
-        // Default note_taker to "notary" (project tracker) unless disabled
-        if self.team.workflow.note_taker.is_none() && !self.team.workflow.disable_note_taker {
-            self.team.workflow.note_taker = Some("notary".to_string());
-        }
+    /// Resolve pipeline variables in phase requirements
+    /// Substitutes $SPEC_FILE and $PROMPT_FILE with values from config.yaml
+    fn resolve_pipeline_variables(&mut self) {
+        let spec_file = get_pipeline_entrypoint_file();
+        let prompt_file = get_prompt_file();
 
-        // Default exception_handler to "guardian" (escalates issues to humans) unless disabled
-        if self.team.workflow.exception_handler.is_none() && !self.team.workflow.disable_exception_handler {
-            self.team.workflow.exception_handler = Some("guardian".to_string());
+        for phase in &mut self.team.workflow.phases {
+            for req in &mut phase.requires {
+                if req == "$SPEC_FILE" {
+                    *req = spec_file.clone();
+                } else if req == "$PROMPT_FILE" {
+                    *req = prompt_file.clone();
+                }
+            }
         }
+    }
+
+    /// Apply default values for mandatory agents.
+    /// NOTE: No longer sets hardcoded defaults - teams must explicitly configure
+    /// note_taker and exception_handler in their team.yaml, or disable them.
+    pub fn apply_defaults(&mut self) {
+        // No hardcoded defaults - teams must explicitly configure these agents
+        // or use disable_note_taker/disable_exception_handler flags
+        //
+        // If note_taker is not set and not disabled, validation will catch this
+        // as an error (teams need to be explicit about their workflow)
     }
 
     /// Load team configuration by name (with path resolution)
@@ -677,7 +712,7 @@ impl TeamConfig {
         }
 
         // Validate note_taker: mandatory unless explicitly disabled
-        // Note-taker (notary) maintains NOTES.md for audit trail
+        // Note-taker maintains the workflow status file (e.g., NOTES.md)
         if !self.team.workflow.disable_note_taker {
             match &self.team.workflow.note_taker {
                 Some(note_taker) if !note_taker.is_empty() => {
@@ -691,7 +726,7 @@ impl TeamConfig {
                 }
                 _ => {
                     return Err(format!(
-                        "Team '{}' requires a note_taker agent (defaults to 'notary'). \
+                        "Team '{}' requires a note_taker agent to be configured. \
                         Set disable_note_taker: true to opt out (not recommended).",
                         self.team.name
                     ));
@@ -700,7 +735,7 @@ impl TeamConfig {
         }
 
         // Validate exception_handler: mandatory unless explicitly disabled
-        // Exception handler (guardian) escalates issues to humans
+        // Exception handler escalates issues to humans
         if !self.team.workflow.disable_exception_handler {
             match &self.team.workflow.exception_handler {
                 Some(handler) if !handler.is_empty() => {
@@ -714,7 +749,7 @@ impl TeamConfig {
                 }
                 _ => {
                     return Err(format!(
-                        "Team '{}' requires an exception_handler agent (defaults to 'guardian'). \
+                        "Team '{}' requires an exception_handler agent to be configured. \
                         Set disable_exception_handler: true to opt out (not recommended).",
                         self.team.name
                     ));
@@ -742,7 +777,9 @@ impl TeamConfig {
 
     /// Get list of workflow participant agent names
     pub fn workflow_participants(&self) -> Vec<&str> {
-        self.team.agents.iter()
+        self.team
+            .agents
+            .iter()
             .filter(|a| a.workflow_participant)
             .map(|a| a.name.as_str())
             .collect()
@@ -750,9 +787,7 @@ impl TeamConfig {
 
     /// Get all agent names in this team
     pub fn agent_names(&self) -> Vec<&str> {
-        self.team.agents.iter()
-            .map(|a| a.name.as_str())
-            .collect()
+        self.team.agents.iter().map(|a| a.name.as_str()).collect()
     }
 
     /// Get note-taker agent name (maintains NOTES.md)
@@ -772,16 +807,27 @@ impl TeamConfig {
         self.team.workflow.exception_handler.as_deref()
     }
 
-    /// Get coordinator's output file (deprecated - always returns NOTES.md)
-    #[deprecated(note = "coordinator role is deprecated")]
+    /// Get coordinator's output file (deprecated - use note_taker_output_file instead)
+    #[deprecated(note = "coordinator role is deprecated, use note_taker_output_file() instead")]
     pub fn coordinator_output_file(&self) -> Result<String, String> {
-        // Always return NOTES.md as the standard workflow tracking file
-        Ok("NOTES.md".to_string())
+        Ok(self.note_taker_output_file())
+    }
+
+    /// Get note-taker's output file from agent config
+    /// Falls back to "NOTES.md" if note-taker not found or has no output_file
+    pub fn note_taker_output_file(&self) -> String {
+        self.note_taker()
+            .and_then(|name| self.team.agents.iter().find(|a| a.name == name))
+            .and_then(|agent| agent.output_file.as_ref())
+            .cloned()
+            .unwrap_or_else(|| "NOTES.md".to_string())
     }
 
     /// Check if an agent is a workflow participant
     pub fn is_workflow_participant(&self, agent_name: &str) -> bool {
-        self.team.agents.iter()
+        self.team
+            .agents
+            .iter()
             .any(|a| a.name == agent_name && a.workflow_participant)
     }
 
@@ -850,7 +896,9 @@ use crate::constants::get_nolan_root;
 /// Returns default organization if schema doesn't exist (backwards compat)
 pub fn load_organization_config() -> Result<OrganizationConfig, String> {
     let nolan_root = get_nolan_root()?;
-    let org_path = PathBuf::from(&nolan_root).join("organization").join("schema.yaml");
+    let org_path = PathBuf::from(&nolan_root)
+        .join("organization")
+        .join("schema.yaml");
 
     if !org_path.exists() {
         // Return default organization if schema doesn't exist (backwards compat)
@@ -861,7 +909,7 @@ pub fn load_organization_config() -> Result<OrganizationConfig, String> {
                 description: Some("AI Agent Control Panel".to_string()),
                 pillars: vec![],
                 defaults: None,
-            }
+            },
         });
     }
 
@@ -881,7 +929,9 @@ pub fn load_organization_config() -> Result<OrganizationConfig, String> {
 /// Returns error if role template doesn't exist
 pub fn load_role_config(role_name: &str) -> Result<RoleConfig, String> {
     let nolan_root = get_nolan_root()?;
-    let role_path = PathBuf::from(&nolan_root).join("roles").join(format!("{}.yaml", role_name));
+    let role_path = PathBuf::from(&nolan_root)
+        .join("roles")
+        .join(format!("{}.yaml", role_name));
 
     if !role_path.exists() {
         return Err(format!("Role template not found: {}", role_name));
@@ -894,8 +944,7 @@ pub fn load_role_config(role_name: &str) -> Result<RoleConfig, String> {
         return Err("Role template exceeds 100KB limit".to_string());
     }
 
-    serde_yaml::from_str(&content)
-        .map_err(|e| format!("Failed to parse role template: {}", e))
+    serde_yaml::from_str(&content).map_err(|e| format!("Failed to parse role template: {}", e))
 }
 
 /// List all available role templates
@@ -908,8 +957,8 @@ pub fn list_roles() -> Result<Vec<String>, String> {
     }
 
     let mut roles = Vec::new();
-    for entry in fs::read_dir(&roles_path)
-        .map_err(|e| format!("Failed to read roles directory: {}", e))?
+    for entry in
+        fs::read_dir(&roles_path).map_err(|e| format!("Failed to read roles directory: {}", e))?
     {
         let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
         let path = entry.path();
@@ -928,7 +977,9 @@ pub fn list_roles() -> Result<Vec<String>, String> {
 /// Falls back to default policy if not found
 pub fn load_policy_config(policy_name: &str) -> Result<PolicyConfig, String> {
     let nolan_root = get_nolan_root()?;
-    let policy_path = PathBuf::from(&nolan_root).join("policies").join(format!("{}.yaml", policy_name));
+    let policy_path = PathBuf::from(&nolan_root)
+        .join("policies")
+        .join(format!("{}.yaml", policy_name));
 
     if !policy_path.exists() {
         // Fall back to default policy
@@ -946,19 +997,18 @@ pub fn load_policy_config(policy_name: &str) -> Result<PolicyConfig, String> {
                 escalation: None,
                 execution: None,
                 audit: None,
-            }
+            },
         });
     }
 
-    let content = fs::read_to_string(&policy_path)
-        .map_err(|e| format!("Failed to read policy: {}", e))?;
+    let content =
+        fs::read_to_string(&policy_path).map_err(|e| format!("Failed to read policy: {}", e))?;
 
     if content.len() > 100_000 {
         return Err("Policy file exceeds 100KB limit".to_string());
     }
 
-    serde_yaml::from_str(&content)
-        .map_err(|e| format!("Failed to parse policy: {}", e))
+    serde_yaml::from_str(&content).map_err(|e| format!("Failed to parse policy: {}", e))
 }
 
 /// Merge child policy with parent, child values override parent
@@ -966,7 +1016,10 @@ pub fn merge_policies(parent: &Policy, child: &Policy) -> Policy {
     Policy {
         name: child.name.clone(),
         version: child.version.clone().or_else(|| parent.version.clone()),
-        description: child.description.clone().or_else(|| parent.description.clone()),
+        description: child
+            .description
+            .clone()
+            .or_else(|| parent.description.clone()),
         budget: merge_budget_policy(&parent.budget, &child.budget),
         models: merge_model_policy(&parent.models, &child.models),
         escalation: merge_escalation_policy(&parent.escalation, &child.escalation),
@@ -975,7 +1028,10 @@ pub fn merge_policies(parent: &Policy, child: &Policy) -> Policy {
     }
 }
 
-fn merge_budget_policy(parent: &Option<BudgetPolicy>, child: &Option<BudgetPolicy>) -> Option<BudgetPolicy> {
+fn merge_budget_policy(
+    parent: &Option<BudgetPolicy>,
+    child: &Option<BudgetPolicy>,
+) -> Option<BudgetPolicy> {
     match (parent, child) {
         (None, None) => None,
         (Some(p), None) => Some(p.clone()),
@@ -988,34 +1044,57 @@ fn merge_budget_policy(parent: &Option<BudgetPolicy>, child: &Option<BudgetPolic
     }
 }
 
-fn merge_model_policy(parent: &Option<ModelPolicy>, child: &Option<ModelPolicy>) -> Option<ModelPolicy> {
+fn merge_model_policy(
+    parent: &Option<ModelPolicy>,
+    child: &Option<ModelPolicy>,
+) -> Option<ModelPolicy> {
     match (parent, child) {
         (None, None) => None,
         (Some(p), None) => Some(p.clone()),
         (None, Some(c)) => Some(c.clone()),
         (Some(p), Some(c)) => Some(ModelPolicy {
-            allowed: if c.allowed.is_empty() { p.allowed.clone() } else { c.allowed.clone() },
+            allowed: if c.allowed.is_empty() {
+                p.allowed.clone()
+            } else {
+                c.allowed.clone()
+            },
             default: c.default.clone().or_else(|| p.default.clone()),
             opus_requires_approval: c.opus_requires_approval || p.opus_requires_approval,
         }),
     }
 }
 
-fn merge_escalation_policy(parent: &Option<EscalationPolicy>, child: &Option<EscalationPolicy>) -> Option<EscalationPolicy> {
+fn merge_escalation_policy(
+    parent: &Option<EscalationPolicy>,
+    child: &Option<EscalationPolicy>,
+) -> Option<EscalationPolicy> {
     match (parent, child) {
         (None, None) => None,
         (Some(p), None) => Some(p.clone()),
         (None, Some(c)) => Some(c.clone()),
         (Some(p), Some(c)) => Some(EscalationPolicy {
             timeout: c.timeout.clone().or_else(|| p.timeout.clone()),
-            budget_exceeded: c.budget_exceeded.clone().or_else(|| p.budget_exceeded.clone()),
-            quality_failed: c.quality_failed.clone().or_else(|| p.quality_failed.clone()),
-            paths: if c.paths.is_empty() { p.paths.clone() } else { c.paths.clone() },
+            budget_exceeded: c
+                .budget_exceeded
+                .clone()
+                .or_else(|| p.budget_exceeded.clone()),
+            quality_failed: c
+                .quality_failed
+                .clone()
+                .or_else(|| p.quality_failed.clone()),
+            paths: if c.paths.is_empty() {
+                p.paths.clone()
+            } else {
+                c.paths.clone()
+            },
         }),
     }
 }
 
-fn merge_execution_policy(parent: &Option<ExecutionPolicy>, child: &Option<ExecutionPolicy>) -> Option<ExecutionPolicy> {
+fn merge_execution_policy(
+    parent: &Option<ExecutionPolicy>,
+    child: &Option<ExecutionPolicy>,
+) -> Option<ExecutionPolicy> {
     match (parent, child) {
         (None, None) => None,
         (Some(p), None) => Some(p.clone()),
@@ -1028,7 +1107,10 @@ fn merge_execution_policy(parent: &Option<ExecutionPolicy>, child: &Option<Execu
     }
 }
 
-fn merge_audit_policy(parent: &Option<AuditPolicy>, child: &Option<AuditPolicy>) -> Option<AuditPolicy> {
+fn merge_audit_policy(
+    parent: &Option<AuditPolicy>,
+    child: &Option<AuditPolicy>,
+) -> Option<AuditPolicy> {
     match (parent, child) {
         (None, None) => None,
         (Some(p), None) => Some(p.clone()),

@@ -1,38 +1,40 @@
-use serde::Serialize;
-use regex::Regex;
-use std::process::Command;
-use std::time::{Duration, Instant};
-use std::thread;
-use once_cell::sync::Lazy;
-use uuid::Uuid;
 use crate::config::TeamConfig;
 use crate::constants::parse_ralph_session;
+use once_cell::sync::Lazy;
+use regex::Regex;
+use serde::Serialize;
+use std::process::Command;
+use std::thread;
+use std::time::{Duration, Instant};
+use uuid::Uuid;
 
 // Compile regex patterns once at startup
 // Team-scoped patterns for message routing
 
 /// Core agent target: just the agent name (e.g., "ana", "dl_coordinator")
 /// Agent names use underscores (not hyphens) - hyphens are delimiters only
-static RE_AGENT_NAME: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^([a-z][a-z0-9_]*)$").expect("Invalid regex pattern for agent name")
-});
+static RE_AGENT_NAME: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^([a-z][a-z0-9_]*)$").expect("Invalid regex pattern for agent name"));
 
 /// Spawned agent target: name-instance (e.g., "ana-2", "ralph-ziggy")
 /// Agent names use underscores, instance suffix after hyphen
 static RE_AGENT_INSTANCE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^([a-z][a-z0-9_]*)-([a-z0-9]+)$").expect("Invalid regex pattern for agent instance")
+    Regex::new(r"^([a-z][a-z0-9_]*)-([a-z0-9]+)$")
+        .expect("Invalid regex pattern for agent instance")
 });
 
 /// Team-scoped core session: agent-{team}-{name}
 /// Team and agent names use underscores (not hyphens) - hyphens are delimiters only
 static RE_SESSION_CORE: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^agent-([a-z][a-z0-9_]*)-([a-z][a-z0-9_]*)$").expect("Invalid regex pattern for team session")
+    Regex::new(r"^agent-([a-z][a-z0-9_]*)-([a-z][a-z0-9_]*)$")
+        .expect("Invalid regex pattern for team session")
 });
 
 /// Team-scoped spawned session: agent-{team}-{name}-{instance}
 /// Team and agent names use underscores (not hyphens) - hyphens are delimiters only
 static RE_SESSION_SPAWNED: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(r"^agent-([a-z][a-z0-9_]*)-([a-z][a-z0-9_]*)-([a-z0-9]+)$").expect("Invalid regex pattern for spawned session")
+    Regex::new(r"^agent-([a-z][a-z0-9_]*)-([a-z][a-z0-9_]*)-([a-z0-9]+)$")
+        .expect("Invalid regex pattern for spawned session")
 });
 
 // Ralph sessions use RE_RALPH_SESSION from crate::constants
@@ -41,7 +43,7 @@ static RE_SESSION_SPAWNED: Lazy<Regex> = Lazy::new(|| {
 const DEFAULT_TIMEOUT_SECS: u64 = 5;
 const DEFAULT_RETRY_COUNT: u32 = 2;
 const POLL_INTERVAL_MS: u64 = 200;
-const READY_TIMEOUT_SECS: u64 = 30;  // Max time to wait for Claude Code to be ready
+const READY_TIMEOUT_SECS: u64 = 30; // Max time to wait for Claude Code to be ready
 
 /// Generate a unique message ID with sender identity
 /// Format: MSG_<SENDER>_<8-hex-chars>
@@ -91,7 +93,14 @@ fn exit_copy_mode(session: &str) -> Result<(), String> {
 /// Capture tmux pane content (last N lines of scrollback)
 fn capture_pane(session: &str, scrollback_lines: i32) -> Result<String, String> {
     let output = Command::new("tmux")
-        .args(&["capture-pane", "-t", session, "-p", "-S", &format!("-{}", scrollback_lines)])
+        .args(&[
+            "capture-pane",
+            "-t",
+            session,
+            "-p",
+            "-S",
+            &format!("-{}", scrollback_lines),
+        ])
         .output()
         .map_err(|e| format!("Failed to capture pane: {}", e))?;
 
@@ -116,8 +125,11 @@ fn wait_for_ready(session: &str, timeout_secs: u64) -> Result<(), String> {
         // - "Claude Code v" in the ASCII art header
         // - The model info line (e.g., "Opus 4.5")
         // combined with the prompt character
-        if pane_content.contains("Claude Code v") &&
-           (pane_content.contains("Opus") || pane_content.contains("Sonnet") || pane_content.contains("Haiku")) {
+        if pane_content.contains("Claude Code v")
+            && (pane_content.contains("Opus")
+                || pane_content.contains("Sonnet")
+                || pane_content.contains("Haiku"))
+        {
             // Header is showing, wait a bit more for the prompt
             thread::sleep(Duration::from_millis(500));
             let pane_content = capture_pane(session, 50)?;
@@ -129,7 +141,10 @@ fn wait_for_ready(session: &str, timeout_secs: u64) -> Result<(), String> {
         thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
     }
 
-    Err(format!("Timeout waiting for Claude Code to be ready in session '{}'", session))
+    Err(format!(
+        "Timeout waiting for Claude Code to be ready in session '{}'",
+        session
+    ))
 }
 
 /// Try to force submit by sending C-m if message appears stuck
@@ -138,7 +153,10 @@ fn try_force_submit(session: &str, msg_id: &str) -> Result<bool, String> {
     let pane_content = capture_pane(session, 200)?;
 
     // If we see the prompt ">" or the message ID or paste indicator, force submit
-    if pane_content.contains(">") || pane_content.contains(msg_id) || pane_content.contains("[Pasted text #") {
+    if pane_content.contains(">")
+        || pane_content.contains(msg_id)
+        || pane_content.contains("[Pasted text #")
+    {
         thread::sleep(Duration::from_millis(100));
         let _ = Command::new("tmux")
             .args(&["send-keys", "-t", session, "C-m"])
@@ -195,7 +213,10 @@ fn send_verified_native(
 
     // Verify session exists
     if !crate::tmux::session::session_exists(&session)? {
-        return Err(format!("Agent '{}' in team '{}' not found or offline (session: {})", target, team, session));
+        return Err(format!(
+            "Agent '{}' in team '{}' not found or offline (session: {})",
+            target, team, session
+        ));
     }
 
     // Wait for Claude Code to be ready before sending message
@@ -221,7 +242,10 @@ fn send_verified_native(
             .map_err(|e| format!("Failed to send message: {}", e))?;
 
         if !output.status.success() {
-            return Err(format!("tmux send-keys failed: {}", String::from_utf8_lossy(&output.stderr)));
+            return Err(format!(
+                "tmux send-keys failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         // Small delay before sending Enter
@@ -234,7 +258,10 @@ fn send_verified_native(
             .map_err(|e| format!("Failed to send enter: {}", e))?;
 
         if !output.status.success() {
-            return Err(format!("tmux send-keys C-m failed: {}", String::from_utf8_lossy(&output.stderr)));
+            return Err(format!(
+                "tmux send-keys C-m failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
         }
 
         // Poll for delivery confirmation
@@ -270,7 +297,12 @@ fn send_verified_native(
         }
     }
 
-    Err(format!("Timeout: Failed to deliver to '{}' in team '{}' after {} attempts", target, team, retry_count + 1))
+    Err(format!(
+        "Timeout: Failed to deliver to '{}' in team '{}' after {} attempts",
+        target,
+        team,
+        retry_count + 1
+    ))
 }
 
 /// Send a message to a specific agent in a team
@@ -300,7 +332,14 @@ pub async fn send_message(team: String, target: String, message: String) -> Resu
     // Use native send_verified with default timeout
     // Messages from Nolan app are always from "USER" (the human)
     // send_verified_native will verify the session actually exists
-    send_verified_native(&team, &target, &message, "USER", DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT)
+    send_verified_native(
+        &team,
+        &target,
+        &message,
+        "USER",
+        DEFAULT_TIMEOUT_SECS,
+        DEFAULT_RETRY_COUNT,
+    )
 }
 
 /// Broadcast a message to the core team (workflow participants from team config)
@@ -320,7 +359,14 @@ pub async fn broadcast_team(team_name: String, message: String) -> Result<Broadc
         }
 
         // Broadcasts from app are from USER
-        match send_verified_native(&team_name, agent, &message, "USER", DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT) {
+        match send_verified_native(
+            &team_name,
+            agent,
+            &message,
+            "USER",
+            DEFAULT_TIMEOUT_SECS,
+            DEFAULT_RETRY_COUNT,
+        ) {
             Ok(msg_id) => successful.push(format!("{} ({})", agent, msg_id)),
             Err(e) => failed.push(format!("{}: {}", agent, e)),
         }
@@ -365,7 +411,14 @@ pub async fn broadcast_all(team_name: String, message: String) -> Result<Broadca
             }
 
             // Broadcasts from app are from USER
-            match send_verified_native(&team_name, agent_name, &message, "USER", DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT) {
+            match send_verified_native(
+                &team_name,
+                agent_name,
+                &message,
+                "USER",
+                DEFAULT_TIMEOUT_SECS,
+                DEFAULT_RETRY_COUNT,
+            ) {
                 Ok(msg_id) => successful.push(format!("{} ({})", agent_name, msg_id)),
                 Err(e) => failed.push(format!("{}: {}", agent_name, e)),
             }
@@ -385,7 +438,14 @@ pub async fn broadcast_all(team_name: String, message: String) -> Result<Broadca
             }
 
             let target = format!("{}-{}", agent_name, instance);
-            match send_verified_native(&team_name, &target, &message, "USER", DEFAULT_TIMEOUT_SECS, DEFAULT_RETRY_COUNT) {
+            match send_verified_native(
+                &team_name,
+                &target,
+                &message,
+                "USER",
+                DEFAULT_TIMEOUT_SECS,
+                DEFAULT_RETRY_COUNT,
+            ) {
                 Ok(msg_id) => successful.push(format!("{} ({})", target, msg_id)),
                 Err(e) => failed.push(format!("{}: {}", target, e)),
             }

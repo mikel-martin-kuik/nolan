@@ -20,7 +20,7 @@ export const useCollapsedCronGroupsStore = create<CollapsedCronGroupsState>()(
         })),
     }),
     {
-      name: 'nolan-collapsed-cron-groups',
+      name: 'nolan-collapsed-scheduled-groups',
     }
   )
 );

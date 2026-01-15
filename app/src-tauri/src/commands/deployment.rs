@@ -3,16 +3,16 @@
 //! This module handles deploying Nolan agents to external git repositories,
 //! providing environment abstraction and .claude configuration portability.
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::utils::paths::get_deployments_path;
 use crate::git::worktree;
+use crate::utils::paths::get_deployments_path;
 
 /// Information about a deployed agent
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,8 +71,8 @@ pub fn read_deployment_manifest() -> Result<Vec<DeploymentInfo>, String> {
         return Ok(Vec::new());
     }
 
-    let file = File::open(&path)
-        .map_err(|e| format!("Failed to open deployment manifest: {}", e))?;
+    let file =
+        File::open(&path).map_err(|e| format!("Failed to open deployment manifest: {}", e))?;
     let reader = BufReader::new(file);
 
     let mut deployments = Vec::new();
@@ -114,7 +114,10 @@ pub fn append_deployment(deployment: &DeploymentInfo) -> Result<(), String> {
 }
 
 /// Update the status of a deployment in the manifest
-pub fn update_deployment_status(deployment_id: &str, status: DeploymentStatus) -> Result<(), String> {
+pub fn update_deployment_status(
+    deployment_id: &str,
+    status: DeploymentStatus,
+) -> Result<(), String> {
     let mut deployments = read_deployment_manifest()?;
 
     for deployment in &mut deployments {
@@ -125,15 +128,13 @@ pub fn update_deployment_status(deployment_id: &str, status: DeploymentStatus) -
 
     // Rewrite the entire manifest
     let path = get_deployments_path()?;
-    let file = File::create(&path)
-        .map_err(|e| format!("Failed to recreate manifest: {}", e))?;
+    let file = File::create(&path).map_err(|e| format!("Failed to recreate manifest: {}", e))?;
     let mut writer = std::io::BufWriter::new(file);
 
     for deployment in &deployments {
         let json = serde_json::to_string(deployment)
             .map_err(|e| format!("Failed to serialize deployment: {}", e))?;
-        writeln!(writer, "{}", json)
-            .map_err(|e| format!("Failed to write deployment: {}", e))?;
+        writeln!(writer, "{}", json).map_err(|e| format!("Failed to write deployment: {}", e))?;
     }
 
     Ok(())
@@ -143,10 +144,9 @@ pub fn update_deployment_status(deployment_id: &str, status: DeploymentStatus) -
 /// Uses a contains match on agent_id since session names include the agent
 pub fn find_deployment_by_session(session_name: &str) -> Result<Option<DeploymentInfo>, String> {
     let deployments = read_deployment_manifest()?;
-    Ok(deployments.into_iter().find(|d| {
-        d.status == DeploymentStatus::Active &&
-        session_name.contains(&d.agent_id)
-    }))
+    Ok(deployments
+        .into_iter()
+        .find(|d| d.status == DeploymentStatus::Active && session_name.contains(&d.agent_id)))
 }
 
 /// Find an active deployment by deployment ID
@@ -170,7 +170,10 @@ pub fn validate_and_prepare_target(path: &Path) -> Result<(), String> {
     }
 
     if !path.is_dir() {
-        return Err(format!("Target path is not a directory: {}", path.display()));
+        return Err(format!(
+            "Target path is not a directory: {}",
+            path.display()
+        ));
     }
 
     // Check if git repo, initialize if not
@@ -221,7 +224,7 @@ pub fn validate_and_prepare_target(path: &Path) -> Result<(), String> {
 
     if !output.stdout.is_empty() {
         return Err(
-            "Target repository has uncommitted changes. Commit or stash them first.".to_string()
+            "Target repository has uncommitted changes. Commit or stash them first.".to_string(),
         );
     }
 
@@ -256,8 +259,7 @@ pub fn bootstrap_worktree_config(
     if !dest_md.exists() {
         let src = source_agent_dir.join("CLAUDE.md");
         if src.exists() {
-            fs::copy(&src, &dest_md)
-                .map_err(|e| format!("Failed to copy CLAUDE.md: {}", e))?;
+            fs::copy(&src, &dest_md).map_err(|e| format!("Failed to copy CLAUDE.md: {}", e))?;
             result.claude_md_copied = true;
         }
     }
@@ -298,8 +300,7 @@ pub fn cleanup_worktree_config(
     if deployment.claude_copied {
         let config = worktree_path.join(".claude");
         if config.exists() {
-            fs::remove_dir_all(&config)
-                .map_err(|e| format!("Failed to remove .claude: {}", e))?;
+            fs::remove_dir_all(&config).map_err(|e| format!("Failed to remove .claude: {}", e))?;
         }
     }
 

@@ -1,11 +1,6 @@
 //! Agent template HTTP handlers
 
-use axum::{
-    extract::State,
-    http::StatusCode,
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use serde::Serialize;
 use std::sync::Arc;
 

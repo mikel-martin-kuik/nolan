@@ -94,8 +94,8 @@ pub fn verify_password(password: &str) -> Result<bool, String> {
     let stored_hash = std::fs::read_to_string(&password_path)
         .map_err(|_| "No password configured".to_string())?;
 
-    let parsed_hash = PasswordHash::new(&stored_hash)
-        .map_err(|e| format!("Invalid stored hash: {}", e))?;
+    let parsed_hash =
+        PasswordHash::new(&stored_hash).map_err(|e| format!("Invalid stored hash: {}", e))?;
 
     Ok(Argon2::default()
         .verify_password(password.as_bytes(), &parsed_hash)
@@ -213,17 +213,16 @@ pub async fn login(
         Ok(true) => {
             let token = generate_session_token();
             auth_state.sessions.write().await.insert(token.clone());
-            Ok(Json(LoginResponse { session_token: token }))
+            Ok(Json(LoginResponse {
+                session_token: token,
+            }))
         }
         Ok(false) => Err((StatusCode::UNAUTHORIZED, "Invalid password".to_string())),
         Err(e) => Err((StatusCode::INTERNAL_SERVER_ERROR, e)),
     }
 }
 
-pub async fn logout(
-    State(auth_state): State<AuthState>,
-    request: Request<Body>,
-) -> StatusCode {
+pub async fn logout(State(auth_state): State<AuthState>, request: Request<Body>) -> StatusCode {
     if let Some(token) = extract_session_token(&request) {
         auth_state.sessions.write().await.remove(&token);
     }
@@ -247,15 +246,20 @@ pub async fn setup_password_handler(
     Json(req): Json<SetupPasswordRequest>,
 ) -> Result<StatusCode, (StatusCode, String)> {
     if is_password_configured() {
-        return Err((StatusCode::CONFLICT, "Password already configured".to_string()));
+        return Err((
+            StatusCode::CONFLICT,
+            "Password already configured".to_string(),
+        ));
     }
 
     if req.password.len() < 8 {
-        return Err((StatusCode::BAD_REQUEST, "Password must be at least 8 characters".to_string()));
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "Password must be at least 8 characters".to_string(),
+        ));
     }
 
-    setup_password(&req.password)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
+    setup_password(&req.password).map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e))?;
 
     Ok(StatusCode::CREATED)
 }

@@ -32,7 +32,7 @@ export type WorkflowNode = PhaseNode | AgentAvatarNode | SupportAgentNode;
 export type WorkflowEdge = Edge<{ isRejection?: boolean; animated?: boolean }>;
 
 // Pipeline Types
-export type PipelineStageType = 'idea' | 'implementer' | 'analyzer' | 'qa' | 'merger';
+export type PipelineStageType = 'idea' | 'implementer' | 'analyzer' | 'merger';
 
 export interface PipelineStage {
   type: PipelineStageType;

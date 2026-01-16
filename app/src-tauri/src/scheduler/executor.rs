@@ -65,7 +65,7 @@ const ROLE_SUBDIRS: &[&str] = &[
 
 /// Find agent directory by name, searching role subdirectories
 fn find_agent_dir(name: &str) -> Result<PathBuf, String> {
-    let agents_dir = paths::get_agents_dir()?;
+    let agents_dir = paths::get_agents_config_dir()?;
 
     // Check root agents directory first (legacy flat structure)
     let flat_path = agents_dir.join(name);

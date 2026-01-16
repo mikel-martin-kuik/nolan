@@ -4,4 +4,4 @@
  * Agent Identity - what the agent does
  * This enum cleanly separates agent role/capability from triggering mechanisms
  */
-export type AgentRole = "implementer" | "analyzer" | "tester" | "merger" | "builder" | "scanner" | "indexer" | "monitor" | "researcher" | "planner" | "free";
+export type AgentRole = "implementer" | "analyzer" | "merger" | "builder" | "scanner" | "indexer" | "monitor" | "researcher" | "planner" | "free";

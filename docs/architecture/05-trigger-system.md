@@ -218,7 +218,6 @@ classDiagram
         <<enumeration>>
         Implementer
         Analyzer
-        Qa
         Merger
     }
 ```

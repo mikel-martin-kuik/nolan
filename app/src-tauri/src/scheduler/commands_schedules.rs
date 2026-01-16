@@ -59,8 +59,7 @@ pub fn calculate_next_run(expression: &str) -> Option<String> {
 }
 
 fn get_schedules_path() -> Result<std::path::PathBuf, String> {
-    let data_root = crate::utils::paths::get_nolan_data_root()?;
-    Ok(data_root.join("schedules.yaml"))
+    crate::utils::paths::get_schedules_path()
 }
 
 fn load_schedules_from_disk() -> Result<Vec<ScheduleConfig>, String> {

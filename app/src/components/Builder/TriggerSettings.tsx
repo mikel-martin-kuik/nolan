@@ -8,43 +8,24 @@ import type { ScheduledAgentInfo } from '@/types/scheduler';
 
 interface TriggerConfig {
   idea_processor: string | null;
-  idea_implementer: string | null;
-  implementer_analyzer: string | null;
-  idea_merger: string | null;
+  // Note: idea_implementer, implementer_analyzer, idea_merger are now configured
+  // per-pipeline in Builder > Pipelines tab
 }
 
 const TRIGGER_LABELS: Record<keyof TriggerConfig, { label: string; description: string }> = {
   idea_processor: {
     label: 'Idea Processor',
-    description: 'Agent that processes raw ideas into structured proposals (Layer 1)',
-  },
-  idea_implementer: {
-    label: 'Idea Implementer',
-    description: 'Agent that implements approved ideas (Layer 2)',
-  },
-  implementer_analyzer: {
-    label: 'Implementer Analyzer',
-    description: 'Agent that analyzes implementation results',
-  },
-  idea_merger: {
-    label: 'Idea Merger',
-    description: 'Agent that merges completed implementations',
+    description: 'Agent that processes raw ideas into structured proposals (Layer 1 entry point)',
   },
 };
 
 const DEFAULT_VALUES: Record<keyof TriggerConfig, string> = {
   idea_processor: 'idea-processor',
-  idea_implementer: 'idea-implementer',
-  implementer_analyzer: 'implementer-analyzer',
-  idea_merger: 'idea-merger',
 };
 
 export const TriggerSettings: React.FC = () => {
   const [config, setConfig] = useState<TriggerConfig>({
     idea_processor: null,
-    idea_implementer: null,
-    implementer_analyzer: null,
-    idea_merger: null,
   });
   const [agents, setAgents] = useState<ScheduledAgentInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -189,15 +170,6 @@ export const TriggerSettings: React.FC = () => {
           </div>
         )}
 
-        {/* Help text */}
-        <div className="text-sm text-muted-foreground border-t pt-4 space-y-2">
-          <p>
-            These settings control which agents are dispatched for each trigger type in the idea pipeline.
-          </p>
-          <p className="text-xs">
-            Changes take effect immediately after saving. Agents must be enabled to appear in the dropdown.
-          </p>
-        </div>
       </CardContent>
     </Card>
   );

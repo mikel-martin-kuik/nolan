@@ -1,10 +1,9 @@
 //! scheduler/commands_pipeline.rs
 //!
-//! Pipeline workflow logic for QA validation and merge operations.
+//! Pipeline workflow logic for merge operations.
 //! Handles the automated workflow after implementation completes.
 //!
 //! Entry points:
-//! - `trigger_qa_then_merge()` - Start QA validation, then merge on success
 //! - `trigger_worktree_merger()` - Trigger merge agent directly
 //! - Pipeline stage commands (skip, retry, abort)
 
@@ -16,145 +15,6 @@ use super::executor;
 use super::pipeline::PipelineManager;
 use super::types::*;
 use super::commands::{SCHEDULER, OUTPUT_SENDER, get_pipeline_manager_sync};
-
-/// Trigger QA validation, then merger if QA passes
-pub async fn trigger_qa_then_merge(
-    worktree_path: String,
-    worktree_branch: String,
-    base_commit: Option<String>,
-    agent_name: String,
-    output_sender: broadcast::Sender<ScheduledOutputEvent>,
-    pipeline_id: Option<String>,
-) {
-    println!(
-        "[Scheduler] trigger_qa_then_merge called: path={}, branch={}",
-        worktree_path, worktree_branch
-    );
-
-    let _ = output_sender.send(ScheduledOutputEvent {
-        run_id: String::new(),
-        agent_name: agent_name.clone(),
-        event_type: OutputEventType::Status,
-        content: format!("Triggering QA validation for branch: {}", worktree_branch),
-        timestamp: chrono::Utc::now().to_rfc3339(),
-    });
-
-    if let Some(ref pid) = pipeline_id {
-        if let Ok(pm) = get_pipeline_manager_sync() {
-            let _ = pm.update_stage(
-                pid,
-                PipelineStageType::Qa,
-                PipelineStageStatus::Running,
-                None,
-                None,
-            );
-        }
-    }
-
-    let mut qa_env = executor::ExtraEnvVars::new();
-    qa_env.insert("WORKTREE_PATH".to_string(), worktree_path.clone());
-    qa_env.insert("WORKTREE_BRANCH".to_string(), worktree_branch.clone());
-    if let Some(ref commit) = base_commit {
-        qa_env.insert("BASE_COMMIT".to_string(), commit.clone());
-    }
-    if let Some(ref pid) = pipeline_id {
-        qa_env.insert("PIPELINE_ID".to_string(), pid.clone());
-    }
-
-    let guard = SCHEDULER.read().await;
-    if let Some(manager) = guard.as_ref() {
-        match manager.get_agent("qa-validation").await {
-            Ok(qa_config) => {
-                drop(guard);
-
-                let guard = SCHEDULER.read().await;
-                if let Some(manager) = guard.as_ref() {
-                    match executor::execute_cron_agent_with_env(
-                        &qa_config,
-                        manager,
-                        RunTrigger::Manual,
-                        false,
-                        Some(output_sender.clone()),
-                        None,
-                        Some(qa_env),
-                        None,
-                    )
-                    .await
-                    {
-                        Ok(qa_run_log) => {
-                            let _ = output_sender.send(ScheduledOutputEvent {
-                                run_id: qa_run_log.run_id.clone(),
-                                agent_name: "qa-validation".to_string(),
-                                event_type: OutputEventType::Complete,
-                                content: format!("QA validation completed: {:?}", qa_run_log.status),
-                                timestamp: chrono::Utc::now().to_rfc3339(),
-                            });
-
-                            if qa_run_log.status == ScheduledRunStatus::Success {
-                                if let Some(ref pid) = pipeline_id {
-                                    if let Ok(pm) = get_pipeline_manager_sync() {
-                                        let _ = pm.update_stage(
-                                            pid,
-                                            PipelineStageType::Qa,
-                                            PipelineStageStatus::Success,
-                                            Some(&qa_run_log.run_id),
-                                            None,
-                                        );
-                                    }
-                                }
-
-                                trigger_worktree_merger(
-                                    worktree_path,
-                                    worktree_branch,
-                                    output_sender,
-                                    pipeline_id,
-                                )
-                                .await;
-                            } else {
-                                if let Some(ref pid) = pipeline_id {
-                                    if let Ok(pm) = get_pipeline_manager_sync() {
-                                        let _ = pm.update_stage(
-                                            pid,
-                                            PipelineStageType::Qa,
-                                            PipelineStageStatus::Failed,
-                                            Some(&qa_run_log.run_id),
-                                            None,
-                                        );
-                                    }
-                                }
-
-                                let _ = output_sender.send(ScheduledOutputEvent {
-                                    run_id: qa_run_log.run_id,
-                                    agent_name,
-                                    event_type: OutputEventType::Status,
-                                    content: "Skipping merge: QA validation did not pass".to_string(),
-                                    timestamp: chrono::Utc::now().to_rfc3339(),
-                                });
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("[Scheduler] QA validation failed: {}", e);
-                            if let Some(ref pid) = pipeline_id {
-                                if let Ok(pm) = get_pipeline_manager_sync() {
-                                    let _ = pm.update_stage(
-                                        pid,
-                                        PipelineStageType::Qa,
-                                        PipelineStageStatus::Failed,
-                                        None,
-                                        None,
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            Err(e) => {
-                eprintln!("[Scheduler] qa-validation agent not found: {}", e);
-            }
-        }
-    }
-}
 
 /// Trigger the worktree merger agent
 pub async fn trigger_worktree_merger(
@@ -274,67 +134,6 @@ pub async fn trigger_worktree_merger(
     }
 }
 
-/// Manually trigger QA validation for a specific run
-#[tauri::command(rename_all = "snake_case")]
-pub async fn trigger_qa_for_run(run_id: String, app: AppHandle) -> Result<String, String> {
-    let runs_dir = crate::utils::paths::get_scheduler_runs_dir()?;
-    let mut run_log: Option<ScheduledRunLog> = None;
-
-    for date_entry in std::fs::read_dir(&runs_dir).into_iter().flatten().flatten() {
-        if date_entry.path().is_dir() {
-            for file_entry in std::fs::read_dir(date_entry.path())
-                .into_iter()
-                .flatten()
-                .flatten()
-            {
-                let path = file_entry.path();
-                if path.extension().map(|e| e == "json").unwrap_or(false) {
-                    if let Ok(content) = std::fs::read_to_string(&path) {
-                        if let Ok(log) = serde_json::from_str::<ScheduledRunLog>(&content) {
-                            if log.run_id == run_id {
-                                run_log = Some(log);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        if run_log.is_some() {
-            break;
-        }
-    }
-
-    let run_log = run_log.ok_or_else(|| format!("Run {} not found", run_id))?;
-
-    let worktree_path = run_log
-        .worktree_path
-        .ok_or("Run has no worktree path - QA requires a worktree")?;
-    let worktree_branch = run_log
-        .worktree_branch
-        .ok_or("Run has no worktree branch - QA requires a branch")?;
-
-    let output_sender = OUTPUT_SENDER.clone();
-    let mut receiver = output_sender.subscribe();
-    tokio::spawn(async move {
-        while let Ok(event) = receiver.recv().await {
-            let _ = app.emit("scheduler:output", &event);
-        }
-    });
-
-    trigger_qa_then_merge(
-        worktree_path.clone(),
-        worktree_branch.clone(),
-        run_log.base_commit,
-        run_log.agent_name,
-        output_sender,
-        None,
-    )
-    .await;
-
-    Ok(format!("Triggered QA validation for branch {}", worktree_branch))
-}
-
 /// Manually trigger worktree merge for a specific run
 #[tauri::command(rename_all = "snake_case")]
 pub async fn trigger_merge_for_run(run_id: String, app: AppHandle) -> Result<String, String> {
@@ -394,6 +193,51 @@ pub async fn trigger_merge_for_run(run_id: String, app: AppHandle) -> Result<Str
     Ok(format!("Triggered merge for branch {}", worktree_branch))
 }
 
+/// Manually trigger worktree merge for a specific worktree path
+/// Used when killing Ralph agents that have worktrees
+#[tauri::command(rename_all = "snake_case")]
+pub async fn trigger_merge_for_worktree(worktree_path: String, app: AppHandle) -> Result<String, String> {
+    use std::process::Command;
+
+    // Verify the worktree path exists
+    let wt_path = std::path::Path::new(&worktree_path);
+    if !wt_path.exists() {
+        return Err(format!("Worktree path does not exist: {}", worktree_path));
+    }
+
+    // Detect the branch name from the worktree
+    let branch_output = Command::new("git")
+        .args(["-C", &worktree_path, "rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .map_err(|e| format!("Failed to get branch name: {}", e))?;
+
+    if !branch_output.status.success() {
+        return Err("Failed to detect worktree branch".to_string());
+    }
+
+    let worktree_branch = String::from_utf8_lossy(&branch_output.stdout)
+        .trim()
+        .to_string();
+
+    let output_sender = OUTPUT_SENDER.clone();
+    let mut receiver = output_sender.subscribe();
+    tokio::spawn(async move {
+        while let Ok(event) = receiver.recv().await {
+            let _ = app.emit("scheduler:output", &event);
+        }
+    });
+
+    trigger_worktree_merger(
+        worktree_path.clone(),
+        worktree_branch.clone(),
+        output_sender,
+        None,
+    )
+    .await;
+
+    Ok(format!("Triggered merge for branch {}", worktree_branch))
+}
+
 // === PIPELINE API COMMANDS ===
 
 /// List all pipelines
@@ -429,6 +273,20 @@ pub async fn get_pipeline_definition(name: String) -> Result<PipelineDefinition,
 pub async fn get_default_pipeline_definition() -> Result<PipelineDefinition, String> {
     let pm = get_pipeline_manager_sync()?;
     pm.get_default_definition()
+}
+
+/// Save a pipeline definition
+#[tauri::command(rename_all = "snake_case")]
+pub async fn save_pipeline_definition(definition: PipelineDefinition) -> Result<(), String> {
+    let pm = get_pipeline_manager_sync()?;
+    pm.save_definition(&definition)
+}
+
+/// Delete a pipeline definition
+#[tauri::command(rename_all = "snake_case")]
+pub async fn delete_pipeline_definition(name: String) -> Result<(), String> {
+    let pm = get_pipeline_manager_sync()?;
+    pm.delete_definition(&name)
 }
 
 /// Skip a pipeline stage
@@ -646,16 +504,6 @@ pub async fn retry_pipeline_stage(
                 }
             }
         }
-        PipelineStageType::Qa => {
-            if let (Some(wt_path), Some(wt_branch)) = (&pipeline.worktree_path, &pipeline.worktree_branch) {
-                let wt_path = wt_path.clone();
-                let wt_branch = wt_branch.clone();
-                let base_commit = pipeline.base_commit.clone();
-                tokio::spawn(async move {
-                    trigger_qa_then_merge(wt_path, wt_branch, base_commit, "idea-implementer".to_string(), output_sender, Some(pid)).await;
-                });
-            }
-        }
         PipelineStageType::Merger => {
             if let (Some(wt_path), Some(wt_branch)) = (&pipeline.worktree_path, &pipeline.worktree_branch) {
                 let wt_path = wt_path.clone();
@@ -678,20 +526,7 @@ pub async fn skip_pipeline_stage_cmd(
     reason: String,
 ) -> Result<Pipeline, String> {
     let pm = get_pipeline_manager_sync()?;
-    let pipeline = pm.skip_stage(&pipeline_id, stage_type.clone(), &reason)?;
-
-    let output_sender = OUTPUT_SENDER.clone();
-    let pid = pipeline_id.clone();
-
-    if stage_type == PipelineStageType::Qa {
-        if let (Some(wt_path), Some(wt_branch)) = (&pipeline.worktree_path, &pipeline.worktree_branch) {
-            let wt_path = wt_path.clone();
-            let wt_branch = wt_branch.clone();
-            tokio::spawn(async move {
-                trigger_worktree_merger(wt_path, wt_branch, output_sender, Some(pid)).await;
-            });
-        }
-    }
+    let _pipeline = pm.skip_stage(&pipeline_id, stage_type.clone(), &reason)?;
 
     pm.get_pipeline(&pipeline_id)
 }

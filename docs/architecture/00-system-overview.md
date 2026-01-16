@@ -1,6 +1,20 @@
 # Nolan System Overview
 
-High-level architecture of Nolan - the AI Multi-Agent Orchestrator.
+High-level architecture of Nolan - the AI Manufacturing Line Orchestrator.
+
+## Core Philosophy: Manufacturing Line
+
+Nolan operates like a **manufacturing line**, not a coordination system:
+
+| Concept | Manufacturing Line | Nolan |
+|---------|-------------------|-------|
+| **Design** | Engineers design stations | Humans design agent workflows |
+| **Execution** | Line runs automatically | Agents execute automatically |
+| **Flow** | Parts move station to station | Work moves agent to agent |
+| **Handoffs** | Programmatic (conveyor) | Programmatic (file-based) |
+| **Communication** | None needed | None needed |
+
+**Key principle**: Agents don't coordinate with each other. They receive clear inputs, produce defined outputs, and the system routes work to the next station.
 
 ## Component Architecture
 
@@ -16,12 +30,9 @@ graph TB
         API[HTTP API Server]
         Commands[Tauri Commands]
 
-        subgraph Coordination["Agent Coordination Systems"]
-            Pipeline[Pipeline Manager]
-            TeamPipeline[Team Pipeline Manager]
-            EventBus[Event Bus]
-            Communicator[Inter-Agent Communicator]
-            Scheduler[Scheduler Manager]
+        subgraph Pipeline["Manufacturing Line"]
+            PipelineMgr[Pipeline Manager<br/>Routes work between stations]
+            Scheduler[Scheduler Manager<br/>Triggers station execution]
         end
 
         subgraph Execution["Execution Layer"]
@@ -32,9 +43,9 @@ graph TB
     end
 
     subgraph External["External Systems"]
-        Tmux[Tmux Sessions]
-        Git[Git / Worktrees]
-        CLI[CLI Providers<br/>Claude Code / OpenCode]
+        Tmux[Tmux Sessions<br/>Isolated workstations]
+        Git[Git / Worktrees<br/>Isolated workspaces]
+        CLI[CLI Providers<br/>Claude Code]
     end
 
     subgraph Data["Data Layer (NOLAN_DATA_ROOT)"]
@@ -51,10 +62,9 @@ graph TB
     WS --> API
 
     API --> Commands
-    Commands --> Coordination
+    Commands --> Pipeline
 
-    Pipeline --> Executor
-    TeamPipeline --> Executor
+    PipelineMgr --> Executor
     Scheduler --> Executor
 
     Executor --> Lifecycle
@@ -64,35 +74,97 @@ graph TB
     Executor --> Git
     Executor --> CLI
 
-    EventBus -.->|broadcasts| Pipeline
-    EventBus -.->|broadcasts| TeamPipeline
-    Communicator -.->|messages| Tmux
-
     Scheduler --> AgentYAML
-    Pipeline --> PipelineState
-    TeamPipeline --> PipelineState
+    PipelineMgr --> PipelineState
     Executor --> RunLogs
     Lifecycle --> StateJSON
 ```
 
-## Key Coordination Systems
+## Manufacturing Line Principles
 
-| System | Purpose | Pattern | File |
-|--------|---------|---------|------|
-| **Pipeline Manager** | 4-stage agent workflow (Impl→Analyze→QA→Merge) | State Machine | `scheduler/pipeline.rs` |
-| **Team Pipeline** | Multi-phase team workflows | Hierarchical State Machine | `scheduler/team_pipeline.rs` |
-| **Event Bus** | System-wide event pub/sub | Publish-Subscribe | `events/bus.rs` |
-| **Communicator** | Direct agent-to-agent messaging | Point-to-Point + Broadcast | `commands/communicator.rs` |
-| **Scheduler** | Time and event-triggered execution | Cron + Event Triggers | `scheduler/manager.rs` |
+### 1. Clear Inputs & Outputs
 
-## Data Flow Summary
+Each agent (station) has:
+- **Input**: Files, context, or previous station output
+- **Instructions**: CLAUDE.md + agent.yaml define the task
+- **Output**: Defined deliverables (files, verdicts)
 
 ```mermaid
 flowchart LR
-    Trigger[Trigger<br/>Cron/Event/Manual/Pipeline] --> Scheduler
-    Scheduler --> Executor
-    Executor --> |spawn| Tmux[Tmux Session]
-    Tmux --> |output| RunLog[Run Log JSON]
-    RunLog --> |verdict| Pipeline[Pipeline Manager]
-    Pipeline --> |next stage| Scheduler
+    Input[Input Files] --> Station[Agent Station]
+    Instructions[Instructions<br/>CLAUDE.md + yaml] --> Station
+    Station --> Output[Output Files]
+    Output --> NextStation[Next Station]
 ```
+
+### 2. Isolation
+
+Each station operates in isolation:
+- Own tmux session (process isolation)
+- Own git worktree (code isolation)
+- Own context (no shared state)
+
+### 3. Programmatic Routing
+
+Work flows automatically based on:
+- Exit codes (success/failure)
+- Output file presence
+- Verdict files (structured decisions)
+
+No agent-to-agent communication needed.
+
+## Key Systems
+
+| System | Purpose | Pattern |
+|--------|---------|---------|
+| **Pipeline Manager** | Routes work through stations | State Machine |
+| **Scheduler Manager** | Triggers station execution | Cron + Event |
+| **Agent Executor** | Runs individual stations | Process Manager |
+
+## Data Flow
+
+```mermaid
+flowchart LR
+    Trigger[Trigger<br/>Cron/Event/Manual] --> Scheduler
+    Scheduler --> Executor
+    Executor --> |spawn| Tmux[Station<br/>tmux session]
+    Tmux --> |output| Files[Output Files]
+    Files --> |verdict| Pipeline[Pipeline Manager]
+    Pipeline --> |route to next| Scheduler
+```
+
+## What Nolan Is NOT
+
+- **Not a coordination system**: Agents don't talk to each other
+- **Not event-driven messaging**: No pub/sub between agents (though under evaluation)
+- **Not requiring human intervention for handoffs**: Work flows automatically
+
+## Human Role
+
+Humans **design the manufacturing line**:
+- Define agents (stations) in YAML
+- Define workflows (line layout) in team configs
+- Define quality gates (inspection points)
+
+The line **executes automatically**:
+- Scheduler triggers stations
+- Pipeline routes work
+- Output files flow to next station
+
+## Future: Spec-Driven Development
+
+Nolan is evolving toward **spec-driven development** where:
+
+```mermaid
+flowchart LR
+    Idea[Idea] --> Proposal[Proposal]
+    Proposal --> Spec[Specification]
+    Spec --> Pipeline[Manufacturing Line]
+    Pipeline --> Code[Generated Code]
+```
+
+- **Specs** (natural language) become the source of truth
+- **Code** becomes a generated artifact, not human-authored
+- **Manufacturing line** executes specs automatically
+
+See `07-spec-driven-architecture.md` for the spec layer architecture (Phase 6).

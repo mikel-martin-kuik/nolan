@@ -33,10 +33,13 @@ pub fn new_session_store() -> SessionStore {
 
 /// Get path to password file
 fn get_password_path() -> PathBuf {
-    dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".nolan")
-        .join("server-password")
+    crate::utils::paths::get_server_password_path()
+        .unwrap_or_else(|_| {
+            // Fallback to home directory if paths module fails
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".nolan/.secrets/server-password")
+        })
 }
 
 /// Check if password is configured

@@ -104,7 +104,7 @@ pub async fn create_scheduled_agent(config: ScheduledAgentConfig) -> Result<(), 
     let manager = guard.as_ref().ok_or("Scheduler not initialized")?;
     manager.save_agent(&config).await?;
 
-    let agents_dir = crate::utils::paths::get_agents_dir()?;
+    let agents_dir = crate::utils::paths::get_agents_config_dir()?;
     let claude_md = agents_dir.join(&config.name).join("CLAUDE.md");
 
     if !claude_md.exists() {
@@ -464,7 +464,7 @@ const ROLE_SUBDIRS: &[&str] = &[
 ];
 
 fn find_agent_dir(name: &str) -> Result<std::path::PathBuf, String> {
-    let agents_dir = crate::utils::paths::get_agents_dir()?;
+    let agents_dir = crate::utils::paths::get_agents_config_dir()?;
 
     let flat_path = agents_dir.join(name);
     if flat_path.exists() && flat_path.is_dir() {

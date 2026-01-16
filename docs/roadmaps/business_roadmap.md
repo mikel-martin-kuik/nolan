@@ -294,11 +294,13 @@ Nolan supports four project types. Each has specific estimation patterns and del
 
 ### Autonomy Metrics
 
-| Metric | Current | Phase 1 Target | Phase 4 Target |
+| Metric | Current | Phase 2 Target | Phase 4 Target |
 |--------|---------|----------------|----------------|
-| Human:AI hour ratio | Unknown | 60:40 | 10:90 |
-| Projects < 20% human | 0% | 10% | 75% |
+| Specs auto-executing | 0% | 50% | 95% |
+| Manual interventions per project | Unknown | < 5 | < 1 |
 | Revenue per employee | Baseline | +50% | +200% |
+
+> **Philosophy**: Humans design the manufacturing line (specs, workflows, agents). The line executes automatically. We measure success by how little human intervention is needed, not hours spent.
 
 ---
 
@@ -402,17 +404,17 @@ Features organized by business goal. All features are implemented by the **defau
 
 ### Autonomous Scaling
 
-**Goal:** Reduce human ratio per project, scale without hiring
+**Goal:** Design the line once, execute automatically at scale
 
-#### Human Ratio Tracking (IMMEDIATE)
+#### Manufacturing Line Metrics (IMMEDIATE)
 
-**Current State:** Usage tracking exists for tokens/cost
-**Gap:** No human vs AI hours distinction
-
+**Current State:** Pipeline execution tracking exists
 **Target:**
-- [ ] Human:AI ratio calculated per project
-- [ ] Autonomy score visible
-- [ ] Trends over time trackable
+- [ ] Track manual interventions per pipeline
+- [ ] Track specs executing end-to-end without human touch
+- [ ] Identify bottleneck stations requiring redesign
+
+> **Philosophy**: We don't track human vs AI hours. Humans design the manufacturing line (agents, workflows, quality gates). The line executes. Success = fewer interventions needed.
 
 #### Exception Escalation (IMMEDIATE)
 

@@ -45,8 +45,10 @@ pub struct TeamPipelineManager {
 
 impl TeamPipelineManager {
     /// Create a new TeamPipelineManager
-    pub fn new(data_root: &PathBuf) -> Self {
-        let pipelines_dir = data_root.join(".state").join("team-pipelines");
+    pub fn new(_data_root: &PathBuf) -> Self {
+        let pipelines_dir = crate::utils::paths::get_state_dir()
+            .map(|p| p.join("team-pipelines"))
+            .unwrap_or_else(|_| _data_root.join(".state").join("team-pipelines"));
 
         if !pipelines_dir.exists() {
             let _ = fs::create_dir_all(&pipelines_dir);

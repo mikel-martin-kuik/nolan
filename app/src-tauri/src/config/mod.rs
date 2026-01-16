@@ -5,8 +5,7 @@ use std::path::{Path, PathBuf};
 // UI Configuration module
 pub mod ui_config;
 pub use ui_config::{
-    get_default_cli_provider, get_idea_implementer_agent, get_idea_merger_agent,
-    get_idea_processor_agent, get_implementer_analyzer_agent, get_pipeline_entrypoint_file,
+    get_default_cli_provider, get_idea_processor_agent, get_pipeline_entrypoint_file,
     get_prompt_file, get_trigger_config, load_ui_config, update_default_cli_provider,
     update_ssh_terminal_config, update_trigger_config, AgentDisplayName, OllamaDefaults,
     PipelineConfig, RuntimeConfig, SessionPrefixConfig, SshTerminalConfig, StatusConfig,

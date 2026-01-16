@@ -39,8 +39,8 @@ pub fn kill_session(session_name: &str) -> Result<String, String> {
     // This runs regardless of session existence to handle orphaned directories
     let mut dir_deleted = false;
     if let Some(instance_id) = parse_ralph_session(session_name) {
-        if let Ok(agents_dir) = crate::utils::paths::get_agents_dir() {
-            let agent_path = agents_dir.join(format!("agent-ralph-{}", instance_id));
+        if let Ok(instances_dir) = crate::utils::paths::get_agents_instances_dir() {
+            let agent_path = instances_dir.join(format!("agent-ralph-{}", instance_id));
             let claude_path = agent_path.join(".claude");
             // Only delete ephemeral directories (where .claude is a symlink)
             // Pre-defined agents like agent-ralph-debug have a real .claude directory
@@ -199,13 +199,17 @@ pub async fn start_agent_core(team_name: &str, agent: &str) -> Result<String, St
         mapped_model
     );
 
-    // Create tmux session
+    // Create tmux session with default dimensions to avoid 80x24 default
     let output = Command::new("tmux")
         .args(&[
             "new-session",
             "-d",
             "-s",
             &session,
+            "-x",
+            "200",
+            "-y",
+            "50",
             "-c",
             &agent_dir.to_string_lossy(),
             &cmd,
@@ -282,8 +286,9 @@ pub async fn spawn_ralph_core(
     let nolan_root = crate::utils::paths::get_nolan_root()?;
     let nolan_data_root = crate::utils::paths::get_nolan_data_root()?;
     let projects_dir = crate::utils::paths::get_projects_dir()?;
-    let agents_dir = crate::utils::paths::get_agents_dir()?;
-    let agent_dir = agents_dir.join(format!("agent-ralph-{}", instance_id));
+    let instances_dir = crate::utils::paths::get_agents_instances_dir()?;
+    let config_dir = crate::utils::paths::get_agents_config_dir()?;
+    let agent_dir = instances_dir.join(format!("agent-ralph-{}", instance_id));
 
     // Create ephemeral directory
     if !agent_dir.exists() {
@@ -294,8 +299,8 @@ pub async fn spawn_ralph_core(
         #[cfg(unix)]
         {
             // .claude symlink - use ralph-specific settings (no team hooks)
-            // from agents/ralph/.claude, NOT app/.claude (which has team hooks)
-            let base_agent_dir = agents_dir.join("ralph");
+            // from agents/config/free/ralph/.claude, NOT app/.claude (which has team hooks)
+            let base_agent_dir = config_dir.join("free").join("ralph");
             let ralph_claude = base_agent_dir.join(".claude");
             if ralph_claude.exists() {
                 let claude_link = agent_dir.join(".claude");
@@ -338,7 +343,7 @@ pub async fn spawn_ralph_core(
         // Copy CLAUDE.md into worktree so agent has instructions
         #[cfg(unix)]
         {
-            let base_agent_dir = agents_dir.join("ralph");
+            let base_agent_dir = config_dir.join("free").join("ralph");
             let claude_md_src = base_agent_dir.join("CLAUDE.md");
             if claude_md_src.exists() {
                 let claude_md_link = worktree_dir.join("CLAUDE.md");
@@ -382,7 +387,7 @@ pub async fn spawn_ralph_core(
     // For Ralph: AGENT_WORK_ROOT is set to worktree path if using worktree, otherwise agent_dir
     // AGENT_DIR always points to the Ralph agent's configuration directory
     let model_str = model.unwrap_or_else(|| crate::commands::lifecycle::get_default_model("ralph"));
-    let agents_dir_for_env = crate::utils::paths::get_agents_dir()?.join("ralph");
+    let agents_dir_for_env = crate::utils::paths::get_agents_config_dir()?.join("free").join("ralph");
     let agent_work_root = if worktree_path.is_some() {
         working_dir.to_string_lossy().to_string()
     } else {
@@ -405,13 +410,17 @@ pub async fn spawn_ralph_core(
         mapped_model
     );
 
-    // Create session
+    // Create session with default dimensions to avoid 80x24 default
     let output = Command::new("tmux")
         .args(&[
             "new-session",
             "-d",
             "-s",
             &session,
+            "-x",
+            "200",
+            "-y",
+            "50",
             "-c",
             &working_dir.to_string_lossy(),
             &cmd,
@@ -455,7 +464,7 @@ pub struct OrphanedRalphInstance {
 pub fn find_orphaned_ralph_instances() -> Result<Vec<OrphanedRalphInstance>, String> {
     use std::fs;
 
-    let agents_dir = crate::utils::paths::get_agents_dir()?;
+    let instances_dir = crate::utils::paths::get_agents_instances_dir()?;
     let mut orphaned = Vec::new();
 
     // Get all running tmux sessions
@@ -464,7 +473,7 @@ pub fn find_orphaned_ralph_instances() -> Result<Vec<OrphanedRalphInstance>, Str
     // Check each Ralph name for orphaned directories
     for name in RALPH_NAMES.iter() {
         let dir_name = format!("agent-ralph-{}", name);
-        let agent_dir = agents_dir.join(&dir_name);
+        let agent_dir = instances_dir.join(&dir_name);
         let session_name = format!("agent-ralph-{}", name);
 
         // Directory exists but session is not running
@@ -483,7 +492,7 @@ pub fn find_orphaned_ralph_instances() -> Result<Vec<OrphanedRalphInstance>, Str
     }
 
     // Also check for any custom-named ralph directories (random alphanumeric fallback)
-    if let Ok(entries) = fs::read_dir(&agents_dir) {
+    if let Ok(entries) = fs::read_dir(&instances_dir) {
         for entry in entries.flatten() {
             let dir_name = entry.file_name().to_string_lossy().to_string();
             if dir_name.starts_with("agent-ralph-") {
@@ -534,7 +543,7 @@ pub async fn recover_ralph_instance(
 
     // Build command with --continue flag to resume the previous Claude session
     let model_str = model.unwrap_or_else(|| crate::commands::lifecycle::get_default_model("ralph"));
-    let agents_dir_for_env = crate::utils::paths::get_agents_dir()?.join("ralph");
+    let agents_dir_for_env = crate::utils::paths::get_agents_config_dir()?.join("free").join("ralph");
 
     // Get CLI provider for Ralph (defaults to "claude" if not specified)
     let cli_provider_name = crate::commands::lifecycle::get_agent_cli_provider("ralph", None);
@@ -554,13 +563,17 @@ pub async fn recover_ralph_instance(
         resume_flag
     );
 
-    // Create session
+    // Create session with default dimensions to avoid 80x24 default
     let output = Command::new("tmux")
         .args(&[
             "new-session",
             "-d",
             "-s",
             &instance.session,
+            "-x",
+            "200",
+            "-y",
+            "50",
             "-c",
             &instance.agent_dir.to_string_lossy(),
             &cmd,
@@ -696,8 +709,7 @@ pub fn find_orphaned_team_sessions() -> Result<Vec<OrphanedTeamSession>, String>
     use std::fs::File;
     use std::io::{BufRead, BufReader};
 
-    let home = std::env::var("HOME").map_err(|_| "HOME not set")?;
-    let registry_path = PathBuf::from(&home).join(".nolan/session-registry.jsonl");
+    let registry_path = crate::utils::paths::get_session_registry_path()?;
 
     if !registry_path.exists() {
         return Ok(Vec::new());
@@ -852,13 +864,17 @@ pub async fn recover_team_session(orphan: &OrphanedTeamSession) -> Result<String
         resume_flag
     );
 
-    // Create session
+    // Create session with default dimensions to avoid 80x24 default
     let output = Command::new("tmux")
         .args(&[
             "new-session",
             "-d",
             "-s",
             &orphan.session,
+            "-x",
+            "200",
+            "-y",
+            "50",
             "-c",
             &orphan.agent_dir.to_string_lossy(),
             &cmd,

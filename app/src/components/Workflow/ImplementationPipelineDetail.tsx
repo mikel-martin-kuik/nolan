@@ -10,7 +10,6 @@ import { RunLogViewerModal } from './RunLogViewerModal';
 import {
   Code,
   Search,
-  TestTube,
   GitMerge,
   Play,
   ArrowLeft,
@@ -33,7 +32,6 @@ import { cn } from '@/lib/utils';
 const stageConfig = {
   implementer: { icon: Code, label: 'Implementer', color: 'text-blue-500' },
   analyzer: { icon: Search, label: 'Analyzer', color: 'text-purple-500' },
-  qa: { icon: TestTube, label: 'QA', color: 'text-orange-500' },
   merger: { icon: GitMerge, label: 'Merger', color: 'text-green-500' },
 };
 
@@ -220,7 +218,7 @@ export function ImplementationPipelineDetail() {
       </CardHeader>
 
       <CardContent className="space-y-4">
-        {(['implementer', 'analyzer', 'qa', 'merger'] as const).map((stageType) => {
+        {(['implementer', 'analyzer', 'merger'] as const).map((stageType) => {
           const stage = pipeline.stages.find((s) => s.stage_type === stageType);
           const config = stageConfig[stageType];
           const Icon = config.icon;

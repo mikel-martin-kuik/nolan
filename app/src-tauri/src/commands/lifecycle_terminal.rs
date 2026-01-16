@@ -97,11 +97,24 @@ pub async fn open_agent_terminal(session: String) -> Result<String, String> {
         .arg(format!("={}", session))
         .output();
 
-    // Reset tmux window to auto-size mode
+    // Reset tmux window to auto-size mode and enable aggressive-resize
     // This allows the external terminal to resize the pane to its own dimensions
     // instead of being locked to the embedded terminal's size
     // Use = prefix for exact session matching
     let exact_session = format!("={}", session);
+
+    // Enable aggressive-resize for this window so it adapts to the attaching terminal
+    let _ = Command::new("tmux")
+        .args(&["set-window-option", "-t", &exact_session, "aggressive-resize", "on"])
+        .output();
+
+    // Set a large default size to force the window to expand
+    // The attaching terminal will resize it down to its actual dimensions
+    let _ = Command::new("tmux")
+        .args(&["resize-window", "-t", &exact_session, "-x", "200", "-y", "50"])
+        .output();
+
+    // Also set auto-size mode as a fallback
     let _ = Command::new("tmux")
         .args(&["resize-window", "-t", &exact_session, "-A"])
         .output();
@@ -148,7 +161,18 @@ pub async fn open_team_terminals(team_name: String) -> Result<String, String> {
                 .arg(session)
                 .output();
 
-            // Reset tmux window to auto-size mode for external terminal
+            // Reset tmux window to auto-size mode and enable aggressive-resize
+            // Enable aggressive-resize for this window so it adapts to the attaching terminal
+            let _ = Command::new("tmux")
+                .args(&["set-window-option", "-t", session, "aggressive-resize", "on"])
+                .output();
+
+            // Set a large default size to force the window to expand
+            let _ = Command::new("tmux")
+                .args(&["resize-window", "-t", session, "-x", "200", "-y", "50"])
+                .output();
+
+            // Also set auto-size mode as a fallback
             let _ = Command::new("tmux")
                 .args(&["resize-window", "-t", session, "-A"])
                 .output();
@@ -208,8 +232,8 @@ pub async fn open_team_terminals(team_name: String) -> Result<String, String> {
 fn find_agent_dir(agent: &str) -> Result<std::path::PathBuf, String> {
     use std::fs;
 
-    // Check shared agents directory first
-    let shared_agent_dir = crate::utils::paths::get_agents_dir()?.join(agent);
+    // Check shared agents config directory first
+    let shared_agent_dir = crate::utils::paths::get_agents_config_dir()?.join(agent);
     if shared_agent_dir.exists() {
         return Ok(shared_agent_dir);
     }
@@ -417,4 +441,83 @@ pub async fn list_orphaned_sessions() -> Result<Vec<String>, String> {
 pub async fn list_worktrees() -> Result<Vec<crate::git::worktree::WorktreeListEntry>, String> {
     let nolan_root = crate::utils::paths::get_nolan_root()?;
     crate::git::worktree::list_worktrees(&nolan_root)
+}
+
+/// Create a new worktree for Ralph to work in
+/// Returns the path and branch name of the created worktree
+#[tauri::command(rename_all = "snake_case")]
+pub async fn create_worktree_for_ralph(
+    label: Option<String>,
+) -> Result<serde_json::Value, String> {
+    use uuid::Uuid;
+
+    let nolan_root = crate::utils::paths::get_nolan_root()?;
+    let worktrees_dir = crate::git::worktree::get_worktrees_dir()?;
+
+    // Generate a unique run ID
+    let uuid_suffix = Uuid::new_v4().to_string()[..7].to_string();
+    let run_id = if let Some(ref lbl) = label {
+        // Sanitize label: lowercase, replace spaces/special chars with hyphens, truncate
+        let sanitized = lbl
+            .to_lowercase()
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || c == '-' {
+                    c
+                } else {
+                    '-'
+                }
+            })
+            .collect::<String>()
+            .trim_matches('-')
+            .to_string();
+        let truncated = if sanitized.len() > 30 {
+            &sanitized[..30]
+        } else {
+            &sanitized
+        };
+        format!("{}-{}", truncated.trim_end_matches('-'), uuid_suffix)
+    } else {
+        // Use timestamp format
+        let timestamp = chrono::Utc::now().format("%H%M%S").to_string();
+        format!("{}-{}", timestamp, uuid_suffix)
+    };
+
+    // Create worktree path: ~/.nolan/worktrees/ralph/{run_id}
+    let worktree_path = worktrees_dir.join("ralph").join(&run_id);
+
+    // Generate branch name
+    let branch_name = crate::git::worktree::generate_branch_name("ralph", &run_id);
+
+    // Create the worktree
+    let _base_commit = crate::git::worktree::create_worktree(
+        &nolan_root,
+        &worktree_path,
+        &branch_name,
+        Some("main"), // Base from main branch
+    )?;
+
+    Ok(serde_json::json!({
+        "path": worktree_path.to_string_lossy(),
+        "branch": branch_name,
+        "run_id": run_id
+    }))
+}
+
+/// Remove a git worktree
+#[tauri::command(rename_all = "snake_case")]
+pub async fn remove_worktree(path: String) -> Result<(), String> {
+    let nolan_root = crate::utils::paths::get_nolan_root()?;
+    let worktree_path = std::path::PathBuf::from(&path);
+
+    // Verify the path is under the worktrees directory for safety
+    let worktrees_dir = crate::git::worktree::get_worktrees_dir()?;
+    if !worktree_path.starts_with(&worktrees_dir) {
+        return Err(format!(
+            "Cannot remove worktree outside of worktrees directory: {}",
+            path
+        ));
+    }
+
+    crate::git::worktree::remove_worktree(&nolan_root, &worktree_path, true)
 }

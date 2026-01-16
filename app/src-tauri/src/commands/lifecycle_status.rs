@@ -46,6 +46,30 @@ pub struct AgentStatus {
     pub current_project: Option<String>, // Current project from statusline (None if VIBING)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created_at: Option<u64>, // Unix timestamp in milliseconds (for spawned agents)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub worktree_path: Option<String>, // Git worktree path if agent is working in isolation
+}
+
+// === TMUX ENVIRONMENT ===
+
+/// Get a tmux session environment variable
+fn get_tmux_env(session: &str, var: &str) -> Option<String> {
+    use std::process::Command;
+
+    let output = Command::new("tmux")
+        .args(&["show-environment", "-t", session, var])
+        .output()
+        .ok()?;
+
+    if output.status.success() {
+        let line = String::from_utf8_lossy(&output.stdout);
+        // Format is "VAR=value\n", extract the value
+        let trimmed = line.trim();
+        if let Some(eq_pos) = trimmed.find('=') {
+            return Some(trimmed[eq_pos + 1..].to_string());
+        }
+    }
+    None
 }
 
 // === STATUSLINE PARSING ===
@@ -132,6 +156,7 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
         if RE_RALPH_SESSION.is_match(session) {
             if let Ok(info) = crate::tmux::session::get_session_info(session) {
                 let statusline = parse_statusline(session);
+                let worktree_path = get_tmux_env(session, "WORKTREE_PATH");
                 free_agents.push(AgentStatus {
                     name: "ralph".to_string(),
                     team: "".to_string(), // Ralph is team-independent (free agent)
@@ -141,6 +166,7 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
                     context_usage: statusline.context_usage,
                     current_project: statusline.current_project,
                     created_at: Some(info.created_at * 1000),
+                    worktree_path,
                 });
             }
             continue;
@@ -157,6 +183,7 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
                 if team_config.agent_names().contains(&agent_name) {
                     if let Ok(info) = crate::tmux::session::get_session_info(session) {
                         let statusline = parse_statusline(session);
+                        let worktree_path = get_tmux_env(session, "WORKTREE_PATH");
                         team_agents.push(AgentStatus {
                             name: agent_name.to_string(),
                             team: team_name.clone(),
@@ -166,6 +193,7 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
                             context_usage: statusline.context_usage,
                             current_project: statusline.current_project,
                             created_at: Some(info.created_at * 1000),
+                            worktree_path,
                         });
                     }
                     matched = true;
@@ -196,6 +224,7 @@ pub async fn get_agent_status() -> Result<AgentStatusList, String> {
                     context_usage: None,
                     current_project: None,
                     created_at: None,
+                    worktree_path: None,
                 });
             }
         }

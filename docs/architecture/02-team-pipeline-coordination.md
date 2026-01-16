@@ -2,7 +2,7 @@
 
 **File:** `src-tauri/src/scheduler/team_pipeline.rs`
 
-Team Pipelines orchestrate multi-phase workflows defined in `team.yaml`. Unlike the 4-stage Agent Pipeline, Team Pipelines dynamically create stages based on workflow phase definitions, with each phase having an execution and validation sub-stage.
+Team Pipelines orchestrate multi-phase workflows defined in `team.yaml`. Unlike the 3-stage Agent Pipeline, Team Pipelines dynamically create stages based on workflow phase definitions, with each phase having an execution and validation sub-stage.
 
 ## Phase Structure
 
@@ -237,12 +237,12 @@ flowchart LR
 
 | Aspect | Agent Pipeline | Team Pipeline |
 |--------|----------------|---------------|
-| **Stages** | Fixed 4 stages | Dynamic from team.yaml |
+| **Stages** | Configurable (e.g., 3 stages) | Dynamic from team.yaml |
 | **Structure** | Linear with feedback | Nested (exec+validate per phase) |
-| **Agents** | Role-typed (Impl/Analyzer/QA/Merger) | Phase owners + validator |
+| **Agents** | Role-typed (e.g., Impl/Analyzer/Merger) | Phase owners + validator |
 | **Output** | Code changes | Phase output files |
 | **Scope** | Single feature | Multi-phase project |
-| **Verdict Types** | Complete/Followup/Failed | Complete/Revision/Failed |
+| **Verdict Types** | Complete/Revision/Failed | Complete/Revision/Failed |
 
 ## Key Characteristics
 

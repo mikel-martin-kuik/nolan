@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 export type Tab = 'status' | 'chat' | 'files' | 'agents' | 'schedules' | 'workflows' | 'usage' | 'support' | 'settings' | 'builder';
-export type BuilderSubTab = 'triggers' | 'teams' | 'phases' | 'pipelines' | 'agent-roles';
+export type BuilderSubTab = 'pipelines' | 'teams' | 'agent-roles' | 'triggers';
 
 export interface NavigationContext {
   // For agents tab: agent name to select
@@ -12,6 +12,8 @@ export interface NavigationContext {
   teamId?: string;
   // For builder tab: phase to edit
   phaseId?: string;
+  // For builder tab: pipeline definition to edit
+  pipelineId?: string;
 }
 
 interface NavigationStore {
@@ -35,7 +37,7 @@ interface NavigationStore {
 
 export const useNavigationStore = create<NavigationStore>((set) => ({
   activeTab: 'status',
-  builderSubTab: 'triggers',
+  builderSubTab: 'pipelines',
   context: {},
 
   navigateTo: (tab, context = {}) => {

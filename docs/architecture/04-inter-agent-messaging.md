@@ -1,5 +1,7 @@
 # Inter-Agent Messaging Coordination
 
+> 🔬 **EXPERIMENTAL**: Inter-agent messaging is one of several orchestration approaches under evaluation. It enables direct point-to-point communication between agents via tmux injection. See `06-coordination-comparison.md` for comparison with other patterns.
+
 **File:** `src-tauri/src/commands/communicator.rs`
 
 The Inter-Agent Messaging system enables direct communication between agents via tmux session injection. Unlike the Event Bus (fire-and-forget pub/sub), this system provides point-to-point and broadcast messaging with delivery confirmation.

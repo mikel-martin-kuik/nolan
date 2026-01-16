@@ -38,6 +38,7 @@ export interface AgentStatus {
   context_usage?: number;  // Context window usage percentage (0-100)
   current_project?: string;  // Current project from statusline (undefined if VIBING)
   created_at?: number;  // Unix timestamp in milliseconds (for spawned agents)
+  worktree_path?: string;  // Git worktree path if agent is working in isolation
 }
 
 export interface AgentStatusList {

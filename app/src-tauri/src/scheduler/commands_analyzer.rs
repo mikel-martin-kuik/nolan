@@ -17,7 +17,7 @@ use super::executor;
 use super::pipeline::PipelineManager;
 use super::types::*;
 use super::commands::{SCHEDULER, OUTPUT_SENDER, get_pipeline_manager_sync};
-use super::commands_pipeline::{trigger_qa_then_merge, trigger_worktree_merger};
+use super::commands_pipeline::trigger_worktree_merger;
 
 /// Result of processing an analyzer verdict
 pub struct VerdictProcessingResult {
@@ -131,23 +131,20 @@ pub async fn trigger_post_run_analyzer(
                                         verdict_result.worktree_branch.clone(),
                                     ) {
                                         println!(
-                                            "[Scheduler] Triggering QA then merge for {} on {}",
+                                            "[Scheduler] Triggering merge for {} on {}",
                                             wt_branch, wt_path
                                         );
-                                        trigger_qa_then_merge(
+                                        trigger_worktree_merger(
                                             wt_path,
                                             wt_branch,
-                                            verdict_result.base_commit,
-                                            verdict_result.agent_name,
                                             output_sender,
                                             pipeline_id,
                                         )
                                         .await;
                                     } else {
-                                        eprintln!("[Scheduler] Skipping QA/merge: worktree info missing");
+                                        eprintln!("[Scheduler] Skipping merge: worktree info missing");
                                         if let Some(ref pid) = pipeline_id {
                                             if let Ok(pm) = get_pipeline_manager_sync() {
-                                                let _ = pm.skip_stage(pid, PipelineStageType::Qa, "No worktree");
                                                 let _ = pm.skip_stage(pid, PipelineStageType::Merger, "No worktree");
                                             }
                                         }
@@ -204,9 +201,8 @@ pub async fn process_analyzer_verdict(
     analyzer_run_id: &str,
     output_sender: &broadcast::Sender<ScheduledOutputEvent>,
 ) -> Result<VerdictProcessingResult, String> {
-    let data_root = crate::utils::paths::get_nolan_data_root()?;
-    let verdict_file = data_root
-        .join(".state")
+    let state_dir = crate::utils::paths::get_state_dir()?;
+    let verdict_file = state_dir
         .join("analyzer-verdicts")
         .join(format!("{}.json", analyzed_run_id));
 

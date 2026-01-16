@@ -217,10 +217,11 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   list_pipeline_definitions: { method: 'GET', path: '/api/scheduler/pipelines/definitions' },
   get_pipeline_definition: { method: 'GET', path: (args) => `/api/scheduler/pipelines/definitions/${getArg(args, 'name')}` },
   get_default_pipeline_definition: { method: 'GET', path: '/api/scheduler/pipelines/definitions/default' },
+  save_pipeline_definition: { method: 'POST', path: '/api/noop' },  // Tauri-only for now
+  delete_pipeline_definition: { method: 'DELETE', path: '/api/noop' },  // Tauri-only for now
   // Run triggers
   trigger_predefined_agent: { method: 'POST', path: '/api/noop' },  // Tauri-only for now
   trigger_analyzer_for_run: { method: 'POST', path: '/api/noop' },  // Tauri-only for now
-  trigger_qa_for_run: { method: 'POST', path: '/api/noop' },  // Tauri-only for now
   trigger_merge_for_run: { method: 'POST', path: '/api/noop' },  // Tauri-only for now
 
   // Feedback (feature requests & ideas)

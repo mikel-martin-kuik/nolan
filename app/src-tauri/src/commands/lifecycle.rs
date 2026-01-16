@@ -81,6 +81,7 @@ pub use super::lifecycle_status::{
 
 // Terminal, CLAUDE.md, commands, recovery
 pub use super::lifecycle_terminal::{
+    create_worktree_for_ralph,
     launch_terminal,
     list_orphaned_sessions,
     list_worktrees,
@@ -88,6 +89,7 @@ pub use super::lifecycle_terminal::{
     open_team_terminals,
     read_agent_claude_md,
     recover_sessions,
+    remove_worktree,
     send_agent_command,
     write_agent_claude_md,
     RecoverSessionsResponse,

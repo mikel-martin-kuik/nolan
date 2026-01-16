@@ -7,7 +7,7 @@ Guide for deploying Nolan backend to headless servers (e.g., Raspberry Pi 5).
 The Nolan backend runs as a headless HTTP API server (Axum on port 3030) without the Tauri GUI. It provides:
 - REST API for all operations
 - WebSocket support for real-time streaming
-- Scheduler scheduler for automated agents
+- Scheduler for automated agents
 - Tmux session management for agent execution
 
 ## Build Times

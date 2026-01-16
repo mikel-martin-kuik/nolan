@@ -14,6 +14,7 @@ import { useToastStore } from '../../store/toastStore';
 import { getBlockerMessage } from '../../lib/workflowStatus';
 import { cn } from '../../lib/utils';
 import { FEATURES } from '../../lib/features';
+import { STORAGE_SERVER_URL } from '../../lib/constants';
 import type { FileCompletion } from '../../types/projects';
 
 interface AgentListItemProps {
@@ -137,16 +138,29 @@ export const AgentListItem: React.FC<AgentListItemProps> = memo(({
   const handleOpenTerminal = async () => {
     setContextMenu(null);
 
-    // Try SSH web terminal first (works in browser mode)
+    // Check if we're in Tauri with embedded backend (no remote server configured)
+    const useEmbeddedBackend = isTauri() && !localStorage.getItem(STORAGE_SERVER_URL);
+
+    // In embedded backend mode, use native terminal directly
+    if (useEmbeddedBackend && FEATURES.EXTERNAL_TERMINAL) {
+      try {
+        await invoke('open_agent_terminal', { session: agent.session });
+      } catch (err) {
+        showError(`Failed to open external terminal: ${err}`);
+      }
+      return;
+    }
+
+    // Try SSH web terminal for remote/browser mode
     if (sshEnabled) {
       const sshUrl = getSshTerminalUrl(agent.session);
       if (sshUrl) {
-        window.open(sshUrl, agent.session, 'width=730,height=450,menubar=no,toolbar=no,location=no,status=no');
+        window.open(sshUrl, agent.session, 'width=1000,height=600,resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no');
         return;
       }
     }
 
-    // Fall back to native terminal (desktop only)
+    // Fall back to native terminal if SSH fails
     if (isTauri() && FEATURES.EXTERNAL_TERMINAL) {
       try {
         await invoke('open_agent_terminal', { session: agent.session });
@@ -283,15 +297,20 @@ export const AgentListItem: React.FC<AgentListItemProps> = memo(({
               Clear Context
             </button>
           )}
-          {agent.active && (sshEnabled || (isTauri() && FEATURES.EXTERNAL_TERMINAL)) && (
-            <button
-              onClick={handleOpenTerminal}
-              className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
-            >
-              {sshEnabled ? <ExternalLink className="w-4 h-4" /> : <Terminal className="w-4 h-4" />}
-              {sshEnabled ? 'Open SSH Terminal' : 'Open Terminal'}
-            </button>
-          )}
+          {agent.active && (sshEnabled || (isTauri() && FEATURES.EXTERNAL_TERMINAL)) && (() => {
+            // Check if we're in Tauri with embedded backend (no remote server configured)
+            const useEmbeddedBackend = isTauri() && !localStorage.getItem(STORAGE_SERVER_URL);
+            const showLocalTerminal = useEmbeddedBackend && FEATURES.EXTERNAL_TERMINAL;
+            return (
+              <button
+                onClick={handleOpenTerminal}
+                className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
+              >
+                {showLocalTerminal ? <Terminal className="w-4 h-4" /> : <ExternalLink className="w-4 h-4" />}
+                {showLocalTerminal ? 'Open Local Terminal' : 'Open SSH Terminal'}
+              </button>
+            );
+          })()}
         </div>
       )}
     </>

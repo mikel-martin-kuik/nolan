@@ -187,15 +187,15 @@ fn kill_all_ralph_instances() -> Result<String, String> {
     let mut killed: Vec<String> = Vec::new();
     let mut cleaned: Vec<String> = Vec::new();
 
-    let agents_dir =
-        crate::utils::paths::get_agents_dir().unwrap_or_else(|_| std::path::PathBuf::new());
+    let instances_dir =
+        crate::utils::paths::get_agents_instances_dir().unwrap_or_else(|_| std::path::PathBuf::new());
 
     // Kill all Ralph sessions
     for session in &sessions {
         if let Some(instance_id) = parse_ralph_session(session) {
             if crate::tmux::session::kill_session(session).is_ok() {
                 // Only delete ephemeral directories (where .claude is a symlink)
-                let agent_path = agents_dir.join(format!("agent-ralph-{}", instance_id));
+                let agent_path = instances_dir.join(format!("agent-ralph-{}", instance_id));
                 let claude_path = agent_path.join(".claude");
                 if agent_path.exists() && claude_path.is_symlink() {
                     let _ = fs::remove_dir_all(&agent_path);
@@ -209,8 +209,8 @@ fn kill_all_ralph_instances() -> Result<String, String> {
     crate::commands::session_labels::clear_all_ralph_labels();
 
     // Clean up orphaned ephemeral directories
-    if agents_dir.exists() {
-        if let Ok(entries) = fs::read_dir(&agents_dir) {
+    if instances_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&instances_dir) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
                 if name.starts_with("agent-ralph-") && !sessions.contains(&name) {

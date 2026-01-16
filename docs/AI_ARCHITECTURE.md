@@ -310,18 +310,6 @@ If any file exceeds limits, refactor before committing.
 
 ---
 
-## Migration Priority
-
-Files to refactor (in order of impact):
-
-1. **scheduler/commands.rs** (3,351 lines) → Split into 6 modules
-2. **commands/lifecycle.rs** (2,453 lines) → Split into 4 modules
-3. **TeamsPanel.tsx** (1,611 lines) → Split into 5 components + 2 hooks
-4. **commands/projects.rs** (1,523 lines) → Split into 3 modules
-5. **TeamDesigner.tsx** (1,104 lines) → Split into 3 components + 1 hook
-
----
-
 ## When Adding New Code
 
 1. **Check existing file size** - If adding to a file would push it over 400 lines, split first

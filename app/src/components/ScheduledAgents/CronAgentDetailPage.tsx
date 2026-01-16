@@ -15,7 +15,7 @@ import { useToastStore } from '@/store/toastStore';
 import { useOllamaStore } from '@/store/ollamaStore';
 import { useCronOutputStore } from '@/store/cronOutputStore';
 import { Tooltip } from '@/components/ui/tooltip';
-import { Sparkles, Loader2, RefreshCcw, Play, TestTube, GitMerge } from 'lucide-react';
+import { Sparkles, Loader2, RefreshCcw, Play, GitMerge } from 'lucide-react';
 import { CRON_PRESETS, CRON_MODELS } from '@/types/scheduler';
 import { CronAgentOutputPanel } from './CronAgentOutputPanel';
 import type { ScheduledAgentInfo, ScheduledAgentConfig, ScheduledRunLog } from '@/types';
@@ -180,16 +180,6 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
     }
   };
 
-  const handleTriggerQA = async (runId: string) => {
-    try {
-      await invoke('trigger_qa_for_run', { run_id: runId });
-      showSuccess('QA validation triggered');
-      setTimeout(fetchRunHistory, 1000);
-    } catch (err) {
-      showError(`Failed to trigger QA: ${err}`);
-    }
-  };
-
   const handleTriggerMerge = async (runId: string) => {
     try {
       await invoke('trigger_merge_for_run', { run_id: runId });
@@ -212,11 +202,6 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
     return false;
   };
 
-  // Can trigger QA if run has worktree and is not running
-  const canTriggerQA = (run: ScheduledRunLog) => {
-    return run.worktree_path && run.worktree_branch && run.status !== 'running';
-  };
-
   // Can trigger merge if run has worktree and is not running
   const canTriggerMerge = (run: ScheduledRunLog) => {
     return run.worktree_path && run.worktree_branch && run.status !== 'running';
@@ -226,7 +211,6 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
   const hasMenuActions = (run: ScheduledRunLog) => {
     return canRelaunch(run) ||
            (hasAnalyzer && run.status !== 'running') ||
-           canTriggerQA(run) ||
            canTriggerMerge(run);
   };
 
@@ -685,18 +669,6 @@ export const CronAgentDetailPage: React.FC<CronAgentDetailPageProps> = ({
             >
               <Play className="w-4 h-4" />
               Run analyzer
-            </button>
-          )}
-          {canTriggerQA(contextMenu.run) && (
-            <button
-              onClick={() => {
-                handleTriggerQA(contextMenu.run.run_id);
-                setContextMenu(null);
-              }}
-              className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
-            >
-              <TestTube className="w-4 h-4" />
-              Run QA validation
             </button>
           )}
           {canTriggerMerge(contextMenu.run) && (

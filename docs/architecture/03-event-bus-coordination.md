@@ -1,5 +1,7 @@
 # Event Bus Coordination
 
+> 🔬 **EXPERIMENTAL**: The Event Bus is one of several orchestration approaches under evaluation. It provides pub/sub semantics for reactive agent triggering. See `06-coordination-comparison.md` for comparison with other patterns.
+
 **Files:**
 - `src-tauri/src/events/bus.rs` - Event bus implementation
 - `src-tauri/src/events/types.rs` - Event types

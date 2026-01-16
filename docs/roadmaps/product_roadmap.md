@@ -13,9 +13,9 @@ The product roadmap defines **what we build in Nolan** to support the business v
 | Phase | Status | Progress |
 |-------|--------|----------|
 | **Phase 0:** Architecture | Complete | 100% |
-| **Phase 1:** Cost & Execution | Mostly Complete | 98% |
+| **Phase 1:** Cost & Execution | Mostly Complete | 90% |
 | **Phase 2:** Safety & Versioning | Not Started | 0% |
-| **Phase 3:** Context & Communication | Complete | 100% |
+| **Phase 3:** Context & Configuration | Complete | 100% |
 | **Phase 4:** Autonomy & Scale | In Progress | 75% |
 | **Phase 5:** Enterprise | Not Started | 0% |
 | **Phase 6:** Spec-Driven Development | In Progress | 20% |
@@ -76,35 +76,35 @@ The product roadmap defines **what we build in Nolan** to support the business v
 - [x] Browser-based frontend access supported
 - [x] Environment-configurable host/port
 
-### 0.2 Provider Configuration (Pending)
+---
+
+## Phase 1: Cost & Execution Management (90% Complete)
+
+### 1.1 Provider Configuration (Pending)
 - [ ] Provider abstraction layer
 - [ ] Per-agent model configuration
 - [ ] Fallback chain
 - [ ] Cost comparison dashboard
 
----
-
-## Phase 1: Cost & Execution Management (98% Complete)
-
-### 1.1 Usage & Cost Analytics (Implemented)
+### 1.2 Usage & Cost Analytics (Implemented)
 - [x] Real-time cost tracking
 - [x] JSONL-based usage storage
 - [x] Per-agent, per-model, per-project breakdowns
 - [ ] Visual charts (Recharts integration)
 - [ ] Export for accounting (CSV, JSON)
 
-### 1.2 Background Execution Queue (Pending)
+### 1.3 Background Execution Queue (Pending)
 - [ ] Execution queue system
 - [ ] Parallel agent spawning
 - [ ] Execution history
 - [ ] Retry mechanisms
 
-### 1.3 Real-Time Streaming (Implemented)
+### 1.4 Real-Time Streaming (Implemented)
 - [x] Terminal stream via tmux capture
 - [x] Per-session streaming
 - [x] Activity tracking and deduplication
 
-### 1.4 Process Control (Implemented)
+### 1.5 Process Control (Implemented)
 - [x] Session registry
 - [x] Spawn, kill, restart operations
 - [x] External terminal support
@@ -128,7 +128,7 @@ The product roadmap defines **what we build in Nolan** to support the business v
 
 ---
 
-## Phase 3: Context & Communication (100% Complete)
+## Phase 3: Context & Configuration (100% Complete)
 
 ### 3.1 Hierarchical Context
 - [x] Organization-level context (via departments.yaml)
@@ -137,12 +137,11 @@ The product roadmap defines **what we build in Nolan** to support the business v
 - [x] Agent-level context (CLAUDE.md, agent.json - 65+ agents)
 - [x] Context inheritance engine (via .claude symlinks and team configs)
 
-### 3.2 Agent Communication (Implemented)
-- [x] Message delivery with verified IDs
-- [x] Broadcast to team or all agents
-- [x] Delivery confirmation
-- [x] Team-scoped chat
-- [x] Communication via handoff system and coordinator ACK protocol
+### 3.2 Station Configuration (Implemented)
+- [x] Clear input/output definitions per agent
+- [x] Workflow definitions in team.yaml
+- [x] Quality gate validators
+- [x] File-based routing between stations
 
 ---
 
@@ -419,7 +418,7 @@ Nolan develops itself through specs.
 | Phase 0: Architecture | Foundation for all goals |
 | Phase 1: Cost & Execution | Cost tracking, delivery tracking |
 | Phase 2: Safety & Versioning | Quality assurance |
-| Phase 3: Context & Communication | Decision audit |
+| Phase 3: Context & Configuration | Station clarity |
 | Phase 4: Autonomy & Scale | Autonomous scaling |
 | Phase 5: Enterprise | Governance, integrations |
 | Phase 6: Spec-Driven Development | **Transforms entire delivery model** |
@@ -445,7 +444,7 @@ Phase 6 is transformational. It changes **how we work**, not just **what we buil
 - Tauri 2 (Desktop client)
 - React + TypeScript (UI)
 - Rust backend (Performance)
-- SQLite (Local storage)
+- JSONL files (Local storage)
 - tokio (Async runtime)
 
 ### Data Model
@@ -556,18 +555,30 @@ NolanServer
 | Visual charts | Pending | Recharts integration |
 | Export usage data | Pending | CSV/JSON export |
 | Resource monitoring | Pending | CPU, memory tracking |
-| Communication dashboard | Pending | Inbox, threads, search |
+| Pipeline monitoring dashboard | Pending | Station status, bottleneck detection |
 
 ---
 
-## Known Protocol Gaps
+## Manufacturing Line Principles
 
-### Handoff Recovery (Not Implemented)
+Nolan operates as a **manufacturing line**, not a coordination system:
 
-**Problem:** If an agent dies mid-work, the project becomes orphaned.
+| Concept | Implementation |
+|---------|---------------|
+| **Stations** | Agents (defined in YAML) |
+| **Conveyor** | Output files flow to next station |
+| **Quality gates** | Validators check output before routing |
+| **Line design** | Humans define workflows in team configs |
 
-**Proposed Solutions:**
-1. Watchdog Daemon (Recommended)
-2. Coordinator Self-Wake Timer
-3. Session Heartbeat Protocol
-4. Nolan App Integration
+### Station Failure Handling
+
+When a station (agent) fails:
+1. **Pipeline Manager** detects exit code ≠ 0
+2. **Retry** if within attempt limit
+3. **Block** the station and log for investigation
+4. **No cascade** - other stations unaffected due to isolation
+
+This is simpler than coordination-based recovery because:
+- No handoff acknowledgment needed
+- No agent-to-agent communication to fail
+- Work state is always in files, not in-flight messages

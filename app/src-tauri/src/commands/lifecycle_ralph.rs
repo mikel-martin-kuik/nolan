@@ -76,9 +76,12 @@ pub async fn spawn_agent(
     // Find available name from RALPH_NAMES pool (ziggy, nova, etc.)
     let instance_id = find_available_ralph_name()?;
 
-    // Create ephemeral agent directory: /agents/agent-ralph-{name}/ (matches session name)
-    let agents_dir = crate::utils::paths::get_agents_dir()?;
-    let agent_dir = agents_dir.join(format!("agent-ralph-{}", instance_id));
+    // Create ephemeral agent directory: /agents/instances/agent-ralph-{name}/ (matches session name)
+    let instances_dir = crate::utils::paths::get_agents_instances_dir()?;
+    let agent_dir = instances_dir.join(format!("agent-ralph-{}", instance_id));
+
+    // Config directory for base agent templates
+    let config_dir = crate::utils::paths::get_agents_config_dir()?;
 
     // Session naming: agent-ralph-{name}
     let session = format!("agent-ralph-{}", instance_id);
@@ -98,10 +101,10 @@ pub async fn spawn_agent(
             .map_err(|e| format!("Failed to create agent directory: {}", e))?;
 
         // Create symlink to .claude so Claude Code loads settings
-        // For Ralph, use ralph-specific settings (no team hooks) from agents/ralph/.claude
+        // For Ralph, use ralph-specific settings (no team hooks) from agents/config/free/ralph/.claude
         #[cfg(unix)]
         {
-            let base_agent_dir = agents_dir.join(&agent);
+            let base_agent_dir = config_dir.join("free").join(&agent);
             let ralph_claude = base_agent_dir.join(".claude");
 
             if ralph_claude.exists() {
@@ -117,7 +120,7 @@ pub async fn spawn_agent(
         // Create symlink to CLAUDE.md for agent instructions
         #[cfg(unix)]
         {
-            let base_agent_dir = agents_dir.join(&agent);
+            let base_agent_dir = config_dir.join("free").join(&agent);
             let claude_md_src = base_agent_dir.join("CLAUDE.md");
             if claude_md_src.exists() {
                 let claude_md_link = agent_dir.join("CLAUDE.md");
@@ -167,7 +170,7 @@ pub async fn spawn_agent(
         // Copy CLAUDE.md into worktree so agent has instructions
         #[cfg(unix)]
         {
-            let base_agent_dir = agents_dir.join(&agent);
+            let base_agent_dir = config_dir.join("free").join(&agent);
             let claude_md_src = base_agent_dir.join("CLAUDE.md");
             if claude_md_src.exists() {
                 let claude_md_link = worktree_path.join("CLAUDE.md");
@@ -373,10 +376,10 @@ pub async fn kill_instance(app_handle: AppHandle, session: String) -> Result<Str
     // Uses centralized parse_ralph_session for consistent validation
     let mut dir_deleted = false;
     if let Some(instance_id) = parse_ralph_session(&session) {
-        // This is an ephemeral agent, delete its directory
-        let agents_dir =
-            crate::utils::paths::get_agents_dir().unwrap_or_else(|_| std::path::PathBuf::new());
-        let agent_path = agents_dir.join(format!("agent-ralph-{}", instance_id));
+        // This is an ephemeral agent, delete its directory from instances/
+        let instances_dir =
+            crate::utils::paths::get_agents_instances_dir().unwrap_or_else(|_| std::path::PathBuf::new());
+        let agent_path = instances_dir.join(format!("agent-ralph-{}", instance_id));
 
         if agent_path.exists() {
             if let Err(e) = fs::remove_dir_all(&agent_path) {
@@ -427,9 +430,9 @@ pub async fn kill_all_instances(
     let mut killed: Vec<String> = Vec::new();
     let mut cleaned: Vec<String> = Vec::new();
 
-    // Get agents directory once
-    let agents_dir =
-        crate::utils::paths::get_agents_dir().unwrap_or_else(|_| std::path::PathBuf::new());
+    // Get instances directory once
+    let instances_dir =
+        crate::utils::paths::get_agents_instances_dir().unwrap_or_else(|_| std::path::PathBuf::new());
 
     // Find all Ralph instances: agent-ralph-{name}
     // Uses centralized parse_ralph_session for consistent validation
@@ -438,7 +441,7 @@ pub async fn kill_all_instances(
             if crate::tmux::session::kill_session(session).is_ok() {
                 // Only delete ephemeral agent directories (where .claude is a symlink)
                 // Pre-defined agents like agent-ralph-debug have a real .claude directory
-                let agent_path = agents_dir.join(format!("agent-ralph-{}", instance_id));
+                let agent_path = instances_dir.join(format!("agent-ralph-{}", instance_id));
                 let claude_path = agent_path.join(".claude");
                 if agent_path.exists() && claude_path.is_symlink() {
                     let _ = fs::remove_dir_all(&agent_path);
@@ -454,8 +457,8 @@ pub async fn kill_all_instances(
     // Also clean up orphaned ephemeral directories (no running session)
     // These can occur if the session crashed or was killed externally
     // Only delete directories where .claude is a symlink (ephemeral, not pre-defined)
-    if agents_dir.exists() {
-        if let Ok(entries) = fs::read_dir(&agents_dir) {
+    if instances_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&instances_dir) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
                 if name.starts_with("agent-ralph-") {

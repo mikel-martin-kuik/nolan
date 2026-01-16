@@ -123,6 +123,8 @@ pub fn run() {
             recover_sessions,
             list_orphaned_sessions,
             list_worktrees,
+            create_worktree_for_ralph,
+            remove_worktree,
             launch_terminal,
             open_agent_terminal,
             open_team_terminals,
@@ -229,8 +231,8 @@ pub fn run() {
             // Scheduler commands - analyzer
             scheduler::commands_analyzer::trigger_analyzer_for_run,
             // Scheduler commands - pipeline
-            scheduler::commands_pipeline::trigger_qa_for_run,
             scheduler::commands_pipeline::trigger_merge_for_run,
+            scheduler::commands_pipeline::trigger_merge_for_worktree,
             scheduler::commands_pipeline::list_pipelines,
             scheduler::commands_pipeline::get_pipeline,
             scheduler::commands_pipeline::retry_pipeline_stage,
@@ -241,6 +243,8 @@ pub fn run() {
             scheduler::commands_pipeline::list_pipeline_definitions,
             scheduler::commands_pipeline::get_pipeline_definition,
             scheduler::commands_pipeline::get_default_pipeline_definition,
+            scheduler::commands_pipeline::save_pipeline_definition,
+            scheduler::commands_pipeline::delete_pipeline_definition,
             // Feedback commands
             list_feature_requests,
             create_feature_request,

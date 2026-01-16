@@ -381,8 +381,8 @@ async fn load_session_index() -> Result<(), String> {
         return Ok(());
     }
 
-    let registry_path = std::env::var("HOME").map_err(|_| "HOME not set".to_string())?;
-    let registry_path = PathBuf::from(registry_path).join(".nolan/session-registry.jsonl");
+    let registry_path = crate::utils::paths::get_session_registry_path()
+        .map_err(|e| format!("Failed to get session registry path: {}", e))?;
 
     if !registry_path.exists() {
         INDEX_LOADED.store(true, Ordering::Relaxed);

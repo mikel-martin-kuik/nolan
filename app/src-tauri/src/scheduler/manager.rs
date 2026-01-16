@@ -14,7 +14,7 @@ pub type RunningProcesses = Arc<RwLock<HashMap<String, RunningProcess>>>;
 pub struct SchedulerManager {
     scheduler: JobScheduler,
     scheduler_root: PathBuf, // Agent definitions (source code) in NOLAN_ROOT/scheduler
-    scheduler_data_root: PathBuf, // Run logs (user data) in NOLAN_DATA_ROOT/scheduler
+    scheduler_data_root: PathBuf, // Run logs (user data) in NOLAN_DATA_ROOT/data
     _nolan_root: PathBuf, // Source code root (kept for future use)
     nolan_data_root: PathBuf, // User data root (for state storage)
     running: RunningProcesses,
@@ -28,14 +28,14 @@ impl SchedulerManager {
         let nolan_root = paths::get_nolan_root()?;
         let nolan_data_root = paths::get_nolan_data_root()?;
         let scheduler_root = nolan_root.join("scheduler"); // Agent definitions (source)
-        let scheduler_data_root = nolan_data_root.join("scheduler"); // Run logs (data)
+        let scheduler_data_root = paths::get_data_dir()?; // Run logs (data)
 
         // Ensure directories exist
-        let agents_dir = paths::get_agents_dir()?;
+        let agents_dir = paths::get_agents_config_dir()?;
         std::fs::create_dir_all(&agents_dir)
-            .map_err(|e| format!("Failed to create agents directory: {}", e))?;
-        std::fs::create_dir_all(scheduler_data_root.join("runs"))
-            .map_err(|e| format!("Failed to create scheduler/runs: {}", e))?;
+            .map_err(|e| format!("Failed to create agents config directory: {}", e))?;
+        std::fs::create_dir_all(paths::get_scheduler_runs_dir()?)
+            .map_err(|e| format!("Failed to create data/runs: {}", e))?;
 
         // Create consolidated state directory for scheduler (uses data root via get_state_dir)
         let scheduler_state_dir = paths::get_scheduler_state_dir()?;
@@ -85,11 +85,11 @@ impl SchedulerManager {
     // Persistent State Management
     // ========================
 
-    fn state_file_path(data_root: &PathBuf) -> PathBuf {
-        data_root
-            .join(".state")
-            .join("scheduler")
-            .join("state.json")
+    fn state_file_path(_data_root: &PathBuf) -> PathBuf {
+        // Use centralized paths module
+        paths::get_scheduler_state_dir()
+            .map(|p| p.join("state.json"))
+            .unwrap_or_else(|_| PathBuf::from(".state/scheduler/state.json"))
     }
 
     fn load_state(data_root: &PathBuf) -> Result<SchedulerState, String> {
@@ -269,7 +269,7 @@ impl SchedulerManager {
     /// Scans JSON log files for runs with completed_at: null and session_name set,
     /// then checks if the tmux session is still alive.
     pub fn find_orphaned_scheduled_sessions(&self) -> Result<Vec<OrphanedScheduledSession>, String> {
-        let runs_dir = self.scheduler_data_root.join("runs");
+        let runs_dir = paths::get_scheduler_runs_dir()?;
         let mut orphaned = Vec::new();
 
         // Scan date directories (e.g., runs/2026-01-10/)
@@ -694,7 +694,7 @@ impl SchedulerManager {
     /// Scans role-based subdirectories, root agents/, and teams/*/agents/ directories
     pub async fn load_agents(&self) -> Result<Vec<ScheduledAgentConfig>, String> {
         let mut configs = Vec::new();
-        let agents_dir = paths::get_agents_dir()?; // ~/.nolan/agents/
+        let agents_dir = paths::get_agents_config_dir()?; // ~/.nolan/agents/
 
         // Load from role-based subdirectories first
         let role_dirs = [
@@ -765,7 +765,7 @@ impl SchedulerManager {
     /// Get agent config by name
     /// Searches role subdirectories, root agents/, and teams/*/agents/ directories
     pub async fn get_agent(&self, name: &str) -> Result<ScheduledAgentConfig, String> {
-        let agents_dir = paths::get_agents_dir()?;
+        let agents_dir = paths::get_agents_config_dir()?;
 
         // Check root agents directory first (for backwards compatibility)
         let config_path = agents_dir.join(name).join("agent.yaml");
@@ -879,8 +879,7 @@ impl SchedulerManager {
             "planning" => AgentRole::Planner,
             "plan review" | "plan-review" | "planreview" => AgentRole::Analyzer,
             "implementation" => AgentRole::Implementer,
-            "qa" | "testing" | "validation" => AgentRole::Tester,
-            "audit" | "review" => AgentRole::Analyzer,
+            "qa" | "testing" | "validation" | "audit" | "review" => AgentRole::Analyzer,
             _ => AgentRole::Free,
         };
 
@@ -916,7 +915,7 @@ impl SchedulerManager {
 
     /// Save agent config to the agents directory
     pub async fn save_agent(&self, config: &ScheduledAgentConfig) -> Result<(), String> {
-        let agents_dir = paths::get_agents_dir()?;
+        let agents_dir = paths::get_agents_config_dir()?;
         let agent_dir = agents_dir.join(&config.name);
 
         std::fs::create_dir_all(&agent_dir)
@@ -933,7 +932,7 @@ impl SchedulerManager {
 
     /// Delete agent from the agents directory
     pub async fn delete_agent(&self, name: &str) -> Result<(), String> {
-        let agents_dir = paths::get_agents_dir()?;
+        let agents_dir = paths::get_agents_config_dir()?;
         let agent_dir = agents_dir.join(name);
 
         if agent_dir.exists() {
@@ -960,7 +959,7 @@ impl SchedulerManager {
         agent_name: Option<&str>,
         limit: usize,
     ) -> Result<Vec<ScheduledRunLog>, String> {
-        let runs_dir = self.scheduler_data_root.join("runs");
+        let runs_dir = paths::get_scheduler_runs_dir()?;
         let mut logs = Vec::new();
 
         // Read all date directories in reverse order
@@ -1149,7 +1148,7 @@ impl SchedulerManager {
 
     /// Load schedules from schedules.yaml
     fn load_schedules(&self) -> Result<Vec<ScheduleConfig>, String> {
-        let path = self.nolan_data_root.join("schedules.yaml");
+        let path = paths::get_schedules_path()?;
         if !path.exists() {
             return Ok(Vec::new());
         }
@@ -1261,7 +1260,7 @@ impl SchedulerManager {
                 println!("[Scheduler] Triggering scheduled run for: {}", agent_name);
 
                 // Load config fresh in case it changed
-                let agents_dir = match crate::utils::paths::get_agents_dir() {
+                let agents_dir = match crate::utils::paths::get_agents_config_dir() {
                     Ok(d) => d,
                     Err(e) => {
                         eprintln!("[Scheduler] Failed to get agents dir: {}", e);

@@ -331,9 +331,9 @@ pub fn generate_branch_name(agent_name: &str, run_id: &str) -> String {
 }
 
 /// Get the worktrees directory path
+/// Re-exports from paths module for convenience
 pub fn get_worktrees_dir() -> Result<PathBuf, String> {
-    let data_root = crate::utils::paths::get_nolan_data_root()?;
-    Ok(data_root.join("worktrees"))
+    crate::utils::paths::get_worktrees_dir()
 }
 
 #[cfg(test)]

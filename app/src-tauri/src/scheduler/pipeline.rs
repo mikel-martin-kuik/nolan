@@ -1,7 +1,7 @@
 //! Pipeline management for CI/CD-like agent orchestration.
 //!
 //! This module provides tracking, persistence, and state machine logic
-//! for multi-stage agent pipelines (implementer → analyzer → qa → merger).
+//! for multi-stage agent pipelines (implementer → analyzer → merger).
 
 use std::collections::HashMap;
 use std::fs;
@@ -22,7 +22,6 @@ use crate::scheduler::types::{
 pub struct PipelineAgents {
     pub implementer: String,
     pub analyzer: String,
-    pub qa: String,
     pub merger: String,
 }
 
@@ -31,7 +30,6 @@ impl Default for PipelineAgents {
         Self {
             implementer: "idea-implementer".to_string(),
             analyzer: "implementer-analyzer".to_string(),
-            qa: "qa-validation".to_string(),
             merger: "merge-changes".to_string(),
         }
     }
@@ -43,7 +41,6 @@ impl PipelineAgents {
         match stage_type {
             PipelineStageType::Implementer => AgentRole::Implementer,
             PipelineStageType::Analyzer => AgentRole::Analyzer,
-            PipelineStageType::Qa => AgentRole::Tester,
             PipelineStageType::Merger => AgentRole::Merger,
         }
     }
@@ -53,7 +50,6 @@ impl PipelineAgents {
         match stage_type {
             PipelineStageType::Implementer => &self.implementer,
             PipelineStageType::Analyzer => &self.analyzer,
-            PipelineStageType::Qa => &self.qa,
             PipelineStageType::Merger => &self.merger,
         }
     }
@@ -68,10 +64,14 @@ pub struct PipelineManager {
 
 impl PipelineManager {
     /// Create a new PipelineManager
-    pub fn new(data_root: &PathBuf) -> Self {
-        let pipelines_dir = data_root.join(".state").join("pipelines");
-        let definitions_dir = data_root.join("pipelines");
-        let scheduler_dir = data_root.join("scheduler");
+    pub fn new(_data_root: &PathBuf) -> Self {
+        let pipelines_dir = crate::utils::paths::get_state_dir()
+            .map(|p| p.join("pipelines"))
+            .unwrap_or_else(|_| _data_root.join(".state").join("pipelines"));
+        let definitions_dir = crate::utils::paths::get_pipelines_definitions_dir()
+            .unwrap_or_else(|_| _data_root.join("config").join("pipelines"));
+        let scheduler_dir = crate::utils::paths::get_data_dir()
+            .unwrap_or_else(|_| _data_root.join("data"));
 
         // Ensure directories exist
         if !pipelines_dir.exists() {
@@ -145,12 +145,49 @@ impl PipelineManager {
         serde_yaml::from_str(&content).map_err(|e| format!("Failed to parse pipeline YAML: {}", e))
     }
 
+    /// Save a pipeline definition to YAML file
+    pub fn save_definition(&self, definition: &PipelineDefinition) -> Result<(), String> {
+        // Ensure definitions directory exists
+        if !self.definitions_dir.exists() {
+            fs::create_dir_all(&self.definitions_dir)
+                .map_err(|e| format!("Failed to create definitions directory: {}", e))?;
+        }
+
+        let path = self.definitions_dir.join(format!("{}.yaml", definition.name));
+
+        let content = serde_yaml::to_string(definition)
+            .map_err(|e| format!("Failed to serialize pipeline definition: {}", e))?;
+
+        fs::write(&path, content)
+            .map_err(|e| format!("Failed to write pipeline definition: {}", e))?;
+
+        Ok(())
+    }
+
+    /// Delete a pipeline definition
+    pub fn delete_definition(&self, name: &str) -> Result<(), String> {
+        let yaml_path = self.definitions_dir.join(format!("{}.yaml", name));
+        let yml_path = self.definitions_dir.join(format!("{}.yml", name));
+
+        if yaml_path.exists() {
+            fs::remove_file(&yaml_path)
+                .map_err(|e| format!("Failed to delete pipeline definition: {}", e))?;
+        } else if yml_path.exists() {
+            fs::remove_file(&yml_path)
+                .map_err(|e| format!("Failed to delete pipeline definition: {}", e))?;
+        } else {
+            return Err(format!("Pipeline definition not found: {}", name));
+        }
+
+        Ok(())
+    }
+
     // =========================================================================
     // Pipeline Instance methods
     // =========================================================================
 
     /// Create a new pipeline when an implementer agent starts
-    /// Uses default agent names - prefer create_pipeline_with_agents for role-based lookup
+    /// Loads agents from the default pipeline definition (idea-to-merge.yaml)
     pub fn create_pipeline(
         &self,
         pipeline_id: &str,
@@ -162,6 +199,9 @@ impl PipelineManager {
         base_commit: Option<&str>,
         env_vars: HashMap<String, String>,
     ) -> Result<Pipeline, String> {
+        // Load agents from pipeline definition, fall back to defaults
+        let agents = self.get_agents_from_definition().unwrap_or_else(|_| PipelineAgents::default());
+
         self.create_pipeline_with_agents(
             pipeline_id,
             idea_id,
@@ -171,8 +211,32 @@ impl PipelineManager {
             worktree_branch,
             base_commit,
             env_vars,
-            PipelineAgents::default(),
+            agents,
         )
+    }
+
+    /// Extract agent names from the default pipeline definition
+    fn get_agents_from_definition(&self) -> Result<PipelineAgents, String> {
+        let definition = self.get_default_definition()?;
+
+        let mut implementer = PipelineAgents::default().implementer;
+        let mut analyzer = PipelineAgents::default().analyzer;
+        let mut merger = PipelineAgents::default().merger;
+
+        for stage in &definition.stages {
+            match stage.name.as_str() {
+                "implementer" => implementer = stage.agent.clone(),
+                "analyzer" => analyzer = stage.agent.clone(),
+                "merger" => merger = stage.agent.clone(),
+                _ => {}
+            }
+        }
+
+        Ok(PipelineAgents {
+            implementer,
+            analyzer,
+            merger,
+        })
     }
 
     /// Create a new pipeline with specific agent names for each stage
@@ -217,17 +281,6 @@ impl PipelineManager {
                 stage_type: PipelineStageType::Analyzer,
                 status: PipelineStageStatus::Pending,
                 agent_name: agents.analyzer.clone(),
-                run_id: None,
-                started_at: None,
-                completed_at: None,
-                verdict: None,
-                skip_reason: None,
-                attempt: 0,
-            },
-            PipelineStage {
-                stage_type: PipelineStageType::Qa,
-                status: PipelineStageStatus::Pending,
-                agent_name: agents.qa.clone(),
                 run_id: None,
                 started_at: None,
                 completed_at: None,
@@ -298,7 +351,8 @@ impl PipelineManager {
     /// Discover running implementer agents from scheduler run logs
     fn discover_running_implementers(&self) -> Vec<ScheduledRunLog> {
         let mut running = Vec::new();
-        let runs_dir = self.scheduler_dir.join("runs");
+        let runs_dir = crate::utils::paths::get_scheduler_runs_dir()
+            .unwrap_or_else(|_| self.scheduler_dir.join("runs"));
 
         if !runs_dir.exists() {
             return running;
@@ -387,17 +441,6 @@ impl PipelineManager {
                     stage_type: PipelineStageType::Analyzer,
                     status: PipelineStageStatus::Pending,
                     agent_name: agents.analyzer.clone(),
-                    run_id: None,
-                    verdict: None,
-                    attempt: 0,
-                    started_at: None,
-                    completed_at: None,
-                    skip_reason: None,
-                },
-                PipelineStage {
-                    stage_type: PipelineStageType::Qa,
-                    status: PipelineStageStatus::Pending,
-                    agent_name: agents.qa.clone(),
                     run_id: None,
                     verdict: None,
                     attempt: 0,
@@ -715,11 +758,11 @@ impl PipelineManager {
                 if let Some(verdict) = &current_stage.verdict {
                     match verdict.verdict {
                         AnalyzerVerdictType::Complete => {
-                            // Trigger QA if worktree exists
+                            // Trigger merger if worktree exists
                             if let (Some(wt_path), Some(wt_branch)) =
                                 (&pipeline.worktree_path, &pipeline.worktree_branch)
                             {
-                                Some(PipelineNextAction::TriggerQa {
+                                Some(PipelineNextAction::TriggerMerger {
                                     worktree_path: wt_path.clone(),
                                     worktree_branch: wt_branch.clone(),
                                 })
@@ -749,20 +792,6 @@ impl PipelineManager {
                     }
                 } else {
                     None
-                }
-            }
-
-            // QA completed successfully - trigger merger
-            (PipelineStageType::Qa, PipelineStageStatus::Success) => {
-                if let (Some(wt_path), Some(wt_branch)) =
-                    (&pipeline.worktree_path, &pipeline.worktree_branch)
-                {
-                    Some(PipelineNextAction::TriggerMerger {
-                        worktree_path: wt_path.clone(),
-                        worktree_branch: wt_branch.clone(),
-                    })
-                } else {
-                    Some(PipelineNextAction::Complete)
                 }
             }
 
@@ -878,7 +907,7 @@ mod tests {
 
         assert_eq!(pipeline.id, "test-pipeline-1");
         assert_eq!(pipeline.status, PipelineStatus::InProgress);
-        assert_eq!(pipeline.stages.len(), 4);
+        assert_eq!(pipeline.stages.len(), 3);
         assert_eq!(pipeline.stages[0].status, PipelineStageStatus::Running);
     }
 

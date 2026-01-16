@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { invoke } from '@/lib/api';
-import { Send, Globe, Zap, GitBranch, ChevronDown } from 'lucide-react';
+import { Send, Globe, Zap, GitBranch, ChevronDown, Plus } from 'lucide-react';
 import { CLAUDE_MODELS, type ClaudeModel } from '@/types';
 import { isBrowserMode } from '@/lib/api';
 import { useAgentStore } from '@/store/agentStore';
@@ -32,6 +32,9 @@ export const QuickLaunchModal: React.FC<QuickLaunchModalProps> = ({
   const [worktrees, setWorktrees] = useState<WorktreeEntry[]>([]);
   const [selectedWorktree, setSelectedWorktree] = useState<string>('');
   const [isLoadingWorktrees, setIsLoadingWorktrees] = useState(false);
+  const [createNewWorktree, setCreateNewWorktree] = useState(false);
+  const [worktreeLabel, setWorktreeLabel] = useState('');
+  const [_isCreatingWorktree, setIsCreatingWorktree] = useState(false);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const showChromeOption = !isBrowserMode();
 
@@ -46,6 +49,8 @@ export const QuickLaunchModal: React.FC<QuickLaunchModalProps> = ({
       setChromeEnabled(false);
       setMessageText('');
       setSelectedWorktree('');
+      setCreateNewWorktree(false);
+      setWorktreeLabel('');
 
       // Fetch available worktrees
       setIsLoadingWorktrees(true);
@@ -72,11 +77,34 @@ export const QuickLaunchModal: React.FC<QuickLaunchModalProps> = ({
 
   // Handle launch with message
   const handleLaunch = async () => {
+    setIsLaunching(true);
+
+    // Determine the worktree path to use
+    let worktreePath = selectedWorktree || undefined;
+
+    // If creating a new worktree, do that first
+    if (createNewWorktree) {
+      try {
+        setIsCreatingWorktree(true);
+        const result = await invoke<{ path: string; branch: string }>('create_worktree_for_ralph', {
+          label: worktreeLabel.trim() || undefined,
+        });
+        worktreePath = result.path;
+        showSuccess(`Created worktree: ${result.branch}`);
+      } catch (error) {
+        showError(`Failed to create worktree: ${error}`);
+        setIsLaunching(false);
+        setIsCreatingWorktree(false);
+        return;
+      } finally {
+        setIsCreatingWorktree(false);
+      }
+    }
+
     if (!messageText.trim()) {
       // If no message, just spawn without message
-      setIsLaunching(true);
       try {
-        await spawnAgent('', 'ralph', false, selectedModel, showChromeOption ? chromeEnabled : undefined, selectedWorktree || undefined);
+        await spawnAgent('', 'ralph', false, selectedModel, showChromeOption ? chromeEnabled : undefined, worktreePath);
         onOpenChange(false);
       } catch (error) {
         showError(`Failed to spawn Ralph: ${error}`);
@@ -86,7 +114,6 @@ export const QuickLaunchModal: React.FC<QuickLaunchModalProps> = ({
       return;
     }
 
-    setIsLaunching(true);
     try {
       // Get current ralph sessions before spawning
       const beforeSessions = new Set(
@@ -96,7 +123,7 @@ export const QuickLaunchModal: React.FC<QuickLaunchModalProps> = ({
       );
 
       // Spawn the agent
-      await spawnAgent('', 'ralph', false, selectedModel, showChromeOption ? chromeEnabled : undefined, selectedWorktree || undefined);
+      await spawnAgent('', 'ralph', false, selectedModel, showChromeOption ? chromeEnabled : undefined, worktreePath);
 
       // Wait for the new session to appear (poll for up to 10 seconds)
       const maxAttempts = 20;
@@ -232,40 +259,86 @@ export const QuickLaunchModal: React.FC<QuickLaunchModalProps> = ({
 
         {/* Worktree Selection */}
         <div>
-          <div className="flex items-center gap-2 mb-1.5">
-            <GitBranch className={`w-4 h-4 ${selectedWorktree ? 'text-green-400' : 'text-muted-foreground/50'}`} />
-            <span className="text-sm font-medium text-muted-foreground">Launch into worktree</span>
-          </div>
-          <div className="relative">
-            <select
-              value={selectedWorktree}
-              onChange={(e) => setSelectedWorktree(e.target.value)}
-              disabled={isLaunching || isLoadingWorktrees}
-              title={selectedWorktree || 'Select a worktree'}
-              className={`w-full appearance-none bg-secondary/50 border rounded-lg px-3 py-2 pr-8 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer
-                ${selectedWorktree
-                  ? 'border-green-500/50 bg-green-500/10'
-                  : 'border-border'
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center gap-2">
+              <GitBranch className={`w-4 h-4 ${(selectedWorktree || createNewWorktree) ? 'text-green-400' : 'text-muted-foreground/50'}`} />
+              <span className="text-sm font-medium text-muted-foreground">Git Worktree Isolation</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setCreateNewWorktree(!createNewWorktree);
+                if (!createNewWorktree) {
+                  setSelectedWorktree('');
                 }
-                ${(isLaunching || isLoadingWorktrees) ? 'opacity-50 cursor-not-allowed' : ''}
+              }}
+              disabled={isLaunching}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors
+                ${createNewWorktree
+                  ? 'bg-green-500/20 text-green-400 border border-green-500/50'
+                  : 'bg-secondary hover:bg-secondary/80 text-muted-foreground border border-border'
+                }
+                ${isLaunching ? 'opacity-50 cursor-not-allowed' : ''}
               `}
             >
-              <option value="">Default (agent directory)</option>
-              {worktrees.map((wt) => (
-                <option key={wt.path} value={wt.path} title={wt.path}>
-                  {getWorktreeDisplayName(wt)}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              <Plus className="w-3 h-3" />
+              New
+            </button>
           </div>
-          {selectedWorktree && (
-            <p className="text-xs text-muted-foreground/60 mt-1 truncate" title={selectedWorktree}>
-              {getWorktreeShortPath(worktrees.find(wt => wt.path === selectedWorktree)!)}
-            </p>
-          )}
-          {worktrees.length === 0 && !isLoadingWorktrees && (
-            <p className="text-xs text-muted-foreground/60 mt-1">No active worktrees found</p>
+
+          {createNewWorktree ? (
+            /* Create new worktree form */
+            <div className="space-y-2">
+              <input
+                type="text"
+                value={worktreeLabel}
+                onChange={(e) => setWorktreeLabel(e.target.value)}
+                placeholder="Worktree label (e.g., fix-auth-bug)"
+                disabled={isLaunching}
+                className={`w-full bg-secondary/50 border rounded-lg px-3 py-2 text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/50
+                  ${isLaunching ? 'opacity-50 cursor-not-allowed' : ''}
+                  border-green-500/50 bg-green-500/10
+                `}
+              />
+              <p className="text-xs text-muted-foreground/60">
+                Creates a new branch from main for isolated work. Changes can be merged or discarded when done.
+              </p>
+            </div>
+          ) : (
+            /* Existing worktree selector */
+            <>
+              <div className="relative">
+                <select
+                  value={selectedWorktree}
+                  onChange={(e) => setSelectedWorktree(e.target.value)}
+                  disabled={isLaunching || isLoadingWorktrees}
+                  title={selectedWorktree || 'Select a worktree'}
+                  className={`w-full appearance-none bg-secondary/50 border rounded-lg px-3 py-2 pr-8 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 cursor-pointer
+                    ${selectedWorktree
+                      ? 'border-green-500/50 bg-green-500/10'
+                      : 'border-border'
+                    }
+                    ${(isLaunching || isLoadingWorktrees) ? 'opacity-50 cursor-not-allowed' : ''}
+                  `}
+                >
+                  <option value="">Default (no worktree isolation)</option>
+                  {worktrees.map((wt) => (
+                    <option key={wt.path} value={wt.path} title={wt.path}>
+                      {getWorktreeDisplayName(wt)}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
+              </div>
+              {selectedWorktree && (
+                <p className="text-xs text-muted-foreground/60 mt-1 truncate" title={selectedWorktree}>
+                  {getWorktreeShortPath(worktrees.find(wt => wt.path === selectedWorktree)!)}
+                </p>
+              )}
+              {worktrees.length === 0 && !isLoadingWorktrees && (
+                <p className="text-xs text-muted-foreground/60 mt-1">No active worktrees. Click "New" to create one.</p>
+              )}
+            </>
           )}
         </div>
 

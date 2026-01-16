@@ -156,21 +156,23 @@ pub struct PipelineConfig {
     pub entrypoint_file: String,
 }
 
-/// Trigger configuration for mapping triggers to agents
-/// Allows dynamic configuration of which agents handle specific triggers
+/// Trigger configuration for the Layer 1 entry point
+/// Pipeline stage agents (implementer, analyzer, merger) are now configured
+/// in the pipeline definition (Builder > Pipelines tab)
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TriggerConfig {
     /// Agent name for processing ideas (default: "idea-processor")
+    /// This is the Layer 1 entry point that processes raw ideas into structured proposals
     #[serde(default)]
     pub idea_processor: Option<String>,
-    /// Agent name for implementing ideas (default: "idea-implementer")
-    #[serde(default)]
+
+    // Legacy fields - kept for backwards compatibility with existing configs
+    // These are now configured per-pipeline in the pipeline definition
+    #[serde(default, skip_serializing)]
     pub idea_implementer: Option<String>,
-    /// Agent name for analyzing implementations (default: "implementer-analyzer")
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub implementer_analyzer: Option<String>,
-    /// Agent name for merging changes (default: "idea-merger")
-    #[serde(default)]
+    #[serde(default, skip_serializing)]
     pub idea_merger: Option<String>,
 }
 
@@ -180,27 +182,6 @@ impl TriggerConfig {
         self.idea_processor
             .clone()
             .unwrap_or_else(|| "idea-processor".to_string())
-    }
-
-    /// Get idea implementer agent name with fallback to default
-    pub fn get_idea_implementer(&self) -> String {
-        self.idea_implementer
-            .clone()
-            .unwrap_or_else(|| "idea-implementer".to_string())
-    }
-
-    /// Get implementer analyzer agent name with fallback to default
-    pub fn get_implementer_analyzer(&self) -> String {
-        self.implementer_analyzer
-            .clone()
-            .unwrap_or_else(|| "implementer-analyzer".to_string())
-    }
-
-    /// Get idea merger agent name with fallback to default
-    pub fn get_idea_merger(&self) -> String {
-        self.idea_merger
-            .clone()
-            .unwrap_or_else(|| "idea-merger".to_string())
     }
 }
 
@@ -426,10 +407,9 @@ impl Default for UIConfig {
     }
 }
 
-/// Get the config file path (~/.nolan/config.yaml or NOLAN_DATA_ROOT/config.yaml)
+/// Get the config file path (~/.nolan/config/nolan.yaml)
 fn get_config_path() -> Result<PathBuf, String> {
-    let data_root = crate::utils::paths::get_nolan_data_root()?;
-    Ok(data_root.join("config.yaml"))
+    crate::utils::paths::get_config_file_path()
 }
 
 /// Update SSH terminal configuration in config file
@@ -544,21 +524,6 @@ pub fn get_trigger_config() -> TriggerConfig {
 /// Get the configured idea processor agent name
 pub fn get_idea_processor_agent() -> String {
     get_trigger_config().get_idea_processor()
-}
-
-/// Get the configured idea implementer agent name
-pub fn get_idea_implementer_agent() -> String {
-    get_trigger_config().get_idea_implementer()
-}
-
-/// Get the configured implementer analyzer agent name
-pub fn get_implementer_analyzer_agent() -> String {
-    get_trigger_config().get_implementer_analyzer()
-}
-
-/// Get the configured idea merger agent name
-pub fn get_idea_merger_agent() -> String {
-    get_trigger_config().get_idea_merger()
 }
 
 /// Update trigger configuration in config file

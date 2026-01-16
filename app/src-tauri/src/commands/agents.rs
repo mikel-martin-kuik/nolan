@@ -72,9 +72,9 @@ fn validate_agent_name(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// Get the agents directory path (shared agents like ralph and templates)
+/// Get the agents config directory path (shared agents like ralph and templates)
 fn get_agents_dir() -> Result<PathBuf, String> {
-    crate::utils::paths::get_agents_dir()
+    crate::utils::paths::get_agents_config_dir()
 }
 
 /// Role-based subdirectories for agent organization

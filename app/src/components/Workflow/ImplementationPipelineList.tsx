@@ -1,7 +1,9 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useWorkflowVisualizerStore } from '../../store/workflowVisualizerStore';
+import { useNavigationStore } from '../../store/navigationStore';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import {
   ChevronRight,
@@ -9,7 +11,6 @@ import {
   Lightbulb,
   Code,
   Search,
-  TestTube,
   GitMerge,
   CheckCircle,
   XCircle,
@@ -18,7 +19,8 @@ import {
   ArrowRight,
   FileCode,
   AlertCircle,
-  Ban
+  Ban,
+  Pencil
 } from 'lucide-react';
 import type { Pipeline } from '../../types/generated/scheduler/Pipeline';
 import type { PipelineDefinition } from '../../types/generated/scheduler/PipelineDefinition';
@@ -30,7 +32,6 @@ const stageIcons: Record<string, typeof Code> = {
   idea: Lightbulb,
   implementer: Code,
   analyzer: Search,
-  qa: TestTube,
   merger: GitMerge,
 };
 
@@ -62,6 +63,7 @@ export function ImplementationPipelineList({ onPipelineSelect }: ImplementationP
   const setSelectedPipelineId = useWorkflowVisualizerStore((state) => state.setSelectedPipelineId);
   const isLoading = useWorkflowVisualizerStore((state) => state.isLoading);
   const fetchPipelines = useWorkflowVisualizerStore((state) => state.fetchPipelines);
+  const navigateToBuilder = useNavigationStore((state) => state.navigateToBuilder);
 
   // Fetch pipelines on mount
   useEffect(() => {
@@ -118,7 +120,18 @@ export function ImplementationPipelineList({ onPipelineSelect }: ImplementationP
       <CardHeader className="sticky top-0 bg-background z-10">
         <CardTitle className="flex items-center justify-between">
           <span>Implementation Pipelines</span>
-          <Badge variant="secondary">{pipelines.length}</Badge>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              onClick={() => navigateToBuilder('pipelines')}
+            >
+              <Pencil className="h-3 w-3" />
+              Edit
+            </Button>
+            <Badge variant="secondary">{pipelines.length}</Badge>
+          </div>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -214,7 +227,7 @@ function PipelineRow({ pipeline, isSelected, onSelect }: PipelineRowProps) {
 
       {/* Stage progress */}
       <div className="flex items-center gap-1">
-        {(['implementer', 'analyzer', 'qa', 'merger'] as const).map((stageType) => {
+        {(['implementer', 'analyzer', 'merger'] as const).map((stageType) => {
           const stage = pipeline.stages.find((s) => s.stage_type === stageType);
           const StageIcon = stageIcons[stageType];
           const stageStatus: PipelineStageStatus = stage?.status || 'pending';
@@ -251,6 +264,7 @@ function PipelineTemplateView() {
   const [definition, setDefinition] = useState<PipelineDefinition | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const navigateToBuilder = useNavigationStore((state) => state.navigateToBuilder);
 
   useEffect(() => {
     async function fetchDefinition() {
@@ -294,7 +308,18 @@ function PipelineTemplateView() {
         <CardTitle className="flex items-center gap-2">
           <FileCode className="h-5 w-5" />
           <span>{definition.name}</span>
-          <Badge variant="outline" className="ml-auto">v{definition.version}</Badge>
+          <div className="flex items-center gap-2 ml-auto">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              onClick={() => navigateToBuilder('pipelines', { pipelineId: definition.name })}
+            >
+              <Pencil className="h-3 w-3" />
+              Edit
+            </Button>
+            <Badge variant="outline">v{definition.version}</Badge>
+          </div>
         </CardTitle>
         {definition.description && (
           <p className="text-sm text-muted-foreground">{definition.description}</p>

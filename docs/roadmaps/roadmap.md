@@ -6,9 +6,9 @@
 
 ---
 
-## The Mechanism: Spec-Driven Development
+## The Mechanism: Manufacturing Line + Specs
 
-**How we achieve the vision**: The next abstraction jump.
+**How we achieve the vision**: A manufacturing line where humans design and specs drive execution.
 
 | Era | Human Writes | Machine Handles |
 |-----|--------------|-----------------|
@@ -19,7 +19,8 @@
 
 Nolan is the platform for this transition:
 - **Specs are the source of truth** (not code)
-- **AI agents execute specs** (not humans writing code)
+- **Manufacturing line executes specs** (agents as stations, files as conveyor)
+- **Humans design the line** (workflows, agents, quality gates)
 - **Nolan can develop itself** (specs → implementation → better spec tooling)
 
 This is how we win: We don't just write code faster—we eliminate code as a human concern.
@@ -47,9 +48,9 @@ This is how we win: We don't just write code faster—we eliminate code as a hum
 | Phase | Status | Progress |
 |-------|--------|----------|
 | Phase 0: Architecture | Complete | 100% |
-| Phase 1: Cost & Execution | Mostly Complete | 98% |
+| Phase 1: Cost & Execution | Mostly Complete | 90% |
 | Phase 2: Safety & Versioning | Not Started | 0% |
-| Phase 3: Context & Communication | Complete | 100% |
+| Phase 3: Context & Configuration | Complete | 100% |
 | Phase 4: Autonomy & Scale | In Progress | 75% |
 | Phase 5: Enterprise | Not Started | 0% |
 | **Phase 6: Spec-Driven Development** | In Progress | 20% |
@@ -107,11 +108,29 @@ One team executes all projects using a phase-gate workflow:
 | Old Tool | Nolan Equivalent | Key Difference |
 |----------|------------------|----------------|
 | **VSCode** | Agent workspace | No code editing—spec editing |
-| **Jira** | Projects + Ideas | Specs are tickets, AI executes them |
+| **Jira** | Projects + Ideas | Specs are tickets, manufacturing line executes them |
 | **GitHub Issues** | Support/Ideas | Natural language, AI-triaged |
-| **GitHub PRs** | Workflow phases | AI review, not human review |
+| **GitHub PRs** | Pipeline stages | Automated quality gates, not manual review |
 | **Confluence** | Spec repository | Living docs that generate code |
-| **CI/CD** | Scheduler + Agents | Continuous development, not just delivery |
+| **CI/CD** | Pipeline + Scheduler | Continuous development, not just delivery |
+
+## Manufacturing Line Philosophy
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  HUMAN DESIGNS THE LINE                                      │
+│  ├── Define agents (stations) in YAML                       │
+│  ├── Define workflows (flow) in team configs                │
+│  └── Define quality gates (validators)                      │
+├─────────────────────────────────────────────────────────────┤
+│  LINE EXECUTES AUTOMATICALLY                                 │
+│  ├── Scheduler triggers stations                            │
+│  ├── Pipeline routes work via output files                  │
+│  └── Failures are isolated and retried                      │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Key insight**: Agents don't coordinate with each other. They receive inputs, produce outputs, and the pipeline routes work. Like a factory, not an office.
 
 ---
 

@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { invoke, isTauri } from '@/lib/api';
-import { Terminal, Play, Trash2, MessageSquare, Send, X, FileEdit, Save, Pencil, ExternalLink } from 'lucide-react';
+import { Terminal, Play, Trash2, MessageSquare, Send, X, FileEdit, Save, Pencil, ExternalLink, GitBranch, GitMerge } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Tooltip } from '@/components/ui/tooltip';
 import { useAgentStore } from '@/store/agentStore';
@@ -12,6 +12,7 @@ import { AGENT_DESCRIPTIONS } from '@/types';
 import { getAgentDisplayNameForUI, isRalphSession, parseRalphSession } from '@/lib/agentIdentity';
 import { useSessionLabelsStore } from '@/store/sessionLabelsStore';
 import { FEATURES } from '@/lib/features';
+import { STORAGE_SERVER_URL } from '@/lib/constants';
 import type { AgentStatus as AgentStatusType } from '@/types';
 
 interface AgentCardProps {
@@ -60,6 +61,8 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   const [contextMenu, setContextMenu] = React.useState<{ x: number; y: number } | null>(null);
   const [showRenameInput, setShowRenameInput] = useState(false);
   const [renameValue, setRenameValue] = useState('');
+  const [showWorktreeKillDialog, setShowWorktreeKillDialog] = useState(false);
+  const [worktreeAction, setWorktreeAction] = useState<'merge' | 'delete' | 'keep' | null>(null);
   const contextMenuRef = React.useRef<HTMLDivElement>(null);
   const messageInputRef = React.useRef<HTMLTextAreaElement>(null);
   const renameInputRef = React.useRef<HTMLInputElement>(null);
@@ -144,16 +147,44 @@ export const AgentCard: React.FC<AgentCardProps> = ({
     }
   };
 
-  // Confirmed kill action
-  const handleConfirmKill = async () => {
+  // Confirmed kill action (with optional worktree handling)
+  const handleConfirmKill = async (action?: 'merge' | 'delete' | 'keep') => {
     setIsProcessing(true);
     try {
+      // Handle worktree action if agent has a worktree
+      if (agent.worktree_path && action) {
+        if (action === 'merge') {
+          // Trigger merge agent for this worktree
+          try {
+            await invoke('trigger_merge_for_worktree', {
+              worktree_path: agent.worktree_path,
+            });
+            showSuccess('Merge triggered for worktree');
+          } catch (mergeError) {
+            showError(`Failed to trigger merge: ${mergeError}`);
+            // Continue with kill even if merge fails
+          }
+        } else if (action === 'delete') {
+          // Delete the worktree after killing
+          try {
+            await invoke('remove_worktree', { path: agent.worktree_path });
+            showSuccess('Worktree deleted');
+          } catch (deleteError) {
+            showError(`Failed to delete worktree: ${deleteError}`);
+            // Continue with kill even if delete fails
+          }
+        }
+        // 'keep' action: just kill the agent, leave worktree intact
+      }
+
       await killInstance(agent.session);
     } catch (error) {
       console.error('Failed to kill agent:', error);
       showError(`Failed to kill agent: ${error}`);
     } finally {
       setIsProcessing(false);
+      setShowWorktreeKillDialog(false);
+      setWorktreeAction(null);
     }
   };
 
@@ -218,7 +249,12 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   // Handle context menu option click
   const handleKillFromMenu = () => {
     setContextMenu(null);
-    setShowKillDialog(true);
+    // If agent has a worktree, show worktree action dialog instead
+    if (agent.worktree_path) {
+      setShowWorktreeKillDialog(true);
+    } else {
+      setShowKillDialog(true);
+    }
   };
 
   // Handle edit CLAUDE.md from context menu
@@ -235,21 +271,34 @@ export const AgentCard: React.FC<AgentCardProps> = ({
   };
 
   // Handle open terminal from context menu
-  // For desktop (Tauri): opens native terminal via external_terminal.rs
-  // For browser with SSH enabled: opens SSH web terminal in new tab
+  // For desktop (Tauri) with embedded backend: opens native terminal via external_terminal.rs
+  // For browser or remote server with SSH enabled: opens SSH web terminal in new tab
   const handleOpenTerminal = async () => {
     setContextMenu(null);
 
-    // Try SSH web terminal first (works in browser mode)
+    // Check if we're in Tauri with embedded backend (no remote server configured)
+    const useEmbeddedBackend = isTauri() && !localStorage.getItem(STORAGE_SERVER_URL);
+
+    // In embedded backend mode, use native terminal directly
+    if (useEmbeddedBackend && FEATURES.EXTERNAL_TERMINAL) {
+      try {
+        await invoke('open_agent_terminal', { session: agent.session });
+      } catch (err) {
+        showError(`Failed to open external terminal: ${err}`);
+      }
+      return;
+    }
+
+    // Try SSH web terminal for remote/browser mode
     if (sshEnabled) {
       const sshUrl = getSshTerminalUrl(agent.session);
       if (sshUrl) {
-        window.open(sshUrl, agent.session, 'width=730,height=450,menubar=no,toolbar=no,location=no,status=no');
+        window.open(sshUrl, agent.session, 'width=1000,height=600,resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no');
         return;
       }
     }
 
-    // Fall back to native terminal (desktop only)
+    // Fall back to native terminal if SSH fails
     if (isTauri() && FEATURES.EXTERNAL_TERMINAL) {
       try {
         await invoke('open_agent_terminal', { session: agent.session });
@@ -428,7 +477,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
         </div>
       </CardContent>
 
-      {/* Kill confirmation dialog */}
+      {/* Kill confirmation dialog (no worktree) */}
       <ConfirmDialog
         open={showKillDialog}
         onOpenChange={setShowKillDialog}
@@ -436,11 +485,95 @@ export const AgentCard: React.FC<AgentCardProps> = ({
         description={`Are you sure you want to kill ${displayName} agent session? This will terminate the agent immediately.`}
         confirmLabel="Kill"
         cancelLabel="Cancel"
-        onConfirm={handleConfirmKill}
+        onConfirm={() => handleConfirmKill()}
         variant="destructive"
       />
 
       </Card>
+
+      {/* Worktree kill dialog - shows options for merge/delete/keep */}
+      {showWorktreeKillDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowWorktreeKillDialog(false)}
+          />
+          <div className="relative bg-background border border-border rounded-xl shadow-lg p-4 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold flex items-center gap-2">
+                <GitBranch className="w-4 h-4 text-green-400" />
+                Kill Agent with Worktree
+              </h3>
+              <button
+                onClick={() => setShowWorktreeKillDialog(false)}
+                className="p-1 rounded hover:bg-secondary/50 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <p className="text-sm text-muted-foreground mb-4">
+              {displayName} is working in an isolated worktree. What would you like to do with the changes?
+            </p>
+
+            <div className="space-y-2">
+              {/* Merge option */}
+              <button
+                onClick={() => {
+                  setWorktreeAction('merge');
+                  handleConfirmKill('merge');
+                }}
+                disabled={isProcessing}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-green-500/30 bg-green-500/10 hover:bg-green-500/20 transition-colors text-left"
+              >
+                <GitMerge className="w-5 h-5 text-green-400" />
+                <div>
+                  <div className="text-sm font-medium text-foreground">Merge Changes</div>
+                  <div className="text-xs text-muted-foreground">Trigger merge agent to integrate changes to main</div>
+                </div>
+              </button>
+
+              {/* Delete option */}
+              <button
+                onClick={() => {
+                  setWorktreeAction('delete');
+                  handleConfirmKill('delete');
+                }}
+                disabled={isProcessing}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 transition-colors text-left"
+              >
+                <Trash2 className="w-5 h-5 text-red-400" />
+                <div>
+                  <div className="text-sm font-medium text-foreground">Delete Worktree</div>
+                  <div className="text-xs text-muted-foreground">Discard all changes and remove the worktree</div>
+                </div>
+              </button>
+
+              {/* Keep option */}
+              <button
+                onClick={() => {
+                  setWorktreeAction('keep');
+                  handleConfirmKill('keep');
+                }}
+                disabled={isProcessing}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg border border-border hover:bg-secondary/50 transition-colors text-left"
+              >
+                <GitBranch className="w-5 h-5 text-muted-foreground" />
+                <div>
+                  <div className="text-sm font-medium text-foreground">Keep Worktree</div>
+                  <div className="text-xs text-muted-foreground">Kill agent but preserve the worktree for later</div>
+                </div>
+              </button>
+            </div>
+
+            {isProcessing && (
+              <div className="mt-4 text-center text-sm text-muted-foreground">
+                Processing {worktreeAction}...
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Context menu dropdown - rendered via portal to bypass CSS containment issues */}
       {contextMenu && createPortal(
@@ -452,15 +585,20 @@ export const AgentCard: React.FC<AgentCardProps> = ({
             top: `${contextMenu.y}px`,
           }}
         >
-          {agent.active && (sshEnabled || (isTauri() && FEATURES.EXTERNAL_TERMINAL)) && (
-            <button
-              onClick={handleOpenTerminal}
-              className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
-            >
-              {sshEnabled ? <ExternalLink className="w-4 h-4" /> : <Terminal className="w-4 h-4" />}
-              {sshEnabled ? 'Open SSH Terminal' : 'Open Terminal'}
-            </button>
-          )}
+          {agent.active && (sshEnabled || (isTauri() && FEATURES.EXTERNAL_TERMINAL)) && (() => {
+            // Check if we're in Tauri with embedded backend (no remote server configured)
+            const useEmbeddedBackend = isTauri() && !localStorage.getItem(STORAGE_SERVER_URL);
+            const showLocalTerminal = useEmbeddedBackend && FEATURES.EXTERNAL_TERMINAL;
+            return (
+              <button
+                onClick={handleOpenTerminal}
+                className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
+              >
+                {showLocalTerminal ? <Terminal className="w-4 h-4" /> : <ExternalLink className="w-4 h-4" />}
+                {showLocalTerminal ? 'Open Local Terminal' : 'Open SSH Terminal'}
+              </button>
+            );
+          })()}
           <button
             onClick={handleEditClaudeMd}
             className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"

@@ -13,8 +13,6 @@ pub enum AgentRole {
     Implementer,
     /// Evaluates work and provides verdicts
     Analyzer,
-    /// Runs tests and QA validation
-    Tester,
     /// Git merge operations
     Merger,
     /// Compiles and packages
@@ -208,17 +206,6 @@ impl ScheduledAgentConfig {
         }
         if let Some(pos) = name.find("analyz") {
             matches.push((pos, AgentRole::Analyzer));
-        }
-        if let Some(pos) = name.find("qa") {
-            matches.push((pos, AgentRole::Tester));
-        }
-        if let Some(pos) = name.find("validat") {
-            matches.push((pos, AgentRole::Tester));
-        }
-        if let Some(pos) = name.find("test") {
-            if !name.contains("contest") {
-                matches.push((pos, AgentRole::Tester));
-            }
         }
         if let Some(pos) = name.find("merge") {
             matches.push((pos, AgentRole::Merger));
@@ -434,7 +421,7 @@ pub enum CatchUpPolicy {
     RunAll,  // Run all missed executions
 }
 
-/// Run log entry (stored in scheduler/runs/{date}/{name}-{timestamp}.json)
+/// Run log entry (stored in data/runs/{date}/{name}-{timestamp}.json)
 #[derive(Clone, Debug, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "../../src/types/generated/scheduler/")]
 pub struct ScheduledRunLog {
@@ -783,7 +770,6 @@ impl Default for PipelineStageStatus {
 pub enum PipelineStageType {
     Implementer,
     Analyzer,
-    Qa,
     Merger,
 }
 
@@ -883,10 +869,6 @@ pub struct Pipeline {
 pub enum PipelineNextAction {
     TriggerAnalyzer {
         run_id: String,
-    },
-    TriggerQa {
-        worktree_path: String,
-        worktree_branch: String,
     },
     TriggerMerger {
         worktree_path: String,
@@ -1137,18 +1119,6 @@ mod agent_role_tests {
     fn test_role_inference_analyzer() {
         let config = make_test_config("implementer-analyzer", None);
         assert_eq!(config.effective_role(), AgentRole::Analyzer);
-    }
-
-    #[test]
-    fn test_role_inference_tester_qa() {
-        let config = make_test_config("qa-validation", None);
-        assert_eq!(config.effective_role(), AgentRole::Tester);
-    }
-
-    #[test]
-    fn test_role_inference_tester_test() {
-        let config = make_test_config("test-runner", None);
-        assert_eq!(config.effective_role(), AgentRole::Tester);
     }
 
     #[test]

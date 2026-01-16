@@ -17,6 +17,7 @@ import { getBlockerMessage } from '../../lib/workflowStatus';
 import { cn } from '../../lib/utils';
 import { FEATURES } from '../../lib/features';
 import { useSessionLabelsStore } from '../../store/sessionLabelsStore';
+import { STORAGE_SERVER_URL } from '../../lib/constants';
 
 interface AgentLiveCardProps {
   agent: AgentStatus;
@@ -288,33 +289,47 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
               </button>
             )}
             {/* Terminal button - opens SSH terminal or native terminal */}
-            {agent.active && (sshEnabled || (isTauri() && FEATURES.EXTERNAL_TERMINAL)) && (
-              <button
-                onClick={async (e) => {
-                  e.stopPropagation();
-                  // Try SSH web terminal first
-                  if (sshEnabled) {
-                    const sshUrl = getSshTerminalUrl(agent.session);
-                    if (sshUrl) {
-                      window.open(sshUrl, agent.session, 'width=730,height=450,menubar=no,toolbar=no,location=no,status=no');
+            {agent.active && (sshEnabled || (isTauri() && FEATURES.EXTERNAL_TERMINAL)) && (() => {
+              // Check if we're in Tauri with embedded backend (no remote server configured)
+              const useEmbeddedBackend = isTauri() && !localStorage.getItem(STORAGE_SERVER_URL);
+              const showLocalTerminal = useEmbeddedBackend && FEATURES.EXTERNAL_TERMINAL;
+              return (
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    // In embedded backend mode, use native terminal directly
+                    if (showLocalTerminal) {
+                      try {
+                        await invoke('open_agent_terminal', { session: agent.session });
+                      } catch (err) {
+                        showError(`Failed to open terminal: ${err}`);
+                      }
                       return;
                     }
-                  }
-                  // Fall back to native terminal
-                  if (isTauri() && FEATURES.EXTERNAL_TERMINAL) {
-                    try {
-                      await invoke('open_agent_terminal', { session: agent.session });
-                    } catch (err) {
-                      showError(`Failed to open terminal: ${err}`);
+                    // Try SSH web terminal for remote/browser mode
+                    if (sshEnabled) {
+                      const sshUrl = getSshTerminalUrl(agent.session);
+                      if (sshUrl) {
+                        window.open(sshUrl, agent.session, 'width=1000,height=600,resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no');
+                        return;
+                      }
                     }
-                  }
-                }}
-                className="p-1.5 rounded transition-colors hover:bg-secondary"
-                title={sshEnabled ? 'Open SSH Terminal' : 'Open Terminal'}
-              >
-                {sshEnabled ? <ExternalLink className="w-4 h-4" /> : <Terminal className="w-4 h-4" />}
-              </button>
-            )}
+                    // Fall back to native terminal if SSH fails
+                    if (isTauri() && FEATURES.EXTERNAL_TERMINAL) {
+                      try {
+                        await invoke('open_agent_terminal', { session: agent.session });
+                      } catch (err) {
+                        showError(`Failed to open terminal: ${err}`);
+                      }
+                    }
+                  }}
+                  className="p-1.5 rounded transition-colors hover:bg-secondary"
+                  title={showLocalTerminal ? 'Open Local Terminal' : 'Open SSH Terminal'}
+                >
+                  {showLocalTerminal ? <Terminal className="w-4 h-4" /> : <ExternalLink className="w-4 h-4" />}
+                </button>
+              );
+            })()}
           </div>
         </div>
 
@@ -435,33 +450,47 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
             Clear Context
           </button>
         )}
-        {agent.active && (sshEnabled || (isTauri() && FEATURES.EXTERNAL_TERMINAL)) && (
-          <button
-            onClick={async () => {
-              setContextMenu(null);
-              // Try SSH web terminal first
-              if (sshEnabled) {
-                const sshUrl = getSshTerminalUrl(agent.session);
-                if (sshUrl) {
-                  window.open(sshUrl, agent.session, 'width=730,height=450,menubar=no,toolbar=no,location=no,status=no');
+        {agent.active && (sshEnabled || (isTauri() && FEATURES.EXTERNAL_TERMINAL)) && (() => {
+          // Check if we're in Tauri with embedded backend (no remote server configured)
+          const useEmbeddedBackend = isTauri() && !localStorage.getItem(STORAGE_SERVER_URL);
+          const showLocalTerminal = useEmbeddedBackend && FEATURES.EXTERNAL_TERMINAL;
+          return (
+            <button
+              onClick={async () => {
+                setContextMenu(null);
+                // In embedded backend mode, use native terminal directly
+                if (showLocalTerminal) {
+                  try {
+                    await invoke('open_agent_terminal', { session: agent.session });
+                  } catch (err) {
+                    showError(`Failed to open terminal: ${err}`);
+                  }
                   return;
                 }
-              }
-              // Fall back to native terminal
-              if (isTauri() && FEATURES.EXTERNAL_TERMINAL) {
-                try {
-                  await invoke('open_agent_terminal', { session: agent.session });
-                } catch (err) {
-                  showError(`Failed to open terminal: ${err}`);
+                // Try SSH web terminal for remote/browser mode
+                if (sshEnabled) {
+                  const sshUrl = getSshTerminalUrl(agent.session);
+                  if (sshUrl) {
+                    window.open(sshUrl, agent.session, 'width=1000,height=600,resizable=yes,scrollbars=no,menubar=no,toolbar=no,location=no,status=no');
+                    return;
+                  }
                 }
-              }
-            }}
-            className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
-          >
-            {sshEnabled ? <ExternalLink className="w-4 h-4" /> : <Terminal className="w-4 h-4" />}
-            {sshEnabled ? 'Open SSH Terminal' : 'Open Terminal'}
-          </button>
-        )}
+                // Fall back to native terminal if SSH fails
+                if (isTauri() && FEATURES.EXTERNAL_TERMINAL) {
+                  try {
+                    await invoke('open_agent_terminal', { session: agent.session });
+                  } catch (err) {
+                    showError(`Failed to open terminal: ${err}`);
+                  }
+                }
+              }}
+              className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
+            >
+              {showLocalTerminal ? <Terminal className="w-4 h-4" /> : <ExternalLink className="w-4 h-4" />}
+              {showLocalTerminal ? 'Open Local Terminal' : 'Open SSH Terminal'}
+            </button>
+          );
+        })()}
         {/* Rename option - only for Ralph agents (works for active or inactive) */}
         {isRalph && (
           <button

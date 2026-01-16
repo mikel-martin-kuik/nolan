@@ -1,68 +1,52 @@
-# Agent Coordination Systems Comparison
+# Agent Execution Systems
 
-This document compares the experimental coordination mechanisms in Nolan to help analyze their strengths, weaknesses, and appropriate use cases.
+This document describes Nolan's manufacturing line approach to agent execution.
 
-## Overview of Coordination Systems
+## Core Philosophy: Manufacturing Line
+
+Nolan operates like a **manufacturing line**, not a coordination system:
 
 ```mermaid
-flowchart TB
-    subgraph Sequential["Sequential Coordination"]
-        Pipeline["Agent Pipeline<br/>4-stage fixed workflow"]
-        TeamPipe["Team Pipeline<br/>Dynamic phase workflow"]
+flowchart LR
+    subgraph Line["Manufacturing Line"]
+        S1[Station 1<br/>Implementer] --> S2[Station 2<br/>Analyzer]
+        S2 -->|Complete| S3[Station 3<br/>Merger]
+        S2 -->|Revision| S1
     end
-
-    subgraph Reactive["Reactive Coordination"]
-        EventBus["Event Bus<br/>Pub/Sub triggers"]
-        Trigger["Trigger System<br/>Multi-source activation"]
-    end
-
-    subgraph Direct["Direct Coordination"]
-        Messaging["Inter-Agent Messaging<br/>Point-to-point & broadcast"]
-    end
-
-    Pipeline -.->|can trigger| EventBus
-    TeamPipe -.->|can trigger| EventBus
-    EventBus -.->|can activate| Pipeline
-    EventBus -.->|can activate| TeamPipe
-    Trigger -.->|activates all| Pipeline
-    Trigger -.->|activates all| TeamPipe
 ```
 
-## Comparison Matrix
+**Key principles:**
+1. **Clear instructions**: Each station knows exactly what to do
+2. **Isolation**: Stations don't communicate with each other
+3. **Programmatic delivery**: Output files flow to the next station automatically
+4. **Human designs, line executes**: Humans define the workflow, the system runs it
 
-| Aspect | Agent Pipeline | Team Pipeline | Event Bus | Inter-Agent Messaging | Trigger System |
-|--------|---------------|---------------|-----------|----------------------|----------------|
-| **Pattern** | State machine | Hierarchical SM | Pub/Sub | Point-to-point | Multi-source |
-| **Coupling** | Tight (stages) | Tight (phases) | Loose | Medium | Loose |
-| **Direction** | Unidirectional | Unidirectional | Many-to-many | Any-to-any | Source→Agent |
-| **Feedback** | Verdict loop | Revision loop | None | Bidirectional | None |
-| **Persistence** | JSON state | JSON state | None | None | Cron jobs |
-| **Scope** | Single feature | Multi-phase project | System-wide | Team-scoped | Per-agent |
+## Execution Systems
 
-## Coordination Patterns
+### 1. Pipeline Manager: Configurable Stations
 
-### 1. Agent Pipeline: Sequential State Machine
+Routes work through a configurable sequence of stations (like CI/CD pipelines).
 
 ```mermaid
 graph LR
     A[Implementer] --> B[Analyzer]
-    B -->|Complete| C[QA]
-    B -->|Followup| A
-    C --> D[Merger]
+    B -->|Complete| C[Merger]
+    B -->|Revision| A
 
     style A fill:#90EE90
     style B fill:#87CEEB
     style C fill:#FFB6C1
-    style D fill:#DDA0DD
 ```
 
 **Characteristics:**
-- Fixed 4-stage structure
-- Verdict-driven progression (Complete/Followup/Failed)
+- Configurable station structure (example shows 3 stations)
+- Verdict-driven routing (Complete/Revision/Failed)
 - Git worktree isolation per pipeline
-- Suitable for: Feature implementation with quality gates
+- Use case: Feature implementation pipelines
 
-### 2. Team Pipeline: Hierarchical Workflow
+### 2. Team Pipeline: Dynamic Stations
+
+Routes work through configurable phases defined in team.yaml.
 
 ```mermaid
 graph TB
@@ -86,196 +70,109 @@ graph TB
 - Dynamic phases from team.yaml
 - Each phase has execution + validation
 - Revision feedback within phases
-- Suitable for: Multi-phase projects (research → design → implement)
+- Use case: Multi-phase projects (research → design → implement)
 
-### 3. Event Bus: Pub/Sub Broadcast
+### 3. Scheduler: Triggered Execution
 
-```mermaid
-graph TB
-    P1[Publisher 1] --> Bus((Event Bus))
-    P2[Publisher 2] --> Bus
-    P3[Publisher 3] --> Bus
-
-    Bus --> S1[Subscriber 1]
-    Bus --> S2[Subscriber 2]
-    Bus --> S3[Subscriber 3]
-```
-
-**Characteristics:**
-- Decoupled publishers and subscribers
-- Fire-and-forget delivery
-- Debounce per subscriber
-- Suitable for: Reactive automation (git push → reindex)
-
-### 4. Inter-Agent Messaging: Direct Communication
-
-```mermaid
-graph LR
-    A1[Agent 1] <-->|point-to-point| A2[Agent 2]
-    A3[Sender] -->|broadcast| A1
-    A3 -->|broadcast| A2
-    A3 -->|broadcast| A4[Agent 4]
-```
-
-**Characteristics:**
-- Delivery confirmation (poll-based)
-- Team-scoped routing
-- Supports both P2P and broadcast
-- Suitable for: Explicit agent coordination, handoffs
-
-### 5. Trigger System: Multi-Source Activation
+Triggers individual stations based on time or events.
 
 ```mermaid
 graph TB
     Cron[Cron Schedule] --> Agent
-    Cmd[User Command] --> Agent
     Event[System Event] --> Agent
-    Stage[Pipeline Stage] --> Agent
+    Manual[User Command] --> Agent
 
-    Agent[Agent Executor]
+    Agent[Station Execution]
 ```
 
 **Characteristics:**
-- Multiple activation sources per agent
-- Unified execution path
+- Multiple trigger sources per agent
 - Concurrency control
-- Suitable for: Flexible agent activation
+- Debouncing for events
+- Use case: Background maintenance tasks
 
-## Experimental Analysis
+## How Work Flows
 
-### Overlap and Redundancy
-
-```mermaid
-flowchart LR
-    subgraph Overlap1["Event Activation"]
-        EB[Event Bus]
-        TS[Trigger System Events]
-    end
-
-    subgraph Overlap2["Workflow Management"]
-        AP[Agent Pipeline]
-        TP[Team Pipeline]
-    end
-
-    EB <-.->|"Similar purpose"| TS
-    AP <-.->|"Similar pattern"| TP
-```
-
-**Observations:**
-1. **Event Bus vs Trigger Events**: Both handle event-based activation. Event Bus is more general-purpose, Trigger System is agent-specific.
-2. **Agent vs Team Pipeline**: Both implement staged workflows with feedback. Agent Pipeline is fixed structure, Team Pipeline is configurable.
-
-### Decision Matrix: When to Use What
-
-| Scenario | Recommended System | Reason |
-|----------|-------------------|--------|
-| Single feature with QA | Agent Pipeline | Fixed quality gates |
-| Multi-phase project | Team Pipeline | Dynamic phases |
-| React to git changes | Event Bus + Trigger | Loose coupling |
-| Agent handoff | Inter-Agent Messaging | Direct coordination |
-| Periodic maintenance | Trigger (Cron) | Time-based |
-| User-initiated task | Trigger (Command) | Manual control |
-
-### Coordination Flow Example
-
-A complex workflow might use multiple systems:
+Work flows through the line via **files**, not messages:
 
 ```mermaid
 sequenceDiagram
-    participant User
-    participant Trigger as Trigger System
-    participant TP as Team Pipeline
-    participant AP as Agent Pipeline
-    participant EB as Event Bus
-    participant Msg as Messaging
+    participant P as Pipeline Manager
+    participant S1 as Station 1
+    participant S2 as Station 2
 
-    User->>Trigger: /start-project (command)
-    Trigger->>TP: Launch team workflow
-
-    loop Each Phase
-        TP->>AP: Create feature pipeline
-        AP->>AP: Impl → Analyze → QA → Merge
-        AP->>EB: emit(StageComplete)
-        EB->>TP: Next phase trigger
-    end
-
-    TP->>Msg: broadcast_team("Project complete")
-    TP->>EB: emit(TeamWorkflowFinished)
+    P->>S1: Spawn with input files
+    S1->>S1: Work in isolation
+    S1-->>P: Exit + output files
+    P->>P: Check verdict file
+    P->>S2: Spawn with S1's output
+    S2->>S2: Work in isolation
+    S2-->>P: Exit + output files
 ```
 
-## Strengths & Weaknesses
+**No inter-station communication**. Each station:
+1. Receives input files
+2. Reads instructions (CLAUDE.md + yaml)
+3. Produces output files
+4. Exits
 
-### Agent Pipeline
-| Strengths | Weaknesses |
-|-----------|------------|
-| Clear quality gates | Fixed structure |
-| Verdict feedback loop | Single feature scope |
-| Git worktree isolation | No dynamic phases |
+The Pipeline Manager routes work based on:
+- Exit code (0 = success)
+- Verdict file content (Complete/Revision/Failed)
+- Output file presence
 
-### Team Pipeline
-| Strengths | Weaknesses |
-|-----------|------------|
-| Dynamic from team.yaml | More complex state |
-| Phase-level validation | Heavier weight |
-| Multi-phase support | Requires team config |
+## Comparison with Traditional Coordination
 
-### Event Bus
-| Strengths | Weaknesses |
-|-----------|------------|
-| Fully decoupled | No delivery guarantee |
-| Multi-subscriber | Fire-and-forget only |
-| System-wide reach | No direct response |
+| Aspect | Traditional (Coordination) | Nolan (Manufacturing Line) |
+|--------|---------------------------|---------------------------|
+| **Agent interaction** | Message passing | None |
+| **Work routing** | Event-driven | File-based + state machine |
+| **Human role** | Monitor and intervene | Design workflows |
+| **Handoffs** | Require acknowledgment | Automatic via files |
+| **Failure handling** | Escalate to human | Retry or block station |
 
-### Inter-Agent Messaging
-| Strengths | Weaknesses |
-|-----------|------------|
-| Delivery confirmation | tmux dependency |
-| Bidirectional possible | Team-scoped only |
-| P2P and broadcast | Higher latency |
+## Design Principles
 
-### Trigger System
-| Strengths | Weaknesses |
-|-----------|------------|
-| Unified activation | Complexity of multiple sources |
-| Concurrency control | Config overhead |
-| Multiple trigger types | No coordination itself |
+### Humans Design the Line
 
-## Consolidation Opportunities
+1. **Define stations** (agents) in YAML with clear inputs/outputs
+2. **Define flow** (workflows) in team configs
+3. **Define quality gates** (validators) at each phase
 
-```mermaid
-flowchart TB
-    subgraph Current["Current: 5 Systems"]
-        C1[Agent Pipeline]
-        C2[Team Pipeline]
-        C3[Event Bus]
-        C4[Inter-Agent Messaging]
-        C5[Trigger System]
-    end
+### Line Executes Automatically
 
-    subgraph Potential["Potential Consolidation"]
-        P1["Unified Pipeline<br/>(merge AP + TP)"]
-        P2["Unified Events<br/>(merge EB + Triggers)"]
-        P3["Keep Messaging<br/>(unique purpose)"]
-    end
+1. **Scheduler** triggers stations on schedule or events
+2. **Pipeline Manager** routes work between stations
+3. **Output files** serve as the "conveyor belt"
 
-    C1 -.-> P1
-    C2 -.-> P1
-    C3 -.-> P2
-    C5 -.-> P2
-    C4 -.-> P3
-```
+### Isolation Prevents Problems
 
-**Potential simplifications:**
-1. **Unified Pipeline**: Merge Agent Pipeline into Team Pipeline as a "single-phase" special case
-2. **Unified Events**: Consolidate Event Bus triggers into Trigger System's event mechanism
-3. **Keep Messaging**: Inter-Agent Messaging serves a unique purpose (direct coordination)
+- Each station has its own tmux session
+- Each pipeline has its own git worktree
+- No shared state between stations
+- Failures are contained to one station
 
 ## Key Files Reference
 
-| System | Primary File | Lines |
-|--------|-------------|-------|
-| Agent Pipeline | `scheduler/pipeline.rs` | ~34KB |
-| Team Pipeline | `scheduler/team_pipeline.rs` | ~21KB |
-| Event Bus | `events/bus.rs` | ~66 lines |
-| Messaging | `commands/communicator.rs` | ~500 lines |
-| Trigger System | `scheduler/types.rs` (TriggerConfig) | Part of 42KB |
+| System | Primary File |
+|--------|-------------|
+| Pipeline Manager | `scheduler/pipeline.rs` |
+| Team Pipeline | `scheduler/team_pipeline.rs` |
+| Scheduler | `scheduler/manager.rs` |
+| Executor | `scheduler/executor.rs` |
+
+## Alternative Orchestration Patterns
+
+Nolan is evaluating multiple orchestration approaches. Each has tradeoffs:
+
+| Pattern | Status | Best For |
+|---------|--------|----------|
+| **Manufacturing Line** | Primary | Predictable workflows with clear stages |
+| **Event Bus** | Experimental | Reactive triggers, loose coupling |
+| **Inter-Agent Messaging** | Experimental | Direct coordination when needed |
+
+The manufacturing line is the default approach. Event-driven and messaging patterns are under evaluation for specific use cases where reactive behavior or direct communication improves outcomes.
+
+See:
+- `03-event-bus-coordination.md` - Pub/sub event system
+- `04-inter-agent-messaging.md` - Direct agent communication

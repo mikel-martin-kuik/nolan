@@ -128,15 +128,15 @@ pub use super::commands_ideas::{
 
 // Pipeline
 pub use super::commands_pipeline::{
-    trigger_qa_then_merge,
     trigger_worktree_merger,
-    trigger_qa_for_run,
     trigger_merge_for_run,
     list_pipelines,
     get_pipeline,
     list_pipeline_definitions,
     get_pipeline_definition,
     get_default_pipeline_definition,
+    save_pipeline_definition,
+    delete_pipeline_definition,
     skip_pipeline_stage,
     abort_pipeline,
     complete_pipeline,

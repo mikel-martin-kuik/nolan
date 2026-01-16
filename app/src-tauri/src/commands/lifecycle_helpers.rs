@@ -126,13 +126,13 @@ pub fn register_session(
     use std::fs::{create_dir_all, OpenOptions};
     use std::io::Write;
 
-    let home = std::env::var("HOME").map_err(|_| "HOME not set")?;
-    let registry_dir = std::path::PathBuf::from(&home).join(".nolan");
-    let registry_path = registry_dir.join("session-registry.jsonl");
+    let registry_path = crate::utils::paths::get_session_registry_path()?;
+    let registry_dir = registry_path.parent()
+        .ok_or("Failed to get session registry directory")?;
 
     // Ensure directory exists
-    create_dir_all(&registry_dir)
-        .map_err(|e| format!("Failed to create .nolan directory: {}", e))?;
+    create_dir_all(registry_dir)
+        .map_err(|e| format!("Failed to create state directory: {}", e))?;
 
     // Create registry entry with team tracking
     let entry = serde_json::json!({
@@ -193,7 +193,7 @@ pub fn get_default_model_for_team(agent: &str, team: Option<&str>) -> String {
     }
 
     // Check shared agents directory
-    if let Ok(agents_dir) = crate::utils::paths::get_agents_dir() {
+    if let Ok(agents_dir) = crate::utils::paths::get_agents_config_dir() {
         let agent_json_path = agents_dir.join(agent).join("agent.json");
         if let Some(model) = try_read_model(&agent_json_path) {
             return model;
@@ -250,7 +250,7 @@ pub fn get_agent_cli_provider(agent: &str, team: Option<&str>) -> Option<String>
     }
 
     // Check shared agents directory
-    if let Ok(agents_dir) = crate::utils::paths::get_agents_dir() {
+    if let Ok(agents_dir) = crate::utils::paths::get_agents_config_dir() {
         let agent_json_path = agents_dir.join(agent).join("agent.json");
         if let Some(provider) = try_read_provider(&agent_json_path) {
             return Some(provider);

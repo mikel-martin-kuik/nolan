@@ -2,7 +2,9 @@
 
 **File:** `src-tauri/src/scheduler/pipeline.rs`
 
-The Pipeline Manager implements a CI/CD-inspired 4-stage workflow for individual feature implementation. Each stage has a verdict-driven state machine that controls progression.
+The Pipeline Manager implements a CI/CD-inspired 3-stage workflow for individual feature implementation. Each stage has a verdict-driven state machine that controls progression.
+
+> **Note:** QA stage was removed based on Cursor's finding that workers handle quality adequately without a separate integrator role (see [Scaling Long-Running Autonomous Coding](https://cursor.com/blog/scaling-agents)).
 
 ## Pipeline Stages
 
@@ -23,19 +25,11 @@ stateDiagram-v2
     state Analyzer {
         [*] --> ARunning: spawn
         ARunning --> AComplete: verdict=Complete
-        ARunning --> AFollowup: verdict=Followup
+        ARunning --> ARevision: verdict=Revision
         ARunning --> AFailed: verdict=Failed
         AComplete --> [*]
-        AFollowup --> [*]
+        ARevision --> [*]
         AFailed --> [*]
-    }
-
-    state QA {
-        [*] --> QRunning: spawn
-        QRunning --> QPass: tests pass
-        QRunning --> QFail: tests fail
-        QPass --> [*]
-        QFail --> [*]
     }
 
     state Merger {
@@ -47,11 +41,9 @@ stateDiagram-v2
     }
 
     Implementer --> Analyzer: success
-    Analyzer --> Implementer: Followup verdict
-    Analyzer --> QA: Complete verdict
+    Analyzer --> Implementer: Revision verdict
+    Analyzer --> Merger: Complete verdict
     Analyzer --> Blocked: Failed verdict
-    QA --> Merger: tests pass
-    QA --> Implementer: tests fail (retry)
     Merger --> Complete: merged
     Merger --> Blocked: conflict
 
@@ -67,18 +59,18 @@ The Analyzer produces one of three verdicts that control the workflow:
 flowchart TB
     subgraph Verdicts["Analyzer Verdicts"]
         Complete["Complete<br/>Work is done correctly"]
-        Followup["Followup<br/>Needs revision with new prompt"]
+        Revision["Revision<br/>Needs revision with new prompt"]
         Failed["Failed<br/>Unrecoverable error"]
     end
 
     subgraph Actions["Resulting Actions"]
-        Advance["Advance to QA Stage"]
+        Advance["Advance to Merger Stage"]
         Relaunch["Relaunch Implementer<br/>with followup prompt"]
         Block["Block Pipeline<br/>await manual intervention"]
     end
 
     Complete --> Advance
-    Followup --> Relaunch
+    Revision --> Relaunch
     Failed --> Block
 ```
 
@@ -135,7 +127,7 @@ classDiagram
     class AnalyzerVerdict {
         <<enumeration>>
         Complete
-        Followup
+        Revision
         Failed
     }
 
@@ -143,7 +135,6 @@ classDiagram
         <<enumeration>>
         Implementer
         Analyzer
-        Qa
         Merger
     }
 
@@ -161,11 +152,10 @@ sequenceDiagram
     participant PipelineMgr as Pipeline Manager
     participant Impl as Implementer Agent
     participant Analyzer as Analyzer Agent
-    participant QA as QA Agent
     participant Merger as Merger Agent
 
     User->>PipelineMgr: Create Pipeline (idea_id)
-    PipelineMgr->>PipelineMgr: Initialize 4 stages (Pending)
+    PipelineMgr->>PipelineMgr: Initialize 3 stages (Pending)
 
     rect rgb(200, 230, 200)
         Note over PipelineMgr,Impl: Stage 1: Implementation
@@ -180,7 +170,7 @@ sequenceDiagram
         Analyzer->>Analyzer: Evaluate implementation
         Analyzer->>PipelineMgr: Verdict
 
-        alt Verdict = Followup
+        alt Verdict = Revision
             PipelineMgr->>Impl: Relaunch with followup prompt
             Note over Impl: Loop back to Stage 1
         else Verdict = Failed
@@ -190,20 +180,8 @@ sequenceDiagram
         end
     end
 
-    rect rgb(230, 200, 200)
-        Note over PipelineMgr,QA: Stage 3: QA
-        PipelineMgr->>QA: Spawn test runner
-        QA->>PipelineMgr: Test results
-
-        alt Tests fail
-            PipelineMgr->>Impl: Retry implementation
-        else Tests pass
-            Note over PipelineMgr: Proceed to Stage 4
-        end
-    end
-
     rect rgb(230, 230, 200)
-        Note over PipelineMgr,Merger: Stage 4: Merge
+        Note over PipelineMgr,Merger: Stage 3: Merge
         PipelineMgr->>Merger: Spawn merger
         Merger->>Merger: git merge
         Merger->>PipelineMgr: Merge result
@@ -217,7 +195,7 @@ sequenceDiagram
 |--------|-------------|
 | **Pattern** | Sequential state machine with conditional feedback loops |
 | **Trigger** | Idea approval or manual invocation |
-| **Progression** | Verdict-driven (Complete/Followup/Failed) |
+| **Progression** | Verdict-driven (Complete/Revision/Failed) |
 | **Retry** | Per-stage attempt tracking with max retries |
 | **Isolation** | Git worktree per pipeline for branch isolation |
 | **Persistence** | JSON state files in `.state/pipelines/` |

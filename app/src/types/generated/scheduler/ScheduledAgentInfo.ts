@@ -2,9 +2,9 @@
 import type { AgentHealth } from "./AgentHealth";
 import type { AgentRole } from "./AgentRole";
 import type { AgentStats } from "./AgentStats";
-import type { ScheduledRunLog } from "./ScheduledRunLog";
 import type { EventTrigger } from "./EventTrigger";
 import type { InvocationConfig } from "./InvocationConfig";
+import type { ScheduledRunLog } from "./ScheduledRunLog";
 
 /**
  * API response types for frontend

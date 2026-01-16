@@ -110,7 +110,7 @@ export function WorkflowVisualizerPanel() {
   };
 
   // Navigate to Builder for editing
-  const handleEditInBuilder = (subTab: 'teams' | 'phases', context?: { teamId?: string; phaseId?: string }) => {
+  const handleEditInBuilder = (subTab: 'teams', context?: { teamId?: string }) => {
     navigateToBuilder(subTab, context);
   };
 

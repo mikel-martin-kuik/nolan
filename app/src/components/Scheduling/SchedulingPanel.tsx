@@ -1,11 +1,15 @@
-import { useState, useEffect, useCallback } from 'react';
-import { Plus, Trash2, Edit2, Clock, Play, Pause } from 'lucide-react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { Plus, Clock, Play, Pause, Edit2, Trash2, History } from 'lucide-react';
 import { invoke } from '@/lib/api';
 import { useToastStore } from '@/store/toastStore';
 import { ScheduleForm } from './ScheduleForm';
 import { CRON_PRESETS } from '@/types/scheduler';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import type { ScheduledRunLog } from '@/types';
 
 export interface ScheduleConfig {
   id: string;
@@ -29,6 +33,10 @@ export function SchedulingPanel() {
   const [showForm, setShowForm] = useState(false);
   const [editingSchedule, setEditingSchedule] = useState<ScheduleConfig | null>(null);
   const [deleteScheduleId, setDeleteScheduleId] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; schedule: ScheduleConfig } | null>(null);
+  const [selectedSchedule, setSelectedSchedule] = useState<ScheduleConfig | null>(null);
+  const [runHistory, setRunHistory] = useState<ScheduledRunLog[]>([]);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   const { success, error } = useToastStore();
 
   const loadSchedules = useCallback(async () => {
@@ -117,6 +125,49 @@ export function SchedulingPanel() {
     const preset = CRON_PRESETS.find(p => p.cron === cron);
     return preset?.label || cron;
   };
+
+  const loadRunHistory = useCallback(async (agentName: string) => {
+    try {
+      const history = await invoke<ScheduledRunLog[]>('get_scheduled_run_history', { limit: 100 });
+      setRunHistory(history.filter(r => r.agent_name === agentName));
+    } catch {
+      setRunHistory([]);
+    }
+  }, []);
+
+  const handleRowClick = (schedule: ScheduleConfig) => {
+    setSelectedSchedule(schedule);
+    loadRunHistory(schedule.agent_name);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent, schedule: ScheduleConfig) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const menuHeight = 140;
+    const viewportHeight = window.innerHeight;
+    const y = e.clientY + menuHeight > viewportHeight
+      ? e.clientY - menuHeight
+      : e.clientY;
+
+    setContextMenu({
+      x: e.clientX,
+      y: Math.max(8, y),
+      schedule,
+    });
+  };
+
+  const handleClickOutside = useCallback((e: MouseEvent) => {
+    if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as Node)) {
+      setContextMenu(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [contextMenu, handleClickOutside]);
 
   if (loading) {
     return (
@@ -217,12 +268,18 @@ export function SchedulingPanel() {
                 <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Schedule</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Next Run</th>
                 <th className="px-4 py-3 text-left text-sm font-medium text-muted-foreground">Status</th>
-                <th className="px-4 py-3 text-right text-sm font-medium text-muted-foreground">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {schedules.map((schedule) => (
-                <tr key={schedule.id} className="hover:bg-muted/30 transition-colors">
+                <tr
+                  key={schedule.id}
+                  className={`hover:bg-muted/30 transition-colors cursor-pointer ${
+                    selectedSchedule?.id === schedule.id ? 'bg-muted/50' : ''
+                  }`}
+                  onClick={() => handleRowClick(schedule)}
+                  onContextMenu={(e) => handleContextMenu(e, schedule)}
+                >
                   <td className="px-4 py-3 font-medium">{schedule.name}</td>
                   <td className="px-4 py-3 text-muted-foreground">{schedule.agent_name}</td>
                   <td className="px-4 py-3 text-sm">
@@ -234,12 +291,11 @@ export function SchedulingPanel() {
                     {schedule.next_run ? new Date(schedule.next_run).toLocaleString() : '-'}
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() => handleToggle(schedule.id, !schedule.enabled)}
-                      className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium transition-colors ${
+                    <span
+                      className={`flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium w-fit ${
                         schedule.enabled
-                          ? 'bg-green-500/20 text-green-500 hover:bg-green-500/30'
-                          : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                          ? 'bg-green-500/20 text-green-500'
+                          : 'bg-muted text-muted-foreground'
                       }`}
                     >
                       {schedule.enabled ? (
@@ -253,29 +309,129 @@ export function SchedulingPanel() {
                           Paused
                         </>
                       )}
-                    </button>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => setEditingSchedule(schedule)}
-                        className="p-2 text-muted-foreground hover:text-foreground hover:bg-muted rounded-lg transition-colors"
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setDeleteScheduleId(schedule.id)}
-                        className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                    </span>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {/* Run History Panel */}
+      {selectedSchedule && (
+        <Card className="mt-6">
+          <CardHeader className="py-3 flex flex-row items-center justify-between">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <History className="w-4 h-4" />
+              Run History - {selectedSchedule.name}
+            </CardTitle>
+            <button
+              onClick={() => setSelectedSchedule(null)}
+              className="text-muted-foreground hover:text-foreground text-sm"
+            >
+              Close
+            </button>
+          </CardHeader>
+          <CardContent className="p-0">
+            <ScrollArea className="h-64 px-4 pb-4">
+              {runHistory.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-32 text-muted-foreground">
+                  <p className="text-sm">No run history yet</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {runHistory.map((run) => {
+                    const isFailed = run.status !== 'success' && run.status !== 'running';
+                    return (
+                      <Card
+                        key={run.run_id}
+                        className={`p-2 ${isFailed ? 'border-red-500/50' : ''}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-xs">
+                              {new Date(run.started_at).toLocaleString()}
+                              {run.attempt > 1 && ` (attempt ${run.attempt})`}
+                            </p>
+                            <div className="flex items-center gap-2">
+                              <p className="text-xs text-muted-foreground">
+                                {run.status}
+                                {run.trigger !== 'scheduled' && ` · ${run.trigger}`}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="text-xs text-muted-foreground text-right">
+                            {run.duration_secs && (
+                              <span>{(run.duration_secs / 60).toFixed(1)}m</span>
+                            )}
+                            {run.total_cost_usd && (
+                              <span className="ml-2">${run.total_cost_usd.toFixed(2)}</span>
+                            )}
+                          </div>
+                        </div>
+                        {run.error && <p className="text-xs text-destructive mt-1 truncate">{run.error}</p>}
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Context Menu */}
+      {contextMenu && createPortal(
+        <div
+          ref={contextMenuRef}
+          className="fixed z-50 bg-secondary border border-border rounded-md shadow-lg py-1 min-w-[140px]"
+          style={{
+            left: `${contextMenu.x}px`,
+            top: `${contextMenu.y}px`,
+          }}
+        >
+          <button
+            onClick={() => {
+              setEditingSchedule(contextMenu.schedule);
+              setContextMenu(null);
+            }}
+            className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
+          >
+            <Edit2 className="w-4 h-4" />
+            Edit
+          </button>
+          <button
+            onClick={() => {
+              handleToggle(contextMenu.schedule.id, !contextMenu.schedule.enabled);
+              setContextMenu(null);
+            }}
+            className="w-full px-3 py-2 text-sm flex items-center gap-2 text-foreground hover:bg-accent transition-colors text-left"
+          >
+            {contextMenu.schedule.enabled ? (
+              <>
+                <Pause className="w-4 h-4" />
+                Pause
+              </>
+            ) : (
+              <>
+                <Play className="w-4 h-4" />
+                Enable
+              </>
+            )}
+          </button>
+          <button
+            onClick={() => {
+              setDeleteScheduleId(contextMenu.schedule.id);
+              setContextMenu(null);
+            }}
+            className="w-full px-3 py-2 text-sm flex items-center gap-2 text-red-500 hover:bg-accent transition-colors text-left"
+          >
+            <Trash2 className="w-4 h-4" />
+            Delete
+          </button>
+        </div>,
+        document.body
       )}
     </div>
   );

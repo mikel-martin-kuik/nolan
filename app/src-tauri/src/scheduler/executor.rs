@@ -13,7 +13,7 @@ use super::manager::SchedulerManager;
 use super::types::*;
 use crate::cli_providers::{self, CliSpawnConfig, OutputFormat};
 use crate::config::get_default_cli_provider;
-use crate::git::worktree;
+use crate::git::{folders, worktree};
 use crate::tmux::session;
 use crate::utils::paths;
 
@@ -422,13 +422,33 @@ async fn execute_single_run(
     // Git worktree isolation setup
     let (work_dir, worktree_info) = if let Some(ref wt_config) = config.worktree {
         if wt_config.enabled {
-            // Determine repo path - either from config or working_directory or nolan_root
-            let repo_path = wt_config
-                .repo_path
-                .as_ref()
-                .map(PathBuf::from)
-                .or_else(|| config.context.working_directory.as_ref().map(PathBuf::from))
-                .unwrap_or_else(|| nolan_root.clone());
+            // Determine repo path - priority: git_folder_id > repo_path > working_directory > nolan_root
+            let repo_path = if let Some(ref folder_id) = wt_config.git_folder_id {
+                // Resolve git folder ID to its local path
+                match folders::get_git_folder(folder_id) {
+                    Ok(folder) => PathBuf::from(folder.local_path),
+                    Err(e) => {
+                        eprintln!(
+                            "[Scheduler] Warning: Failed to resolve git folder '{}': {}",
+                            folder_id, e
+                        );
+                        // Fall back to repo_path or other defaults
+                        wt_config
+                            .repo_path
+                            .as_ref()
+                            .map(PathBuf::from)
+                            .or_else(|| config.context.working_directory.as_ref().map(PathBuf::from))
+                            .unwrap_or_else(|| nolan_root.clone())
+                    }
+                }
+            } else {
+                wt_config
+                    .repo_path
+                    .as_ref()
+                    .map(PathBuf::from)
+                    .or_else(|| config.context.working_directory.as_ref().map(PathBuf::from))
+                    .unwrap_or_else(|| nolan_root.clone())
+            };
 
             // Verify it's a git repository
             if let Some(git_root) = worktree::detect_git_root(&repo_path) {

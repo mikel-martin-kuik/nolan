@@ -1,0 +1,1 @@
+export { GitFoldersPanel } from './GitFoldersPanel';

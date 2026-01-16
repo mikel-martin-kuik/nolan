@@ -3,6 +3,7 @@ pub mod communicator;
 pub mod deployment;
 pub mod feedback;
 pub mod filesystem;
+pub mod git_folders;
 pub mod history;
 pub mod lifecycle;
 pub mod lifecycle_core;

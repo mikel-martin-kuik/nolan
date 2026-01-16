@@ -23,6 +23,9 @@ export * from './metrics';
 // Re-export git types
 export * from './git';
 
+// Re-export git folders types
+export * from './git-folders';
+
 // Re-export workflow types
 export * from './workflow';
 

@@ -315,6 +315,17 @@ pub fn run() {
             // Trigger Configuration
             get_trigger_config,
             set_trigger_config,
+            // Git Folders commands
+            commands::git_folders::list_git_folders,
+            commands::git_folders::list_git_folders_with_worktrees,
+            commands::git_folders::get_git_folder,
+            commands::git_folders::clone_git_repository,
+            commands::git_folders::fetch_git_folder,
+            commands::git_folders::remove_git_folder,
+            commands::git_folders::update_git_folder,
+            commands::git_folders::scan_for_git_repositories,
+            commands::git_folders::import_git_repository,
+            commands::git_folders::create_git_folder_worktree,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -370,11 +381,20 @@ mod tests {
     #[test]
     fn export_git_types() {
         use crate::git::worktree::*;
+        use crate::git::folders::*;
 
         // Export git worktree types
         WorktreeInfo::export_all().expect("Failed to export WorktreeInfo");
         WorktreeStatus::export_all().expect("Failed to export WorktreeStatus");
         WorktreeListEntry::export_all().expect("Failed to export WorktreeListEntry");
+
+        // Export git folders types
+        GitFolder::export_all().expect("Failed to export GitFolder");
+        GitFolderStatus::export_all().expect("Failed to export GitFolderStatus");
+        CloneResult::export_all().expect("Failed to export CloneResult");
+        GitFolderWithWorktrees::export_all().expect("Failed to export GitFolderWithWorktrees");
+        GitFolderWorktree::export_all().expect("Failed to export GitFolderWorktree");
+        ScanResult::export_all().expect("Failed to export ScanResult");
     }
 
     #[test]

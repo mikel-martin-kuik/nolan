@@ -228,6 +228,12 @@ pub fn get_worktrees_dir() -> Result<PathBuf, String> {
     Ok(get_data_dir()?.join("worktrees"))
 }
 
+/// Get git folders directory (cloned external repositories)
+/// Returns: <nolan_data_root>/data/git_folders
+pub fn get_git_folders_dir() -> Result<PathBuf, String> {
+    Ok(get_data_dir()?.join("git_folders"))
+}
+
 /// Get reports directory (generated reports)
 /// Returns: <nolan_data_root>/data/reports
 pub fn get_reports_dir() -> Result<PathBuf, String> {
@@ -272,6 +278,12 @@ pub fn get_session_registry_path() -> Result<PathBuf, String> {
 /// Returns: <nolan_data_root>/.state/deployments.jsonl
 pub fn get_deployments_path() -> Result<PathBuf, String> {
     Ok(get_state_dir()?.join("deployments.jsonl"))
+}
+
+/// Get path to git folders manifest file
+/// Returns: <nolan_data_root>/.state/git-folders.jsonl
+pub fn get_git_folders_manifest_path() -> Result<PathBuf, String> {
+    Ok(get_state_dir()?.join("git-folders.jsonl"))
 }
 
 // =============================================================================

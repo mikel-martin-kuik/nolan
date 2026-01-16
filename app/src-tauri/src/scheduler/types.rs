@@ -324,9 +324,13 @@ pub struct WorktreeConfig {
     #[serde(default)]
     pub enabled: bool,
     /// Repository path to create worktree from (defaults to NOLAN_ROOT)
+    /// Ignored if git_folder_id is set
     pub repo_path: Option<String>,
     /// Base branch to create worktree from (defaults to current branch)
     pub base_branch: Option<String>,
+    /// Git folder ID to use as the repository source
+    /// If set, takes precedence over repo_path
+    pub git_folder_id: Option<String>,
 }
 
 /// Scheduled agent group definition (stored in scheduler/groups.yaml)

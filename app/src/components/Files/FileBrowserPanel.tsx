@@ -4,10 +4,10 @@ import { FileViewer } from './FileViewer';
 import { BreadcrumbNav } from './BreadcrumbNav';
 import { useFileBrowser } from '@/hooks';
 import { useFileBrowserStore } from '@/store/fileBrowserStore';
-import { useNavigationStore } from '@/store/navigationStore';
+import { useNavigationStore, type FileBrowserSubTab } from '@/store/navigationStore';
 import { useToastStore } from '@/store/toastStore';
 import { invoke } from '@/lib/api';
-import { RefreshCw, Search, Eye, EyeOff, Home, Star, ChevronLeft, FolderOpen, Check, MoreHorizontal, Loader2 } from 'lucide-react';
+import { RefreshCw, Search, Eye, EyeOff, Home, Star, ChevronLeft, FolderOpen, Check, MoreHorizontal, Loader2, Folder, GitBranch } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Tooltip } from '@/components/ui/tooltip';
@@ -35,13 +35,18 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import type { FileSystemEntry, SearchResult } from '@/types/filesystem';
 import { PROJECT_STATUS_META, PROJECT_STATUS_OPTIONS, type ProjectStatus } from '@/types/projects';
 import { getWorkflowSteps } from '@/types';
 import { useTeamStore } from '@/store/teamStore';
+import { GitFoldersPanel } from '@/components/GitFolders';
 
 export function FileBrowserPanel() {
+  const fileBrowserSubTab = useNavigationStore((state) => state.fileBrowserSubTab);
+  const setFileBrowserSubTab = useNavigationStore((state) => state.setFileBrowserSubTab);
+
   // Track the default home path (fetched from backend)
   const [defaultHomePath, setDefaultHomePath] = useState<string | null>(null);
 
@@ -308,21 +313,49 @@ export function FileBrowserPanel() {
   }, [renameTarget, renameNewName, refresh, showSuccess, showError]);
 
   return (
-    <div className="h-full flex flex-col gap-2 sm:gap-3">
-      {/* Top Header - Icons and Path */}
-      <div className="glass-card p-2 sm:p-3 rounded-lg flex items-center gap-2 flex-wrap">
-        {/* Mobile back button */}
-        <div className={cn("md:hidden", !showMobileViewer && "hidden")}>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowMobileViewer(false)}
-            className="gap-1"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            Back
-          </Button>
+    <div className="h-full flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between px-2 sm:px-4 py-2 sm:py-3 border-b">
+        <h1 className="text-lg sm:text-xl font-semibold">File Browser</h1>
+      </div>
+
+      {/* Tab Navigation */}
+      <Tabs
+        value={fileBrowserSubTab}
+        onValueChange={(v) => setFileBrowserSubTab(v as FileBrowserSubTab)}
+        className="flex-1 flex flex-col"
+      >
+        <div className="px-2 sm:px-4 border-b overflow-x-auto">
+          <TabsList className="h-10">
+            <TabsTrigger value="files" className="gap-1 sm:gap-2">
+              <Folder className="h-4 w-4" />
+              <span className="hidden sm:inline">Files</span>
+            </TabsTrigger>
+            <TabsTrigger value="repos" className="gap-1 sm:gap-2">
+              <GitBranch className="h-4 w-4" />
+              <span className="hidden sm:inline">Repos</span>
+            </TabsTrigger>
+          </TabsList>
         </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-auto p-2 sm:p-4">
+          <TabsContent value="files" className="m-0 h-full">
+            <div className="h-full flex flex-col gap-2 sm:gap-3">
+              {/* Top Header - Icons and Path */}
+              <div className="glass-card p-2 sm:p-3 rounded-lg flex items-center gap-2 flex-wrap">
+                {/* Mobile back button */}
+                <div className={cn("md:hidden", !showMobileViewer && "hidden")}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowMobileViewer(false)}
+                    className="gap-1"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                    Back
+                  </Button>
+                </div>
 
         {/* Navigation controls */}
         <div className={cn("flex items-center gap-1", showMobileViewer && "hidden md:flex")}>
@@ -567,6 +600,14 @@ export function FileBrowserPanel() {
           />
         </div>
       </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="repos" className="m-0 h-full">
+            <GitFoldersPanel />
+          </TabsContent>
+        </div>
+      </Tabs>
 
       {/* Create File/Folder Dialog */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>

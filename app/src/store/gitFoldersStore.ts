@@ -66,7 +66,7 @@ export const useGitFoldersStore = create<GitFoldersStore>((set, get) => ({
   fetchFolder: async (folderId: string) => {
     set({ isLoading: true, error: null });
     try {
-      const folder = await invoke<GitFolder>('fetch_git_folder', { folder_id: folderId });
+      const folder = await invoke<GitFolder>('fetch_git_folder', { folderId });
       // Reload all folders to update the list
       await get().loadFolders();
       set({ isLoading: false });
@@ -80,7 +80,7 @@ export const useGitFoldersStore = create<GitFoldersStore>((set, get) => ({
   removeFolder: async (folderId: string, deleteFiles: boolean) => {
     set({ isLoading: true, error: null });
     try {
-      await invoke('remove_git_folder', { folder_id: folderId, delete_files: deleteFiles });
+      await invoke('remove_git_folder', { folderId, deleteFiles });
       await get().loadFolders();
       set({ isLoading: false });
     } catch (err) {
@@ -92,7 +92,7 @@ export const useGitFoldersStore = create<GitFoldersStore>((set, get) => ({
   updateFolder: async (folderId: string, name?: string, tags?: string[]) => {
     set({ isLoading: true, error: null });
     try {
-      const folder = await invoke<GitFolder>('update_git_folder', { folder_id: folderId, name, tags });
+      const folder = await invoke<GitFolder>('update_git_folder', { folderId, name, tags });
       await get().loadFolders();
       set({ isLoading: false });
       return folder;
@@ -115,7 +115,7 @@ export const useGitFoldersStore = create<GitFoldersStore>((set, get) => ({
   importRepository: async (sourcePath: string, name?: string) => {
     set({ isLoading: true, error: null });
     try {
-      const result = await invoke<CloneResult>('import_git_repository', { source_path: sourcePath, name });
+      const result = await invoke<CloneResult>('import_git_repository', { sourcePath, name });
       if (result.success) {
         await get().loadFolders();
       } else {

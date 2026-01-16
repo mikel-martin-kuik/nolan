@@ -2,6 +2,7 @@ import { create } from 'zustand';
 
 export type Tab = 'status' | 'chat' | 'files' | 'agents' | 'schedules' | 'workflows' | 'usage' | 'support' | 'settings' | 'builder';
 export type BuilderSubTab = 'pipelines' | 'teams' | 'agent-roles' | 'triggers';
+export type FileBrowserSubTab = 'files' | 'repos';
 
 export interface NavigationContext {
   // For agents tab: agent name to select
@@ -21,6 +22,8 @@ interface NavigationStore {
   activeTab: Tab;
   // Builder sub-tab for deep-linking
   builderSubTab: BuilderSubTab;
+  // File browser sub-tab for deep-linking
+  fileBrowserSubTab: FileBrowserSubTab;
   // Context for deep-linking
   context: NavigationContext;
   // Navigate to a tab with optional context
@@ -29,6 +32,8 @@ interface NavigationStore {
   navigateToBuilder: (subTab: BuilderSubTab, context?: NavigationContext) => void;
   // Set builder sub-tab
   setBuilderSubTab: (subTab: BuilderSubTab) => void;
+  // Set file browser sub-tab
+  setFileBrowserSubTab: (subTab: FileBrowserSubTab) => void;
   // Clear context after it's been consumed
   clearContext: () => void;
   // Set active tab (called by App.tsx to sync state)
@@ -38,6 +43,7 @@ interface NavigationStore {
 export const useNavigationStore = create<NavigationStore>((set) => ({
   activeTab: 'status',
   builderSubTab: 'pipelines',
+  fileBrowserSubTab: 'files',
   context: {},
 
   navigateTo: (tab, context = {}) => {
@@ -50,6 +56,10 @@ export const useNavigationStore = create<NavigationStore>((set) => ({
 
   setBuilderSubTab: (subTab) => {
     set({ builderSubTab: subTab });
+  },
+
+  setFileBrowserSubTab: (subTab) => {
+    set({ fileBrowserSubTab: subTab });
   },
 
   clearContext: () => {

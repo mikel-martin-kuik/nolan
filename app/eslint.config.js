@@ -41,8 +41,8 @@ export default [
       },
     },
     rules: {
-      // Enforce snake_case in invoke() calls
-      'tauri-ipc/no-camelcase-invoke': 'error',
+      // Enforce snake_case in invoke() calls (disabled - Tauri v2 handles camelCase)
+      'tauri-ipc/no-camelcase-invoke': 'off',
 
       // Relax some rules for existing codebase
       '@typescript-eslint/no-unused-vars': 'off',

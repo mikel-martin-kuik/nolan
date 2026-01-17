@@ -1,6 +1,6 @@
 import React, { useCallback, useMemo, memo, useState } from 'react';
 import { invoke, isTauri } from '@/lib/api';
-import { MessageSquareX, Eraser, Clock, Terminal, MessageCircle, Pencil, ExternalLink } from 'lucide-react';
+import { MessageSquareX, Eraser, Clock, Terminal, Pencil, ExternalLink } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -12,7 +12,6 @@ import type { FileCompletion } from '../../types/projects';
 import { useLiveOutputStore, AgentLiveOutput } from '../../store/liveOutputStore';
 import { useTerminalStore } from '../../store/terminalStore';
 import { useToastStore } from '../../store/toastStore';
-import { useChatViewStore } from '../../store/chatViewStore';
 import { getBlockerMessage } from '../../lib/workflowStatus';
 import { cn } from '../../lib/utils';
 import { FEATURES } from '../../lib/features';
@@ -38,8 +37,6 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
 }) => {
   const clearSession = useLiveOutputStore((state) => state.clearSession);
   const { sshEnabled, getSshTerminalUrl } = useTerminalStore();
-  const setActiveTeam = useChatViewStore((state) => state.setActiveTeam);
-  const setAgentFilter = useChatViewStore((state) => state.setAgentFilter);
   const { error: showError, success: showSuccess } = useToastStore();
   const currentTeam = useTeamStore((state) => state.currentTeam);
   const workflowSteps = getWorkflowSteps(currentTeam);
@@ -58,15 +55,6 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
   const entries = output?.entries || [];
   const isActive = output?.isActive || false;
   const lastEntry = entries[entries.length - 1];
-
-  const handleCardClick = () => {
-    // Navigate to team chat and filter by this agent
-    if (agent.team) {
-      setActiveTeam(agent.team);
-      setAgentFilter(agent.session);
-    }
-    window.dispatchEvent(new CustomEvent('navigate-to-chat'));
-  };
 
   const description = AGENT_DESCRIPTIONS[agent.name as keyof typeof AGENT_DESCRIPTIONS] || 'Agent';
   // Show custom label if set (for Ralph), otherwise use visual name
@@ -229,14 +217,10 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
     <>
     <Card
       className={cn(
-        'glass-card transition-all duration-200 rounded-2xl cursor-pointer active:scale-[0.98]',
+        'glass-card transition-all duration-200 rounded-2xl',
         agent.active ? 'glass-active' : 'opacity-80 hover:opacity-100'
       )}
-      onClick={handleCardClick}
       onContextMenu={handleContextMenu}
-      tabIndex={0}
-      role="button"
-      aria-label={`View ${displayName} live output`}
     >
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
@@ -268,26 +252,6 @@ export const AgentLiveCard: React.FC<AgentLiveCardProps> = memo(({
             </span>
           </CardTitle>
           <div className="flex items-center gap-1">
-            {/* Respond button - show when waiting for input */}
-            {workflowState?.status === 'waiting_input' && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // Navigate to team chat and filter by this agent
-                  if (agent.team) {
-                    setActiveTeam(agent.team);
-                    setAgentFilter(agent.session);
-                  }
-                  // Navigate to chat tab
-                  window.dispatchEvent(new CustomEvent('navigate-to-chat'));
-                }}
-                className="px-2 py-1 rounded-lg text-xs font-medium bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30 transition-colors flex items-center gap-1"
-                title="Respond to agent"
-              >
-                <MessageCircle className="w-3 h-3" />
-                Respond
-              </button>
-            )}
             {/* Terminal button - opens SSH terminal or native terminal */}
             {agent.active && (sshEnabled || (isTauri() && FEATURES.EXTERNAL_TERMINAL)) && (() => {
               // Check if we're in Tauri with embedded backend (no remote server configured)

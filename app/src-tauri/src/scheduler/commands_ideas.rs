@@ -449,7 +449,7 @@ async fn route_to_implementer(idea_id: &str, idea_title: &str) -> Result<RouteRe
     })
 }
 
-async fn route_to_project(idea_id: &str, idea: &Idea, review: &ReviewForRouting) -> Result<RouteResult, String> {
+async fn route_to_project(idea_id: &str, _idea: &Idea, review: &ReviewForRouting) -> Result<RouteResult, String> {
     let proposal = review.proposal.as_ref().ok_or("Review has no proposal")?;
 
     let project_name = proposal

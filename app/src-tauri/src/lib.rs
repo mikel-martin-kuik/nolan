@@ -133,8 +133,6 @@ pub fn run() {
             send_agent_command,
             // Communicator commands
             send_message,
-            broadcast_team,
-            broadcast_all,
             get_available_targets,
             // History commands
             start_history_stream,
@@ -188,6 +186,7 @@ pub fn run() {
             get_usage_by_date_range,
             get_session_stats,
             get_agent_usage_stats,
+            get_execution_metrics,
             // Scheduler commands - agent CRUD
             scheduler::commands_agent::list_scheduled_agents,
             scheduler::commands_agent::get_scheduled_agent,
@@ -274,15 +273,6 @@ pub fn run() {
             update_hotfix,
             update_hotfix_status,
             delete_hotfix,
-            // Design decision commands
-            list_decisions,
-            list_decisions_by_team,
-            create_decision,
-            update_decision_status,
-            approve_decision,
-            deprecate_decision,
-            supersede_decision,
-            delete_decision,
             // Ollama commands
             ollama_status,
             ollama_models,

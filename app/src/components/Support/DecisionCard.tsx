@@ -139,7 +139,7 @@ export function DecisionCard({ decision }: DecisionCardProps) {
                       <div className="text-xs text-muted-foreground mt-1">
                         <span className="font-medium">Alternatives considered:</span>
                         <ul className="list-disc list-inside ml-2">
-                          {decision.alternatives.map((alt, i) => (
+                          {decision.alternatives.map((alt: string, i: number) => (
                             <li key={i}>{alt}</li>
                           ))}
                         </ul>

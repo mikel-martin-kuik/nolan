@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@/lib/api';
 import { Plus, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useToastStore } from '../../store/toastStore';
-import { AgentCard } from './AgentCard';
+import { AgentConfigCard } from './AgentConfigCard';
 import { AgentCreator } from './AgentCreator';
 import { AgentEditor } from './AgentEditor';
 import { Button } from '@/components/ui/button';
@@ -187,7 +187,7 @@ Outline communication style and guidelines.
           <div className="flex flex-wrap gap-2 lg:gap-3 pt-2">
             {agentDirs.map((agentDir) => (
               <div key={agentDir.name} className="w-[clamp(180px,calc(100%/4-12px),220px)]">
-                <AgentCard
+                <AgentConfigCard
                   agentInfo={agentDir}
                   onEdit={handleEdit}
                   onDelete={handleDelete}

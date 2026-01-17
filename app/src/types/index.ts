@@ -32,6 +32,9 @@ export * from './workflow';
 // Re-export filesystem types
 export * from './filesystem';
 
+// Re-export decision types
+export * from './decision';
+
 export interface AgentStatus {
   name: string;
   team: string;  // Team this agent belongs to (empty for ralph)
@@ -483,32 +486,6 @@ export function getTeamMembers(team: TeamConfig | null): string[] {
   if (!team) return [];
   return team.team.agents.map(a => a.name);
 }
-
-// Legacy constants for backward compatibility (will be removed)
-// These are now derived from team config at runtime
-// TODO: Remove these after all usage sites are updated
-
-/**
- * @deprecated Use getWorkflowPhases(team) instead
- */
-export const WORKFLOW_PHASES: WorkflowPhase[] = [];
-
-/**
- * @deprecated Use getAgentDependencies(team) instead
- */
-export const AGENT_DEPENDENCIES: Record<AgentName, {
-  upstream: AgentName[];
-  downstream: AgentName[];
-}> = {};
-
-/**
- * @deprecated Use getAgentWorkflowRole(team, agentName) instead
- */
-export const AGENT_WORKFLOW_ROLE: Record<AgentName, {
-  produces: WorkflowFile | null;
-  requires: WorkflowFile[];
-  description: string;
-}> = {};
 
 /**
  * Computed workflow state for an agent

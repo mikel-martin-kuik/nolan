@@ -1,6 +1,39 @@
 // Execution metrics types for workflow tracking
 
 /**
+ * Breakdown of executions by status
+ */
+export interface StatusBreakdown {
+  success: number;
+  failed: number;
+  timeout: number;
+  cancelled: number;
+  running: number;
+  skipped: number;
+  interrupted: number;
+}
+
+/**
+ * Breakdown of executions by trigger type
+ */
+export interface TriggerBreakdown {
+  scheduled: number;
+  manual: number;
+  retry: number;
+  catch_up: number;
+}
+
+/**
+ * Common error pattern with count
+ */
+export interface ErrorSummary {
+  error_type: string;
+  count: number;
+  last_seen: string;
+  example_message?: string;
+}
+
+/**
  * Quantitative metrics automatically captured per workflow execution
  */
 export interface ExecutionMetrics {
@@ -10,6 +43,12 @@ export interface ExecutionMetrics {
   started_at: string;
   ended_at?: string;
   duration_secs: number;
+
+  // Status and trigger info
+  status: string;
+  trigger: string;
+  exit_code?: number;
+  error_message?: string;
 
   // Token metrics
   total_tokens: number;
@@ -40,6 +79,9 @@ export interface ExecutionMetrics {
 export interface DailyMetrics {
   date: string;
   execution_count: number;
+  success_count: number;
+  failure_count: number;
+  success_rate: number;
   total_duration_secs: number;
   avg_duration_secs: number;
   total_tokens: number;
@@ -62,14 +104,20 @@ export interface DailyMetrics {
 export interface AgentPerformanceMetrics {
   agent_name: string;
   execution_count: number;
+  success_count: number;
+  failure_count: number;
+  success_rate: number;
   total_tokens: number;
   avg_tokens: number;
   total_cost: number;
   avg_cost: number;
+  cost_per_success: number;
   total_duration_secs: number;
   avg_duration_secs: number;
   rejection_count: number;
   retry_count: number;
+  last_run_at?: string;
+  last_status?: string;
 }
 
 /**
@@ -78,6 +126,9 @@ export interface AgentPerformanceMetrics {
 export interface ProjectMetricsSummary {
   project_name: string;
   total_executions: number;
+  success_count: number;
+  failure_count: number;
+  success_rate: number;
   total_tokens: number;
   total_cost: number;
   total_duration_secs: number;
@@ -104,6 +155,19 @@ export interface MetricsDashboard {
   total_duration_secs: number;
   avg_duration_secs: number;
   avg_cost_per_execution: number;
+
+  // Success/failure metrics
+  success_count: number;
+  failure_count: number;
+  success_rate: number;
+  cost_per_success: number;
+
+  // Status and trigger breakdowns
+  status_breakdown: StatusBreakdown;
+  trigger_breakdown: TriggerBreakdown;
+
+  // Error analysis
+  top_errors: ErrorSummary[];
 
   // Trend data
   daily_metrics: DailyMetrics[];

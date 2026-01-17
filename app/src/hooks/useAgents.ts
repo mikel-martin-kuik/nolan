@@ -14,8 +14,9 @@
 
 import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { invoke } from '@/lib/api';
+import { invoke, invokeWithTimeout } from '@/lib/api';
 import { listen } from '@/lib/events';
+import { formatErrorMessage } from '@/lib/utils';
 import { useToastStore } from '../store/toastStore';
 import type { AgentStatusList, AgentName, ClaudeModel } from '../types';
 
@@ -24,18 +25,6 @@ export const agentKeys = {
   all: ['agents'] as const,
   status: () => [...agentKeys.all, 'status'] as const,
 };
-
-// Timeout wrapper to prevent UI hangs
-async function invokeWithTimeout<T>(
-  cmd: string,
-  args: Record<string, unknown>,
-  timeoutMs: number = 30000
-): Promise<T> {
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error(`Backend timeout after ${timeoutMs/1000}s`)), timeoutMs);
-  });
-  return Promise.race([invoke<T>(cmd, args), timeoutPromise]);
-}
 
 /**
  * Hook to fetch and subscribe to agent status
@@ -120,7 +109,7 @@ export function useLaunchTeam() {
       queryClient.invalidateQueries({ queryKey: agentKeys.status() });
     },
     onError: (error, params) => {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatErrorMessage(error);
       showError(`Failed to launch team ${params.teamName}: ${message}`);
     },
   });
@@ -143,7 +132,7 @@ export function useKillTeam() {
       queryClient.invalidateQueries({ queryKey: agentKeys.status() });
     },
     onError: (error, teamName) => {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatErrorMessage(error);
       showError(`Failed to kill team ${teamName}: ${message}`);
     },
   });
@@ -180,7 +169,7 @@ export function useSpawnAgent() {
       queryClient.invalidateQueries({ queryKey: agentKeys.status() });
     },
     onError: (error, params) => {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatErrorMessage(error);
       showError(`Failed to spawn ${params.agent}: ${message}`);
     },
   });
@@ -206,7 +195,7 @@ export function useStartAgent() {
       queryClient.invalidateQueries({ queryKey: agentKeys.status() });
     },
     onError: (error, params) => {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatErrorMessage(error);
       showError(`Failed to start ${params.agent}: ${message}`);
     },
   });
@@ -229,7 +218,7 @@ export function useKillInstance() {
       queryClient.invalidateQueries({ queryKey: agentKeys.status() });
     },
     onError: (error, session) => {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatErrorMessage(error);
       showError(`Failed to kill ${session}: ${message}`);
     },
   });
@@ -255,7 +244,7 @@ export function useKillAllInstances() {
       queryClient.invalidateQueries({ queryKey: agentKeys.status() });
     },
     onError: (error, params) => {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatErrorMessage(error);
       showError(`Failed to kill ${params.agent} instances: ${message}`);
     },
   });

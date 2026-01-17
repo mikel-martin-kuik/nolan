@@ -6,7 +6,7 @@ import {
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from '@/components/ui/context-menu';
+} from '@/components/ui/ContextMenu';
 import { invoke } from '@/lib/api';
 import { Idea, IdeaReview, TAG_COLORS, DEFAULT_TAG_COLOR } from '@/types';
 import type { ProjectInfo } from '@/types/projects';

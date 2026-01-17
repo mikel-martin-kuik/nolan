@@ -50,42 +50,6 @@ pub async fn send_command(
     }
 }
 
-/// Broadcast team request
-#[derive(Deserialize)]
-pub struct BroadcastTeamRequest {
-    #[serde(alias = "teamName")]
-    team_name: String,
-    message: String,
-}
-
-/// Broadcast to team
-pub async fn broadcast_team(
-    Json(req): Json<BroadcastTeamRequest>,
-) -> Result<Json<serde_json::Value>, impl IntoResponse> {
-    match communicator::broadcast_team(req.team_name, req.message).await {
-        Ok(result) => Ok(Json(serde_json::json!({ "result": result }))),
-        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
-    }
-}
-
-/// Broadcast all request
-#[derive(Deserialize)]
-pub struct BroadcastAllRequest {
-    #[serde(alias = "teamName")]
-    team_name: String,
-    message: String,
-}
-
-/// Broadcast to all agents
-pub async fn broadcast_all(
-    Json(req): Json<BroadcastAllRequest>,
-) -> Result<Json<serde_json::Value>, impl IntoResponse> {
-    match communicator::broadcast_all(req.team_name, req.message).await {
-        Ok(result) => Ok(Json(serde_json::json!({ "result": result }))),
-        Err(e) => Err(error_response(StatusCode::BAD_REQUEST, e)),
-    }
-}
-
 /// Get available targets query params
 #[derive(Deserialize)]
 pub struct GetTargetsQuery {

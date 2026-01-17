@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
-export type Tab = 'status' | 'chat' | 'files' | 'agents' | 'schedules' | 'workflows' | 'usage' | 'support' | 'settings' | 'builder';
-export type BuilderSubTab = 'pipelines' | 'teams' | 'agent-roles' | 'triggers';
+export type Tab = 'status' | 'files' | 'agents' | 'schedules' | 'workflows' | 'usage' | 'support' | 'settings' | 'builder';
+export type BuilderSubTab = 'pipelines' | 'teams' | 'triggers';
 export type FileBrowserSubTab = 'files' | 'repos';
 
 export interface NavigationContext {

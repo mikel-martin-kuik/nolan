@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 
 export interface UseDebouncedCallbackOptions {
   /** Delay in milliseconds before calling the callback */
@@ -73,60 +73,4 @@ export function useDebouncedCallback(
       }
     };
   }, [delay, value, enabled, minLength]);
-}
-
-/**
- * Hook that returns a debounced version of a callback function.
- *
- * The returned function will only execute after the specified delay
- * has passed without any new calls.
- *
- * @example
- * const debouncedSearch = useDebouncedFn(
- *   async (query: string) => {
- *     const results = await search(query);
- *     setResults(results);
- *   },
- *   300
- * );
- *
- * <input onChange={(e) => debouncedSearch(e.target.value)} />
- */
-export function useDebouncedFn<T extends (...args: unknown[]) => void | Promise<void>>(
-  callback: T,
-  delay: number,
-): T {
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const callbackRef = useRef(callback);
-
-  useEffect(() => {
-    callbackRef.current = callback;
-  }, [callback]);
-
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-    };
-  }, []);
-
-  return useCallback(
-    ((...args: Parameters<T>) => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-      }
-
-      timeoutRef.current = setTimeout(() => {
-        try {
-          Promise.resolve(callbackRef.current(...args)).catch((err) => {
-            console.error('Debounced function error:', err);
-          });
-        } catch (err) {
-          console.error('Debounced function error:', err);
-        }
-      }, delay);
-    }) as T,
-    [delay],
-  );
 }

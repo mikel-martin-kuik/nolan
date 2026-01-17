@@ -12,7 +12,7 @@ interface AgentCardProps {
   onCreateAgentJson: (agentName: string) => Promise<void>;
 }
 
-export const AgentCard: React.FC<AgentCardProps> = ({
+export const AgentConfigCard: React.FC<AgentCardProps> = ({
   agentInfo,
   onEdit,
   onDelete,

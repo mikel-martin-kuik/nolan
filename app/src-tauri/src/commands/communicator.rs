@@ -173,12 +173,6 @@ fn try_force_submit(session: &str, msg_id: &str) -> Result<bool, String> {
     Ok(false)
 }
 
-/// Check if agent session exists (team-scoped)
-fn agent_session_exists(team: &str, agent: &str) -> bool {
-    let session = format!("agent-{}-{}", team, agent);
-    crate::tmux::session::session_exists(&session).unwrap_or(false)
-}
-
 /// Build session name from team and target
 /// - For core agents: agent-{team}-{name}
 /// - For spawned instances: agent-{team}-{name}-{instance}
@@ -342,126 +336,6 @@ pub async fn send_message(team: String, target: String, message: String) -> Resu
     )
 }
 
-/// Broadcast a message to the core team (workflow participants from team config)
-#[tauri::command]
-pub async fn broadcast_team(team_name: String, message: String) -> Result<BroadcastResult, String> {
-    // Load team config for specified team
-    let team = TeamConfig::load(&team_name)
-        .map_err(|e| format!("Failed to load team config '{}': {}", team_name, e))?;
-
-    let mut successful = Vec::new();
-    let mut failed = Vec::new();
-
-    for agent in team.workflow_participants() {
-        // Check if agent session exists before sending (team-scoped)
-        if !agent_session_exists(&team_name, agent) {
-            continue; // Skip offline agents
-        }
-
-        // Broadcasts from app are from USER
-        match send_verified_native(
-            &team_name,
-            agent,
-            &message,
-            "USER",
-            DEFAULT_TIMEOUT_SECS,
-            DEFAULT_RETRY_COUNT,
-        ) {
-            Ok(msg_id) => successful.push(format!("{} ({})", agent, msg_id)),
-            Err(e) => failed.push(format!("{}: {}", agent, e)),
-        }
-    }
-
-    let total = successful.len() + failed.len();
-
-    Ok(BroadcastResult {
-        successful,
-        failed,
-        total,
-    })
-}
-
-/// Broadcast a message to all active agent sessions in a team (core + spawned)
-#[tauri::command]
-pub async fn broadcast_all(team_name: String, message: String) -> Result<BroadcastResult, String> {
-    // Load team config to get valid agent names
-    let team = TeamConfig::load(&team_name)
-        .map_err(|e| format!("Failed to load team config '{}': {}", team_name, e))?;
-    let valid_agents: Vec<&str> = team.agent_names();
-
-    let sessions = crate::tmux::session::list_sessions()?;
-
-    let mut successful = Vec::new();
-    let mut failed = Vec::new();
-
-    for session in sessions {
-        // Parse team-scoped session: agent-{team}-{name}[-{instance}]
-        if let Some(caps) = RE_SESSION_CORE.captures(&session) {
-            let session_team = &caps[1];
-            let agent_name = &caps[2];
-
-            // Only include sessions from the specified team
-            if session_team != team_name {
-                continue;
-            }
-
-            // Validate it's a real agent
-            if !valid_agents.contains(&agent_name) {
-                continue;
-            }
-
-            // Broadcasts from app are from USER
-            match send_verified_native(
-                &team_name,
-                agent_name,
-                &message,
-                "USER",
-                DEFAULT_TIMEOUT_SECS,
-                DEFAULT_RETRY_COUNT,
-            ) {
-                Ok(msg_id) => successful.push(format!("{} ({})", agent_name, msg_id)),
-                Err(e) => failed.push(format!("{}: {}", agent_name, e)),
-            }
-        } else if let Some(caps) = RE_SESSION_SPAWNED.captures(&session) {
-            let session_team = &caps[1];
-            let agent_name = &caps[2];
-            let instance = &caps[3];
-
-            // Only include sessions from the specified team
-            if session_team != team_name {
-                continue;
-            }
-
-            // Validate it's a real agent
-            if !valid_agents.contains(&agent_name) {
-                continue;
-            }
-
-            let target = format!("{}-{}", agent_name, instance);
-            match send_verified_native(
-                &team_name,
-                &target,
-                &message,
-                "USER",
-                DEFAULT_TIMEOUT_SECS,
-                DEFAULT_RETRY_COUNT,
-            ) {
-                Ok(msg_id) => successful.push(format!("{} ({})", target, msg_id)),
-                Err(e) => failed.push(format!("{}: {}", target, e)),
-            }
-        }
-        // Note: Ralph sessions are team-independent and not included in team broadcasts
-    }
-
-    let total = successful.len() + failed.len();
-
-    Ok(BroadcastResult {
-        successful,
-        failed,
-        total,
-    })
-}
-
 /// Get list of available message targets (active agent sessions) for a team
 #[tauri::command]
 pub async fn get_available_targets(team_name: String) -> Result<TargetList, String> {
@@ -515,13 +389,6 @@ pub async fn get_available_targets(team_name: String) -> Result<TargetList, Stri
 }
 
 // Data structures
-
-#[derive(Serialize)]
-pub struct BroadcastResult {
-    pub successful: Vec<String>,
-    pub failed: Vec<String>,
-    pub total: usize,
-}
 
 #[derive(Serialize)]
 pub struct TargetList {

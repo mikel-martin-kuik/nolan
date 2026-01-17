@@ -7,7 +7,6 @@ import {
   Loader2,
   DollarSign,
   Clock,
-  Hash,
   BarChart3,
   TrendingUp,
   Users,
@@ -20,6 +19,12 @@ import {
   Zap,
   AlertTriangle,
   RotateCcw,
+  CheckCircle,
+  XCircle,
+  Timer,
+  Play,
+  Calendar,
+  MousePointer,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useExecutionMetrics, type MetricsDateRange } from '@/hooks/useExecutionMetrics';
@@ -31,12 +36,12 @@ export const MetricsPanel: React.FC = () => {
     dashboard,
     loading,
     error,
+    isNotImplemented,
     selectedDateRange,
     setSelectedDateRange,
     refresh,
     formatCurrency,
     formatDuration,
-    formatTokens,
     formatNumber,
   } = useExecutionMetrics();
 
@@ -68,6 +73,24 @@ export const MetricsPanel: React.FC = () => {
     if (score >= 4.5) return 'text-emerald-500';
     if (score >= 3.5) return 'text-yellow-500';
     return 'text-orange-500';
+  };
+
+  const getSuccessRateColor = (rate: number): string => {
+    if (rate >= 90) return 'text-emerald-500';
+    if (rate >= 70) return 'text-yellow-500';
+    return 'text-red-500';
+  };
+
+  const getStatusBadgeVariant = (status: string): 'default' | 'secondary' | 'destructive' | 'outline' => {
+    switch (status) {
+      case 'success': return 'default';
+      case 'failed':
+      case 'timeout':
+      case 'interrupted': return 'destructive';
+      case 'running':
+      case 'retrying': return 'secondary';
+      default: return 'outline';
+    }
   };
 
   return (
@@ -110,7 +133,19 @@ export const MetricsPanel: React.FC = () => {
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto">
-          {loading ? (
+          {isNotImplemented ? (
+            <div className="flex flex-col items-center justify-center h-64 text-center">
+              <Activity className="h-12 w-12 text-muted-foreground/50 mb-4" />
+              <h3 className="text-lg font-semibold text-muted-foreground mb-2">Coming Soon</h3>
+              <p className="text-sm text-muted-foreground max-w-md">
+                Execution metrics tracking is not yet implemented. This feature will track
+                workflow executions, agent performance, rejections, retries, and quality scores.
+              </p>
+              <p className="text-xs text-muted-foreground/70 mt-4">
+                For API usage data, see the "API Usage" tab.
+              </p>
+            </div>
+          ) : loading ? (
             <div className="flex items-center justify-center h-64">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
@@ -124,7 +159,7 @@ export const MetricsPanel: React.FC = () => {
           ) : dashboard ? (
             <div className="space-y-4 sm:space-y-6">
               {/* Summary Cards */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 sm:gap-4">
                 <Card className="p-3 sm:p-4">
                   <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                     <Activity className="h-3 w-3" />
@@ -136,10 +171,31 @@ export const MetricsPanel: React.FC = () => {
 
                 <Card className="p-3 sm:p-4">
                   <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
+                    <CheckCircle className="h-3 w-3" />
+                    <span className="hidden sm:inline">Success Rate</span>
+                    <span className="sm:hidden">Success</span>
+                  </div>
+                  <p className={cn('text-lg sm:text-2xl font-bold', getSuccessRateColor(dashboard.success_rate))}>
+                    {dashboard.success_rate}%
+                  </p>
+                </Card>
+
+                <Card className="p-3 sm:p-4">
+                  <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
                     <DollarSign className="h-3 w-3" />
-                    Cost
+                    <span className="hidden sm:inline">Total Cost</span>
+                    <span className="sm:hidden">Cost</span>
                   </div>
                   <p className="text-lg sm:text-2xl font-bold">{formatCurrency(dashboard.total_cost)}</p>
+                </Card>
+
+                <Card className="p-3 sm:p-4">
+                  <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
+                    <DollarSign className="h-3 w-3" />
+                    <span className="hidden sm:inline">Cost/Success</span>
+                    <span className="sm:hidden">$/Succ</span>
+                  </div>
+                  <p className="text-lg sm:text-2xl font-bold">{formatCurrency(dashboard.cost_per_success)}</p>
                 </Card>
 
                 <Card className="p-3 sm:p-4">
@@ -153,19 +209,12 @@ export const MetricsPanel: React.FC = () => {
 
                 <Card className="p-3 sm:p-4">
                   <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
-                    <Hash className="h-3 w-3" />
-                    Tokens
+                    <XCircle className="h-3 w-3" />
+                    Failures
                   </div>
-                  <p className="text-lg sm:text-2xl font-bold">{formatTokens(dashboard.total_tokens)}</p>
-                </Card>
-
-                <Card className="p-3 sm:p-4 col-span-2 sm:col-span-1">
-                  <div className="flex items-center gap-2 text-muted-foreground text-xs mb-1">
-                    <BarChart3 className="h-3 w-3" />
-                    <span className="hidden sm:inline">Avg/Exec</span>
-                    <span className="sm:hidden">Avg Cost</span>
-                  </div>
-                  <p className="text-lg sm:text-2xl font-bold">{formatCurrency(dashboard.avg_cost_per_execution)}</p>
+                  <p className={cn('text-lg sm:text-2xl font-bold', dashboard.failure_count > 0 ? 'text-red-500' : '')}>
+                    {formatNumber(dashboard.failure_count)}
+                  </p>
                 </Card>
               </div>
 
@@ -192,6 +241,120 @@ export const MetricsPanel: React.FC = () => {
               {/* Tab Content */}
               {activeTab === 'overview' && (
                 <div className="space-y-4 sm:space-y-6">
+                  {/* Status & Trigger Breakdowns */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                    {/* Status Breakdown */}
+                    <Card className="p-3 sm:p-6">
+                      <h3 className="text-sm font-semibold mb-3 sm:mb-4 flex items-center gap-2">
+                        <BarChart3 className="h-4 w-4" />
+                        Status Breakdown
+                      </h3>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4 text-emerald-500" />
+                          <div>
+                            <p className="text-xs text-muted-foreground">Success</p>
+                            <p className="text-lg font-bold">{formatNumber(dashboard.status_breakdown.success)}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <XCircle className="h-4 w-4 text-red-500" />
+                          <div>
+                            <p className="text-xs text-muted-foreground">Failed</p>
+                            <p className="text-lg font-bold">{formatNumber(dashboard.status_breakdown.failed)}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Timer className="h-4 w-4 text-orange-500" />
+                          <div>
+                            <p className="text-xs text-muted-foreground">Timeout</p>
+                            <p className="text-lg font-bold">{formatNumber(dashboard.status_breakdown.timeout)}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Play className="h-4 w-4 text-blue-500" />
+                          <div>
+                            <p className="text-xs text-muted-foreground">Running</p>
+                            <p className="text-lg font-bold">{formatNumber(dashboard.status_breakdown.running)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+
+                    {/* Trigger Breakdown */}
+                    <Card className="p-3 sm:p-6">
+                      <h3 className="text-sm font-semibold mb-3 sm:mb-4 flex items-center gap-2">
+                        <Zap className="h-4 w-4" />
+                        Trigger Sources
+                      </h3>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-primary" />
+                          <div>
+                            <p className="text-xs text-muted-foreground">Scheduled</p>
+                            <p className="text-lg font-bold">{formatNumber(dashboard.trigger_breakdown.scheduled)}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <MousePointer className="h-4 w-4 text-primary" />
+                          <div>
+                            <p className="text-xs text-muted-foreground">Manual</p>
+                            <p className="text-lg font-bold">{formatNumber(dashboard.trigger_breakdown.manual)}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <RotateCcw className="h-4 w-4 text-yellow-500" />
+                          <div>
+                            <p className="text-xs text-muted-foreground">Retry</p>
+                            <p className="text-lg font-bold">{formatNumber(dashboard.trigger_breakdown.retry)}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <p className="text-xs text-muted-foreground">Catch-up</p>
+                            <p className="text-lg font-bold">{formatNumber(dashboard.trigger_breakdown.catch_up)}</p>
+                          </div>
+                        </div>
+                      </div>
+                    </Card>
+                  </div>
+
+                  {/* Top Errors */}
+                  {dashboard.top_errors.length > 0 && (
+                    <Card className="p-3 sm:p-6">
+                      <h3 className="text-sm font-semibold mb-3 sm:mb-4 flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-red-500" />
+                        Top Errors
+                      </h3>
+                      <div className="space-y-2">
+                        {dashboard.top_errors.slice(0, 5).map((error, idx) => (
+                          <div
+                            key={idx}
+                            className="flex items-center justify-between py-2 border-b border-border/50 last:border-0"
+                          >
+                            <div className="flex flex-col min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="destructive" className="text-xs">
+                                  {error.count}x
+                                </Badge>
+                                <span className="text-sm font-medium">{error.error_type}</span>
+                              </div>
+                              {error.example_message && (
+                                <p className="text-xs text-muted-foreground truncate mt-1">
+                                  {error.example_message}
+                                </p>
+                              )}
+                            </div>
+                            <span className="text-xs text-muted-foreground flex-shrink-0 ml-2">
+                              {new Date(error.last_seen).toLocaleDateString()}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  )}
+
                   {/* Recent Executions */}
                   <Card className="p-3 sm:p-6">
                     <h3 className="text-sm font-semibold mb-3 sm:mb-4 flex items-center gap-2">
@@ -205,13 +368,18 @@ export const MetricsPanel: React.FC = () => {
                           className="flex flex-col sm:flex-row sm:items-center justify-between py-2 border-b border-border/50 last:border-0 gap-1"
                         >
                           <div className="flex flex-col">
-                            <span className="text-sm font-medium truncate">{exec.project_name}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium truncate">{exec.project_name}</span>
+                              <Badge variant={getStatusBadgeVariant(exec.status)} className="text-xs capitalize">
+                                {exec.status}
+                              </Badge>
+                            </div>
                             <div className="flex flex-wrap items-center gap-1 sm:gap-2 mt-1">
                               <span className="text-xs text-muted-foreground">
                                 {new Date(exec.started_at).toLocaleDateString()}
                               </span>
-                              <Badge variant="outline" className="text-xs">
-                                {exec.agent_count} agents
+                              <Badge variant="outline" className="text-xs capitalize">
+                                {exec.trigger}
                               </Badge>
                               <span className="text-xs text-muted-foreground">
                                 {formatDuration(exec.duration_secs)}
@@ -220,9 +388,11 @@ export const MetricsPanel: React.FC = () => {
                           </div>
                           <div className="text-left sm:text-right">
                             <p className="text-sm font-semibold">{formatCurrency(exec.cost_usd)}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {formatTokens(exec.total_tokens)} tokens
-                            </p>
+                            {exec.error_message && (
+                              <p className="text-xs text-red-500 truncate max-w-[150px]">
+                                {exec.error_message.slice(0, 30)}...
+                              </p>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -241,9 +411,14 @@ export const MetricsPanel: React.FC = () => {
                           <div key={project.project_name} className="flex items-center justify-between gap-2">
                             <div className="flex flex-col min-w-0">
                               <span className="text-sm font-medium truncate">{project.project_name}</span>
-                              <span className="text-xs text-muted-foreground">
-                                {project.total_executions} execs
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs text-muted-foreground">
+                                  {project.total_executions} execs
+                                </span>
+                                <span className={cn('text-xs font-medium', getSuccessRateColor(project.success_rate))}>
+                                  {project.success_rate}%
+                                </span>
+                              </div>
                             </div>
                             <span className="text-sm font-semibold flex-shrink-0">
                               {formatCurrency(project.total_cost)}
@@ -262,13 +437,25 @@ export const MetricsPanel: React.FC = () => {
                       <div className="space-y-2 sm:space-y-3">
                         {dashboard.by_agent.slice(0, 3).map((agent) => (
                           <div key={agent.agent_name} className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <Badge variant="outline" className="text-xs capitalize flex-shrink-0">
-                                {agent.agent_name}
-                              </Badge>
-                              <span className="text-xs text-muted-foreground hidden sm:inline">
-                                {agent.execution_count} execs
-                              </span>
+                            <div className="flex flex-col min-w-0">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className="text-xs capitalize flex-shrink-0">
+                                  {agent.agent_name}
+                                </Badge>
+                                {agent.last_status && (
+                                  <Badge variant={getStatusBadgeVariant(agent.last_status)} className="text-xs">
+                                    {agent.last_status}
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-xs text-muted-foreground">
+                                  {agent.execution_count} execs
+                                </span>
+                                <span className={cn('text-xs font-medium', getSuccessRateColor(agent.success_rate))}>
+                                  {agent.success_rate}%
+                                </span>
+                              </div>
                             </div>
                             <span className="text-sm font-semibold flex-shrink-0">
                               {formatCurrency(agent.total_cost)}
@@ -292,9 +479,10 @@ export const MetricsPanel: React.FC = () => {
                       {/* Simple bar chart visualization */}
                       <div className="relative h-32 sm:h-48">
                         <div className="flex items-end gap-0.5 sm:gap-1 h-full">
-                          {dashboard.daily_metrics.slice(0, 30).map((day) => {
-                            const maxExecs = Math.max(...dashboard.daily_metrics.slice(0, 30).map(d => d.execution_count));
+                          {dashboard.daily_metrics.slice(-30).map((day) => {
+                            const maxExecs = Math.max(...dashboard.daily_metrics.slice(-30).map(d => d.execution_count));
                             const height = maxExecs > 0 ? (day.execution_count / maxExecs) * 100 : 0;
+                            const failureRatio = day.execution_count > 0 ? (day.failure_count / day.execution_count) : 0;
 
                             return (
                               <div
@@ -308,6 +496,9 @@ export const MetricsPanel: React.FC = () => {
                                     <p className="text-xs text-muted-foreground">
                                       {day.execution_count} executions
                                     </p>
+                                    <p className={cn('text-xs', getSuccessRateColor(day.success_rate))}>
+                                      {day.success_rate}% success ({day.success_count}/{day.execution_count})
+                                    </p>
                                     <p className="text-xs text-muted-foreground">
                                       {formatCurrency(day.total_cost)}
                                     </p>
@@ -316,40 +507,72 @@ export const MetricsPanel: React.FC = () => {
                                     </p>
                                   </div>
                                 </div>
-                                <div
-                                  className="w-full bg-primary hover:bg-primary/80 transition-colors rounded-t cursor-pointer min-h-[2px]"
-                                  style={{ height: `${Math.max(height, 2)}%` }}
-                                />
+                                <div className="w-full flex flex-col rounded-t overflow-hidden min-h-[2px]"
+                                  style={{ height: `${Math.max(height, 2)}%` }}>
+                                  <div
+                                    className="w-full bg-red-500 hover:bg-red-400 transition-colors"
+                                    style={{ height: `${failureRatio * 100}%` }}
+                                  />
+                                  <div
+                                    className="w-full bg-emerald-500 hover:bg-emerald-400 transition-colors flex-1"
+                                  />
+                                </div>
                               </div>
                             );
                           })}
                         </div>
                       </div>
 
+                      {/* Legend */}
+                      <div className="flex items-center gap-4 text-xs">
+                        <div className="flex items-center gap-1">
+                          <div className="w-3 h-3 rounded bg-emerald-500" />
+                          <span className="text-muted-foreground">Success</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <div className="w-3 h-3 rounded bg-red-500" />
+                          <span className="text-muted-foreground">Failed</span>
+                        </div>
+                      </div>
+
                       {/* Trend Summary */}
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4 pt-3 sm:pt-4 border-t border-border">
+                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 sm:gap-4 pt-3 sm:pt-4 border-t border-border">
                         <div>
                           <p className="text-xs text-muted-foreground">Executions</p>
                           <p className="text-base sm:text-lg font-semibold">
-                            {formatNumber(dashboard.daily_metrics.slice(0, 30).reduce((sum, d) => sum + d.execution_count, 0))}
+                            {formatNumber(dashboard.daily_metrics.slice(-30).reduce((sum, d) => sum + d.execution_count, 0))}
                           </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">Avg Success</p>
+                          {(() => {
+                            const metrics = dashboard.daily_metrics.slice(-30);
+                            const avgRate = metrics.length > 0
+                              ? metrics.reduce((sum, d) => sum + d.success_rate, 0) / metrics.length
+                              : 0;
+                            return (
+                              <p className={cn('text-base sm:text-lg font-semibold', getSuccessRateColor(avgRate))}>
+                                {avgRate.toFixed(0)}%
+                              </p>
+                            );
+                          })()}
                         </div>
                         <div>
                           <p className="text-xs text-muted-foreground">Cost</p>
                           <p className="text-base sm:text-lg font-semibold">
-                            {formatCurrency(dashboard.daily_metrics.slice(0, 30).reduce((sum, d) => sum + d.total_cost, 0))}
+                            {formatCurrency(dashboard.daily_metrics.slice(-30).reduce((sum, d) => sum + d.total_cost, 0))}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs text-muted-foreground">Rej/Day</p>
-                          <p className="text-base sm:text-lg font-semibold">
-                            {(dashboard.daily_metrics.slice(0, 30).reduce((sum, d) => sum + d.total_rejections, 0) / Math.min(30, dashboard.daily_metrics.length)).toFixed(1)}
+                          <p className="text-xs text-muted-foreground">Failures</p>
+                          <p className="text-base sm:text-lg font-semibold text-red-500">
+                            {formatNumber(dashboard.daily_metrics.slice(-30).reduce((sum, d) => sum + d.failure_count, 0))}
                           </p>
                         </div>
                         <div>
-                          <p className="text-xs text-muted-foreground">Retry/Day</p>
+                          <p className="text-xs text-muted-foreground">Retries</p>
                           <p className="text-base sm:text-lg font-semibold">
-                            {(dashboard.daily_metrics.slice(0, 30).reduce((sum, d) => sum + d.total_retries, 0) / Math.min(30, dashboard.daily_metrics.length)).toFixed(1)}
+                            {formatNumber(dashboard.daily_metrics.slice(-30).reduce((sum, d) => sum + d.total_retries, 0))}
                           </p>
                         </div>
                       </div>
@@ -389,11 +612,17 @@ export const MetricsPanel: React.FC = () => {
                               className="flex items-center justify-between py-3 border-b border-border last:border-0"
                             >
                               <div className="flex flex-col">
-                                <span className="text-sm font-medium">{project.project_name}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium">{project.project_name}</span>
+                                  <span className={cn('text-xs font-medium', getSuccessRateColor(project.success_rate))}>
+                                    {project.success_rate}%
+                                  </span>
+                                </div>
                                 <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
                                   <span>{project.total_executions} executions</span>
+                                  <span className="text-emerald-500">{project.success_count} success</span>
+                                  <span className="text-red-500">{project.failure_count} failed</span>
                                   <span>Avg: {formatDuration(project.avg_duration_secs)}</span>
-                                  <span>{formatTokens(project.total_tokens)} tokens</span>
                                 </div>
                               </div>
                               <div className="text-right">
@@ -457,11 +686,12 @@ export const MetricsPanel: React.FC = () => {
                       <thead>
                         <tr className="border-b border-border">
                           <th className="text-left py-2 px-2 text-xs font-medium text-muted-foreground">Agent</th>
-                          <th className="text-right py-2 px-2 text-xs font-medium text-muted-foreground">Executions</th>
-                          <th className="text-right py-2 px-2 text-xs font-medium text-muted-foreground">Avg Duration</th>
-                          <th className="text-right py-2 px-2 text-xs font-medium text-muted-foreground">Avg Tokens</th>
-                          <th className="text-right py-2 px-2 text-xs font-medium text-muted-foreground">Rejections</th>
-                          <th className="text-right py-2 px-2 text-xs font-medium text-muted-foreground">Total Cost</th>
+                          <th className="text-right py-2 px-2 text-xs font-medium text-muted-foreground">Execs</th>
+                          <th className="text-right py-2 px-2 text-xs font-medium text-muted-foreground">Success</th>
+                          <th className="text-right py-2 px-2 text-xs font-medium text-muted-foreground">Avg Time</th>
+                          <th className="text-right py-2 px-2 text-xs font-medium text-muted-foreground">Cost</th>
+                          <th className="text-right py-2 px-2 text-xs font-medium text-muted-foreground">$/Success</th>
+                          <th className="text-center py-2 px-2 text-xs font-medium text-muted-foreground">Last</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -478,21 +708,29 @@ export const MetricsPanel: React.FC = () => {
                                 </Badge>
                               </td>
                               <td className="py-2 px-2 text-right">{formatNumber(agent.execution_count)}</td>
+                              <td className="py-2 px-2 text-right">
+                                <span className={cn('font-medium', getSuccessRateColor(agent.success_rate))}>
+                                  {agent.success_rate}%
+                                </span>
+                                <span className="text-xs text-muted-foreground ml-1">
+                                  ({agent.success_count}/{agent.execution_count})
+                                </span>
+                              </td>
                               <td className="py-2 px-2 text-right text-muted-foreground">
                                 {formatDuration(agent.avg_duration_secs)}
                               </td>
-                              <td className="py-2 px-2 text-right text-muted-foreground">
-                                {formatTokens(agent.avg_tokens)}
-                              </td>
-                              <td className="py-2 px-2 text-right">
-                                <span className={cn(
-                                  agent.rejection_count > 5 ? 'text-orange-500' : 'text-muted-foreground'
-                                )}>
-                                  {agent.rejection_count}
-                                </span>
-                              </td>
                               <td className="py-2 px-2 text-right font-semibold">
                                 {formatCurrency(agent.total_cost)}
+                              </td>
+                              <td className="py-2 px-2 text-right text-muted-foreground">
+                                {formatCurrency(agent.cost_per_success)}
+                              </td>
+                              <td className="py-2 px-2 text-center">
+                                {agent.last_status && (
+                                  <Badge variant={getStatusBadgeVariant(agent.last_status)} className="text-xs capitalize">
+                                    {agent.last_status}
+                                  </Badge>
+                                )}
                               </td>
                             </tr>
                           ));

@@ -9,12 +9,10 @@
 //! - `process_analyzer_verdict()` - Process verdict and update run log
 //! - `trigger_analyzer_for_run()` - Manual analyzer trigger command
 
-use std::collections::HashMap;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::broadcast;
 
 use super::executor;
-use super::pipeline::PipelineManager;
 use super::types::*;
 use super::commands::{SCHEDULER, OUTPUT_SENDER, get_pipeline_manager_sync};
 use super::commands_pipeline::trigger_worktree_merger;

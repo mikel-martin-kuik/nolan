@@ -1,10 +1,9 @@
 import { useNavigationStore, type BuilderSubTab } from '../../store/navigationStore';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Settings2, Users, GitBranch, UserCog } from 'lucide-react';
+import { Settings2, Users, GitBranch } from 'lucide-react';
 import { TriggerSettings } from './TriggerSettings';
 import { TeamDesigner } from './TeamDesigner';
 import { PipelineEditor } from './PipelineEditor';
-import { AgentRoleConfig } from './AgentRoleConfig';
 
 export function BuilderPanel() {
   const builderSubTab = useNavigationStore((state) => state.builderSubTab);
@@ -35,11 +34,6 @@ export function BuilderPanel() {
               <span className="hidden sm:inline">Teams</span>
               <span className="sm:hidden text-xs">Teams</span>
             </TabsTrigger>
-            <TabsTrigger value="agent-roles" className="gap-1 sm:gap-2">
-              <UserCog className="h-4 w-4" />
-              <span className="hidden sm:inline">Agent Roles</span>
-              <span className="sm:hidden text-xs">Roles</span>
-            </TabsTrigger>
             <TabsTrigger value="triggers" className="gap-1 sm:gap-2">
               <Settings2 className="h-4 w-4" />
               <span className="hidden sm:inline">Triggers</span>
@@ -56,10 +50,6 @@ export function BuilderPanel() {
 
           <TabsContent value="teams" className="m-0 h-full">
             <TeamDesigner />
-          </TabsContent>
-
-          <TabsContent value="agent-roles" className="m-0 h-full">
-            <AgentRoleConfig />
           </TabsContent>
 
           <TabsContent value="triggers" className="m-0 h-full">

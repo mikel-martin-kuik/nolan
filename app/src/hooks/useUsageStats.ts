@@ -197,22 +197,70 @@ export function useUsageStats(): UseUsageStatsResult {
   }, [selectedDateRange, getCachedData, setCachedData]);
 
   const timelineChartData = useMemo((): TimelineChartData | null => {
-    if (!stats?.by_date || stats.by_date.length === 0) return null;
+    // Determine date range based on selected range
+    const days = selectedDateRange === '7d' ? 7 : selectedDateRange === '30d' ? 30 : null;
 
-    const maxCost = Math.max(...stats.by_date.map(d => d.total_cost), 0);
+    // Create a map of existing data for quick lookup
+    const dateDataMap = new Map<string, { total_cost: number; total_tokens: number; models_used: string[] }>();
+    if (stats?.by_date) {
+      for (const day of stats.by_date) {
+        dateDataMap.set(day.date, {
+          total_cost: day.total_cost,
+          total_tokens: day.total_tokens,
+          models_used: day.models_used,
+        });
+      }
+    }
+
+    // Generate full date range with zeros for missing days
+    const bars: TimelineBar[] = [];
+    const endDate = new Date();
+    endDate.setHours(0, 0, 0, 0);
+
+    // For "all time", just use existing data reversed
+    if (days === null) {
+      if (!stats?.by_date || stats.by_date.length === 0) return null;
+      const maxCost = Math.max(...stats.by_date.map(d => d.total_cost), 0);
+      const reversedData = stats.by_date.slice().reverse();
+      return {
+        maxCost,
+        halfMaxCost: maxCost / 2,
+        bars: reversedData.map(day => ({
+          ...day,
+          heightPercent: maxCost > 0 ? (day.total_cost / maxCost) * 100 : 0,
+          date: new Date(day.date.replace(/-/g, '/')),
+        }))
+      };
+    }
+
+    // For 7d/30d, fill in all days in the range
+    for (let i = days - 1; i >= 0; i--) {
+      const date = new Date(endDate);
+      date.setDate(date.getDate() - i);
+      const dateStr = date.toISOString().split('T')[0];
+      const existingData = dateDataMap.get(dateStr);
+
+      bars.push({
+        date,
+        total_cost: existingData?.total_cost ?? 0,
+        total_tokens: existingData?.total_tokens ?? 0,
+        models_used: existingData?.models_used ?? [],
+        heightPercent: 0, // Will be calculated below
+      });
+    }
+
+    if (bars.length === 0) return null;
+
+    const maxCost = Math.max(...bars.map(d => d.total_cost), 0);
     const halfMaxCost = maxCost / 2;
-    const reversedData = stats.by_date.slice().reverse();
 
-    return {
-      maxCost,
-      halfMaxCost,
-      bars: reversedData.map(day => ({
-        ...day,
-        heightPercent: maxCost > 0 ? (day.total_cost / maxCost) * 100 : 0,
-        date: new Date(day.date.replace(/-/g, '/')),
-      }))
-    };
-  }, [stats?.by_date]);
+    // Calculate height percentages
+    for (const bar of bars) {
+      bar.heightPercent = maxCost > 0 ? (bar.total_cost / maxCost) * 100 : 0;
+    }
+
+    return { maxCost, halfMaxCost, bars };
+  }, [stats?.by_date, selectedDateRange]);
 
   useEffect(() => {
     loadUsageStats();

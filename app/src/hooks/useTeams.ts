@@ -9,6 +9,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { invoke } from '@/lib/api';
+import { formatErrorMessage } from '@/lib/utils';
 import { useToastStore } from '../store/toastStore';
 import type { TeamConfig, AgentDirectoryInfo } from '../types';
 import { updateAgentDescriptions } from '../types';
@@ -107,7 +108,7 @@ export function useDeleteTeam() {
       queryClient.invalidateQueries({ queryKey: teamKeys.all });
     },
     onError: (error, teamName) => {
-      const message = error instanceof Error ? error.message : String(error);
+      const message = formatErrorMessage(error);
       showError(`Failed to delete team ${teamName}: ${message}`);
     },
   });

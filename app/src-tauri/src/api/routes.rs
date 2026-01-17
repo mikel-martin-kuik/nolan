@@ -155,14 +155,6 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             post(handlers::communicate::send_command),
         )
         .route(
-            "/api/communicate/broadcast-team",
-            post(handlers::communicate::broadcast_team),
-        )
-        .route(
-            "/api/communicate/broadcast-all",
-            post(handlers::communicate::broadcast_all),
-        )
-        .route(
             "/api/communicate/targets",
             get(handlers::communicate::get_targets),
         )

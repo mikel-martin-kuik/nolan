@@ -62,7 +62,17 @@ pub async fn launch_terminal(
         .spawn();
 
     match result {
-        Ok(_) => Ok(format!("Launched gnome-terminal for {}", session)),
+        Ok(_) => {
+            // Give terminal time to attach, then clear any window-size override
+            // so the session resizes to fit the terminal (must use set-window-option, not set-option)
+            std::thread::spawn(move || {
+                std::thread::sleep(std::time::Duration::from_millis(300));
+                let _ = Command::new("tmux")
+                    .args(&["set-window-option", "-t", &exact_session, "-u", "window-size"])
+                    .output();
+            });
+            Ok(format!("Launched gnome-terminal for {}", session))
+        }
         Err(e) => Err(format!(
             "Failed to launch gnome-terminal: {}. Is gnome-terminal installed?",
             e
@@ -90,33 +100,8 @@ pub async fn open_agent_terminal(session: String) -> Result<String, String> {
 
     // Detach any existing clients from this session first
     // This closes existing terminal windows and prevents duplicates
-    // Use = prefix for exact session matching to avoid tmux prefix matching
     let _ = Command::new("tmux")
-        .arg("detach-client")
-        .arg("-s")
-        .arg(format!("={}", session))
-        .output();
-
-    // Reset tmux window to auto-size mode and enable aggressive-resize
-    // This allows the external terminal to resize the pane to its own dimensions
-    // instead of being locked to the embedded terminal's size
-    // Use = prefix for exact session matching
-    let exact_session = format!("={}", session);
-
-    // Enable aggressive-resize for this window so it adapts to the attaching terminal
-    let _ = Command::new("tmux")
-        .args(&["set-window-option", "-t", &exact_session, "aggressive-resize", "on"])
-        .output();
-
-    // Set a large default size to force the window to expand
-    // The attaching terminal will resize it down to its actual dimensions
-    let _ = Command::new("tmux")
-        .args(&["resize-window", "-t", &exact_session, "-x", "200", "-y", "50"])
-        .output();
-
-    // Also set auto-size mode as a fallback
-    let _ = Command::new("tmux")
-        .args(&["resize-window", "-t", &exact_session, "-A"])
+        .args(&["detach-client", "-s", &format!("={}", session)])
         .output();
 
     // Small delay to allow terminal window to close
@@ -156,25 +141,7 @@ pub async fn open_team_terminals(team_name: String) -> Result<String, String> {
             // Detach any existing clients from this session first
             // This closes existing terminal windows and prevents duplicates
             let _ = Command::new("tmux")
-                .arg("detach-client")
-                .arg("-s")
-                .arg(session)
-                .output();
-
-            // Reset tmux window to auto-size mode and enable aggressive-resize
-            // Enable aggressive-resize for this window so it adapts to the attaching terminal
-            let _ = Command::new("tmux")
-                .args(&["set-window-option", "-t", session, "aggressive-resize", "on"])
-                .output();
-
-            // Set a large default size to force the window to expand
-            let _ = Command::new("tmux")
-                .args(&["resize-window", "-t", session, "-x", "200", "-y", "50"])
-                .output();
-
-            // Also set auto-size mode as a fallback
-            let _ = Command::new("tmux")
-                .args(&["resize-window", "-t", session, "-A"])
+                .args(&["detach-client", "-s", session])
                 .output();
 
             // Small delay to allow terminal windows to close
@@ -205,7 +172,17 @@ pub async fn open_team_terminals(team_name: String) -> Result<String, String> {
                 .spawn();
 
             match result {
-                Ok(_) => opened.push(session.to_string()),
+                Ok(_) => {
+                    // Clear window-size override after terminal attaches (must use set-window-option)
+                    let session_clone = session.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(300));
+                        let _ = Command::new("tmux")
+                            .args(&["set-window-option", "-t", &format!("={}", session_clone), "-u", "window-size"])
+                            .output();
+                    });
+                    opened.push(session.to_string());
+                }
                 Err(e) => errors.push(format!("{}: {}", session, e)),
             }
         }

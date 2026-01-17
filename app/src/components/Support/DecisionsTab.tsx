@@ -75,7 +75,7 @@ export function DecisionsTab() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All ({decisions.length})</SelectItem>
-            {Object.entries(DECISION_STATUS_LABELS).map(([value, label]) => (
+            {(Object.entries(DECISION_STATUS_LABELS) as [DecisionStatus, string][]).map(([value, label]) => (
               <SelectItem key={value} value={value}>
                 {label} ({statusCounts[value] || 0})
               </SelectItem>

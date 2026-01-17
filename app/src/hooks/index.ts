@@ -7,7 +7,7 @@ export { useEventAgents, type UseEventAgentsResult } from './useEventAgents';
 export { useFetchData, type UseFetchDataOptions, type UseFetchDataResult } from './useFetchData';
 export { useFreeAgentMessages } from './useFreeAgentMessages';
 export { usePollingEffect, type UsePollingEffectOptions } from './usePollingEffect';
-export { useDebouncedCallback, useDebouncedFn, type UseDebouncedCallbackOptions } from './useDebouncedCallback';
+export { useDebouncedCallback, type UseDebouncedCallbackOptions } from './useDebouncedCallback';
 export { useProjects, type UseProjectsResult, type GroupedProjects, type ProjectStats } from './useProjects';
 export { useRoadmap, type UseRoadmapResult, type RoadmapSection, type PhaseInfo, type RoadmapTab } from './useRoadmap';
 export { useTeamMessages } from './useTeamMessages';

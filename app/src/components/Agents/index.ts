@@ -1,4 +1,4 @@
 export { AgentManager } from './AgentManager';
-export { AgentCard } from './AgentCard';
+export { AgentConfigCard } from './AgentConfigCard';
 export { AgentCreator } from './AgentCreator';
 export { AgentEditor } from './AgentEditor';

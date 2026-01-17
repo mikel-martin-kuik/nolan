@@ -12,7 +12,6 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::broadcast;
 
 use super::executor;
-use super::pipeline::PipelineManager;
 use super::types::*;
 use super::commands::{SCHEDULER, OUTPUT_SENDER, get_pipeline_manager_sync};
 

@@ -13,22 +13,10 @@
  * @deprecated Use useAgents() and related mutation hooks instead
  */
 import { create } from 'zustand';
-import { invoke } from '@/lib/api';
+import { invoke, invokeWithTimeout } from '@/lib/api';
 import { listen } from '@/lib/events';
 import type { AgentStatusList, AgentName, ClaudeModel } from '../types';
 import { useToastStore } from './toastStore';
-
-// Helper to wrap invoke with a timeout to prevent UI hangs from backend issues
-async function invokeWithTimeout<T>(
-  cmd: string,
-  args: Record<string, unknown>,
-  timeoutMs: number = 30000
-): Promise<T> {
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    setTimeout(() => reject(new Error(`Backend timeout after ${timeoutMs/1000}s - check if tmux is responsive`)), timeoutMs);
-  });
-  return Promise.race([invoke<T>(cmd, args), timeoutPromise]);
-}
 
 interface AgentStore {
   // UI State

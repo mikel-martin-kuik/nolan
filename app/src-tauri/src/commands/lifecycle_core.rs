@@ -199,17 +199,13 @@ pub async fn start_agent_core(team_name: &str, agent: &str) -> Result<String, St
         mapped_model
     );
 
-    // Create tmux session with default dimensions to avoid 80x24 default
+    // Create tmux session (let tmux handle sizing naturally)
     let output = Command::new("tmux")
         .args(&[
             "new-session",
             "-d",
             "-s",
             &session,
-            "-x",
-            "200",
-            "-y",
-            "50",
             "-c",
             &agent_dir.to_string_lossy(),
             &cmd,
@@ -410,17 +406,13 @@ pub async fn spawn_ralph_core(
         mapped_model
     );
 
-    // Create session with default dimensions to avoid 80x24 default
+    // Create tmux session (let tmux handle sizing naturally)
     let output = Command::new("tmux")
         .args(&[
             "new-session",
             "-d",
             "-s",
             &session,
-            "-x",
-            "200",
-            "-y",
-            "50",
             "-c",
             &working_dir.to_string_lossy(),
             &cmd,
@@ -563,17 +555,13 @@ pub async fn recover_ralph_instance(
         resume_flag
     );
 
-    // Create session with default dimensions to avoid 80x24 default
+    // Create tmux session (let tmux handle sizing naturally)
     let output = Command::new("tmux")
         .args(&[
             "new-session",
             "-d",
             "-s",
             &instance.session,
-            "-x",
-            "200",
-            "-y",
-            "50",
             "-c",
             &instance.agent_dir.to_string_lossy(),
             &cmd,
@@ -864,17 +852,13 @@ pub async fn recover_team_session(orphan: &OrphanedTeamSession) -> Result<String
         resume_flag
     );
 
-    // Create session with default dimensions to avoid 80x24 default
+    // Create tmux session (let tmux handle sizing naturally)
     let output = Command::new("tmux")
         .args(&[
             "new-session",
             "-d",
             "-s",
             &orphan.session,
-            "-x",
-            "200",
-            "-y",
-            "50",
             "-c",
             &orphan.agent_dir.to_string_lossy(),
             &cmd,

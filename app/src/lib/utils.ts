@@ -13,3 +13,13 @@ export function cn(...inputs: ClassValue[]) {
 export function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+/**
+ * Formats an unknown error into a user-friendly error message string.
+ * Handles Error objects, strings, and other unknown types.
+ * @param error - The error to format (can be any type)
+ * @returns A string representation of the error message
+ */
+export function formatErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}

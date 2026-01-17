@@ -98,11 +98,13 @@ export interface CommandParams {
   open_agent_terminal: { session: string };
   open_team_terminals: { team_name: string };
 
+  // === Session Recovery ===
+  list_orphaned_sessions: void;
+  recover_sessions: void;
+
   // === Communication ===
   send_message: { session: string; message: string };
   send_agent_command: { session: string; command: string };
-  broadcast_team: { team_name: string; message: string };
-  broadcast_all: { message: string };
   get_available_targets: { team_name?: string };
 
   // === Projects ===
@@ -192,11 +194,13 @@ export interface CommandReturns {
   open_agent_terminal: string;
   open_team_terminals: string;
 
+  // Session Recovery
+  list_orphaned_sessions: string[];
+  recover_sessions: { recovered: string[]; failed: string[]; summary: string };
+
   // Communication
   send_message: string;
   send_agent_command: string;
-  broadcast_team: string;
-  broadcast_all: string;
   get_available_targets: string[];
 
   // Projects

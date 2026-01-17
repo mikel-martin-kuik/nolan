@@ -99,6 +99,10 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   kill_instance: { method: 'POST', path: '/api/lifecycle/kill-instance' },
   kill_all_instances: { method: 'POST', path: '/api/lifecycle/kill-all' },
 
+  // Session Recovery
+  list_orphaned_sessions: { method: 'GET', path: '/api/recovery/orphaned' },
+  recover_sessions: { method: 'POST', path: '/api/recovery/recover' },
+
   // Terminal-related commands that don't work in browser (need gnome-terminal)
   open_agent_terminal: { method: 'POST', path: '/api/noop' },  // No-op in browser
   open_team_terminals: { method: 'POST', path: '/api/noop' },  // No-op in browser
@@ -106,8 +110,6 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   // Communication
   send_message: { method: 'POST', path: '/api/communicate/message' },
   send_agent_command: { method: 'POST', path: '/api/communicate/command' },
-  broadcast_team: { method: 'POST', path: '/api/communicate/broadcast-team' },
-  broadcast_all: { method: 'POST', path: '/api/communicate/broadcast-all' },
   get_available_targets: { method: 'GET', path: (args) => `/api/communicate/targets?team=${encodeURIComponent(getArg(args, 'team_name') as string || 'default')}` },
 
   // Projects
@@ -253,14 +255,6 @@ const COMMAND_ROUTES: Record<string, { method: string; path: string | ((args: Re
   get_feedback_stats: { method: 'GET', path: '/api/feedback/stats' },
   get_user_votes: { method: 'GET', path: '/api/feedback/votes' },
 
-  // Design decisions (Tauri-only for now)
-  list_decisions: { method: 'GET', path: '/api/noop' },
-  create_decision: { method: 'POST', path: '/api/noop' },
-  update_decision_status: { method: 'PUT', path: '/api/noop' },
-  approve_decision: { method: 'POST', path: '/api/noop' },
-  deprecate_decision: { method: 'POST', path: '/api/noop' },
-  delete_decision: { method: 'DELETE', path: '/api/noop' },
-
   // Ollama (local LLM)
   ollama_status: { method: 'GET', path: '/api/ollama/status' },
   ollama_models: { method: 'GET', path: '/api/ollama/models' },
@@ -353,6 +347,28 @@ export async function invoke<T>(cmd: string, args?: Record<string, unknown>): Pr
   }
 
   return JSON.parse(text) as T;
+}
+
+/**
+ * Invoke a backend command with a timeout to prevent UI hangs
+ *
+ * Wraps the standard invoke with a timeout that rejects if the backend
+ * doesn't respond within the specified time.
+ *
+ * @param cmd - The command name to invoke
+ * @param args - Arguments to pass to the command
+ * @param timeoutMs - Timeout in milliseconds (default: 30000)
+ * @returns Promise that resolves with the result or rejects on timeout
+ */
+export async function invokeWithTimeout<T>(
+  cmd: string,
+  args: Record<string, unknown>,
+  timeoutMs: number = 30000
+): Promise<T> {
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(`Backend timeout after ${timeoutMs/1000}s`)), timeoutMs);
+  });
+  return Promise.race([invoke<T>(cmd, args), timeoutPromise]);
 }
 
 /**

@@ -1253,7 +1253,7 @@ impl SchedulerManager {
 
         let job = Job::new_async(cron_expr.as_str(), move |_uuid, _lock| {
             let agent_name = agent_name.clone();
-            let scheduler_root = scheduler_root.clone();
+            let _scheduler_root = scheduler_root.clone();
             let running = running.clone();
 
             Box::pin(async move {
